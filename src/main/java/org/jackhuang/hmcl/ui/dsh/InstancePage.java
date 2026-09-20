@@ -161,7 +161,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     private ScrollPane buildPluginsTab() {
         VBox root = new VBox(10);
         root.setPadding(new javafx.geometry.Insets(10));
-        root.getChildren().addAll(pluginStatus, pluginList);
+        root.getChildren().addAll(pluginStatus,
+                ComponentList.createComponentListTitle(i18n("dsh.instance.plugins.installed")),
+                pluginList);
 
         ScrollPane scroll = new ScrollPane(root);
         scroll.setFitToWidth(true);
@@ -253,11 +255,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
             pluginStatus.setText(e.getMessage());
             return;
         }
-
-        LineTextPane header = new LineTextPane();
-        header.setTitle(i18n("dsh.instance.plugins.installed"));
-        header.getStyleClass().add("section-header");
-        pluginList.getContent().add(header);
 
         // Only the packages the user added; the in-box bundles every profile
         // starts with are not the user's to manage.

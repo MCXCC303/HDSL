@@ -226,11 +226,15 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     ///
     /// @param text the heading text
     /// @return the heading row
-    private Node buildSectionHeader(String text) {
-        LineTextPane header = new LineTextPane();
-        header.setTitle(text);
-        header.getStyleClass().add("section-header");
-        return header;
+    /// Builds a section title.
+    ///
+    /// HMCL's helper rather than a styled row: the original puts the title
+    /// between card groups, outside their background.
+    ///
+    /// @param text the title
+    /// @return the title node
+    private static Node buildSectionHeader(String text) {
+        return ComponentList.createComponentListTitle(text);
     }
 
     /// Builds a non-interactive note row.

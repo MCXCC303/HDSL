@@ -73,24 +73,21 @@ public final class InstanceSettingsPage extends ScrollPane {
 
         setFitToWidth(true);
 
-        ComponentList list = new ComponentList();
+        ComponentList iconList = new ComponentList();
+        iconList.getContent().add(buildIconRow());
 
-        LineTextPane iconHeader = new LineTextPane();
-        iconHeader.setTitle(i18n("dsh.instance.icon"));
-        iconHeader.getStyleClass().add("section-header");
-        list.getContent().add(iconHeader);
-        list.getContent().add(buildIconRow());
+        ComponentList portList = new ComponentList();
 
-        LineTextPane portHeader = new LineTextPane();
-        portHeader.setTitle(i18n("dsh.instance.port"));
-        portHeader.getStyleClass().add("section-header");
-        list.getContent().add(portHeader);
+        ComponentList list = portList;
 
+        list.getContent().add(buildPortModeRow());
         list.getContent().add(buildPortModeRow());
         list.getContent().add(buildPortRow());
         list.getContent().add(buildPortNote());
 
-        VBox root = new VBox(list);
+        VBox root = new VBox(10,
+                ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
+                ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList);
         root.setPadding(new Insets(10));
         setContent(root);
 

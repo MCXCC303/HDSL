@@ -54,17 +54,11 @@ public final class BrowsePane extends ScrollPane {
         setFitToWidth(true);
 
         ComponentList list = new ComponentList();
-
-        LineTextPane header = new LineTextPane();
-        header.setTitle(i18n("dsh.instance.folders"));
-        header.getStyleClass().add("section-header");
-        list.getContent().add(header);
-
         for (Directory directory : directoriesOf(instance)) {
             list.getContent().add(buildRow(directory));
         }
 
-        VBox root = new VBox(list);
+        VBox root = new VBox(ComponentList.createComponentListTitle(i18n("dsh.instance.folders")), list);
         root.setPadding(new Insets(10));
         setContent(root);
 

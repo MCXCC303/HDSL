@@ -272,10 +272,7 @@ public final class NodeRuntimesPane extends ScrollPane implements Refreshable {
     /// @param text the heading text
     /// @return the heading row
     private Node buildHeader(String text) {
-        LineTextPane header = new LineTextPane();
-        header.setTitle(text);
-        header.getStyleClass().add("section-header");
-        return header;
+        return ComponentList.createComponentListTitle(text);
     }
 
     /// Builds a non-interactive note row.

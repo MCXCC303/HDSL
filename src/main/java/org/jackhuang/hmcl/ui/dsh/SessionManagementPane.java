@@ -93,7 +93,8 @@ public final class SessionManagementPane extends ScrollPane implements Refreshab
 
         VBox root = new VBox(10);
         root.setPadding(new Insets(10));
-        root.getChildren().addAll(buildToolbar(), status, moveToggle, sessionList);
+        root.getChildren().addAll(buildToolbar(), status, moveToggle,
+                ComponentList.createComponentListTitle(i18n("dsh.session.installed")), sessionList);
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to the
@@ -127,11 +128,6 @@ public final class SessionManagementPane extends ScrollPane implements Refreshab
             status.setText(e.getMessage());
             return;
         }
-
-        LineTextPane header = new LineTextPane();
-        header.setTitle(i18n("dsh.session.installed"));
-        header.getStyleClass().add("section-header");
-        sessionList.getContent().add(header);
 
         if (sessions.isEmpty()) {
             LineTextPane empty = new LineTextPane();

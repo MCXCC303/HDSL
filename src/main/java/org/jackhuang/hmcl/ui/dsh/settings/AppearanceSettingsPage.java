@@ -75,6 +75,18 @@ public final class AppearanceSettingsPage extends ScrollPane {
     /// Brightness mode identifiers accepted by the theme engine.
     private static final List<String> BRIGHTNESS_MODES = List.of("auto", "light", "dark");
 
+    /// Builds a section title.
+    ///
+    /// Uses HMCL's helper rather than a styled row: the original puts the title
+    /// between card groups, outside their background, and that placement is what
+    /// makes a settings page read as titled groups rather than one long list.
+    ///
+    /// @param text the title
+    /// @return the title node
+    private static Node sectionTitle(String text) {
+        return ComponentList.createComponentListTitle(text);
+    }
+
     /// Creates the appearance settings tab.
     public AppearanceSettingsPage() {
         setFitToWidth(true);
@@ -86,13 +98,13 @@ public final class AppearanceSettingsPage extends ScrollPane {
         FXUtils.smoothScrolling(this);
 
         root.getChildren().addAll(
-                buildThemeList(),
-                buildThemeColorList(),
-                buildFontList(),
-                buildAnimationList(),
-                buildBackgroundSourceList(),
+                sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
+                sectionTitle(i18n("dsh.settings.theme_color")), buildThemeColorList(),
+                sectionTitle(i18n("dsh.settings.font")), buildFontList(),
+                sectionTitle(i18n("dsh.settings.animations")), buildAnimationList(),
+                sectionTitle(i18n("dsh.settings.background")), buildBackgroundSourceList(),
                 buildBackgroundDetailList(),
-                buildWindowList());
+                sectionTitle(i18n("dsh.settings.window")), buildWindowList());
     }
 
     /// Builds the theme colour section.
@@ -105,10 +117,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
     private ComponentList buildThemeColorList() {
         ComponentList list = new ComponentList();
 
-        LineTextPane header = new LineTextPane();
-        header.setTitle(i18n("dsh.settings.theme_color"));
-        header.getStyleClass().add("section-header");
-        list.getContent().add(header);
 
         ThemeColor currentCustom = Optional.ofNullable(settings().customThemeColorProperty().get())
                 .orElse(ThemeColor.DEFAULT);
@@ -170,10 +178,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
     private ComponentList buildFontList() {
         ComponentList list = new ComponentList();
 
-        LineTextPane header = new LineTextPane();
-        header.setTitle(i18n("dsh.settings.font"));
-        header.getStyleClass().add("section-header");
-        list.getContent().add(header);
 
         LineTextPane row = new LineTextPane();
         row.setTitle(i18n("dsh.settings.font"));

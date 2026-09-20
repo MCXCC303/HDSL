@@ -65,7 +65,10 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     private final WizardController controller;
 
     /// The placeholder shown while the published versions load.
-    private LineTextPane remoteStatus;
+    private final LineTextPane remoteStatus = new LineTextPane();
+
+    /// The card holding the published versions.
+    private final ComponentList remoteList = new ComponentList();
 
     /// Creates the version-selection page.
     ///
@@ -80,32 +83,29 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         Label title = new Label(i18n("dsh.install.step.version"));
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
 
-        ComponentList list = new ComponentList();
         List<DshVersion> installed = DshVersionManager.listInstalled();
 
-        LineTextPane installedHeader = new LineTextPane();
-        installedHeader.setTitle(i18n("dsh.install.version.installed"));
-        installedHeader.getStyleClass().add("section-header");
-        list.getContent().add(installedHeader);
-
+        ComponentList installedList = new ComponentList();
         if (installed.isEmpty()) {
-            list.getContent().add(buildNote(i18n("dsh.install.step.version.empty")));
+            installedList.getContent().add(buildNote(i18n("dsh.install.step.version.empty")));
         } else {
             for (DshVersion version : installed) {
-                list.getContent().add(buildVersionRow(version, true));
+                installedList.getContent().add(buildVersionRow(version, true));
             }
         }
 
-        LineTextPane remoteHeader = new LineTextPane();
-        remoteHeader.setTitle(i18n("dsh.install.version.remote"));
-        remoteHeader.getStyleClass().add("section-header");
-        list.getContent().add(remoteHeader);
-
-        remoteStatus = new LineTextPane();
         remoteStatus.setText(i18n("dsh.versions.loading"));
-        list.getContent().add(remoteStatus);
+        remoteList.getContent().add(remoteStatus);
 
-        ScrollPane scroll = new ScrollPane(list);
+        // Titles sit between the cards rather than inside them, which is how
+        // HMCL lays a titled list out.
+        VBox body = new VBox(10,
+                ComponentList.createComponentListTitle(i18n("dsh.install.version.installed")),
+                installedList,
+                ComponentList.createComponentListTitle(i18n("dsh.install.version.remote")),
+                remoteList);
+
+        ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
         scroll.getStyleClass().add("edge-to-edge");
         FXUtils.smoothScrolling(scroll);
@@ -113,7 +113,7 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         getChildren().addAll(title, scroll, buildFooter());
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        loadRemote(list, remoteHeader, installed);
+        loadRemote(installed);
     }
 
     /// Loads the published versions that are not installed yet.
@@ -121,10 +121,8 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     /// A failure here is not fatal: the page still offers what is installed, so
     /// a network problem must not block creating an instance from a local copy.
     ///
-    /// @param list          the list the rows are added to
-    /// @param remoteHeader  the header the remote rows follow
-    /// @param installed     the already-installed versions
-    private void loadRemote(ComponentList list, LineTextPane remoteHeader, List<DshVersion> installed) {
+    /// @param installed the already-installed versions
+    private void loadRemote(List<DshVersion> installed) {
         java.util.Set<String> installedNames = new java.util.HashSet<>();
         for (DshVersion version : installed) {
             installedNames.add(version.version());
@@ -137,10 +135,7 @@ public final class VersionSelectPage extends VBox implements WizardPage {
                 throw new java.util.concurrent.CompletionException(e);
             }
         }, Schedulers.io()).whenComplete((releases, throwable) -> runInFX(() -> {
-            int index = list.getContent().indexOf(remoteStatus);
-            if (index >= 0) {
-                list.getContent().remove(index);
-            }
+            remoteList.getContent().remove(remoteStatus);
 
             if (throwable != null) {
                 Throwable cause = throwable instanceof java.util.concurrent.CompletionException
@@ -148,23 +143,22 @@ public final class VersionSelectPage extends VBox implements WizardPage {
                 LOG.warning("Failed to list published versions", cause);
                 LineTextPane failure = new LineTextPane();
                 failure.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
-                list.getContent().add(list.getContent().indexOf(remoteHeader) + 1, failure);
+                remoteList.getContent().add(failure);
                 return;
             }
 
             int added = 0;
-            int at = list.getContent().indexOf(remoteHeader) + 1;
             for (DshRelease release : releases) {
                 if (installedNames.contains(release.version())) {
                     continue;
                 }
-                list.getContent().add(at + added, buildReleaseRow(release));
+                remoteList.getContent().add(buildReleaseRow(release));
                 added++;
             }
             if (added == 0) {
                 LineTextPane empty = new LineTextPane();
                 empty.setText(i18n("dsh.versions.remote.empty"));
-                list.getContent().add(at, empty);
+                remoteList.getContent().add(empty);
             }
         }));
     }
