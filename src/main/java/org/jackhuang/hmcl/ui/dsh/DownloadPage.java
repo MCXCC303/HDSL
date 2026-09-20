@@ -29,6 +29,8 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -89,7 +91,37 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     private final JFXTextField searchField = new JFXTextField();
 
     /// The release types the list can be narrowed to.
-    private final JFXComboBox<DshRelease.Type> typeFilter = new JFXComboBox<>();
+    private final JFXComboBox<TypeFilter> typeFilter = new JFXComboBox<>();
+
+    /// What the type filter can be set to.
+    ///
+    /// Its own type rather than [DshRelease.Type], as in the original: "all" is a
+    /// filter, not a kind of release, and it has to be a real selection. Shown as
+    /// a prompt instead it renders through a different node with different
+    /// padding, which puts the text a few pixels from where the original's sits.
+    private enum TypeFilter {
+        ALL,
+        STABLE,
+        RC,
+        BETA,
+        ALPHA,
+        OTHER;
+
+        /// Reports whether a release matches this filter.
+        ///
+        /// @param release the release
+        /// @return whether it is shown
+        boolean accepts(DshRelease release) {
+            return this == ALL || release.type().name().equals(name());
+        }
+
+        /// Returns the translation key for this filter.
+        ///
+        /// @return the key suffix
+        String id() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
 
     /// The list of versions.
     private final JFXListView<DshRelease> releaseList = new JFXListView<>();
@@ -177,14 +209,13 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// Rebuilds the list from the loaded releases and the current filters.
     private void applyFilter() {
         String needle = searchField.getText() == null ? "" : searchField.getText().trim().toLowerCase(Locale.ROOT);
-        DshRelease.Type type = typeFilter.getValue();
+        // The filter opens on "all": DeepSeek Harness has published no stable
+        // release, so a list that started on "stable" would open empty.
+        TypeFilter type = typeFilter.getValue();
 
         List<DshRelease> shown = new ArrayList<>();
         for (DshRelease release : loaded) {
-            // The type filter defaults to no selection, which means everything:
-            // DeepSeek Harness has published no stable release, so a list that
-            // started on "stable" would open empty.
-            if (type != null && release.type() != type) {
+            if (type != null && !type.accepts(release)) {
                 continue;
             }
             if (!needle.isEmpty() && !release.version().toLowerCase(Locale.ROOT).contains(needle)) {
@@ -200,40 +231,54 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// Builds the toolbar above the list.
     ///
     /// @return the toolbar
-    private HBox buildToolbar() {
+    private GridPane buildToolbar() {
         Label nameLabel = new Label(i18n("download.name"));
         searchField.setPromptText(i18n("download.name.prompt"));
-        searchField.setPrefWidth(240);
         searchField.textProperty().addListener((observable, was, value) -> applyFilter());
 
         Label typeLabel = new Label(i18n("download.type"));
-        typeFilter.getItems().setAll(DshRelease.Type.values());
-        typeFilter.setValue(null);
-        typeFilter.setPromptText(i18n("download.type.all"));
+        typeFilter.getItems().setAll(TypeFilter.values());
+        // A selection, not a prompt: the original selects its "all" entry.
+        typeFilter.getSelectionModel().select(TypeFilter.ALL);
         typeFilter.setConverter(new javafx.util.StringConverter<>() {
             @Override
-            public String toString(@Nullable DshRelease.Type type) {
+            public String toString(@Nullable TypeFilter type) {
                 return type == null ? i18n("download.type.all") : i18n("download.type." + type.id());
             }
 
             @Override
-            public DshRelease.Type fromString(String string) {
-                return null;
+            public TypeFilter fromString(String string) {
+                return TypeFilter.ALL;
             }
         });
         typeFilter.valueProperty().addListener((observable, was, value) -> applyFilter());
 
-        JFXButton refresh = new JFXButton(i18n("button.refresh"));
-        refresh.setGraphic(SVG.REFRESH.createIcon(18));
-        refresh.getStyleClass().add("jfx-tool-bar-button");
+        // The original's refresh is a raised button, not the flat toolbar button
+        // its other pages use, and it follows the filter rather than being pushed
+        // to the far edge. A raised button is taller than a flat one, and the
+        // difference was the whole of this row's missing height.
+        JFXButton refresh = FXUtils.newRaisedButton(i18n("button.refresh"));
         refresh.setOnAction(event -> refresh());
 
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
+        // The original lays this row out as a grid rather than a box, and the
+        // columns are the point: the labels take their own width, the name field
+        // takes everything left over, and the type filter is capped. A box with
+        // fixed widths gives a field that is narrower than the original's and a
+        // filter that is wider.
+        ColumnConstraints labelColumn = new ColumnConstraints();
+        labelColumn.setMinWidth(Region.USE_PREF_SIZE);
+        ColumnConstraints fieldColumn = new ColumnConstraints();
+        fieldColumn.setHgrow(Priority.ALWAYS);
+        ColumnConstraints filterColumn = new ColumnConstraints();
+        filterColumn.setMaxWidth(150);
+        ColumnConstraints actionColumn = new ColumnConstraints();
 
-        HBox toolbar = new HBox(8, nameLabel, searchField, typeLabel, typeFilter, spacer, refresh);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-        toolbar.setPadding(new Insets(8));
+        GridPane toolbar = new GridPane();
+        toolbar.getColumnConstraints().setAll(labelColumn, fieldColumn, labelColumn, filterColumn, actionColumn);
+        toolbar.setHgap(16);
+        toolbar.setVgap(10);
+        toolbar.addRow(0, nameLabel, searchField, typeLabel, typeFilter, refresh);
+        // The card class supplies the padding and the surface.
         return toolbar;
     }
 
@@ -307,8 +352,12 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
             });
             right.getChildren().setAll(link, install);
 
-            HBox row = new HBox(icon, content, right);
-            row.setAlignment(Pos.CENTER_LEFT);
+            // Sixteen between the icon, the text and the actions, centred — the
+            // original's row. Without the spacing the text sits against the icon,
+            // which reads as a tighter list than the original's.
+            HBox row = new HBox(16, icon, content, right);
+            row.setAlignment(Pos.CENTER);
+            content.setAlignment(Pos.CENTER);
             StackPane.setMargin(row, new Insets(10, 16, 10, 16));
             root.getChildren().setAll(row);
 

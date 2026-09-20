@@ -35,6 +35,8 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.task.Schedulers;
+import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
+import org.jetbrains.annotations.Nullable;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -70,6 +72,19 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     /// The card holding the published versions.
     private final ComponentList remoteList = new ComponentList();
 
+    /// The name typed into the filter.
+    private final javafx.scene.control.TextField nameField = new javafx.scene.control.TextField();
+
+    /// The release types the list can be narrowed to.
+    private final javafx.scene.control.ComboBox<DshRelease.Type> typeFilter =
+            new javafx.scene.control.ComboBox<>();
+
+    /// Everything the last load returned, before filtering.
+    private java.util.List<DshRelease> releases = java.util.List.of();
+
+    /// The versions already installed, which the published list omits.
+    private java.util.Set<String> installedNames = java.util.Set.of();
+
     /// Creates the version-selection page.
     ///
     /// @param controller the wizard controller
@@ -96,6 +111,11 @@ public final class VersionSelectPage extends VBox implements WizardPage {
 
         remoteStatus.setText(i18n("dsh.versions.loading"));
         remoteList.getContent().add(remoteStatus);
+        java.util.Set<String> names = new java.util.HashSet<>();
+        for (DshVersion version : installed) {
+            names.add(version.version());
+        }
+        installedNames = names;
 
         // Titles sit between the cards rather than inside them, which is how
         // HMCL lays a titled list out.
@@ -107,11 +127,45 @@ public final class VersionSelectPage extends VBox implements WizardPage {
 
         ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("edge-to-edge");
-        FXUtils.smoothScrolling(scroll);
 
-        getChildren().addAll(title, scroll, buildFooter());
+        // The original's version list carries a name box and a type filter above
+        // it, and the wizard step is that same list rather than a plainer one:
+        // picking a version from a dozen is the same job either way.
+        nameField.setPromptText(i18n("download.name.prompt"));
+        nameField.setPrefWidth(240);
+        nameField.textProperty().addListener((observable, was, value) -> renderRemote());
+
+        typeFilter.getItems().setAll(DshRelease.Type.values());
+        typeFilter.setValue(null);
+        typeFilter.setPromptText(i18n("download.type.all"));
+        typeFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(@Nullable DshRelease.Type type) {
+                return type == null ? i18n("download.type.all") : i18n("download.type." + type.id());
+            }
+
+            @Override
+            public DshRelease.Type fromString(String string) {
+                return null;
+            }
+        });
+        typeFilter.valueProperty().addListener((observable, was, value) -> renderRemote());
+
+        javafx.scene.Node toolbar = ToolbarListPageSkin.createToolbarButton2(
+                i18n("button.refresh"), SVG.REFRESH, this::loadReleases);
+        toolbar.getStyleClass().add("card");
+        VBox.setMargin(toolbar, new Insets(10, 10, 0, 20));
+
+        HBox filterRow = new HBox(8,
+                new Label(i18n("download.name")), nameField,
+                new Label(i18n("download.type")), typeFilter);
+        filterRow.setAlignment(Pos.CENTER_LEFT);
+        filterRow.setPadding(new Insets(0, 10, 0, 20));
+
+        FXUtils.smoothScrolling(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
+
+        getChildren().setAll(title, toolbar, filterRow, scroll, buildFooter());
 
         loadRemote(installed);
     }
@@ -147,19 +201,8 @@ public final class VersionSelectPage extends VBox implements WizardPage {
                 return;
             }
 
-            int added = 0;
-            for (DshRelease release : releases) {
-                if (installedNames.contains(release.version())) {
-                    continue;
-                }
-                remoteList.getContent().add(buildReleaseRow(release));
-                added++;
-            }
-            if (added == 0) {
-                LineTextPane empty = new LineTextPane();
-                empty.setText(i18n("dsh.versions.remote.empty"));
-                remoteList.getContent().add(empty);
-            }
+            this.releases = releases;
+            renderRemote();
         }));
     }
 
@@ -167,6 +210,63 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     ///
     /// @param release the published release
     /// @return the row
+    /// Rebuilds the published list from the loaded releases and the filters.
+    private void renderRemote() {
+        remoteList.getContent().removeIf(node -> node != remoteStatus);
+        remoteList.getContent().remove(remoteStatus);
+
+        String needle = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase(java.util.Locale.ROOT);
+        DshRelease.Type type = typeFilter.getValue();
+
+        int added = 0;
+        for (DshRelease release : releases) {
+            if (installedNames.contains(release.version())) {
+                continue;
+            }
+            if (type != null && release.type() != type) {
+                continue;
+            }
+            if (!needle.isEmpty() && !release.version().toLowerCase(java.util.Locale.ROOT).contains(needle)) {
+                continue;
+            }
+            remoteList.getContent().add(buildReleaseRow(release));
+            added++;
+        }
+        if (added == 0) {
+            LineTextPane empty = new LineTextPane();
+            empty.setText(i18n("dsh.versions.remote.empty"));
+            remoteList.getContent().add(empty);
+        }
+    }
+
+    /// Loads the published versions.
+    private void loadReleases() {
+        remoteList.getContent().clear();
+        remoteList.getContent().add(remoteStatus);
+        remoteStatus.setText(i18n("dsh.versions.loading"));
+
+        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            try {
+                return DshVersionManager.fetchReleases();
+            } catch (DshException e) {
+                throw new java.util.concurrent.CompletionException(e);
+            }
+        }, Schedulers.io()).whenComplete((loaded, throwable) -> runInFX(() -> {
+            remoteList.getContent().remove(remoteStatus);
+            if (throwable != null) {
+                Throwable cause = throwable instanceof java.util.concurrent.CompletionException
+                        && throwable.getCause() != null ? throwable.getCause() : throwable;
+                LOG.warning("Failed to list published versions", cause);
+                LineTextPane failure = new LineTextPane();
+                failure.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
+                remoteList.getContent().add(failure);
+                return;
+            }
+            releases = loaded;
+            renderRemote();
+        }));
+    }
+
     private LineButton buildReleaseRow(DshRelease release) {
         LineButton row = new LineButton();
         row.setTitle(release.version());
