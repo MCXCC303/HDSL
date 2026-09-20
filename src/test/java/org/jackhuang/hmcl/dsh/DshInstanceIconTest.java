@@ -41,6 +41,16 @@ class DshInstanceIconTest {
     }
 
     @Test
+    void everyIconHasADenseVariant() {
+        // The set is a 32-pixel image with a 64-pixel @2x beside it, and a
+        // missing half is invisible until someone looks at a dense display.
+        for (DshInstanceIcon icon : DshInstanceIcon.values()) {
+            assertNotNull(DshInstanceIcon.class.getResource("/assets/img/" + icon.assetName() + "@2x.png"),
+                    "no @2x image is bundled for " + icon.name());
+        }
+    }
+
+    @Test
     void theDeepSeekHarnessMarksComeFirst() {
         DshInstanceIcon[] icons = DshInstanceIcon.values();
         assertSame(DshInstanceIcon.DSH_APPLICATION, icons[0]);

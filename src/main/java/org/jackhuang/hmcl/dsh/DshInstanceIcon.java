@@ -35,6 +35,10 @@ import java.util.Locale;
 /// kept as PNG, which is what every other icon here is and what the image
 /// container reads: HMCL's own icons are inline path data in an enum, and
 /// introducing a second mechanism for three images would not pay for itself.
+///
+/// Each icon is a 32-pixel image with a 64-pixel `@2x` beside it, matching the
+/// set it joins. Rendering the wrong one is not obvious in a still: the
+/// container scales what it is given, so a mis-sized asset looks merely soft.
 @NotNullByDefault
 public enum DshInstanceIcon {
     /// The DeepSeek Harness mark, in colour.
@@ -117,7 +121,22 @@ public enum DshInstanceIcon {
     ///
     /// @return the image, or `null` when the asset is missing
     public @Nullable Image load() {
-        var url = DshInstanceIcon.class.getResource("/assets/img/" + asset + ".png");
+        return load(1.0);
+    }
+
+    /// Loads the icon at the resolution a display asks for.
+    ///
+    /// Uses the `@2x` asset when one is bundled and the screen is dense enough
+    /// to benefit, which is what the rest of the set does.
+    ///
+    /// @param scale the display scale, `1.0` for an ordinary screen
+    /// @return the image, or `null` when the asset is missing
+    public @Nullable Image load(double scale) {
+        String suffix = scale > 1.5 ? "@2x" : "";
+        var url = DshInstanceIcon.class.getResource("/assets/img/" + asset + suffix + ".png");
+        if (url == null && !suffix.isEmpty()) {
+            url = DshInstanceIcon.class.getResource("/assets/img/" + asset + ".png");
+        }
         return url == null ? null : new Image(url.toExternalForm(), true);
     }
 }

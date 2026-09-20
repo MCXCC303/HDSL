@@ -43,6 +43,14 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import javafx.stage.DirectoryChooser;
+import com.jfoenix.controls.JFXTextField;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import org.jackhuang.hmcl.setting.GameDirectory;
+import org.jackhuang.hmcl.setting.GameDirectoryManager;
+import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
+import org.jetbrains.annotations.Nullable;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -73,21 +81,36 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// The card listing the instances.
     private final JFXListView<DshInstance> instanceList = buildInstanceList();
 
-    /// The status line above the list.
-    private final Label status = new Label();
+    /// The filter typed into the search box, or `null` when nothing is typed.
+    private @Nullable String filter;
+
+    /// The sidebar entry naming the directory whose instances are listed.
+    private final AdvancedListItem currentDirectoryItem = new AdvancedListItem();
 
     /// Creates the instance list page.
     public InstancesPage() {
 
+        // The directory leads and the actions sit at the bottom, which is how
+        // HMCL's instance list is arranged: what you are looking at, then what
+        // you can do.
         AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(i18n("dsh.instance.list").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerItem(i18n("dsh.instance.create"), SVG.ADD, this::createInstance);
-        FXUtils.setLimitWidth(sideBar, 200);
-        setLeft(sideBar);
+                .add(currentDirectoryItem)
+                .addNavigationDrawerItem(i18n("dsh.directory.add"), SVG.ADD, this::addDirectory);
 
-        VBox content = new VBox(10);
-        content.setPadding(new Insets(10));
-        content.getChildren().addAll(status, instanceList);
+        AdvancedListBox actions = new AdvancedListBox()
+                .addNavigationDrawerItem(i18n("dsh.instance.install"), SVG.ADD, this::createInstance)
+                .addNavigationDrawerItem(i18n("dsh.settings.global"), SVG.SETTINGS_FILL,
+                        () -> Controllers.navigate(new SettingsPage()));
+
+        FXUtils.setLimitWidth(sideBar, 200);
+        FXUtils.setLimitHeight(actions, 40 * 2 + 12 * 2);
+        sideBar.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(sideBar, Priority.ALWAYS);
+
+        getLeft().getStyleClass().add("gray-background");
+        setLeft(sideBar, actions);
+
+        VBox content = new VBox(buildToolbar(), instanceList);
         VBox.setVgrow(instanceList, Priority.ALWAYS);
 
         setCenter(content);
@@ -102,14 +125,62 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     @Override
     public void refresh() {
-        List<DshInstance> instances = DshInstanceManager.list();
+        GameDirectory directory = GameDirectoryManager.selected();
+        currentDirectoryItem.setTitle(directory.displayName());
+        currentDirectoryItem.setSubtitle(directory.path());
+
+        List<DshInstance> instances = new ArrayList<>(DshInstanceManager.listIn(directory.directory()));
+        if (filter != null && !filter.isBlank()) {
+            String needle = filter.trim().toLowerCase(Locale.ROOT);
+            instances.removeIf(instance -> !instance.id().toLowerCase(Locale.ROOT).contains(needle));
+        }
 
         instanceList.getItems().setAll(instances);
         instanceList.refresh();
+    }
 
-        status.setText(instances.isEmpty()
-                ? i18n("dsh.instance.none")
-                : i18n("dsh.instance.count", instances.size()));
+    /// Builds the toolbar above the list.
+    ///
+    /// @return the toolbar
+    private HBox buildToolbar() {
+        JFXButton refresh = new JFXButton(i18n("button.refresh"));
+        refresh.setGraphic(SVG.REFRESH.createIcon(18));
+        refresh.getStyleClass().add("jfx-tool-bar-button");
+        refresh.setOnAction(event -> refresh());
+
+        JFXTextField search = new JFXTextField();
+        search.setPromptText(i18n("search"));
+        search.setPrefWidth(260);
+        HBox.setHgrow(search, Priority.ALWAYS);
+        search.textProperty().addListener((observable, was, value) -> {
+            filter = value;
+            refresh();
+        });
+
+        HBox toolbar = new HBox(8, refresh, search);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        toolbar.setPadding(new Insets(8));
+        return toolbar;
+    }
+
+    /// Asks for a folder to look for instances in.
+    ///
+    /// Nothing is copied into it: adding a folder makes the launcher look
+    /// inside, and the instances it finds are the ones already there.
+    private void addDirectory() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle(i18n("dsh.directory.add"));
+        Path chosen = Controllers.showDialog(chooser);
+        if (chosen == null) {
+            return;
+        }
+        try {
+            GameDirectory added = GameDirectoryManager.add(chosen);
+            GameDirectoryManager.select(added.id());
+            refresh();
+        } catch (IllegalArgumentException e) {
+            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+        }
     }
 
     /// Builds the instance list.
