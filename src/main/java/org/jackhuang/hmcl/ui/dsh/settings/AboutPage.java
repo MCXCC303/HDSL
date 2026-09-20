@@ -56,7 +56,15 @@ public final class AboutPage extends ScrollPane {
         aboutList.getContent().add(buildInfoRow(i18n("dsh.about.runtime"),
                 System.getProperty("java.vm.name") + " " + System.getProperty("java.version"), null));
 
-        root.getChildren().addAll(aboutList, buildPathsList());
+        // One section, headed as the original heads its own: a card of rows with
+        // nothing above it is the form the original does not use. The directory
+        // row joins it rather than getting a section of its own — a section whose
+        // only row repeats its name is the shape that was wrong on the appearance
+        // tab, and this row's name is already the words a heading would use.
+        aboutList.getContent().addAll(buildPathsList().getContent());
+
+        root.getChildren().addAll(
+                ComponentList.createComponentListTitle(i18n("about")), aboutList);
     }
 
     /// Builds a read-only information row.
