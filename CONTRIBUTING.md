@@ -90,11 +90,24 @@ grep -rn "FontComboBox" /path/to/HMCL/HMCL/src/main/java/org/jackhuang/hmcl/ui/
 export DISPLAY=:1 XAUTHORITY=/run/user/1000/xauth_dpRvSh
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk nohup ./gradlew run --no-daemon --console=plain \
   --args="--page <路由>" > /tmp/app.log 2>&1 &
-sleep 15
-WID=$(xdotool search --name "HMCL-DSH" | head -1)
+
+# 轮询等窗口出现，不要用固定 sleep
+for i in $(seq 1 40); do
+  sleep 0.5
+  WID=$(xdotool search --name "HMCL-DSH" 2>/dev/null | head -1)
+  [ -n "$WID" ] && break
+done
+sleep 2                      # 让首帧画完
 xdotool windowmove $WID 180 120
+xdotool windowsize $WID 818 593     # 与实机原版同尺寸，便于逐像素比对
 import -window $WID /tmp/shot.png
 ```
+
+**实测启动到窗口出现约 7 秒**，固定 `sleep 15`/`sleep 20` 纯属浪费。
+轮询还比固定值可靠：机器快慢都能适应。
+
+**截图前把窗口调成 818x593**（原版实机尺寸）。尺寸不同会导致壁纸裁切不同，
+进而让「内容区是不是实心面」这类判断得出错误结论 —— 我在实例列表那页踩过。
 
 ### 深链优先，不要靠点
 

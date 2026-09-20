@@ -81,6 +81,7 @@ public final class InstanceSettingsPage extends ScrollPane {
         this.onChanged = onChanged;
 
         setFitToWidth(true);
+        setFitToHeight(true);
 
         ComponentList iconList = new ComponentList();
         iconList.getContent().add(buildIconRow());
@@ -90,17 +91,17 @@ public final class InstanceSettingsPage extends ScrollPane {
         environmentList.getContent().add(buildHomeModeRow());
 
         ComponentList portList = new ComponentList();
+        portList.getContent().add(buildPortModeRow());
+        portList.getContent().add(buildPortRow());
 
-        ComponentList list = portList;
-
-        list.getContent().add(buildPortModeRow());
-        list.getContent().add(buildPortRow());
-
-        VBox root = new VBox(10,
+        // The original's card list: the padding and the spacing between sections
+        // come from the class rather than from numbers chosen here, so a page
+        // built from the same parts sits the same way.
+        VBox root = new VBox(
                 ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
                 ComponentList.createComponentListTitle(i18n("dsh.settings.environment")), environmentList,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList);
-        root.setPadding(new Insets(10));
+        root.getStyleClass().add("card-list");
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to the
