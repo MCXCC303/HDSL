@@ -225,7 +225,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
         ScrollPane scroll = new ScrollPane(root);
         scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("edge-to-edge");
         FXUtils.smoothScrolling(scroll);
         return scroll;
     }

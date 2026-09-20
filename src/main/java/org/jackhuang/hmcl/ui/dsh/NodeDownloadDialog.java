@@ -75,7 +75,6 @@ public final class NodeDownloadDialog extends JFXDialogLayout {
         ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
         scroll.setPrefHeight(360);
-        scroll.getStyleClass().add("edge-to-edge");
         setBody(scroll);
 
         spinner.setContent(releases);

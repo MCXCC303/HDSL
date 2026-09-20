@@ -266,44 +266,6 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
                 currentVersion() == null ? i18n("dsh.install.version.none") : currentVersion(),
                 null);
     }
-
-    /// Builds one card of the install grid.
-    ///
-    /// The shape is the original's component card: an icon, the component's
-    /// name, and the state of the choice beneath it. A card that opens is given
-    /// the arrow the original puts on those, so what can be opened is visible
-    /// before the pointer reaches it.
-    ///
-    /// @param icon    the card's icon
-    /// @param title   the component's name
-    /// @param status  the state of the choice
-    /// @param onOpen  what clicking does, or `null` when the card is a statement
-    /// @return the card
-    private Node buildCard(SVG icon, String title, String status, @Nullable Runnable onOpen) {
-        Label name = new Label(title);
-        name.getStyleClass().add("installer-item-name");
-
-        Label value = new Label(status);
-        value.getStyleClass().add("installer-item-status");
-
-        VBox card = new VBox(4, icon.createIcon(32), name, value);
-        card.getStyleClass().addAll("installer-item-wrapper", "installer-item-card");
-        card.setAlignment(Pos.CENTER);
-
-        if (onOpen == null) {
-            // A statement rather than a choice: the version was settled on the
-            // page before this one, which is the original's arrangement too.
-            card.setDisable(true);
-            return card;
-        }
-
-        Label arrow = new Label("\u2192");
-        arrow.getStyleClass().add("installer-item-arrow");
-        card.getChildren().add(arrow);
-        FXUtils.onClicked(card, onOpen);
-        return card;
-    }
-
     /// Builds the quick-install preset section as a grid of cards.
     ///
     /// The grid mirrors HMCL's installer list: one card per thing that can be

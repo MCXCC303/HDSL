@@ -319,7 +319,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // No fixed cell size: the original does not set one here, and a height
         // chosen here is a number the original never had. The row's height comes
         // from its content and its padding.
-        list.getStyleClass().addAll("edge-to-edge", "no-padding");
+        list.getStyleClass().add("no-padding");
         FXUtils.setLimitHeight(list, Region.USE_COMPUTED_SIZE);
         return list;
     }
