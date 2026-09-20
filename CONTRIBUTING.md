@@ -259,6 +259,15 @@ ComponentList.add(child)
 **判定方法**：找内容卡片或第一行内容的左缘 x 坐标 —— 应当是 10~20，
 若是 200 多就是这条。
 
+### 图标尺寸交给 CSS，不要硬编码
+
+`newToggleButton4(svg)` 用的是 `svg.createIcon()`（**不给尺寸**），
+尺寸由 `.toggle-icon4` / `.jfx-tool-bar-button` 的 CSS 决定。
+
+写 `createIcon(20)` 会**覆盖 CSS**，做出一个比原版小一圈的图标。
+本项目有两处这样：实例行的启动按钮（20，原版交给 CSS）、
+Node 行的删除按钮（20，原版是 **24 且在 24×24 的 pane 里**）。
+
 ### 样式表只认 JFoenix 控件
 
 `root.css` 里的规则是写给 **JFoenix** 控件的（`.jfx-text-field`、`.jfx-combo-box`），

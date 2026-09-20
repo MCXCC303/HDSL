@@ -207,7 +207,9 @@ public final class InstanceListCell extends ListCell<DshInstance> {
 
         boolean running = runningCheck.test(instance);
         SVG action = running ? SVG.CANCEL : SVG.ROCKET_LAUNCH;
-        launch.setGraphic(action.createIcon(20));
+        // No size: the stylesheet sizes a toggle-icon4 button's graphic, which is
+        // what the original leaves it to.
+        launch.setGraphic(action.createIcon());
         FXUtils.installFastTooltip(launch, running ? i18n("dsh.stop") : i18n("dsh.launch"));
         FXUtils.installFastTooltip(menu, i18n("dsh.instance.menu"));
     }

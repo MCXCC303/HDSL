@@ -365,7 +365,14 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
             action.setVisible(removable);
             action.setManaged(removable);
-            action.setGraphic(SVG.DELETE.createIcon(20));
+            // Twenty-four in a pane of the same size, as the original's remove
+            // button is; the icon was a fifth smaller than its counterpart's.
+            javafx.scene.layout.StackPane removeIconPane = new javafx.scene.layout.StackPane();
+            removeIconPane.setAlignment(javafx.geometry.Pos.CENTER);
+            FXUtils.setLimitWidth(removeIconPane, 24);
+            FXUtils.setLimitHeight(removeIconPane, 24);
+            removeIconPane.getChildren().setAll(SVG.DELETE.createIcon(24));
+            action.setGraphic(removeIconPane);
             FXUtils.installFastTooltip(action, i18n("dsh.node.uninstall"));
 
             action.setOnAction(event -> {
