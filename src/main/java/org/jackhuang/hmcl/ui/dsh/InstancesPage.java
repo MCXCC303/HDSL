@@ -85,8 +85,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// The filter typed into the search box, or `null` when nothing is typed.
     private @Nullable String filter;
 
-    /// The sidebar entry naming the directory whose instances are listed.
-    private final AdvancedListItem currentDirectoryItem = new AdvancedListItem();
+    /// Holds one row per folder the launcher knows about.
+    private final VBox directoryBox = new VBox();
 
     /// The field the search toolbar carries.
     private final JFXTextField searchField = new JFXTextField();
@@ -103,33 +103,41 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// Creates the instance list page.
     public InstancesPage() {
 
-        // The directory leads and the actions sit at the bottom, which is how
-        // HMCL's instance list is arranged: what you are looking at, then what
-        // you can do.
-        currentDirectoryItem.setLeftIcon(SVG.FOLDER_OPEN);
-        currentDirectoryItem.setOnAction(event -> showDirectoryMenu());
-        // The original pairs the entry with a close button that drops the folder
-        // from the list; the entry itself opens the chooser.
-        currentDirectoryItem.setRightAction(SVG.CLOSE, this::removeCurrentDirectory);
-        AdvancedListBox sideBar = new AdvancedListBox()
-                .add(currentDirectoryItem)
-                .addNavigationDrawerItem(i18n("dsh.directory.add"), SVG.ADD, this::addDirectory);
+        // The original lists every folder as a row rather than one row that
+        // opens a menu, and puts the whole list in a scroll pane so a collection
+        // of them stays reachable. The add item sits under the list, inside the
+        // same scrollable content.
+        AdvancedListItem addDirectoryItem = new AdvancedListItem();
+        addDirectoryItem.getStyleClass().add("navigation-drawer-item");
+        addDirectoryItem.setTitle(i18n("dsh.directory.add"));
+        addDirectoryItem.setLeftIcon(SVG.ADD_CIRCLE);
+        addDirectoryItem.setOnAction(event -> addDirectory());
+
+        directoryBox.setFillWidth(true);
+
+        VBox directoryContent = new VBox();
+        directoryContent.getStyleClass().add("advanced-list-box-content");
+        directoryContent.getChildren().setAll(directoryBox, addDirectoryItem);
+
+        ScrollPane directoryPane = new ScrollPane();
+        directoryPane.setFitToWidth(true);
+        directoryPane.setContent(directoryContent);
+        VBox.setVgrow(directoryPane, Priority.ALWAYS);
+        FXUtils.smoothScrolling(directoryPane);
 
         AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.instance.install"), SVG.ADD, this::createInstance)
                 .addNavigationDrawerItem(i18n("dsh.settings.global"), SVG.SETTINGS_FILL,
                         () -> Controllers.navigate(new SettingsPage()));
 
-        FXUtils.setLimitWidth(sideBar, 200);
+        FXUtils.setLimitWidth(directoryPane, 200);
         FXUtils.setLimitHeight(actions, 40 * 2 + 12 * 2);
-        sideBar.setMaxHeight(Double.MAX_VALUE);
-        VBox.setVgrow(sideBar, Priority.ALWAYS);
 
         // The page itself already paints the translucent plate, so the sidebar
         // must not paint it again: two layers of a half-transparent colour is
         // visibly darker, and the original's sidebar and content match. Only the
         // home page plates its sidebar separately, because it clears the page's.
-        setLeft(sideBar, actions);
+        setLeft(directoryPane, actions);
 
         // The original wraps the page in a ComponentList, and that is what gives
         // the list its surface: ComponentList wraps each child in a node wearing
@@ -164,8 +172,24 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     @Override
     public void refresh() {
         GameDirectory directory = GameDirectoryManager.selected();
-        currentDirectoryItem.setTitle(directory.displayName());
-        currentDirectoryItem.setSubtitle(directory.path());
+
+        directoryBox.getChildren().setAll(GameDirectoryManager.directories().stream()
+                .map(candidate -> {
+                    // The remove button is on every row, as the original has it.
+                    // The folder the launcher owns refuses rather than
+                    // disappearing from the row: it is where a new instance goes
+                    // when nowhere else is chosen, and a row that silently has no
+                    // button reads as a different kind of row.
+                    DirectoryListItem item = new DirectoryListItem(candidate,
+                            chosen -> {
+                                GameDirectoryManager.select(chosen.id());
+                                refresh();
+                            },
+                            this::removeDirectory);
+                    item.setSelected(candidate.id().equals(directory.id()));
+                    return (Node) item;
+                })
+                .toList());
 
         List<DshInstance> instances = new ArrayList<>(DshInstanceManager.listIn(directory.directory()));
         if (filter != null && !filter.isBlank()) {
@@ -249,13 +273,13 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         refresh();
     }
 
-    /// Drops the folder being shown from the list.
+    /// Drops a folder from the list.
     ///
     /// Nothing is deleted: the instances inside keep their files and stop being
-    /// listed. The default folder cannot be dropped, because it is where a new
-    /// instance goes when nowhere else is chosen.
-    private void removeCurrentDirectory() {
-        GameDirectory directory = GameDirectoryManager.selected();
+    /// listed.
+    ///
+    /// @param directory the folder to drop
+    private void removeDirectory(GameDirectory directory) {
         if (directory.isDefault()) {
             Controllers.dialog(i18n("dsh.directory.remove.default"),
                     i18n("dsh.directory.remove"), MessageType.ERROR);
@@ -263,71 +287,6 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         }
         GameDirectoryManager.remove(directory.id());
         refresh();
-    }
-
-    /// Offers the folders the launcher knows about.
-    ///
-    /// The entry names the folder being shown; this is how another is chosen or
-    /// one is dropped from the list. Dropping removes nothing but the entry —
-    /// the instances inside keep their files.
-    private void showDirectoryMenu() {
-        List<GameDirectory> directories = GameDirectoryManager.directories();
-        GameDirectory selected = GameDirectoryManager.selected();
-
-        AdvancedListBox menu = new AdvancedListBox();
-        List<Node> rows = new ArrayList<>();
-        for (GameDirectory directory : directories) {
-            LineButton row = new LineButton();
-            row.setTitle(directory.displayName());
-            row.setSubtitle(directory.path() + "  ·  "
-                    + i18n("dsh.directory.count", GameDirectoryManager.countInstances(directory)));
-            row.setLeading(directory.id().equals(selected.id()) ? SVG.CHECK : SVG.FOLDER_OPEN, 16);
-            row.setOnAction(event -> {
-                hidePopup(rows);
-                GameDirectoryManager.select(directory.id());
-                refresh();
-            });
-            rows.add(row);
-        }
-
-        for (Node row : rows) {
-            menu.add(row);
-        }
-        if (!selected.isDefault()) {
-            LineButton remove = new LineButton();
-            remove.setTitle(i18n("dsh.directory.remove"));
-            remove.setSubtitle(i18n("dsh.directory.remove.hint"));
-            remove.setLeading(SVG.DELETE, 16);
-            remove.setOnAction(event -> {
-                hidePopup(rows);
-                GameDirectoryManager.remove(selected.id());
-                refresh();
-            });
-            menu.add(remove);
-            rows.add(remove);
-        }
-
-        JFXPopup popup = new JFXPopup(menu);
-        for (Node row : rows) {
-            row.getProperties().put(DIRECTORY_POPUP, popup);
-        }
-        popup.show(currentDirectoryItem, JFXPopup.PopupVPosition.BOTTOM,
-                JFXPopup.PopupHPosition.LEFT, currentDirectoryItem.getWidth(), 0);
-    }
-
-    /// Key under which a directory menu row remembers the popup that owns it.
-    private static final String DIRECTORY_POPUP = "hmcl-dsh-directory-popup";
-
-    /// Hides the popup a directory menu row belongs to.
-    ///
-    /// @param rows the rows of the menu
-    private static void hidePopup(List<Node> rows) {
-        for (Node row : rows) {
-            if (row.getProperties().get(DIRECTORY_POPUP) instanceof JFXPopup popup) {
-                popup.hide();
-                return;
-            }
-        }
     }
 
     /// Asks for a folder to look for instances in.
