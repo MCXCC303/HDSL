@@ -194,6 +194,15 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
         instanceList.getItems().setAll(instances);
         instanceList.refresh();
+
+        // A selection pointing at an instance that is gone is no selection: the
+        // launcher would otherwise offer to start something that is not there,
+        // while the sidebar says there is nothing at all.
+        String selected = settings().selectedInstanceIdProperty().get();
+        if (selected != null && instances.stream().noneMatch(instance -> instance.id().equals(selected))) {
+            settings().selectedInstanceIdProperty().set(
+                    instances.isEmpty() ? null : instances.get(0).id());
+        }
     }
 
     /// Builds the toolbar above the list.
@@ -264,7 +273,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         JFXListView<DshInstance> list = new JFXListView<>();
         list.setCellFactory(view -> {
             InstanceListCell cell = new InstanceListCell();
-            cell.setHandlers(this::select, this::toggleLaunch, this::showMenu);
+            cell.setHandlers(this::select, this::open, this::toggleLaunch, this::showMenu);
             cell.setSelectedIdSupplier(() -> settings().selectedInstanceIdProperty().get());
             cell.setRunningCheck(instance -> DshProcessManager.find(instance.id()).isPresent());
             return cell;
@@ -281,11 +290,17 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @param instance the instance to select
     private void select(DshInstance instance) {
-        // A single left click opens the instance, which is what the original
-        // does: the row is the way in, and choosing which instance to launch is
-        // a consequence of having opened it rather than a separate step.
+        // The radio button's job, and only that: which instance the launcher
+        // starts. Opening one is the row's job.
         settings().selectedInstanceIdProperty().set(instance.id());
         refresh();
+    }
+
+    /// Opens an instance's page, choosing it on the way.
+    ///
+    /// @param instance the instance to open
+    private void open(DshInstance instance) {
+        select(instance);
         Controllers.navigate(getInstancePage(instance));
     }
 

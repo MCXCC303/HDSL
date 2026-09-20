@@ -89,6 +89,10 @@ public final class InstanceListCell extends ListCell<DshInstance> {
     private Consumer<DshInstance> onSelect = instance -> {
     };
 
+    /// Called when the row is opened.
+    private Consumer<DshInstance> onOpen = instance -> {
+    };
+
     /// Called when the launch button is pressed.
     private Consumer<DshInstance> onLaunch = instance -> {
     };
@@ -151,7 +155,12 @@ public final class InstanceListCell extends ListCell<DshInstance> {
         graphic.setOnMouseClicked(event -> {
             DshInstance instance = getItem();
             if (instance != null && event.getButton() == MouseButton.PRIMARY) {
+                // The row opens the instance; the radio button beside it only
+                // chooses which one the launcher starts. Pressing the row went
+                // through the same path as the button, so the button opened a
+                // page it was not meant to.
                 onSelect.accept(instance);
+                onOpen.accept(instance);
             }
         });
     }
@@ -162,9 +171,11 @@ public final class InstanceListCell extends ListCell<DshInstance> {
     /// @param onLaunch called when the launch button is pressed
     /// @param onMenu   called when the menu button is pressed
     public void setHandlers(Consumer<DshInstance> onSelect,
+                            Consumer<DshInstance> onOpen,
                             Consumer<DshInstance> onLaunch,
                             BiConsumer<DshInstance, JFXButton> onMenu) {
         this.onSelect = onSelect;
+        this.onOpen = onOpen;
         this.onLaunch = onLaunch;
         this.onMenu = onMenu;
     }
