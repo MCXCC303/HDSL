@@ -360,39 +360,11 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             return;
         }
 
-        ComponentList list = new ComponentList();
-        list.getContent().add(buildHeader(i18n("dsh.launch.select")));
-
-        for (DshInstance instance : instances) {
-            DshProcess running = DshProcessManager.find(instance.id()).orElse(null);
-            LineButton row = new LineButton();
-            row.setTitle(instance.id());
-            row.setSubtitle(running != null
-                    ? i18n("dsh.instance.running.since", running.uptime().toSeconds())
-                    : i18n("dsh.instance.summary", instance.version(), instance.profile(),
-                            i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-            JFXButton indicator = FXUtils.newToggleButton4(running != null ? SVG.CANCEL : SVG.ROCKET_LAUNCH, 18);
-            indicator.setMouseTransparent(true);
-            row.setTitleTrailing(indicator);
-            row.setOnAction(event -> {
-                settings().selectedInstanceIdProperty().set(instance.id());
-                currentInstance.set(instance);
-                refreshActionState();
-                hidePopup(row);
-            });
-            list.getContent().add(row);
-        }
-
-        VBox box = new VBox(list);
-        box.setPadding(new Insets(8));
-        box.setMaxWidth(420);
-
-        JFXPopup popup = new JFXPopup(box);
-        for (Node child : list.getContent()) {
-            child.getProperties().put(POPUP_KEY, popup);
-        }
-        popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT,
-                0, -anchor.getBoundsInLocal().getHeight());
+        InstancePickerMenu.show(anchor, instances, instance -> {
+            settings().selectedInstanceIdProperty().set(instance.id());
+            currentInstance.set(instance);
+            refreshActionState();
+        });
     }
 
     /// Key under which a menu row remembers the popup that owns it.

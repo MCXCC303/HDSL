@@ -82,7 +82,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 
         list.getContent().add(buildPortModeRow());
         list.getContent().add(buildPortRow());
-        list.getContent().add(buildPortNote());
 
         VBox root = new VBox(10,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
@@ -212,15 +211,6 @@ public final class InstanceSettingsPage extends ScrollPane {
             return;
         }
         write(instance.withPortPolicy(DshPortMode.FIXED, port));
-    }
-
-    /// Explains what the two modes do.
-    ///
-    /// @return the note row
-    private LineTextPane buildPortNote() {
-        LineTextPane note = new LineTextPane();
-        note.setText(i18n("dsh.instance.port.note"));
-        return note;
     }
 
     /// Persists a modified instance and notifies the caller.

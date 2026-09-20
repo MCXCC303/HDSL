@@ -132,7 +132,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         tab.select(initial, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(instance.id().toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
                 .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
