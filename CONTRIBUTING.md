@@ -161,6 +161,13 @@ im = Image.open('/tmp/shot.png')
 im.crop((x0, y0, x1, y1)).resize(((x1-x0)*2, (y1-y0)*2), Image.NEAREST).save('/tmp/zoom.png')
 ```
 
+### 文本替换要确认改的是哪一处
+
+用脚本批量替换时，**同一个字符串在文件里往往出现多次**。
+我改设置页的 `tab.select(generalTab, false)` 时，本意是改构造函数里的初始选中，
+结果把深链分支 `case "general"` 也一起改了 —— 于是访问「通用」标签显示的是另一个标签的内容。
+改完要 `grep` 确认**每一处**变成了什么，而不是只看编译过没过。
+
 ### 列表页的背景来自 ComponentList，不是页面
 
 原版列表页的内容区是**一块不透明面**，而 `gray-background` 只有 50% 不透明度。

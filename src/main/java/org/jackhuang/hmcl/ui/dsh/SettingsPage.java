@@ -30,6 +30,7 @@ import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.dsh.settings.AboutPage;
 import org.jackhuang.hmcl.ui.dsh.settings.AppearanceSettingsPage;
 import org.jackhuang.hmcl.ui.dsh.settings.GeneralSettingsPage;
+import org.jackhuang.hmcl.ui.dsh.settings.InstanceDefaultsPage;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Locale;
@@ -51,6 +52,10 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     /// The tab strip driving the content pane.
     private final TabHeader tab;
 
+    /// The tab holding what a new instance is given.
+    private final TabHeader.Tab<InstanceDefaultsPage> defaultsTab =
+            new TabHeader.Tab<>("dshInstanceDefaults");
+
     /// The general settings tab.
     private final TabHeader.Tab<GeneralSettingsPage> generalTab = new TabHeader.Tab<>("dshGeneralSettings");
 
@@ -69,19 +74,28 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     /// Creates the settings page and installs its sidebar.
     public SettingsPage() {
 
+        defaultsTab.setNodeSupplier(InstanceDefaultsPage::new);
         generalTab.setNodeSupplier(GeneralSettingsPage::new);
         nodeTab.setNodeSupplier(NodeRuntimesPage::new);
         appearanceTab.setNodeSupplier(AppearanceSettingsPage::new);
         aboutTab.setNodeSupplier(AboutPage::new);
-        tab = new TabHeader(transitionPane, generalTab, nodeTab, appearanceTab, aboutTab);
-        tab.select(generalTab, false);
+        tab = new TabHeader(transitionPane, defaultsTab, generalTab, nodeTab, appearanceTab, aboutTab);
+        tab.select(defaultsTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(i18n("settings").toUpperCase(Locale.ROOT))
+                // The original leads with the game's own defaults and the
+                // runtime they use, before any category, and puts the launcher's
+                // settings under one of their own. A tab that configures
+                // instances is not a launcher preference.
+                .addNavigationDrawerTab(tab, defaultsTab, i18n("dsh.settings.instance_defaults"),
+                        SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
+                .addNavigationDrawerTab(tab, nodeTab, i18n("dsh.node.title"),
+                        SVG.LOCAL_CAFE, SVG.LOCAL_CAFE_FILL)
+                .startCategory(i18n("launcher").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, generalTab, i18n("settings.launcher.general"), SVG.TUNE)
-                .addNavigationDrawerTab(tab, nodeTab, i18n("dsh.node.title"), SVG.LOCAL_CAFE)
-                .addNavigationDrawerTab(tab, appearanceTab, i18n("settings.launcher.appearance"), SVG.STYLE, SVG.STYLE_FILL)
-                .startCategory(i18n("about").toUpperCase(Locale.ROOT))
+                .addNavigationDrawerTab(tab, appearanceTab, i18n("settings.launcher.appearance"),
+                        SVG.STYLE, SVG.STYLE_FILL)
+                .startCategory(i18n("help").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
 
         FXUtils.setLimitWidth(sideBar, 200);
@@ -95,6 +109,7 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     /// @return whether a tab was selected
     public boolean openTab(String name) {
         switch (name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "defaults" -> tab.select(defaultsTab, false);
             case "general" -> tab.select(generalTab, false);
             case "node" -> tab.select(nodeTab, false);
             case "appearance" -> tab.select(appearanceTab, false);

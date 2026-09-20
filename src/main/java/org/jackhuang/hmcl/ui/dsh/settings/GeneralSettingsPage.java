@@ -66,7 +66,6 @@ public final class GeneralSettingsPage extends ScrollPane {
         FXUtils.smoothScrolling(this);
 
         root.getChildren().addAll(
-                sectionTitle(i18n("dsh.settings.environment")), buildEnvironmentList(),
                 sectionTitle(i18n("settings.launcher.general")), buildInterfaceList(),
                 buildLogList(),
                 buildStorageList());
@@ -78,56 +77,6 @@ public final class GeneralSettingsPage extends ScrollPane {
     /// @return the title node
     private static Node sectionTitle(String text) {
         return ComponentList.createComponentListTitle(text);
-    }
-
-    /// Builds the environment section: what a new instance is given.
-    ///
-    /// HMCL keeps Java management at the top level of its settings rather than
-    /// per instance, and the reasoning carries over: a runtime is a launcher's
-    /// business, not something every instance should have its own copy of. An
-    /// instance may still pin its own, which is what these are the defaults for.
-    ///
-    /// @return the assembled component list
-    private ComponentList buildEnvironmentList() {
-        ComponentList list = new ComponentList();
-
-        LineSelectButton<String> node = new LineSelectButton<>();
-        node.setTitle(i18n("dsh.settings.default_node"));
-        node.setSubtitle(i18n("dsh.settings.default_node.hint"));
-
-        List<String> runtimes = new ArrayList<>();
-        runtimes.add(DshNodeRuntime.SYSTEM);
-        for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
-            runtimes.add(runtime.version());
-        }
-        node.setItems(runtimes);
-        node.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
-                ? i18n("dsh.install.node.system")
-                : selection);
-        node.setValue(settings().defaultNodeRuntimeProperty().get());
-        node.valueProperty().addListener((observable, was, value) -> {
-            if (value != null && !value.equals(was)) {
-                settings().defaultNodeRuntimeProperty().set(value);
-                SettingsManager.save();
-            }
-        });
-        list.getContent().add(node);
-
-        LineSelectButton<DshHomeMode> home = new LineSelectButton<>();
-        home.setTitle(i18n("dsh.settings.default_home"));
-        home.setSubtitle(i18n("dsh.settings.default_home.hint"));
-        home.setItems(DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED);
-        home.setNullSafeConverter(mode -> i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
-        home.setValue(settings().defaultHomeModeProperty().get());
-        home.valueProperty().addListener((observable, was, value) -> {
-            if (value != null && value != was) {
-                settings().defaultHomeModeProperty().set(value);
-                SettingsManager.save();
-            }
-        });
-        list.getContent().add(home);
-
-        return list;
     }
 
     /// Builds the interface section: language and animations.
