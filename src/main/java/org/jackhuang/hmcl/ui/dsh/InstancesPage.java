@@ -65,7 +65,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 public final class InstancesPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
     /// The page state published to the window decorator.
     private final ReadOnlyObjectWrapper<State> state =
-            new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("instance.manage")));
+            new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.instance.list")));
 
     /// The card listing the instances.
     private final ComponentList instanceList = new ComponentList();
@@ -78,7 +78,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         getStyleClass().remove("gray-background");
 
         AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(i18n("instance.manage").toUpperCase(Locale.ROOT))
+                .startCategory(i18n("dsh.instance.list").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.instance.create"), SVG.ADD, this::createInstance);
         FXUtils.setLimitWidth(sideBar, 200);
         getLeft().getStyleClass().add("gray-background");
@@ -201,7 +201,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
             select(instance);
             close.run();
         });
-        menu.addNavigationDrawerItem(i18n("instance.manage"), SVG.SETTINGS_FILL, () -> {
+        menu.addNavigationDrawerItem(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL, () -> {
             close.run();
             Controllers.navigate(new InstancePage(instance));
         });

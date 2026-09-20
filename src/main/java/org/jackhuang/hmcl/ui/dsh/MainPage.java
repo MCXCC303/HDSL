@@ -104,7 +104,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                 .startCategory(i18n("dsh.home").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
                         () -> Controllers.navigate(getInstancesPage()))
-                .addNavigationDrawerItem(i18n("instance.manage"), SVG.SETTINGS_FILL,
+                .addNavigationDrawerItem(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL,
                         this::openCurrentInstance)
                 .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
                         () -> Controllers.navigate(getVersionsPage()))
