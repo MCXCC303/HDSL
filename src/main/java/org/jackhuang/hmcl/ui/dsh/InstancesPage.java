@@ -25,8 +25,11 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import com.jfoenix.controls.JFXListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
@@ -68,7 +71,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.instance.list")));
 
     /// The card listing the instances.
-    private final ComponentList instanceList = new ComponentList();
+    private final JFXListView<DshInstance> instanceList = buildInstanceList();
 
     /// The status line above the list.
     private final Label status = new Label();
@@ -85,13 +88,9 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         VBox content = new VBox(10);
         content.setPadding(new Insets(10));
         content.getChildren().addAll(status, instanceList);
+        VBox.setVgrow(instanceList, Priority.ALWAYS);
 
-        ScrollPane scroll = new ScrollPane(content);
-        scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("edge-to-edge");
-        FXUtils.smoothScrolling(scroll);
-
-        setCenter(scroll);
+        setCenter(content);
 
         refresh();
     }
@@ -105,60 +104,35 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     public void refresh() {
         List<DshInstance> instances = DshInstanceManager.list();
 
-        instanceList.getContent().clear();
-        instanceList.getContent().add(buildSectionHeader(i18n("dsh.instance.section")));
-
-        if (instances.isEmpty()) {
-            instanceList.getContent().add(buildNote(i18n("dsh.instance.empty.hint")));
-        } else {
-            for (DshInstance instance : instances) {
-                instanceList.getContent().add(buildRow(instance));
-            }
-        }
+        instanceList.getItems().setAll(instances);
+        instanceList.refresh();
 
         status.setText(instances.isEmpty()
                 ? i18n("dsh.instance.none")
                 : i18n("dsh.instance.count", instances.size()));
     }
 
-    /// Builds one row for an instance.
+    /// Builds the instance list.
     ///
-    /// The row carries the three affordances HMCL's instance list has: a dot to
-    /// choose the instance the home page acts on, a rocket to run or stop it,
-    /// and a menu — or the row itself — to open its management page.
+    /// A `ListView` with a custom cell is used rather than a component list,
+    /// because that is what HMCL's instance list is: the cell supplies the
+    /// radio button, the icon and the two-line label that the original
+    /// typography depends on.
     ///
-    /// @param instance the instance to render
-    /// @return the row
-    private LineButton buildRow(DshInstance instance) {
-        boolean selected = instance.id().equals(settings().selectedInstanceIdProperty().get());
-        boolean running = DshProcessManager.find(instance.id()).isPresent();
-
-        JFXButton selector = FXUtils.newToggleButton4(
-                selected ? SVG.CHECK_CIRCLE : SVG.ALPHA_CIRCLE, 14);
-        FXUtils.installFastTooltip(selector, i18n("dsh.instance.select"));
-        selector.setOnAction(event -> select(instance));
-
-        JFXButton launch = FXUtils.newToggleButton4(running ? SVG.CANCEL : SVG.ROCKET_LAUNCH, 18);
-        FXUtils.installFastTooltip(launch, running ? i18n("dsh.stop") : i18n("dsh.launch"));
-        launch.setOnAction(event -> toggleLaunch(instance, running));
-
-        JFXButton menu = FXUtils.newToggleButton4(SVG.MORE_VERT, 18);
-        FXUtils.installFastTooltip(menu, i18n("dsh.instance.menu"));
-        menu.setOnAction(event -> showMenu(menu, instance));
-
-        HBox actions = new HBox(4, launch, menu);
-        actions.setAlignment(Pos.CENTER);
-
-        LineButton row = new LineButton();
-        row.setLeading(selector);
-        row.setTitle(instance.id());
-        row.setSubtitle(i18n("dsh.instance.summary",
-                instance.version(),
-                instance.profile(),
-                i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-        row.setRowTrailing(actions);
-        row.setOnAction(event -> Controllers.navigate(new InstancePage(instance)));
-        return row;
+    /// @return the list
+    private JFXListView<DshInstance> buildInstanceList() {
+        JFXListView<DshInstance> list = new JFXListView<>();
+        list.setCellFactory(view -> {
+            InstanceListCell cell = new InstanceListCell();
+            cell.setHandlers(this::select, this::toggleLaunch, this::showMenu);
+            cell.setSelectedIdSupplier(() -> settings().selectedInstanceIdProperty().get());
+            cell.setRunningCheck(instance -> DshProcessManager.find(instance.id()).isPresent());
+            return cell;
+        });
+        list.setFixedCellSize(66);
+        list.getStyleClass().addAll("edge-to-edge", "no-padding");
+        FXUtils.setLimitHeight(list, Region.USE_COMPUTED_SIZE);
+        return list;
     }
 
     /// Chooses the instance the home page acts on.
@@ -172,9 +146,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// Starts or stops an instance.
     ///
     /// @param instance the instance
-    /// @param running  whether it is currently running
-    private void toggleLaunch(DshInstance instance, boolean running) {
-        if (running) {
+    private void toggleLaunch(DshInstance instance) {
+        if (DshProcessManager.find(instance.id()).isPresent()) {
             DshLaunchService.stop(instance.id(), this::refresh);
         } else {
             DshLaunchService.launch(instance, ignored -> refresh());
@@ -183,9 +156,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// Shows the per-instance menu.
     ///
-    /// @param anchor   the button the popup is anchored to
     /// @param instance the instance
-    private void showMenu(Node anchor, DshInstance instance) {
+    /// @param anchor   the button the popup is anchored to
+    private void showMenu(DshInstance instance, JFXButton anchor) {
+        AdvancedListBox menu = new AdvancedListBox();
         JFXPopup[] popupRef = new JFXPopup[1];
         Runnable close = () -> {
             if (popupRef[0] != null) {
@@ -193,31 +167,44 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
             }
         };
 
-        AdvancedListBox menu = new AdvancedListBox();
-        menu.addNavigationDrawerItem(i18n("dsh.instance.select"), SVG.CHECK, () -> {
+        menu.add(buildMenuRow(i18n("dsh.instance.select"), SVG.CHECK, () -> {
             select(instance);
             close.run();
-        });
-        menu.addNavigationDrawerItem(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL, () -> {
+        }));
+        menu.add(buildMenuRow(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL, () -> {
             close.run();
             Controllers.navigate(new InstancePage(instance));
-        });
-        menu.addNavigationDrawerItem(i18n("dsh.instance.open_home"), SVG.FOLDER_OPEN, () -> {
+        }));
+        menu.add(buildMenuRow(i18n("dsh.instance.open_home"), SVG.FOLDER_OPEN, () -> {
             close.run();
             try {
                 FXUtils.showFileInExplorer(instance.instanceDirectory());
             } catch (DshException e) {
                 Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
             }
-        });
-        menu.addNavigationDrawerItem(i18n("dsh.instance.remove"), SVG.DELETE, () -> {
+        }));
+        menu.add(buildMenuRow(i18n("dsh.instance.remove"), SVG.DELETE, () -> {
             close.run();
             removeInstance(instance);
-        });
+        }));
 
         popupRef[0] = new JFXPopup(menu);
         popupRef[0].show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT,
                 -anchor.getBoundsInLocal().getWidth(), 0);
+    }
+
+    /// Builds one row for the per-instance menu.
+    ///
+    /// @param title  the row label
+    /// @param icon   the leading icon
+    /// @param action the action to run
+    /// @return the row
+    private LineButton buildMenuRow(String title, SVG icon, Runnable action) {
+        LineButton row = new LineButton();
+        row.setTitle(title);
+        row.setLeading(icon, 16);
+        row.setOnAction(event -> action.run());
+        return row;
     }
 
     /// Opens the create-an-instance wizard.
