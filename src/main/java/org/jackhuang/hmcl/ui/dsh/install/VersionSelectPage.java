@@ -355,6 +355,9 @@ public final class VersionSelectPage extends VBox implements WizardPage {
 
         HBox footer = new HBox(8, cancel, spacer, next);
         footer.setAlignment(Pos.CENTER_RIGHT);
+        // The page's own padding, since the footer no longer sits inside it: ten
+        // from the edges, as the toolbar above it is.
+        footer.setPadding(new Insets(0, 10, 10, 10));
         return footer;
     }
 

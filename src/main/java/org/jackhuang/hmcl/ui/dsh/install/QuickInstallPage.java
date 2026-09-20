@@ -340,6 +340,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
 
         HBox footer = new HBox(8, back, spacer, finish);
         footer.setAlignment(Pos.CENTER_RIGHT);
+        footer.setPadding(new Insets(0, 10, 10, 10));
         return footer;
     }
 
