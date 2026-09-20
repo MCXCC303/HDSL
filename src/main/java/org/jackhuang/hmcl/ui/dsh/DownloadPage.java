@@ -42,6 +42,7 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
@@ -54,8 +55,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -81,10 +80,6 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 public final class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
     /// The upstream repository, where each version's release page lives.
     private static final String RELEASES = "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v";
-
-    /// Formats a publication time the way the original shows one.
-    private static final DateTimeFormatter TIMESTAMP =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
     /// The page state published to the window decorator.
     private final ReadOnlyObjectWrapper<State> state =
@@ -113,12 +108,25 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
-        VBox content = new VBox(buildToolbar(), releaseList);
+        // ComponentList is what gives the page its surface: it wraps each child
+        // in a node wearing `options-list-item`, whose rule carries
+        // `-monet-surface` — an opaque background. A bare VBox has none, so the
+        // wallpaper shows through the list and every colour depends on what is
+        // behind the window.
+        StackPane pane = new StackPane();
+        pane.setPadding(new Insets(10));
+        pane.getStyleClass().add("notice-pane");
+
+        ComponentList root = new ComponentList();
+        root.getStyleClass().add("no-padding");
+        root.getContent().add(buildToolbar());
+        root.getContent().add(releaseList);
         VBox.setVgrow(releaseList, Priority.ALWAYS);
-        setCenter(content);
+        pane.getChildren().setAll(root);
+
+        setCenter(pane);
 
         releaseList.setCellFactory(view -> new ReleaseCell(this));
-        releaseList.getStyleClass().add("edge-to-edge");
 
         refresh();
     }
@@ -310,9 +318,12 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
             content.setTitle(release.version());
             content.getTags().clear();
             content.addTag(i18n("download.type." + release.type().id()));
+            // The original formats a release date with the localising helper
+            // rather than a fixed pattern, so the date reads the way dates read
+            // in the interface's language.
             content.setSubtitle(release.publishedAt() == null
                     ? i18n("dsh.session.unknown_time")
-                    : TIMESTAMP.format(Instant.parse(release.publishedAt())));
+                    : org.jackhuang.hmcl.util.i18n.I18n.formatDateTime(Instant.parse(release.publishedAt())));
         }
     }
 }
