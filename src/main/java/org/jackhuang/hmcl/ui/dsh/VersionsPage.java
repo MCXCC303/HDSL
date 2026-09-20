@@ -35,10 +35,18 @@ import org.jackhuang.hmcl.ui.Controllers;
 import javafx.geometry.Pos;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import javafx.scene.Cursor;
+import javafx.scene.input.MouseButton;
+import org.jackhuang.hmcl.ui.construct.ImageContainer;
+import org.jackhuang.hmcl.ui.construct.RipplerContainer;
+import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -225,23 +233,51 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     ///
     /// @param release the published release
     /// @return the row
-    private LineButton buildRemoteRow(DshRelease release) {
-        JFXButton install = FXUtils.newToggleButton4(SVG.ADD, 18);
+    private Node buildRemoteRow(DshRelease release) {
+        JFXButton install = FXUtils.newToggleButton4(SVG.ADD);
         install.setOnAction(event -> install(release.version()));
+        FXUtils.installFastTooltip(install, i18n("download.install"));
 
-        LineButton row = new LineButton();
-        row.setTitle(release.version());
-        String tag = release.primaryTag();
-        row.setSubtitle(tag == null ? i18n("dsh.versions.channel.prerelease") : tag);
-        row.setRowTrailing(install);
-        row.setOnAction(event -> install(release.version()));
-        return row;
+        // The download page's row, because it lists the same thing: an icon, the
+        // version as the title, the release type as a tag, the date beneath, and
+        // the action at the end, sixteen apart and centred. Showing the type as
+        // plain text under the version instead puts in the subtitle what the rest
+        // of the interface puts in a tag.
+        ImageContainer icon = new ImageContainer(32);
+        icon.setImage(DshInstanceIcon.DSH_APPLICATION.load());
+
+        TwoLineListItem content = new TwoLineListItem();
+        content.setTitle(release.version());
+        content.getTags().clear();
+        content.addTag(i18n("download.type." + release.type().id()));
+        content.setSubtitle(release.publishedAt() == null
+                ? i18n("dsh.session.unknown_time")
+                : org.jackhuang.hmcl.util.i18n.I18n.formatDateTime(java.time.Instant.parse(release.publishedAt())));
+        content.setAlignment(Pos.CENTER);
+
+        HBox row = new HBox(16, icon, content, install);
+        row.setAlignment(Pos.CENTER);
+        HBox.setHgrow(content, Priority.ALWAYS);
+        StackPane.setMargin(row, new Insets(10, 16, 10, 16));
+
+        // Left, not centred: a stack centres what it holds, which would leave the
+        // row floating in the middle of the card with the action beside the text
+        // rather than at the card's edge.
+        StackPane cell = new StackPane(row);
+        cell.getStyleClass().add("md-list-cell");
+        StackPane.setAlignment(row, Pos.CENTER_LEFT);
+
+        RipplerContainer rippler = new RipplerContainer(cell);
+        rippler.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 1) {
+                install(release.version());
+                event.consume();
+            }
+        });
+        cell.setCursor(Cursor.HAND);
+        return rippler;
     }
 
-    /// Builds a bold section heading rendered as the first row of a card.
-    ///
-    /// @param text the heading text
-    /// @return the heading row
     /// Builds a section title.
     ///
     /// HMCL's helper rather than a styled row: the original puts the title
