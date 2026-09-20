@@ -79,7 +79,8 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
         setFitToWidth(true);
 
         VBox root = new VBox(10);
-        root.setPadding(new Insets(20));
+        // The original's install pages pad their root by sixteen.
+        root.setPadding(new Insets(16));
 
         Label title = new Label(preset.name());
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");

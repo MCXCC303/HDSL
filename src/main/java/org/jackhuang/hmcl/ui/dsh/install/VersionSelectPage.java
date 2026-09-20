@@ -123,7 +123,6 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         this.controller = controller;
 
         setSpacing(10);
-        setPadding(new Insets(20));
         setAlignment(Pos.TOP_LEFT);
 
         List<DshVersion> installed = DshVersionManager.listInstalled();
@@ -152,6 +151,8 @@ public final class VersionSelectPage extends VBox implements WizardPage {
                 installedList,
                 ComponentList.createComponentListTitle(i18n("dsh.install.version.remote")),
                 remoteList);
+
+        body.setPadding(new Insets(10));
 
         ScrollPane scroll = new ScrollPane(body);
         scroll.setFitToWidth(true);
@@ -195,7 +196,7 @@ public final class VersionSelectPage extends VBox implements WizardPage {
                 refresh);
         filterRow.setAlignment(Pos.CENTER_LEFT);
         filterRow.getStyleClass().add("card");
-        VBox.setMargin(filterRow, new Insets(10, 10, 0, 20));
+        VBox.setMargin(filterRow, new Insets(10, 10, 0, 10));
         HBox.setHgrow(nameField, Priority.ALWAYS);
 
         FXUtils.smoothScrolling(scroll);
