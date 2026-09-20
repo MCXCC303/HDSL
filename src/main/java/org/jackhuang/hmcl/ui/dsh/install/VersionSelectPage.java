@@ -37,6 +37,8 @@ import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jetbrains.annotations.Nullable;
+import com.jfoenix.controls.JFXComboBox;
+import com.jfoenix.controls.JFXTextField;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -73,11 +75,10 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     private final ComponentList remoteList = new ComponentList();
 
     /// The name typed into the filter.
-    private final javafx.scene.control.TextField nameField = new javafx.scene.control.TextField();
+    private final JFXTextField nameField = new JFXTextField();
 
     /// The release types the list can be narrowed to.
-    private final javafx.scene.control.ComboBox<TypeFilter> typeFilter =
-            new javafx.scene.control.ComboBox<>();
+    private final JFXComboBox<TypeFilter> typeFilter = new JFXComboBox<>();
 
     /// What the type filter can be set to.
     ///
@@ -181,21 +182,29 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         });
         typeFilter.valueProperty().addListener((observable, was, value) -> renderRemote());
 
-        javafx.scene.Node toolbar = ToolbarListPageSkin.createToolbarButton2(
-                i18n("button.refresh"), SVG.REFRESH, this::loadReleases);
-        toolbar.getStyleClass().add("card");
-        VBox.setMargin(toolbar, new Insets(10, 10, 0, 20));
+        // A raised button, as the download page's own refresh is: this is that
+        // same list, and the flat toolbar button its other pages use reads as a
+        // different control here.
+        JFXButton refresh = FXUtils.newRaisedButton(i18n("button.refresh"));
+        refresh.setOnAction(event -> loadReleases());
 
-        HBox filterRow = new HBox(8,
+        // One row, inside a card, as the download page has it. The card goes on
+        // the container and not on the button: both classes set a background, and
+        // the card's wins, which leaves the raised button looking like a plain
+        // panel with unreadable text on it.
+        HBox filterRow = new HBox(16,
                 new Label(i18n("download.name")), nameField,
-                new Label(i18n("download.type")), typeFilter);
+                new Label(i18n("download.type")), typeFilter,
+                refresh);
         filterRow.setAlignment(Pos.CENTER_LEFT);
-        filterRow.setPadding(new Insets(0, 10, 0, 20));
+        filterRow.getStyleClass().add("card");
+        VBox.setMargin(filterRow, new Insets(10, 10, 0, 20));
+        HBox.setHgrow(nameField, Priority.ALWAYS);
 
         FXUtils.smoothScrolling(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        getChildren().setAll(title, toolbar, filterRow, scroll, buildFooter());
+        getChildren().setAll(title, filterRow, scroll, buildFooter());
 
         loadRemote(installed);
     }

@@ -259,6 +259,26 @@ ComponentList.add(child)
 **判定方法**：找内容卡片或第一行内容的左缘 x 坐标 —— 应当是 10~20，
 若是 200 多就是这条。
 
+### 样式表只认 JFoenix 控件
+
+`root.css` 里的规则是写给 **JFoenix** 控件的（`.jfx-text-field`、`.jfx-combo-box`），
+**原生 JavaFX 的 `TextField` / `ComboBox` 拿不到这些样式** —— 会渲染成白底系统控件。
+
+自造界面时一律用 `JFXTextField` / `JFXComboBox` / `JFXButton`。
+本项目里我自己新增的两处都犯过这个错，症状是「白底输入框」。
+
+### `.card` 加在容器上，不加在按钮上
+
+两个类都设 `-fx-background-color`：
+
+```css
+.jfx-button-raised { -fx-background-color: -monet-primary; }        /* 想让按钮是橙色 */
+.card              { -fx-background-color: -monet-surface-...-80; } /* 想要的是容器 */
+```
+
+**同时加在按钮上，`.card` 会赢** —— 按钮变成一个深色面板，上面的文字几乎看不见。
+原版是把 `card` 加在**包住这一行的容器**上。
+
 ### prompt 不是选中值
 
 `JFXComboBox` 里 **prompt 和选中值是两个不同的渲染节点，内边距不同**：
