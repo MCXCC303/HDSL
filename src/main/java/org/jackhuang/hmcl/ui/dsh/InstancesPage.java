@@ -92,10 +92,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private final JFXTextField searchField = new JFXTextField();
 
     /// The toolbar of buttons, shown when not searching.
-    private final HBox normalBar = new HBox(4);
+    private final HBox normalBar = new HBox();
 
     /// The search toolbar, shown in place of the buttons.
-    private final HBox searchBar = new HBox(4);
+    private final HBox searchBar = new HBox();
 
     /// Holds whichever toolbar is current.
     private final StackPane toolbarHost = new StackPane();
@@ -208,7 +208,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         close.setOnAction(event -> hideSearch());
         FXUtils.onEscPressed(searchField, close::fire);
 
-        searchBar.setAlignment(Pos.CENTER_LEFT);
+        // The original pads the search row horizontally and centres it; the
+        // padding is horizontal only, so it costs the row no height.
+        searchBar.setAlignment(Pos.CENTER);
+        searchBar.setPadding(new Insets(0, 5, 0, 5));
         searchBar.getChildren().setAll(searchField, close);
 
         toolbarHost.getChildren().setAll(normalBar);
