@@ -57,6 +57,28 @@ public interface DecoratorPage extends Refreshable {
             return new State(title, null, true, false, true, leftPaneWidth);
         }
 
+        /// Returns the state of the page the application starts on.
+        ///
+        /// It is the one page with nowhere to go back to, and it says so: the
+        /// default is to be backable, so a root page that used it would show a
+        /// back arrow on start-up that does nothing. The original marks its own
+        /// root the same way.
+        ///
+        /// @param title the title to show
+        /// @return the state
+        public static State root(String title) {
+            return new State(title, null, false, false, true);
+        }
+
+        /// Returns the state of the page the application starts on, titled by a
+        /// node rather than a string.
+        ///
+        /// @param titleNode the node to show as the title
+        /// @return the state
+        public static State rootNode(Node titleNode) {
+            return new State(null, titleNode, false, false, true);
+        }
+
         public static State fromTitleNode(Node titleNode) {
             return new State(null, titleNode, true, false, true);
         }

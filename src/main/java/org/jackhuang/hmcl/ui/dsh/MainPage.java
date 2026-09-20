@@ -28,6 +28,9 @@ import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.image.ImageView;
+import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.theme.Themes;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -77,7 +80,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 public final class MainPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
     /// The page state published to the window decorator.
     private final ReadOnlyObjectWrapper<State> state =
-            new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.home")));
+            new ReadOnlyObjectWrapper<>(State.rootNode(titleNode()));
 
     /// The instance the launch control targets.
     private final ObjectProperty<@Nullable DshInstance> currentInstance = new SimpleObjectProperty<>();
@@ -122,17 +125,21 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstanceItem.setSubtitle(i18n("dsh.launch.no_instance.hint"));
         currentInstanceItem.setOnAction(event -> openCurrentInstance());
 
+        // The original groups by what a thing is, not by where it sits in the
+        // page: the instance you are about to launch leads its own group, and
+        // the launcher's own settings sit apart from the game's.
         AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(i18n("dsh.home").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerItem(i18n("download"), SVG.DOWNLOAD,
-                        () -> Controllers.navigate(getDownloadPage()))
+                .startCategory(i18n("instance").toUpperCase(Locale.ROOT))
+                .add(currentInstanceItem)
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
                         () -> Controllers.navigate(getInstancesPage()))
-                .add(currentInstanceItem)
-                .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
-                        () -> Controllers.navigate(getVersionsPage()))
+                .addNavigationDrawerItem(i18n("download"), SVG.DOWNLOAD,
+                        () -> Controllers.navigate(getDownloadPage()))
+                .startCategory(i18n("settings.launcher.general").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
-                        () -> Controllers.navigate(getSettingsPage()));
+                        () -> Controllers.navigate(getSettingsPage()))
+                .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.UPDATE,
+                        () -> Controllers.navigate(getVersionsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
         getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
@@ -213,7 +220,12 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             return page.openTab(value.substring("settings/".length()));
         }
         switch (value) {
-            case "home", "" -> Controllers.navigate(this);
+            // The home page is where the application already is, so asking for
+            // it is not a navigation. Pushing it would give the root page a back
+            // entry and put the back arrow on the one page the original has none.
+            case "home", "" -> {
+                return true;
+            }
             case "instances" -> Controllers.navigate(getInstancesPage());
             case "download" -> Controllers.navigate(getDownloadPage());
             // Deep links used when verifying the wizards; they are how a page
@@ -231,6 +243,27 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             }
         }
         return true;
+    }
+
+    /// Builds the title the window shows while the home page is open.
+    ///
+    /// The original puts the application's name and version here rather than a
+    /// page title, with its mark beside them: this is the one page that is not
+    /// somewhere you went, so naming it would be naming the place you already
+    /// are. The state is the root state, which is what keeps the back arrow off.
+    ///
+    /// @return the title node
+    private static Node titleNode() {
+        ImageView icon = new ImageView(FXUtils.newBuiltinImage("/assets/img/icon-title.png"));
+
+        Label label = new Label(Metadata.FULL_TITLE);
+        label.getStyleClass().add("jfx-decorator-title");
+        label.textFillProperty().bind(Themes.titleFillProperty());
+
+        HBox node = new HBox(8, icon, label);
+        node.setPadding(new Insets(0, 0, 0, 2));
+        node.setAlignment(Pos.CENTER_LEFT);
+        return node;
     }
 
     /// Returns the download page, creating it on first use.
