@@ -47,6 +47,7 @@ import org.jackhuang.hmcl.ui.dsh.settings.InstanceSettingsPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Locale;
@@ -83,7 +84,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     private final TabHeader.Tab<SessionManagementPane> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
 
     /// The plugins tab.
-    private final TabHeader.Tab<ScrollPane> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
+    private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
     /// The browse tab.
     private final TabHeader.Tab<BrowsePane> browseTab = new TabHeader.Tab<>("dshInstanceBrowse");
@@ -100,21 +101,37 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The status line above the plugin list.
     private final Label pluginStatus = new Label();
 
-    /// Creates the page for an instance.
+    /// Creates the page for an instance, opening its first tab.
     ///
     /// @param instance the instance to show
     public InstancePage(DshInstance instance) {
+        this(instance, null);
+    }
+
+    /// Creates the page for an instance.
+    ///
+    /// @param instance   the instance to show
+    /// @param initialTab the tab to open: `settings`, `plugins`, `sessions`, `browse` or
+    ///                   `details`, or `null` for the first
+    public InstancePage(DshInstance instance, @Nullable String initialTab) {
         this.instance = instance;
         this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(instance.id()));
 
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
         sessionsTab.setNodeSupplier(() -> new SessionManagementPane(instance));
-        pluginsTab.setNodeSupplier(this::buildPluginsTab);
+        pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
         browseTab.setNodeSupplier(() -> new BrowsePane(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
         tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, browseTab, detailsTab);
-        tab.select(settingsTab, false);
+        TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
+            case "plugins" -> pluginsTab;
+            case "sessions" -> sessionsTab;
+            case "browse" -> browseTab;
+            case "details" -> detailsTab;
+            default -> settingsTab;
+        };
+        tab.select(initial, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(instance.id().toUpperCase(Locale.ROOT))
@@ -153,23 +170,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     @Override
     public void refresh() {
         refreshPlugins();
-    }
-
-    /// Builds the plugins tab.
-    ///
-    /// @return the tab content
-    private ScrollPane buildPluginsTab() {
-        VBox root = new VBox(10);
-        root.setPadding(new javafx.geometry.Insets(10));
-        root.getChildren().addAll(pluginStatus,
-                ComponentList.createComponentListTitle(i18n("dsh.instance.plugins.installed")),
-                pluginList);
-
-        ScrollPane scroll = new ScrollPane(root);
-        scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("edge-to-edge");
-        FXUtils.smoothScrolling(scroll);
-        return scroll;
     }
 
     /// Builds the details tab.

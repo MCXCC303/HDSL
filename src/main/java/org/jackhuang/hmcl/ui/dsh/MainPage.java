@@ -181,12 +181,15 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     public boolean openPage(String name) {
         String raw = name == null ? "" : name.trim();
         if (raw.toLowerCase(Locale.ROOT).startsWith("instance:")) {
-            String id = raw.substring("instance:".length());
+            String rest = raw.substring("instance:".length());
+            int slash = rest.indexOf('/');
+            String id = slash < 0 ? rest : rest.substring(0, slash);
+            String tab = slash < 0 ? null : rest.substring(slash + 1);
             org.jackhuang.hmcl.dsh.DshInstance instance = org.jackhuang.hmcl.dsh.DshInstanceManager.find(id);
             if (instance == null) {
                 return false;
             }
-            Controllers.navigate(new InstancePage(instance));
+            Controllers.navigate(new InstancePage(instance, tab));
             return true;
         }
 

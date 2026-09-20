@@ -81,7 +81,6 @@ public final class InstanceSettingsPage extends ScrollPane {
         ComponentList list = portList;
 
         list.getContent().add(buildPortModeRow());
-        list.getContent().add(buildPortModeRow());
         list.getContent().add(buildPortRow());
         list.getContent().add(buildPortNote());
 
