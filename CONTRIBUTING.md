@@ -248,6 +248,26 @@ ComponentList.add(child)
 界面里所有颜色都会随窗口背后是什么而变化 —— 这种问题在截图上不明显，
 要把两个窗口的同一区域**采样成数值**才看得出来。
 
+### 工具的固定高度：别给容器再加内边距
+
+`.jfx-tool-bar-button` 自带**固定高度**：
+
+```css
+.jfx-tool-bar-button {
+    -fx-toggle-icon4-size: 37px;
+    -fx-pref-height: 37px; -fx-max-height: 37px; -fx-min-height: 37px;
+}
+```
+
+所以**工具条容器的高度就等于 37px 加上你给容器加的内边距**。
+我给实例列表的工具条加了 `setPadding(new Insets(4))`，表头就比原版高 8px。
+
+**量法**：沿一条内容为空的竖直线做亮度剖面，找分隔线：
+
+- 原版分隔线 y=95，表头从 y=58 起 → **37px**
+- 我（改前）y=103 → **45px**
+- 我（改后）y=95 → **37px** ✓
+
 ### 卡片类控件要照抄节点结构
 
 原版的 `installer-item` 系列 CSS 是三层结构：

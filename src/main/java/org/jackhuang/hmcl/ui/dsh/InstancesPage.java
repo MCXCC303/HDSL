@@ -183,8 +183,11 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @return the toolbar container
     private Node buildToolbar() {
+        // No padding: the buttons are 37 pixels tall by their own stylesheet and
+        // the original's toolbar is exactly that, so anything added here is a
+        // height the original does not have. Mine was eight pixels taller for
+        // the four added on each side.
         normalBar.setAlignment(Pos.CENTER_LEFT);
-        normalBar.setPadding(new Insets(4));
         // Two buttons, as the running original has. Its source carries four —
         // adding an instance and importing a modpack among them — but the
         // release in use keeps both in the sidebar, and the release is what this
@@ -206,7 +209,6 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         FXUtils.onEscPressed(searchField, close::fire);
 
         searchBar.setAlignment(Pos.CENTER_LEFT);
-        searchBar.setPadding(new Insets(4));
         searchBar.getChildren().setAll(searchField, close);
 
         toolbarHost.getChildren().setAll(normalBar);
@@ -221,7 +223,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// @return the button
     private static JFXButton toolbarButton(String text, SVG icon, Runnable action) {
         JFXButton button = new JFXButton(text);
-        button.setGraphic(icon.createIcon(18));
+        button.setGraphic(icon.createIcon(20));
         button.getStyleClass().add("jfx-tool-bar-button");
         button.setOnAction(event -> action.run());
         return button;
