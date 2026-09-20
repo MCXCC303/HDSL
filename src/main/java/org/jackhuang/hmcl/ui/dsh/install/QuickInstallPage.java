@@ -28,6 +28,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -72,7 +73,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// [DshPresetCatalog] — the marketplace first, then the add-ons a new
 /// installation most often wants.
 @NotNullByDefault
-public final class QuickInstallPage extends ScrollPane implements WizardPage {
+public final class QuickInstallPage extends BorderPane implements WizardPage {
     /// The wizard controller used to finish.
     private final WizardController controller;
 
@@ -106,36 +107,36 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     public QuickInstallPage(WizardController controller) {
         this.controller = controller;
 
-        setFitToWidth(true);
+        setPadding(new Insets(16));
 
-        VBox root = new VBox(10);
-        // The original's install pages pad their root by sixteen.
-        root.setPadding(new Insets(16));
-        setContent(root);
-        FXUtils.smoothScrolling(this);
-
-        // Seed the recommendations before the cards are built, so they render
-        // the same state the wizard will install.
+        // Seed the recommendations before the cards are built, so they render the
+        // same state the wizard will install.
         seedDefaultChoices();
 
-        // No in-page heading: the window's title bar names the step.
-        root.getChildren().addAll(buildInstanceList(), buildPresetList(), buildFooter());
-        VBox.setVgrow(root, Priority.ALWAYS);
+        // The original's arrangement: what scrolls in the middle, and the install
+        // button on the border rather than under whatever the content ends at. As
+        // a scroll pane this page sized itself to its content, so a button at the
+        // end of the content sat wherever the cards stopped.
+        VBox content = new VBox(10, buildInstanceList(), buildPresetList());
+
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        FXUtils.smoothScrolling(scroll);
+
+        setCenter(scroll);
+        setBottom(buildFooter());
 
         applyDefaults();
     }
 
-    /// Seeds the choice map so recommended plugins start selected.
+    /// Leaves every plugin unchosen.
     ///
-    /// The map is the single source of truth the wizard finishes from; the
-    /// cards only render it.
+    /// The map is the single source of truth the wizard finishes from; the cards
+    /// only render it. Nothing is put in it, so a new instance installs the
+    /// runtime and nothing else until something is asked for — the marketplace
+    /// among them, which is offered rather than assumed.
     private void seedDefaultChoices() {
-        Map<String, String> choices = choices();
-        for (DshPreset preset : DshPresetCatalog.builtin()) {
-            if (preset.recommended() && !choices.containsKey(preset.id())) {
-                choices.put(preset.id(), "");
-            }
-        }
+        // Nothing to seed.
     }
 
     /// Builds the instance identity section.
