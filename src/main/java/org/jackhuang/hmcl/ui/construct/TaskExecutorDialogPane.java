@@ -93,7 +93,11 @@ public class TaskExecutorDialogPane extends BorderPane {
         });
 
         speedEventHandler = FetchTask.SPEED_EVENT.registerWeak(speedEvent -> {
-            String message = I18n.formatSpeed(speedEvent.getSpeed());
+            // The event carries a rate every second whether or not anything is
+            // downloading, and reports zero when it is not. Shown as it comes,
+            // a task that downloads nothing displays "0 B/s" from the moment its
+            // dialog opens — a figure that is not a measurement of anything.
+            String message = speedEvent.getSpeed() > 0 ? I18n.formatSpeed(speedEvent.getSpeed()) : "";
             Platform.runLater(() -> lblProgress.setText(message));
         });
 

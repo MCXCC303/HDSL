@@ -26,6 +26,9 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
+import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.task.TaskExecutor;
+import org.jackhuang.hmcl.task.TaskListener;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.LogWindow;
@@ -96,19 +99,13 @@ public final class DshLaunchService {
             return;
         }
 
-        // The progress dialog is HMCL's: a TaskExecutorDialogPane bound to the
-        // work, which closes itself when the work stops. It is the launcher's
-        // only signal that something is happening, because a browser window
-        // appears whenever the child is ready and not a moment sooner.
-        TaskExecutorDialogPane progress = new TaskExecutorDialogPane(TaskCancellationAction.NORMAL);
-        progress.titleProperty().set(i18n("dsh.launch.launching", instance.id()));
-        progress.setCancel(new TaskCancellationAction(it -> {
-            DshProcessManager.find(instance.id()).ifPresent(running -> DshProcessManager.stop(instance.id()));
-            it.fireEvent(new DialogCloseEvent());
-        }));
-        Controllers.dialog(progress);
-
-        CompletableFuture.supplyAsync(() -> {
+        // The progress dialog is HMCL's, and it is meant to be given the work it
+        // reports on. The pane is a fixed five hundred by three hundred, most of
+        // it a task list: with no executor that area is empty and its progress
+        // label reads a meaningless "0 B/s". The launch becomes a task so the
+        // pane has something to show, and the pane closes itself when the task
+        // stops.
+        Task<DshProcess> launch = Task.supplyAsync(() -> {
             try {
                 DshProcess process = DshProcessManager.launch(instance);
                 awaitReady(process);
@@ -116,36 +113,69 @@ public final class DshLaunchService {
             } catch (DshException e) {
                 throw new CompletionException(e);
             }
-        }, Schedulers.io()).whenComplete((process, throwable) -> runInFX(() -> {
-            LAUNCHING.remove(instance.id());
-            // Closes the dialog whether the launch worked or not; a failure then
-            // reports itself, which is what the original does too.
-            progress.fireEvent(new DialogCloseEvent());
-            if (throwable != null) {
-                Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-                        ? throwable.getCause()
-                        : throwable;
-                LOG.warning("Failed to launch instance " + instance.id(), cause);
-                Controllers.dialog(cause.getMessage(), i18n("dsh.launch.failed"), MessageType.ERROR);
-            } else {
-                if (showOutput) {
-                    openLogWindow(process);
-                }
-                Optional<java.net.URI> url = process.webUrl();
-                if (url.isPresent()) {
-                    if (settings().openBrowserOnLaunchProperty().get()) {
-                        FXUtils.openLink(url.get().toString());
-                    }
-                } else if (!process.isRunning()) {
-                    Controllers.dialog(
-                            i18n("dsh.launch.exited", process.exitCode().orElse(-1)),
-                            i18n("dsh.launch.failed"), MessageType.ERROR);
-                }
+        }).setName(i18n("dsh.launch.launching", instance.id()))
+                // The pane's list renders stage hints, not tasks, so a task with
+                // none leaves the dialog an empty box. One stage is what this
+                // launch has: start the child and wait for it to say it is ready.
+                .withStagesHints("dsh.launch.stage.starting");
+
+        TaskExecutor executor = launch.executor();
+        executor.addTaskListener(new TaskListener() {
+            @Override
+            public void onStop(boolean success, TaskExecutor stopped) {
+                runInFX(() -> settle(instance, success, stopped.getException(), showOutput, onDone));
             }
-            if (onDone != null) {
-                onDone.accept(process);
-            }
+        });
+
+        TaskExecutorDialogPane progress = new TaskExecutorDialogPane(new TaskCancellationAction(it -> {
+            DshProcessManager.find(instance.id()).ifPresent(running -> DshProcessManager.stop(instance.id()));
+            it.fireEvent(new DialogCloseEvent());
         }));
+        progress.titleProperty().set(i18n("dsh.launch.launching", instance.id()));
+        progress.setExecutor(executor, true);
+        Controllers.dialog(progress);
+
+        executor.start();
+    }
+
+    /// Reports how a launch ended and hands the process back.
+    ///
+    /// The dialog closes itself; what is left is to say why when it failed, and
+    /// to open the browser or the log window when it did not.
+    ///
+    /// @param instance   the instance that was launched
+    /// @param success    whether the task completed
+    /// @param failure    the task's exception, or `null`
+    /// @param showOutput whether to open the process's log window
+    /// @param onDone     run with the process, or `null`
+    private static void settle(DshInstance instance, boolean success, @Nullable Exception failure,
+                               boolean showOutput, @Nullable Consumer<DshProcess> onDone) {
+        LAUNCHING.remove(instance.id());
+        DshProcess process = DshProcessManager.find(instance.id()).orElse(null);
+
+        if (!success) {
+            LOG.warning("Failed to launch instance " + instance.id(), failure);
+            Controllers.dialog(failure == null ? i18n("dsh.launch.failed") : failure.getMessage(),
+                    i18n("dsh.launch.failed"), MessageType.ERROR);
+        } else if (process != null) {
+            if (showOutput) {
+                openLogWindow(process);
+            }
+            Optional<java.net.URI> url = process.webUrl();
+            if (url.isPresent()) {
+                if (settings().openBrowserOnLaunchProperty().get()) {
+                    FXUtils.openLink(url.get().toString());
+                }
+            } else if (!process.isRunning()) {
+                Controllers.dialog(
+                        i18n("dsh.launch.exited", process.exitCode().orElse(-1)),
+                        i18n("dsh.launch.failed"), MessageType.ERROR);
+            }
+        }
+
+        if (onDone != null && process != null) {
+            onDone.accept(process);
+        }
     }
 
     /// Stops a running instance.
