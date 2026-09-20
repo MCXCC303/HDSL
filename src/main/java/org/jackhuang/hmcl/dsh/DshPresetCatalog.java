@@ -41,46 +41,20 @@ public final class DshPresetCatalog {
     ///
     /// Ordered so the marketplace — the entry that makes every other plugin
     /// discoverable — comes first and is preselected.
+    /// The presets offered when an instance is created.
+    ///
+    /// One card, deliberately. The marketplace is the way anything else is
+    /// obtained — it browses and installs plugins itself — so offering a
+    /// hand-picked dozen alongside it duplicates a job it already does, and
+    /// freezes a list that goes stale the moment the ecosystem moves.
+    ///
+    /// The application boot library is not here because it is not a plugin: it
+    /// is a dependency of DeepSeek Harness, and it is chosen on the create page
+    /// as a version rather than installed as a package.
     private static final @Unmodifiable List<DshPreset> BUILTIN = List.of(
             DshPreset.recommended("dshmarket", "dsh-market",
                     "dshmarket",
-                    "Plugin marketplace: browse, install and share DeepSeek Harness plugins."),
-            DshPreset.optional("better-sidebar", "Better Sidebar",
-                    "dsh-better-sidebar",
-                    "A richer conversation sidebar."),
-            DshPreset.optional("context", "Context",
-                    "dsh-context",
-                    "Inspect and compact the model context of a session."),
-            DshPreset.optional("cost-meter", "Cost Meter",
-                    "dsh-cost-meter",
-                    "Token and cost accounting per session."),
-            DshPreset.optional("skills-manager", "Skills Manager",
-                    "@michengai/dsh-skills-manager",
-                    "Install and manage agent skills."),
-            DshPreset.optional("remote-web-ui", "Remote Web UI",
-                    "@linxin666/dsh-remote-web-ui",
-                    "Reach the web interface from another device."),
-            DshPreset.optional("git-graph", "Git Graph",
-                    "@linxin666/dsh-client-ui-git-graph",
-                    "Visualise repository history inside a session."),
-            DshPreset.optional("skin-center", "Skin Center",
-                    "@linxin666/dsh-client-ui-skin-center",
-                    "Browse and apply interface skins."),
-            DshPreset.optional("whale-widget", "Whale Widget",
-                    "dsh-whale-widget",
-                    "A small decorative widget."),
-            DshPreset.optional("subagent-codex", "Codex subagent",
-                    "@deepseek-ai/dsh-subagent-codex",
-                    "Delegate work to a Codex subagent."),
-            DshPreset.optional("subagent-claude-code", "Claude Code subagent",
-                    "@deepseek-ai/dsh-subagent-claude-code",
-                    "Delegate work to a Claude Code subagent."),
-            DshPreset.optional("agent-team", "Agent team",
-                    "@deepseek-ai/dsh-experimental-agent-team-profile",
-                    "Experimental: run a team of agents."),
-            DshPreset.optional("auto-review", "Auto review",
-                    "@deepseek-ai/dsh-experimental-auto-review",
-                    "Experimental: review changes automatically."));
+                    "Plugin marketplace: browse, install and share DeepSeek Harness plugins."));
 
     /// Returns the built-in presets.
     ///

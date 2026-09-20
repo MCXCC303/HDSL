@@ -54,6 +54,13 @@ public final class DshVersionManager {
     /// The npm package name of the DeepSeek Harness CLI.
     public static final String PACKAGE_NAME = "@deepseek-ai/dsh";
 
+    /// The npm package that provides the application boot library.
+    ///
+    /// Held to the same version as DeepSeek Harness itself: the two are
+    /// published together, and a mismatch between them is a failure at import
+    /// rather than a degradation.
+    public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
+
     /// Returns every DeepSeek Harness version installed under [DshPaths#VERSIONS].
     ///
     /// Directories that do not contain a usable package are skipped, so a
@@ -131,6 +138,37 @@ public final class DshVersionManager {
         return releases;
     }
 
+    /// Writes the manifest npm installs from.
+    ///
+    /// The launcher states its dependencies rather than letting npm pick them,
+    /// so a version is reproducible and the libraries stay with the launcher
+    /// that expects them.
+    ///
+    /// @param prefix      the directory the version is installed into
+    /// @param version     the DeepSeek Harness version
+    /// @param appBoot     the application boot library version to hold it to
+    /// @throws DshException when the manifest cannot be written
+    static void writeManifest(Path prefix, String version, String appBoot) throws DshException {
+        JsonObject dependencies = new JsonObject();
+        dependencies.addProperty(PACKAGE_NAME, version);
+
+        JsonObject overrides = new JsonObject();
+        overrides.addProperty(APP_BOOT_PACKAGE, appBoot);
+
+        JsonObject manifest = new JsonObject();
+        manifest.addProperty("private", true);
+        manifest.add("dependencies", dependencies);
+        manifest.add("overrides", overrides);
+
+        try {
+            Files.createDirectories(prefix);
+            Files.writeString(prefix.resolve("package.json"),
+                    new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(manifest));
+        } catch (IOException e) {
+            throw new DshException("Failed to write the manifest for " + version, e);
+        }
+    }
+
     /// Installs one DeepSeek Harness version into its own npm prefix.
     ///
     /// The install is staged into a sibling directory and moved into place on
@@ -161,14 +199,27 @@ public final class DshVersionManager {
             throw new DshException("Failed to prepare " + staging, e);
         }
 
+        // The manifest is written before npm runs, because npm would otherwise
+        // choose the versions itself. Installing by name records a caret range,
+        // and a caret cannot express what these packages actually promise: the
+        // whole family is published in lockstep, one version for all of it. So
+        // `^0.1.6-alpha.1` resolves to alpha.2's libraries, and a release whose
+        // code and libraries disagree fails at import — which is exactly what
+        // happened between 0.1.6-alpha.1 and alpha.2, where a library dropped an
+        // export the launcher still imported.
+        //
+        // Pinning the launcher to its exact version and holding the application
+        // boot library to the same one keeps a tree consistent. The override is
+        // the value the create page offers, and it defaults to the matching one.
+        writeManifest(staging, version, version);
+
         List<String> command = List.of(
                 runtime.npm().toString(),
                 "install",
                 "--prefix", staging.toString(),
                 "--no-audit",
                 "--no-fund",
-                "--loglevel=error",
-                PACKAGE_NAME + "@" + version);
+                "--loglevel=error");
 
         LOG.info("Installing DSH " + version + ": " + String.join(" ", command));
 
