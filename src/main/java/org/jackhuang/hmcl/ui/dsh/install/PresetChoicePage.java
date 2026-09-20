@@ -27,6 +27,8 @@ import org.jackhuang.hmcl.dsh.DshPackageRegistry;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.dsh.VersionFilterBar;
+import java.util.List;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
@@ -56,8 +58,18 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
     /// The catalogue entry being configured.
     private final DshPreset preset;
 
-    /// The list of choices, filled in once the registry answers.
+    /// The two choices that are actions rather than versions, and so are never
+    /// filtered away: not installing the plugin at all, and taking its latest.
+    private final ComponentList actions = new ComponentList();
+
+    /// The version rows, filtered by the name box and the type filter.
     private final ComponentList choices = new ComponentList();
+
+    /// The name box and type filter, shared with the other version lists.
+    private final VersionFilterBar filterBar = new VersionFilterBar(this::render, this::loadVersions);
+
+    /// Every version the last load returned, before filtering.
+    private List<String> versions = List.of();
 
     /// The status line.
     private final Label status = new Label();
@@ -88,7 +100,7 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
         Label description = new Label(preset.description());
         description.setWrapText(true);
 
-        root.getChildren().addAll(title, description, status, choices);
+        root.getChildren().addAll(title, description, filterBar, actions, status, choices);
         spinner.setContent(root);
         setContent(spinner);
         FXUtils.smoothScrolling(this);
@@ -114,21 +126,30 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
                         && throwable.getCause() != null ? throwable.getCause() : throwable;
                 LOG.warning("Failed to list versions of " + preset.spec(), cause);
                 status.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
-                choices.getContent().add(buildNotInstalling());
-                choices.getContent().add(buildLatest());
+                actions.getContent().setAll(buildNotInstalling(), buildLatest());
                 return;
             }
             status.setText(i18n("dsh.install.plugin.choose"));
-            choices.getContent().add(buildNotInstalling());
-            choices.getContent().add(buildLatest());
-            int shown = 0;
-            for (String version : versions) {
-                if (shown++ >= VERSION_LIMIT) {
-                    break;
-                }
-                choices.getContent().add(buildVersion(version));
-            }
+            actions.getContent().setAll(buildNotInstalling(), buildLatest());
+            this.versions = versions;
+            render();
         }));
+    }
+
+    /// Rebuilds the version rows from the last load and the filters.
+    private void render() {
+        choices.getContent().clear();
+
+        int shown = 0;
+        for (String version : versions) {
+            if (!filterBar.accepts(version)) {
+                continue;
+            }
+            if (shown++ >= VERSION_LIMIT) {
+                break;
+            }
+            choices.getContent().add(buildVersion(version));
+        }
     }
 
     /// Builds the "do not install" choice.
