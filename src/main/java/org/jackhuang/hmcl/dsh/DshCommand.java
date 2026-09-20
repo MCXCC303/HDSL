@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 /// Runs a short-lived external command and captures its output.
@@ -66,7 +67,7 @@ public final class DshCommand {
     /// @throws IOException          when the process cannot be started
     /// @throws InterruptedException when the calling thread is interrupted while waiting
     public static Result run(List<String> command) throws IOException, InterruptedException {
-        return run(command, null, null);
+        return run(command, null, Map.of(), null);
     }
 
     /// Runs a command in a directory, waiting for it to finish.
@@ -79,10 +80,32 @@ public final class DshCommand {
     /// @throws InterruptedException when the calling thread is interrupted while waiting
     public static Result run(List<String> command, @Nullable Path directory, @Nullable Consumer<String> onLine)
             throws IOException, InterruptedException {
+        return run(command, directory, Map.of(), onLine);
+    }
+
+    /// Runs a command with extra environment variables, waiting for it to finish.
+    ///
+    /// The variables are added to the inherited environment. Passing them here
+    /// rather than relying on the caller's own `ProcessBuilder` matters for
+    /// anything that must be scoped to a directory of ours: `dsh` reads
+    /// `DSH_HOME` from its environment, and without it the command would quietly
+    /// operate on the user's real `~/.dsh`.
+    ///
+    /// @param command     the program and its arguments
+    /// @param directory   the working directory, or `null` for the current one
+    /// @param environment extra environment variables
+    /// @param onLine      a consumer notified of every output line, or `null`
+    /// @return the command result
+    /// @throws IOException          when the process cannot be started
+    /// @throws InterruptedException when the calling thread is interrupted while waiting
+    public static Result run(List<String> command, @Nullable Path directory,
+                             Map<String, String> environment, @Nullable Consumer<String> onLine)
+            throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(command);
         if (directory != null) {
             builder.directory(directory.toFile());
         }
+        builder.environment().putAll(environment);
         builder.redirectErrorStream(true);
 
         ManagedProcess process = new ManagedProcess(builder);

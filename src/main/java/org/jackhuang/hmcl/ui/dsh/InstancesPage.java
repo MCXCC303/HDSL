@@ -31,6 +31,7 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshVersion;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
+import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
@@ -44,10 +45,8 @@ import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
@@ -143,11 +142,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         return row;
     }
 
-    /// Asks for a name and creates an instance with default settings.
+    /// Opens the create-an-instance wizard.
     ///
-    /// The defaults are deliberately the safe ones: the newest installed
-    /// version, the `web` profile, the user's home as the session workspace,
-    /// and a private isolated `DSH_HOME`.
+    /// The wizard mirrors HMCL's install flow: choose a version, then fill in
+    /// the quick-install page and pick the plugins to add.
     private void createInstance() {
         List<DshVersion> installed = DshVersionManager.listInstalled();
         if (installed.isEmpty()) {
@@ -155,25 +153,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                     i18n("dsh.instance.create"), MessageType.WARNING);
             return;
         }
-
-        DshVersion newest = installed.get(0);
-        Controllers.prompt(i18n("dsh.instance.name"), (value, handler) -> {
-            String id = value == null ? "" : value.trim();
-            if (id.isEmpty()) {
-                handler.reject(i18n("dsh.instance.name.empty"));
-                return;
-            }
-            try {
-                DshInstanceManager.create(id, newest.version(), DshInstance.DEFAULT_PROFILE,
-                        Path.of(System.getProperty("user.home")), DshHomeMode.ISOLATED, null,
-                        List.of(), Map.of());
-                handler.resolve();
-                refresh();
-                Controllers.showToast(i18n("dsh.instance.created", id));
-            } catch (DshException e) {
-                handler.reject(e.getMessage());
-            }
-        });
+        Controllers.getDecorator().startWizard(new DshInstallWizardProvider(), i18n("dsh.instance.create"));
     }
 
     /// Removes an instance after confirmation.

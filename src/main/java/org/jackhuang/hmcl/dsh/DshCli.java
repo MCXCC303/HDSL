@@ -68,7 +68,9 @@ public final class DshCli {
         /// Installs a Node runtime.
         INSTALL_NODE,
         /// Removes an installed Node runtime.
-        UNINSTALL_NODE
+        UNINSTALL_NODE,
+        /// Installs a plugin into an instance's profile.
+        INSTALL_PLUGIN
     }
 
     /// A parsed command line.
@@ -114,7 +116,8 @@ public final class DshCli {
                 && !args.contains("--list-runtimes")
                 && !args.contains("--list-node-versions")
                 && !args.contains("--install-node")
-                && !args.contains("--uninstall-node")) {
+                && !args.contains("--uninstall-node")
+                && !args.contains("--install-plugin")) {
             return null;
         }
 
@@ -160,6 +163,11 @@ public final class DshCli {
                 }
                 case "--uninstall-node" -> {
                     command = Command.UNINSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--install-plugin" -> {
+                    command = Command.INSTALL_PLUGIN;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--stop" -> {
@@ -302,6 +310,27 @@ public final class DshCli {
                     out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
+                case INSTALL_PLUGIN -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --install-plugin needs an instance and a package spec");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    String spec = invocation.arguments().get(1);
+                    out.println("Installing " + spec + " into " + instance.id() + " ...");
+                    DshPluginInstaller.install(instance,
+                            List.of(new DshPreset(spec, spec, spec, "", false, true)),
+                            out::println);
+                    out.println("Installed " + spec);
+                    for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
+                        out.println("  bundle: " + bundle);
+                    }
+                    return 0;
+                }
                 case STOP -> {
                     out.println(DshProcessManager.stop(invocation.subject())
                             ? "Stopped " + invocation.subject()
@@ -440,6 +469,9 @@ public final class DshCli {
                       --home <path>                  required for --home-mode custom
                       --runtime <version>            Node runtime to pin (default: system)
                   --delete-instance <id>           remove an instance
+
+                plugins:
+                  --install-plugin <id> <spec>     install a plugin into an instance profile
 
                 node runtimes:
                   --list-runtimes                  list installed Node runtimes

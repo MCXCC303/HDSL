@@ -1,0 +1,120 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.ui.dsh.install;
+
+import javafx.scene.Node;
+import org.jackhuang.hmcl.dsh.DshException;
+import org.jackhuang.hmcl.dsh.DshHomeMode;
+import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceManager;
+import org.jackhuang.hmcl.dsh.DshNodeRuntime;
+import org.jackhuang.hmcl.dsh.DshPreset;
+import org.jackhuang.hmcl.dsh.DshPluginInstaller;
+import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.task.Schedulers;
+import org.jackhuang.hmcl.ui.wizard.WizardController;
+import org.jackhuang.hmcl.ui.wizard.WizardProvider;
+import org.jackhuang.hmcl.util.SettingsMap;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
+/// Drives the create-an-instance wizard.
+///
+/// Two steps, matching HMCL's install flow: pick the DeepSeek Harness version,
+/// then fill in the quick-install page. Finishing returns a [Task] that the
+/// wizard displayer runs with a progress dialog — creating the instance first
+/// and then installing the selected plugins, so a partly-installed instance is
+/// still visible and usable rather than silently lost.
+@NotNullByDefault
+public final class DshInstallWizardProvider implements WizardProvider {
+    /// The settings key holding the chosen DeepSeek Harness version.
+    public static final SettingsMap.Key<String> VERSION = new SettingsMap.Key<>("dsh.version");
+
+    /// The settings key holding the instance name.
+    public static final SettingsMap.Key<String> NAME = new SettingsMap.Key<>("dsh.name");
+
+    /// The settings key holding the workspace path.
+    public static final SettingsMap.Key<String> WORKSPACE = new SettingsMap.Key<>("dsh.workspace");
+
+    /// The settings key holding the home policy.
+    public static final SettingsMap.Key<DshHomeMode> HOME_MODE = new SettingsMap.Key<>("dsh.homeMode");
+
+    /// The settings key holding the Node runtime selection.
+    public static final SettingsMap.Key<String> NODE_RUNTIME = new SettingsMap.Key<>("dsh.nodeRuntime");
+
+    /// The settings key holding the chosen presets.
+    public static final SettingsMap.Key<List<DshPreset>> PRESETS = new SettingsMap.Key<>("dsh.presets");
+
+    /// Creates the provider.
+    public DshInstallWizardProvider() {
+    }
+
+    @Override
+    public void start(SettingsMap settings) {
+        settings.put(HOME_MODE, DshHomeMode.ISOLATED);
+        settings.put(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
+        settings.put(PRESETS, List.of());
+    }
+
+    @Override
+    public @Nullable Node createPage(WizardController controller, int step, SettingsMap settings) {
+        return switch (step) {
+            case 0 -> new VersionSelectPage(controller);
+            case 1 -> new QuickInstallPage(controller);
+            default -> null;
+        };
+    }
+
+    @Override
+    public Object finish(SettingsMap settings) {
+        return Task.runAsync(i18n("dsh.install.working"), Schedulers.io(), () -> {
+            String version = settings.get(VERSION);
+            String name = settings.get(NAME);
+            String workspace = settings.get(WORKSPACE);
+            DshHomeMode homeMode = settings.getOrDefault(HOME_MODE, DshHomeMode.ISOLATED);
+            String nodeRuntime = settings.getOrDefault(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
+            List<DshPreset> presets = settings.getOrDefault(PRESETS, List.of());
+
+            if (version == null || name == null || workspace == null) {
+                throw new DshException("The install wizard finished without a complete configuration");
+            }
+
+            DshInstance instance = DshInstanceManager.create(
+                    name.trim(), version, DshInstance.DEFAULT_PROFILE,
+                    Path.of(workspace), nodeRuntime, homeMode, null, List.of(), Map.of());
+
+            LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
+
+            if (!presets.isEmpty()) {
+                DshPluginInstaller.install(instance, presets, line -> LOG.info("[install] " + line));
+            }
+        }).setName(i18n("dsh.install.working"));
+    }
+
+    @Override
+    public boolean cancel() {
+        return true;
+    }
+}
