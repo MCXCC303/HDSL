@@ -21,6 +21,9 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXTextField;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
+import org.jetbrains.annotations.Nullable;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
@@ -90,6 +93,12 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// The selection is read straight from the controls rather than mirrored
     /// into a map: a parallel copy can drift from what the user sees.
     private final List<PluginCard> presetCards = new ArrayList<>();
+
+    /// The state shown on the boot library card.
+    ///
+    /// A property rather than a label the card writes to, because the card is
+    /// built before the version it reports on is known to it.
+    private final StringProperty appBootStatus = new SimpleStringProperty();
 
     /// Creates the quick-install page.
     ///
@@ -174,11 +183,23 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     ///
     /// @return the card
     private Node buildAppBootCard() {
-        LineButton card = new LineButton();
-        card.setTitle(i18n("dsh.install.app_boot"));
-        card.setSubtitle(i18n("dsh.install.app_boot.matched", currentAppBoot()));
-        card.setLeading(SVG.EXTENSION, 16);
-        card.setOnAction(event -> chooseAppBoot(card));
+        Label status = new Label();
+        status.getStyleClass().add("installer-item-status");
+        status.textProperty().bind(appBootStatus);
+
+        Label name = new Label(i18n("dsh.install.app_boot"));
+        name.getStyleClass().add("installer-item-name");
+
+        Label arrow = new Label("\u2192");
+        arrow.getStyleClass().add("installer-item-arrow");
+
+        VBox card = new VBox(4, SVG.EXTENSION.createIcon(32), name, status, arrow);
+        card.getStyleClass().addAll("installer-item-wrapper", "installer-item-card");
+        card.setAlignment(Pos.CENTER);
+        FXUtils.onClicked(card, () -> chooseAppBoot(card));
+
+        FXUtils.installFastTooltip(card, i18n("dsh.install.app_boot.hint"));
+        appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
         return card;
     }
 
@@ -199,7 +220,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// running that version shares it.
     ///
     /// @param card the card to update after a choice
-    private void chooseAppBoot(LineButton card) {
+    private void chooseAppBoot(Node card) {
         List<String> versions = availableAppBootVersions();
         if (versions.isEmpty()) {
             Controllers.dialog(i18n("dsh.install.app_boot.unavailable"),
@@ -222,7 +243,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         chooser.valueProperty().addListener((observable, was, chosen) -> {
             if (chosen == null || chosen.isBlank() || chosen.equals(currentVersion())) {
                 controller.getSettings().remove(DshInstallWizardProvider.APP_BOOT);
-                card.setSubtitle(i18n("dsh.install.app_boot.matched", currentAppBoot()));
+                appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
                 return;
             }
             // The warning says what the choice costs: the pairing is not a
@@ -231,7 +252,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
             Controllers.dialog(i18n("dsh.install.app_boot.warning", chosen, currentVersion()),
                     i18n("dsh.install.app_boot"), MessageType.WARNING, () -> {
                         controller.getSettings().put(DshInstallWizardProvider.APP_BOOT, chosen);
-                        card.setSubtitle(i18n("dsh.install.app_boot.chosen", chosen));
+                        appBootStatus.set(i18n("dsh.install.app_boot.chosen", chosen));
                     });
         });
     }
@@ -264,20 +285,46 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// Builds the card stating which version is being installed.
     ///
     /// @return the card
-    private javafx.scene.Node buildVersionCard() {
-        javafx.scene.layout.VBox card = new javafx.scene.layout.VBox(4);
-        card.getStyleClass().addAll("installer-item-wrapper", "installer-item-card");
-        card.setAlignment(javafx.geometry.Pos.CENTER);
-        card.setDisable(true);
+    private Node buildVersionCard() {
+        return buildCard(SVG.DOWNLOAD, i18n("dsh.install.version.card"),
+                currentVersion() == null ? i18n("dsh.install.version.none") : currentVersion(),
+                null);
+    }
 
-        javafx.scene.control.Label name = new javafx.scene.control.Label(i18n("dsh.install.version.card"));
+    /// Builds one card of the install grid.
+    ///
+    /// The shape is the original's component card: an icon, the component's
+    /// name, and the state of the choice beneath it. A card that opens is given
+    /// the arrow the original puts on those, so what can be opened is visible
+    /// before the pointer reaches it.
+    ///
+    /// @param icon    the card's icon
+    /// @param title   the component's name
+    /// @param status  the state of the choice
+    /// @param onOpen  what clicking does, or `null` when the card is a statement
+    /// @return the card
+    private Node buildCard(SVG icon, String title, String status, @Nullable Runnable onOpen) {
+        Label name = new Label(title);
         name.getStyleClass().add("installer-item-name");
 
-        javafx.scene.control.Label value = new javafx.scene.control.Label(
-                currentVersion() == null ? i18n("dsh.install.version.none") : currentVersion());
+        Label value = new Label(status);
         value.getStyleClass().add("installer-item-status");
 
-        card.getChildren().addAll(org.jackhuang.hmcl.ui.SVG.DOWNLOAD.createIcon(32), name, value);
+        VBox card = new VBox(4, icon.createIcon(32), name, value);
+        card.getStyleClass().addAll("installer-item-wrapper", "installer-item-card");
+        card.setAlignment(Pos.CENTER);
+
+        if (onOpen == null) {
+            // A statement rather than a choice: the version was settled on the
+            // page before this one, which is the original's arrangement too.
+            card.setDisable(true);
+            return card;
+        }
+
+        Label arrow = new Label("\u2192");
+        arrow.getStyleClass().add("installer-item-arrow");
+        card.getChildren().add(arrow);
+        FXUtils.onClicked(card, onOpen);
         return card;
     }
 
