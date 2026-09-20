@@ -51,6 +51,7 @@ import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.LineToggleButton;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -336,9 +337,12 @@ public final class AppearanceSettingsPage extends ScrollPane {
             }
         });
 
-        LineTextPane opacity = new LineTextPane();
+        // A LinePane, not a LineTextPane with a title-trailing node: HMCL puts
+        // the slider on the row's right edge with setRight, while a title
+        // trailing sits immediately after the label.
+        LinePane opacity = new LinePane();
         opacity.setTitle(i18n("dsh.settings.background.opacity"));
-        opacity.setTitleTrailing(buildOpacitySlider());
+        opacity.setRight(buildOpacitySlider());
 
         ComponentList list = new ComponentList();
         list.getContent().addAll(image, network, builtin, opacity);
