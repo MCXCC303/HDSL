@@ -148,6 +148,22 @@ im = Image.open('/tmp/shot.png')
 im.crop((x0, y0, x1, y1)).resize(((x1-x0)*2, (y1-y0)*2), Image.NEAREST).save('/tmp/zoom.png')
 ```
 
+### 列表页的背景来自 ComponentList，不是页面
+
+原版列表页的内容区是**一块不透明面**，而 `gray-background` 只有 50% 不透明度。
+那层实心面来自 `ComponentList` 的一个间接效果：
+
+```
+ComponentList.add(child)
+  → 把 child 包进一个带 .options-list-item 的容器
+      → .options-list-item { -fx-background-color: -monet-surface; }   ← 不透明
+```
+
+所以原版列表页是 `StackPane(notice-pane, padding 10)` > `ComponentList(no-padding)` > 内容。
+**用裸 `VBox` 就没有这层背景**，壁纸会透进列表和每一行，
+界面里所有颜色都会随窗口背后是什么而变化 —— 这种问题在截图上不明显，
+要把两个窗口的同一区域**采样成数值**才看得出来。
+
 ### 卡片类控件要照抄节点结构
 
 原版的 `installer-item` 系列 CSS 是三层结构：

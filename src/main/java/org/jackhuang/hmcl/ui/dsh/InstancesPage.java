@@ -131,10 +131,24 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // home page plates its sidebar separately, because it clears the page's.
         setLeft(sideBar, actions);
 
-        VBox content = new VBox(buildToolbar(), instanceList);
-        VBox.setVgrow(instanceList, Priority.ALWAYS);
+        // The original wraps the page in a ComponentList, and that is what gives
+        // the list its surface: ComponentList wraps each child in a node wearing
+        // `options-list-item`, whose rule carries `-monet-surface` — an opaque
+        // background. A bare VBox has none, so the wallpaper shows through the
+        // list and the rows, which makes every colour in the interface depend on
+        // what is behind the window.
+        StackPane pane = new StackPane();
+        pane.setPadding(new Insets(10));
+        pane.getStyleClass().add("notice-pane");
 
-        setCenter(content);
+        ComponentList root = new ComponentList();
+        root.getStyleClass().add("no-padding");
+        root.getContent().add(buildToolbar());
+        root.getContent().add(instanceList);
+        VBox.setVgrow(instanceList, Priority.ALWAYS);
+        pane.getChildren().setAll(root);
+
+        setCenter(pane);
 
         refresh();
     }
@@ -171,9 +185,12 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private Node buildToolbar() {
         normalBar.setAlignment(Pos.CENTER_LEFT);
         normalBar.setPadding(new Insets(4));
+        // Two buttons, as the running original has. Its source carries four —
+        // adding an instance and importing a modpack among them — but the
+        // release in use keeps both in the sidebar, and the release is what this
+        // is being matched against.
         normalBar.getChildren().setAll(
                 toolbarButton(i18n("button.refresh"), SVG.REFRESH, this::refresh),
-                toolbarButton(i18n("dsh.instance.install"), SVG.ADD, this::createInstance),
                 toolbarButton(i18n("search"), SVG.SEARCH, this::showSearch));
 
         searchField.setPromptText(i18n("search"));
