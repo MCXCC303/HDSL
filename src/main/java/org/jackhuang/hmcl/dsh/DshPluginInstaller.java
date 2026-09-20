@@ -110,6 +110,42 @@ public final class DshPluginInstaller {
         runPluginCommand(instance, runtime, instance.homeDirectory(), List.of("remove", spec), onLine);
     }
 
+    /// Reads the packages a profile declares as dependencies.
+    ///
+    /// This is everything the user has installed, which is a superset of the
+    /// bundle list: a package only joins `dsh.profile.bundles` when it ships a
+    /// bundle patch *and* the reconciling `dsh plugin` run completed. Showing
+    /// both is what makes an installed-but-inactive plugin visible instead of
+    /// silently doing nothing.
+    ///
+    /// @param home    the `DSH_HOME` holding the profile
+    /// @param profile the profile name
+    /// @return the dependency name to version-range map, in manifest order
+    public static Map<String, String> readDependencies(Path home, String profile) {
+        Path manifest = home.resolve("profiles").resolve(profile).resolve("package.json");
+        if (!Files.isRegularFile(manifest)) {
+            return Map.of();
+        }
+        try {
+            JsonElement parsed = JsonParser.parseString(Files.readString(manifest));
+            if (!parsed.isJsonObject()) {
+                return Map.of();
+            }
+            JsonObject dependencies = parsed.getAsJsonObject().getAsJsonObject("dependencies");
+            if (dependencies == null) {
+                return Map.of();
+            }
+            Map<String, String> result = new java.util.LinkedHashMap<>();
+            for (Map.Entry<String, JsonElement> entry : dependencies.entrySet()) {
+                result.put(entry.getKey(), entry.getValue().getAsString());
+            }
+            return result;
+        } catch (IOException | RuntimeException e) {
+            LOG.warning("Failed to read the profile manifest " + manifest, e);
+            return Map.of();
+        }
+    }
+
     /// Reads the bundle list a profile declares.
     ///
     /// @param home    the `DSH_HOME` holding the profile

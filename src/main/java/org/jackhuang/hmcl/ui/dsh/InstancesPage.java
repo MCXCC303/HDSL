@@ -134,13 +134,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 instance.profile(),
                 i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
         row.setTitleTrailing(remove);
-        row.setOnAction(event -> {
-            try {
-                FXUtils.showFileInExplorer(instance.instanceDirectory());
-            } catch (DshException e) {
-                Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-            }
-        });
+        row.setOnAction(event -> Controllers.navigate(new InstancePage(instance)));
         return row;
     }
 
