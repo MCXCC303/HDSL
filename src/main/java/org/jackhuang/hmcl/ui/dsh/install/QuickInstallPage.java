@@ -197,41 +197,26 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// running that version shares it.
     ///
     /// @param card the card to update after a choice
+    /// Opens the boot library chooser.
+    ///
+    /// The chooser is a page of its own, as the original's is, rather than a
+    /// dropdown in a dialog: a dropdown cannot be left without choosing, has
+    /// nowhere to put a list longer than the screen, and gives the versions no
+    /// room to say what they are.
     private void chooseAppBoot() {
-        List<String> versions = availableAppBootVersions();
-        if (versions.isEmpty()) {
-            Controllers.dialog(i18n("dsh.install.app_boot.unavailable"),
-                    i18n("dsh.install.app_boot"), MessageType.WARNING);
-            return;
-        }
-
-        LineSelectButton<String> chooser = new LineSelectButton<>();
-        chooser.setTitle(i18n("dsh.install.app_boot"));
-        chooser.setSubtitle(i18n("dsh.install.app_boot.hint"));
-        chooser.setItems(versions);
-        chooser.setValue(currentAppBoot());
-        // Choosing the launcher's own version is the safe answer, so it is the
-        // one already selected; anything else is a departure the warning covers.
-
-        ComponentList list = new ComponentList();
-        list.getContent().add(chooser);
-        Controllers.dialog(list);
-
-        chooser.valueProperty().addListener((observable, was, chosen) -> {
-            if (chosen == null || chosen.isBlank() || chosen.equals(currentVersion())) {
-                controller.getSettings().remove(DshInstallWizardProvider.APP_BOOT);
-                appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
-                return;
-            }
-            // The warning says what the choice costs: the pairing is not a
-            // preference, and it belongs to the installed version rather than to
-            // this instance, so every instance running that version is affected.
-            Controllers.dialog(i18n("dsh.install.app_boot.warning", chosen, currentVersion()),
-                    i18n("dsh.install.app_boot"), MessageType.WARNING, () -> {
+        Controllers.getDecorator().startWizard(
+                new AppBootWizardProvider(currentVersion(), chosen -> {
+                    if (chosen == null) {
+                        controller.getSettings().remove(DshInstallWizardProvider.APP_BOOT);
+                        appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
+                    } else {
                         controller.getSettings().put(DshInstallWizardProvider.APP_BOOT, chosen);
                         appBootStatus.set(i18n("dsh.install.app_boot.chosen", chosen));
-                    });
-        });
+                    }
+                }),
+                // The wizard's category names the task, its page names the step,
+                // as the original's "安装新游戏 - 选择 Fabric API 版本" does.
+                i18n("dsh.instance.create"));
     }
 
     /// Lists the published boot library versions.
