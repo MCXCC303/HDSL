@@ -373,6 +373,36 @@ public final class DshSessions {
         }
     }
 
+    /// Deletes a session and its projection-cache row.
+    ///
+    /// The cache is derived, but it is removed with the log so the target does
+    /// not keep a title for a history that no longer exists.
+    ///
+    /// @param instance the instance the session belongs to
+    /// @param session  the session to delete
+    /// @throws DshException when the session cannot be removed
+    public static void delete(DshInstance instance, DshSession session) throws DshException {
+        if (session.locked()) {
+            throw new DshException("This session is open; close it in DeepSeek Harness before deleting it");
+        }
+        try {
+            deleteTree(session.directory());
+            Files.deleteIfExists(cacheFile(instance.homeDirectory(), session.id()));
+            // Remove the workspace directory when it held nothing else, so an
+            // emptied slug does not linger in the home.
+            Path slug = session.directory().getParent();
+            if (slug != null && Files.isDirectory(slug)) {
+                try (var children = Files.list(slug)) {
+                    if (children.findAny().isEmpty()) {
+                        Files.deleteIfExists(slug);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new DshException("Failed to delete the session: " + e.getMessage(), e);
+        }
+    }
+
     /// Returns the projection-cache file for a session.
     ///
     /// @param home      the `DSH_HOME`

@@ -81,7 +81,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     private final TabHeader.Tab<InstanceSettingsPage> settingsTab = new TabHeader.Tab<>("dshInstanceSettings");
 
     /// The sessions tab.
-    private final TabHeader.Tab<SessionManagementPane> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
+    private final TabHeader.Tab<SessionListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
 
     /// The plugins tab.
     private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
@@ -119,7 +119,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
-        sessionsTab.setNodeSupplier(() -> new SessionManagementPane(instance));
+        sessionsTab.setNodeSupplier(() -> new SessionListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
         browseTab.setNodeSupplier(() -> new BrowsePane(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
