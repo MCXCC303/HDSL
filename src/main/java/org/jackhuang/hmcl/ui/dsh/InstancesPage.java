@@ -83,23 +83,20 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// The card listing the instances.
     private final JFXListView<DshInstance> instanceList = buildInstanceList();
 
-    /// The filter typed into the search box, or `null` when nothing is typed.
-    private @Nullable String filter;
-
     /// Holds one row per folder the launcher knows about.
     private final VBox directoryBox = new VBox();
 
     /// The field the search toolbar carries.
-    private final JFXTextField searchField = new JFXTextField();
+
 
     /// The toolbar of buttons, shown when not searching.
-    private final HBox normalBar = new HBox();
+    /// The page's toolbar, which swaps itself for a search field.
+    private final ListSearchBar toolbar = new ListSearchBar(this::refresh);
 
     /// The search toolbar, shown in place of the buttons.
-    private final HBox searchBar = new HBox();
 
-    /// Holds whichever toolbar is current.
-    private final StackPane toolbarHost = new StackPane();
+
+
 
     /// Creates the instance list page.
     public InstancesPage() {
@@ -193,10 +190,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 .toList());
 
         List<DshInstance> instances = new ArrayList<>(DshInstanceManager.listIn(directory.directory()));
-        if (filter != null && !filter.isBlank()) {
-            String needle = filter.trim().toLowerCase(Locale.ROOT);
-            instances.removeIf(instance -> !instance.id().toLowerCase(Locale.ROOT).contains(needle));
-        }
+        instances.removeIf(instance -> !toolbar.accepts(instance.id()));
 
         instanceList.getItems().setAll(instances);
         instanceList.refresh();
@@ -215,52 +209,11 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // the original's toolbar is exactly that, so anything added here is a
         // height the original does not have. Mine was eight pixels taller for
         // the four added on each side.
-        normalBar.setAlignment(Pos.CENTER_LEFT);
-        // Two buttons, as the running original has. Its source carries four —
-        // adding an instance and importing a modpack among them — but the
-        // release in use keeps both in the sidebar, and the release is what this
-        // is being matched against.
-        normalBar.getChildren().setAll(
-                ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
-                ToolbarListPageSkin.createToolbarButton2(i18n("search"), SVG.SEARCH, this::showSearch));
-
-        searchField.setPromptText(i18n("search"));
-        HBox.setHgrow(searchField, Priority.ALWAYS);
-        searchField.textProperty().addListener((observable, was, value) -> {
-            filter = value;
-            refresh();
-        });
-
-        // The original builds this with the same factory as the buttons it
-        // replaces, so it has the same height and the same icon size. A toggle
-        // button of the same apparent shape is a different class with different
-        // metrics, and lands a few pixels from where the original's does.
-        JFXButton close = ToolbarListPageSkin.createToolbarButton2(null, SVG.CLOSE, this::hideSearch);
-        FXUtils.installFastTooltip(close, i18n("button.cancel"));
-        FXUtils.onEscPressed(searchField, close::fire);
-
-        // The original pads the search row horizontally and centres it; the
-        // padding is horizontal only, so it costs the row no height.
-        searchBar.setAlignment(Pos.CENTER);
-        searchBar.setPadding(new Insets(0, 5, 0, 5));
-        searchBar.getChildren().setAll(searchField, close);
-
-        toolbarHost.getChildren().setAll(normalBar);
-        return toolbarHost;
-    }
-
-    /// Replaces the toolbar with the search field.
-    private void showSearch() {
-        toolbarHost.getChildren().setAll(searchBar);
-        searchField.requestFocus();
-    }
-
-    /// Restores the toolbar and clears the filter.
-    private void hideSearch() {
-        searchField.clear();
-        filter = null;
-        toolbarHost.getChildren().setAll(normalBar);
-        refresh();
+        // The page's own buttons; the shared bar adds the search button and the
+        // field it opens, so every list page opens its search the same way.
+        toolbar.setButtons(
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh));
+        return toolbar;
     }
 
     /// Drops a folder from the list.
