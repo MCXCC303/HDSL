@@ -52,7 +52,7 @@ class DshSessionsTest {
     private static DshInstance instance(String id, Path home, String version) {
         return new DshInstance(id, version, "web", "/tmp",
                 DshNodeRuntime.SYSTEM, DshHomeMode.CUSTOM, home.toString(),
-                List.of(), Map.of(), DshPortMode.AUTO, 0, 0L);
+                List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), DshPortMode.AUTO, 0, 0L);
     }
 
     /// Writes a session directory and its projection-cache row.
