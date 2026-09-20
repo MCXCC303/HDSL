@@ -39,49 +39,72 @@ public final class DshCli {
     }
 
     /// The commands understood by the launcher.
+    ///
+    /// A command either works on something named on the command line or reports
+    /// on the launcher itself; the second kind takes no argument and is marked
+    /// as such, so adding one cannot be forgotten in a check elsewhere.
     public enum Command {
         /// Prints a full diagnostics report.
-        DOCTOR,
+        DOCTOR(true),
         /// Prints the installed versions.
-        LIST_INSTALLED,
+        LIST_INSTALLED(true),
         /// Prints the versions published to the npm registry.
-        LIST_REMOTE,
+        LIST_REMOTE(true),
         /// Installs one version.
-        INSTALL,
+        INSTALL(false),
         /// Removes one version.
-        UNINSTALL,
+        UNINSTALL(false),
         /// Prints the instances.
-        LIST_INSTANCES,
+        LIST_INSTANCES(true),
         /// Creates an instance.
-        CREATE_INSTANCE,
+        CREATE_INSTANCE(false),
         /// Removes an instance.
-        DELETE_INSTANCE,
+        DELETE_INSTANCE(false),
         /// Launches an instance and blocks until it exits.
-        LAUNCH,
+        LAUNCH(false),
         /// Prints the instances that are currently running.
-        LIST_RUNNING,
+        LIST_RUNNING(true),
         /// Stops a running instance.
-        STOP,
+        STOP(false),
         /// Lists the Node runtimes the launcher installed.
-        LIST_RUNTIMES,
+        LIST_RUNTIMES(true),
         /// Lists the Node releases available for this platform.
-        LIST_NODE_VERSIONS,
+        LIST_NODE_VERSIONS(true),
         /// Installs a Node runtime.
-        INSTALL_NODE,
+        INSTALL_NODE(false),
         /// Removes an installed Node runtime.
-        UNINSTALL_NODE,
+        UNINSTALL_NODE(false),
         /// Installs a plugin into an instance's profile.
-        INSTALL_PLUGIN,
+        INSTALL_PLUGIN(false),
         /// Sends one prompt over the Agent Client Protocol and prints the reply.
-        ACP_PROMPT,
+        ACP_PROMPT(false),
         /// Prints the sessions of an instance.
-        LIST_SESSIONS,
+        LIST_SESSIONS(false),
         /// Moves a session to another instance.
-        MIGRATE_SESSION,
+        MIGRATE_SESSION(false),
         /// Launches an instance and prints its output.
-        TEST_LAUNCH,
+        TEST_LAUNCH(false),
         /// Copies sessions from another home into an instance.
-        IMPORT_SESSIONS
+        IMPORT_SESSIONS(false),
+        /// Prints the folders the launcher looks for instances in.
+        LIST_DIRECTORIES(true),
+        /// Adds a folder to that list.
+        ADD_DIRECTORY(false)
+        ;
+
+        /// Whether this command reports on the launcher itself rather than on something named.
+        private final boolean acceptsNoSubject;
+
+        Command(boolean acceptsNoSubject) {
+            this.acceptsNoSubject = acceptsNoSubject;
+        }
+
+        /// Reports whether this command works without a named subject.
+        ///
+        /// @return whether the command takes no argument
+        public boolean acceptsNoSubject() {
+            return acceptsNoSubject;
+        }
     }
 
     /// A parsed command line.
@@ -134,6 +157,8 @@ public final class DshCli {
                 && !args.contains("--migrate-session")
                 && !args.contains("--test-launch")
                 && !args.contains("--import-sessions")
+                && !args.contains("--list-directories")
+                && !args.contains("--add-directory")
                 && !args.contains("--help")
                 && !args.contains("-h")) {
             return null;
@@ -181,6 +206,11 @@ public final class DshCli {
                 }
                 case "--uninstall-node" -> {
                     command = Command.UNINSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--list-directories" -> command = Command.LIST_DIRECTORIES;
+                case "--add-directory" -> {
+                    command = Command.ADD_DIRECTORY;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--import-sessions" -> {
@@ -243,13 +273,11 @@ public final class DshCli {
     /// @param err        the stream for error output
     /// @return the process exit code
     public static int run(Invocation invocation, PrintStream out, PrintStream err) {
-        if (invocation.showHelp() || (invocation.command() != Command.DOCTOR && invocation.subject() == null
-                && invocation.command() != Command.LIST_INSTALLED
-                && invocation.command() != Command.LIST_REMOTE
-                && invocation.command() != Command.LIST_INSTANCES
-                && invocation.command() != Command.LIST_RUNNING
-                && invocation.command() != Command.LIST_RUNTIMES
-                && invocation.command() != Command.LIST_NODE_VERSIONS)) {
+        // Whether a command needs an argument is a property of the command, not
+        // a list kept here: the list was a growing whitelist that silently
+        // rejected every new command added without it.
+        if (invocation.showHelp()
+                || (!invocation.command().acceptsNoSubject() && invocation.subject() == null)) {
             printUsage(out);
             return invocation.showHelp() ? 0 : 1;
         }
@@ -354,6 +382,12 @@ public final class DshCli {
                     out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
+                case LIST_DIRECTORIES -> {
+                    return listDirectories(out);
+                }
+                case ADD_DIRECTORY -> {
+                    return addDirectory(invocation, out, err);
+                }
                 case IMPORT_SESSIONS -> {
                     return importSessions(invocation, out, err);
                 }
@@ -407,6 +441,46 @@ public final class DshCli {
         }
     }
 
+    /// Prints the folders the launcher looks for instances in.
+    ///
+    /// @param out the stream for normal output
+    /// @return the process exit code
+    private static int listDirectories(PrintStream out) {
+        var selected = org.jackhuang.hmcl.setting.GameDirectoryManager.selected();
+        for (var directory : org.jackhuang.hmcl.setting.GameDirectoryManager.directories()) {
+            out.println((directory.id().equals(selected.id()) ? "* " : "  ")
+                    + directory.displayName()
+                    + (directory.isDefault() ? "  [default]" : "")
+                    + "  " + directory.path()
+                    + "  " + org.jackhuang.hmcl.setting.GameDirectoryManager.countInstances(directory)
+                    + " instance(s)");
+        }
+        return 0;
+    }
+
+    /// Adds a folder to the list and reports what it holds.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int addDirectory(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --add-directory needs a path");
+            return 1;
+        }
+        try {
+            var added = org.jackhuang.hmcl.setting.GameDirectoryManager.add(
+                    Path.of(invocation.arguments().get(0)));
+            int count = org.jackhuang.hmcl.setting.GameDirectoryManager.countInstances(added);
+            out.println("Added " + added.displayName() + " (" + added.path() + ")");
+            out.println("Found " + count + " instance(s); nothing was copied or moved");
+            return 0;
+        } catch (IllegalArgumentException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
     /// Copies another home's sessions into an instance.
     ///
     /// The source is read and never written: the point of importing is to take
@@ -757,6 +831,8 @@ public final class DshCli {
                 sessions:
                   --acp-prompt <id> <text>         send one prompt over ACP
                   --list-sessions <id>             list an instance's sessions
+                  --list-directories               the folders instances are looked for in
+                  --add-directory <path>            add one, scanning it for instances
                   --import-sessions <id> [--from <home>]
                                                    copy sessions in from another home
                   --test-launch <id>               launch and print its output

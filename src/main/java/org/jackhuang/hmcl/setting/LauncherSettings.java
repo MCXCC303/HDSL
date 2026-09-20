@@ -102,6 +102,25 @@ public final class LauncherSettings {
     private final ObjectProperty<@Nullable String> launcherFontFamily =
             new SimpleObjectProperty<>(this, LAUNCHER_FONT_FAMILY, null);
 
+    /// The Node runtime new instances are given.
+    ///
+    /// An instance may pin its own; this is what "follow the global setting"
+    /// resolves to, and what a new instance starts with.
+    private final ObjectProperty<String> defaultNodeRuntime =
+            new SimpleObjectProperty<>(this, DEFAULT_NODE_RUNTIME, org.jackhuang.hmcl.dsh.DshNodeRuntime.SYSTEM);
+
+    /// The DSH_HOME policy new instances are given.
+    private final ObjectProperty<org.jackhuang.hmcl.dsh.DshHomeMode> defaultHomeMode =
+            new SimpleObjectProperty<>(this, DEFAULT_HOME_MODE, org.jackhuang.hmcl.dsh.DshHomeMode.ISOLATED);
+
+    /// The folders the launcher looks for instances in.
+    private final ObjectProperty<java.util.List<GameDirectory>> gameDirectories =
+            new SimpleObjectProperty<>(this, GAME_DIRECTORIES, java.util.List.of());
+
+    /// The folder whose instances the list shows.
+    private final ObjectProperty<@Nullable String> selectedGameDirectoryId =
+            new SimpleObjectProperty<>(this, SELECTED_GAME_DIRECTORY, GameDirectory.DEFAULT_ID);
+
     private final ObjectProperty<BackgroundType> backgroundType = new SimpleObjectProperty<>(BackgroundType.DEFAULT);
 
     /// The id of the selected built-in wallpaper.
@@ -133,6 +152,18 @@ public final class LauncherSettings {
     /// When the background is loaded relative to the window becoming visible.
     private final ObjectProperty<BackgroundLoadPolicy> backgroundLoadPolicy =
             new SimpleObjectProperty<>(BackgroundLoadPolicy.WAIT_FOR_BACKGROUND);
+
+    /// The key for the default Node runtime new instances are pinned to.
+    public static final String DEFAULT_NODE_RUNTIME = "defaultNodeRuntime";
+
+    /// The key for the default DSH_HOME policy new instances are given.
+    public static final String DEFAULT_HOME_MODE = "defaultHomeMode";
+
+    /// The key for the folders the launcher looks for instances in.
+    public static final String GAME_DIRECTORIES = "gameDirectories";
+
+    /// The key for the folder whose instances are shown.
+    public static final String SELECTED_GAME_DIRECTORY = "selectedGameDirectoryId";
 
     /// The font family used by the interface, or `null` for the platform default.
     public static final String LAUNCHER_FONT_FAMILY = "launcherFontFamily";
@@ -174,6 +205,34 @@ public final class LauncherSettings {
     /// @return the appearance-override set
     public ObservableSet<String> getThemeAppearanceOverrides() {
         return themeAppearanceOverrides;
+    }
+
+    /// Returns the default Node runtime property.
+    ///
+    /// @return the property
+    public ObjectProperty<String> defaultNodeRuntimeProperty() {
+        return defaultNodeRuntime;
+    }
+
+    /// Returns the default DSH_HOME policy property.
+    ///
+    /// @return the property
+    public ObjectProperty<org.jackhuang.hmcl.dsh.DshHomeMode> defaultHomeModeProperty() {
+        return defaultHomeMode;
+    }
+
+    /// Returns the game directory list property.
+    ///
+    /// @return the property
+    public ObjectProperty<java.util.List<GameDirectory>> gameDirectoriesProperty() {
+        return gameDirectories;
+    }
+
+    /// Returns the selected game directory property.
+    ///
+    /// @return the property
+    public ObjectProperty<@Nullable String> selectedGameDirectoryIdProperty() {
+        return selectedGameDirectoryId;
     }
 
     /// Returns the interface font family property.

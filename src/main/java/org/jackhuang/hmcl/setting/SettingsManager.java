@@ -230,6 +230,18 @@ public final class SettingsManager {
         @SerializedName("launcherFontFamily")
         private @Nullable String launcherFontFamily;
 
+        @SerializedName("defaultNodeRuntime")
+        private @Nullable String defaultNodeRuntime;
+
+        @SerializedName("defaultHomeMode")
+        private @Nullable String defaultHomeMode;
+
+        @SerializedName("gameDirectories")
+        private @Nullable java.util.List<GameDirectory> gameDirectories;
+
+        @SerializedName("selectedGameDirectoryId")
+        private @Nullable String selectedGameDirectoryId;
+
         @SerializedName("windowTransparent")
         private @Nullable Boolean windowTransparent;
 
@@ -292,6 +304,10 @@ public final class SettingsManager {
             snapshot.themeColorStyle = settings.themeColorStyleProperty().get().name();
             snapshot.titleBarTransparent = settings.titleBarTransparentProperty().get();
             snapshot.launcherFontFamily = settings.launcherFontFamilyProperty().get();
+            snapshot.defaultNodeRuntime = settings.defaultNodeRuntimeProperty().get();
+            snapshot.defaultHomeMode = settings.defaultHomeModeProperty().get().name();
+            snapshot.gameDirectories = java.util.List.copyOf(settings.gameDirectoriesProperty().get());
+            snapshot.selectedGameDirectoryId = settings.selectedGameDirectoryIdProperty().get();
             snapshot.windowTransparent = settings.windowTransparentProperty().get();
             snapshot.backgroundType = settings.backgroundTypeProperty().get().name();
             snapshot.builtinBackgroundId = settings.builtinBackgroundIdProperty().get();
@@ -334,6 +350,20 @@ public final class SettingsManager {
             }
             if (themeColorStyle != null) {
                 settings.themeColorStyleProperty().set(parseEnum(ColorStyle.class, themeColorStyle, ColorStyle.FIDELITY));
+            }
+            if (defaultNodeRuntime != null) {
+                settings.defaultNodeRuntimeProperty().set(defaultNodeRuntime);
+            }
+            if (defaultHomeMode != null) {
+                settings.defaultHomeModeProperty().set(parseEnum(
+                        org.jackhuang.hmcl.dsh.DshHomeMode.class, defaultHomeMode,
+                        org.jackhuang.hmcl.dsh.DshHomeMode.ISOLATED));
+            }
+            if (gameDirectories != null) {
+                settings.gameDirectoriesProperty().set(java.util.List.copyOf(gameDirectories));
+            }
+            if (selectedGameDirectoryId != null) {
+                settings.selectedGameDirectoryIdProperty().set(selectedGameDirectoryId);
             }
             if (launcherFontFamily != null) {
                 settings.launcherFontFamilyProperty().set(launcherFontFamily);

@@ -52,6 +52,26 @@ public final class DshInstanceManager {
     /// rather than failing the whole listing.
     ///
     /// @return the known instances
+    public static List<DshInstance> listIn(java.nio.file.Path root) {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        List<DshInstance> instances = new ArrayList<>();
+        try (var children = Files.list(root)) {
+            for (Path child : children.filter(Files::isDirectory).toList()) {
+                DshInstance instance = read(child);
+                if (instance != null) {
+                    instances.add(instance);
+                }
+            }
+        } catch (IOException e) {
+            LOG.warning("Failed to read instances in " + root, e);
+            return List.of();
+        }
+        instances.sort(java.util.Comparator.comparing(DshInstance::createdAt).reversed());
+        return List.copyOf(instances);
+    }
+
     public static List<DshInstance> list() {
         List<DshInstance> instances = new ArrayList<>();
         Path root = DshPaths.INSTANCES;
