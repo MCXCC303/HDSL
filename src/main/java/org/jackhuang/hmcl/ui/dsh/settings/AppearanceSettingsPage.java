@@ -98,14 +98,16 @@ public final class AppearanceSettingsPage extends ScrollPane {
 
         FXUtils.smoothScrolling(this);
 
+        // Grouped as the original groups them: the theme pack has a section to
+        // itself, and the colours, font, animations and window belong to one
+        // section called appearance. A section per setting puts the section's
+        // name and its only row's name next to each other saying the same word.
         root.getChildren().addAll(
                 sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
-                sectionTitle(i18n("dsh.settings.theme_color")), buildThemeColorList(),
-                sectionTitle(i18n("dsh.settings.font")), buildFontList(),
-                sectionTitle(i18n("dsh.settings.animations")), buildAnimationList(),
+                sectionTitle(i18n("settings.launcher.appearance")),
+                buildThemeColorList(), buildFontList(), buildAnimationList(), buildWindowList(),
                 sectionTitle(i18n("dsh.settings.background")), buildBackgroundSourceList(),
-                buildBackgroundDetailList(),
-                sectionTitle(i18n("dsh.settings.window")), buildWindowList());
+                buildBackgroundDetailList());
     }
 
     /// Builds the theme colour section.
@@ -237,7 +239,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
         });
 
         LineSelectButton<String> brightness = new LineSelectButton<>();
-        brightness.setTitle(i18n("dsh.settings.theme.brightness"));
+        brightness.setTitle(i18n("settings.launcher.brightness"));
         brightness.setItems(BRIGHTNESS_MODES);
         brightness.setNullSafeConverter(mode -> i18n("dsh.settings.theme.brightness." + mode));
         brightness.setValue(settings().themeBrightnessModeProperty().get());
