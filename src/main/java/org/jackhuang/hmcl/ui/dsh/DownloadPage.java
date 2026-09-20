@@ -108,23 +108,33 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
-        // ComponentList is what gives the page its surface: it wraps each child
-        // in a node wearing `options-list-item`, whose rule carries
-        // `-monet-surface` — an opaque background. A bare VBox has none, so the
-        // wallpaper shows through the list and every colour depends on what is
-        // behind the window.
+        // The original puts the toolbar above the list rather than inside it:
+        // a BorderPane's top, carrying the `card` class and inset by ten on
+        // three sides. `card` is what makes it float — a surface-container at
+        // eighty per cent with a drop shadow — and sitting on the list instead
+        // of in it is what lets the shadow read.
+        //
+        // The list below keeps the ComponentList surface: it wraps each child in
+        // a node wearing `options-list-item`, whose rule carries `-monet-surface`.
         StackPane pane = new StackPane();
         pane.setPadding(new Insets(10));
         pane.getStyleClass().add("notice-pane");
 
         ComponentList root = new ComponentList();
         root.getStyleClass().add("no-padding");
-        root.getContent().add(buildToolbar());
         root.getContent().add(releaseList);
         VBox.setVgrow(releaseList, Priority.ALWAYS);
         pane.getChildren().setAll(root);
 
-        setCenter(pane);
+        Node toolbar = buildToolbar();
+        toolbar.getStyleClass().add("card");
+        BorderPane.setMargin(toolbar, new Insets(10, 10, 0, 10));
+
+        BorderPane layout = new BorderPane();
+        layout.setTop(toolbar);
+        layout.setCenter(pane);
+
+        setCenter(layout);
 
         releaseList.setCellFactory(view -> new ReleaseCell(this));
 
