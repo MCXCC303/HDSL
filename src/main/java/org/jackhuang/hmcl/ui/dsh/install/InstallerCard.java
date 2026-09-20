@@ -23,6 +23,9 @@ import javafx.beans.property.StringProperty;
 import javafx.css.PseudoClass;
 import javafx.scene.Cursor;
 import javafx.scene.input.MouseButton;
+import javafx.scene.Node;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -62,20 +65,45 @@ public final class InstallerCard extends StackPane {
     /// @param status the state of the choice
     /// @param onOpen what opening the card does, or `null` for a card that
     ///               states something rather than offering a choice
+    /// Creates a card whose icon is a picture.
+    ///
+    /// @param icon   the image, or `null` for none
+    /// @param name   the card's name
+    /// @param status the line beneath it
+    /// @param onOpen run when the card is opened, or `null` when it only states
+    public InstallerCard(@Nullable Image icon, String name, String status, @Nullable Runnable onOpen) {
+        this(icon == null ? null : new ImageView(icon), name, status, onOpen);
+    }
+
+    /// Creates a card whose icon is one of the launcher's marks.
+    ///
+    /// @param icon   the mark, or `null` for none
+    /// @param name   the card's name
+    /// @param status the line beneath it
+    /// @param onOpen run when the card is opened, or `null` when it only states
     public InstallerCard(@Nullable SVG icon, String name, String status, @Nullable Runnable onOpen) {
+        this(icon == null ? null : new SVGContainer(icon, 32), name, status, onOpen);
+    }
+
+    /// Creates a card.
+    ///
+    /// @param icon   the icon node, already sized, or `null` for none
+    /// @param name   the card's name
+    /// @param status the line beneath it
+    /// @param onOpen run when the card is opened, or `null` when it only states
+    private InstallerCard(@Nullable Node icon, String name, String status, @Nullable Runnable onOpen) {
         VBox pane = new VBox();
         pane.getStyleClass().add("installer-item");
         pane.pseudoClassStateChanged(CARD, true);
         pane.setAlignment(Pos.CENTER);
 
         if (icon != null) {
-            SVGContainer image = new SVGContainer(icon, 32);
-            image.setMouseTransparent(true);
-            image.getStyleClass().add("installer-item-image");
+            icon.setMouseTransparent(true);
+            icon.getStyleClass().add("installer-item-image");
             // The original's spacing: nothing between the children, and the icon
             // held off the top and bottom edges instead.
-            VBox.setMargin(image, new Insets(8, 0, 8, 0));
-            pane.getChildren().add(image);
+            VBox.setMargin(icon, new Insets(8, 0, 8, 0));
+            pane.getChildren().add(icon);
         }
 
         Label nameLabel = new Label(name);
@@ -90,19 +118,16 @@ public final class InstallerCard extends StackPane {
         pane.getChildren().add(statusLabel);
         setStatus(status);
 
-        JFXButton arrow = new JFXButton();
-        arrow.setGraphic(SVG.ARROW_FORWARD.createIcon());
-        arrow.getStyleClass().add("toggle-icon4");
-        if (onOpen == null) {
-            // The original's cards all carry the arrow, including the one that
-            // states the version rather than offering it; they line up because
-            // they hold the same children. A card that opens nothing simply does
-            // nothing, rather than losing the row and sitting a line higher.
-            arrow.setDisable(true);
-        } else {
+        if (onOpen != null) {
+            // No arrow when there is nothing to open: the version is settled on
+            // the page before this one, so the card states it rather than
+            // offering it. A disabled arrow is still an arrow.
+            JFXButton arrow = new JFXButton();
+            arrow.setGraphic(SVG.ARROW_FORWARD.createIcon());
+            arrow.getStyleClass().add("toggle-icon4");
             arrow.setOnAction(event -> onOpen.run());
+            pane.getChildren().add(arrow);
         }
-        pane.getChildren().add(arrow);
 
         StackPane wrapper = new StackPane();
         wrapper.getStyleClass().add("installer-item-wrapper");

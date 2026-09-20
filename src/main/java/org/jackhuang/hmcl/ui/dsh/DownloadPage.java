@@ -23,6 +23,10 @@ import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXTextField;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.event.Event;
+import javafx.scene.input.MouseEvent;
+import javafx.scene.input.MouseButton;
+import javafx.scene.Cursor;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -361,7 +365,25 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
             StackPane.setMargin(row, new Insets(10, 16, 10, 16));
             root.getChildren().setAll(row);
 
-            this.graphic = new RipplerContainer(root);
+            // The whole row opens the install page, as its arrow does — the
+            // arrow is the mark that says so, not the only place that works.
+            // The two buttons take their clicks first, so a press on either does
+            // not also open what the row would.
+            for (Node button : new Node[]{link, install}) {
+                button.addEventFilter(MouseEvent.MOUSE_CLICKED, Event::consume);
+            }
+
+            RipplerContainer rippler = new RipplerContainer(root);
+            rippler.setOnMouseClicked(event -> {
+                DshRelease release = getItem();
+                if (release != null && event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 1) {
+                    page.install(release);
+                    event.consume();
+                }
+            });
+            root.setCursor(Cursor.HAND);
+
+            this.graphic = rippler;
             setGraphic(graphic);
         }
 

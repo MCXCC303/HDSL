@@ -37,6 +37,7 @@ import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
+import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.dsh.DshPresetCatalog;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
@@ -249,7 +250,12 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
     ///
     /// @return the card
     private Node buildVersionCard() {
-        return new InstallerCard(SVG.DOWNLOAD, i18n("dsh.install.version.card"),
+        // The launcher's own mark, as every list of versions carries, and the
+        // name of the thing rather than the word "version": the card states which
+        // DeepSeek Harness the instance will run. No arrow — the version was
+        // settled on the page before this one, so there is nothing to open.
+        return new InstallerCard(DshInstanceIcon.DSH_APPLICATION.load(),
+                i18n("dsh.install.version.name"),
                 currentVersion() == null ? i18n("dsh.install.version.none") : currentVersion(),
                 null);
     }
