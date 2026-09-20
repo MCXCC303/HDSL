@@ -703,3 +703,94 @@ dsh 自身没有 session 导入/导出接口；ACP 只有 `session/list|resume|c
 
 先做 6（最小、独立、立刻改善测试体验），再做 1（独立），
 然后 2 与 4 合并设计（都动实例的存储与创建），最后 3 和 5。
+
+---
+
+## ②+④ 合并设计（已定稿）
+
+### 决定
+
+- **不迁移、不复制任何现有实例。** 现有 `~/.local/share/hmcl-dsh/instances/*` 原地视为
+  **默认游戏目录下的实例**，零改动。这与 HMCL 引入游戏目录时的动作一致：只扫描，不动数据。
+- **全局设置只影响新实例与「跟随全局」的实例**，不回溯修改已有实例的自有值。
+
+### ④ 游戏目录
+
+```
+GameDirectory(id, path, @Nullable customName)
+```
+
+- 持久化在 `launcher-state.json`，与实例列表同处
+- 默认目录 = 现有的 `DshPaths.INSTANCES`，**开箱即用，既有实例自动归属**
+- 「添加实例文件夹」：选定目录后**扫描**其子目录，凡含 `instance.json` 的即视为实例
+- 侧栏「更改游戏目录」切换当前目录；实例列表按当前目录过滤
+- 不因移除目录而删除任何实例文件
+
+**落地方式**：`DshInstanceManager` 从「单一目录」改为「按目录读取」。
+`DshPaths.instanceDirectory(id)` 保持不变（默认目录下的路径），新增
+`DshInstanceManager.listIn(GameDirectory)`。
+
+### ② 创建页与「环境」归属
+
+**创建实例页**复刻原版「安装新游戏」：只有实例名称可编辑。
+
+```
+实例名称  [instance-4]
+┌──────────────┬──────────────┬──────────────┐
+│     dsh      │ Better       │ Context      │
+│  0.1.5-rc.2  │ Sidebar      │              │
+│      →       │    不安装     │    不安装     │
+└──────────────┴──────────────┴──────────────┘
+                                    立即安装
+```
+
+卡片点击 → 选择页 → 返回。**复用现有 `VersionSelectPage` / `PresetChoicePage`**，
+它们已经是「点进去、选完返回」的形态。
+
+移除三问：工作目录、DSH_HOME 策略、Node.js。
+
+**全局设置新增「环境」分组**（对标 HMCL 的 Java 管理位置）：
+
+```
+环境
+┌────────────────────────────────────┐
+│ 默认 Node.js 运行时   系统 Node.js ▾ │
+│ 默认 DSH_HOME 策略    独立 ▾        │
+└────────────────────────────────────┘
+```
+
+**实例设置**对应两项改为可选「跟随全局设置」：
+
+| 项 | 取值 |
+|---|---|
+| Node.js 运行时 | 跟随全局 / 系统 / 某个托管运行时 |
+| DSH_HOME 策略 | 跟随全局 / 独立 / 版本共享 / 自定义 |
+
+### 继承语义的实现
+
+HMCL 用 `InheritableProperty`，但那是个未移植的属性框架（属切点），
+**不为一个开关引入整套框架**。改用哨兵值：
+
+| 字段 | 现状 | 改为 |
+|---|---|---|
+| `nodeRuntime` | `@Nullable String`，null = 系统 | null / `"global"` = **跟随全局**；`"system"` = 系统；其余 = 托管版本 |
+| `homeMode` | 非空 `DshHomeMode` | 新增 `DshHomeMode.GLOBAL` = **跟随全局** |
+
+`nodeRuntime` 已是可空，既有实例的 null 从「系统」变为「跟随全局」，
+而全局默认值是 `system`，**行为不变**。
+`homeMode` 加一个枚举常量比改成可空更省事，也不会让既有 JSON 失效。
+
+新增全局设置：
+- `defaultNodeRuntime`（默认 `system`）
+- `defaultHomeMode`（默认 `ISOLATED`）
+
+两者都要同步加进 `SettingsManager.Snapshot`——**漏了会表现为「设置存了但下次启动丢失」**，
+这张坑表在 `CONTRIBUTING.md` 里。
+
+### 验证
+
+- `--list-instances` 增加目录维度输出
+- 新增 `--list-directories` / `--add-directory <path>`
+- 用 `--page create` 截图核对创建页形态
+- 用 `--page settings/general` 截图核对「环境」分组
+- 断言：改动前后既有实例的 `instance.json` 内容与位置完全不变
