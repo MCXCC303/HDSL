@@ -108,28 +108,23 @@ public final class DshAcpClient implements AutoCloseable {
 
     /// Starts an ACP child for an instance.
     ///
-    /// @param instance the instance whose profile speaks ACP
-    /// @param listener the listener for session events
-    /// @throws DshException when the runtime is missing or the child cannot start
-    private DshAcpClient(DshInstance instance, Listener listener) throws DshException {
+    /// @param instance    the instance whose profile speaks ACP
+    /// @param command     the exact command to run
+    /// @param workingDirectory the directory sessions are scoped to
+    /// @param environment extra environment variables for the child
+    /// @param listener    the listener for session events
+    /// @throws DshException when the child cannot start
+    private DshAcpClient(DshInstance instance,
+                         List<String> command,
+                         Path workingDirectory,
+                         Map<String, String> environment,
+                         Listener listener) throws DshException {
         this.instance = instance;
         this.listener = listener;
 
-        DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
-        DshVersion version = DshVersionManager.findInstalled(instance.version());
-        if (version == null) {
-            throw new DshException("DeepSeek Harness " + instance.version() + " is not installed");
-        }
-
-        List<String> command = List.of(
-                runtime.node().toString(),
-                version.binScript().toString(),
-                "--profile", "acp");
-
         ProcessBuilder builder = new ProcessBuilder(command);
-        builder.directory(instance.workspacePath().toFile());
-        builder.environment().put("DSH_HOME", instance.homeDirectory().toString());
-        builder.environment().putAll(instance.environment());
+        builder.directory(workingDirectory.toFile());
+        builder.environment().putAll(environment);
 
         try {
             this.process = new ManagedProcess(builder);
@@ -156,14 +151,65 @@ public final class DshAcpClient implements AutoCloseable {
         this.readerThread.start();
     }
 
-    /// Starts a client and completes the ACP handshake.
+    /// Builds the command that boots an instance's profile in ACP mode.
+    ///
+    /// @param instance the instance
+    /// @return the command
+    /// @throws DshException when the runtime or version is unavailable
+    private static List<String> commandFor(DshInstance instance) throws DshException {
+        DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
+        DshVersion version = DshVersionManager.findInstalled(instance.version());
+        if (version == null) {
+            throw new DshException("DeepSeek Harness " + instance.version() + " is not installed");
+        }
+        return List.of(
+                runtime.node().toString(),
+                version.binScript().toString(),
+                "--profile", "acp");
+    }
+
+    /// Builds the child environment for an instance.
+    ///
+    /// @param instance the instance
+    /// @return the environment additions
+    /// @throws DshException when the instance's home cannot be resolved
+    private static Map<String, String> environmentFor(DshInstance instance) throws DshException {
+        Map<String, String> environment = new java.util.LinkedHashMap<>();
+        // DSH_* cannot come from a .env file: upstream rejects those names there.
+        environment.put("DSH_HOME", instance.homeDirectory().toString());
+        environment.putAll(instance.environment());
+        return environment;
+    }
+
+    /// Starts a client for a DeepSeek Harness instance.
     ///
     /// @param instance the instance to talk to
     /// @param listener the listener for session events
     /// @return the connected client
     /// @throws DshException when the child cannot start or the handshake fails
     public static DshAcpClient connect(DshInstance instance, Listener listener) throws DshException {
-        DshAcpClient client = new DshAcpClient(instance, listener);
+        return connect(instance, commandFor(instance), instance.workspacePath(), environmentFor(instance), listener);
+    }
+
+    /// Starts a client over an explicitly supplied transport.
+    ///
+    /// Separated from [#connect(DshInstance, Listener)] so the protocol layer can
+    /// be exercised against a stub peer — the streaming path otherwise needs a
+    /// live model credential to observe.
+    ///
+    /// @param instance         the instance the session is attributed to
+    /// @param command          the exact command to run
+    /// @param workingDirectory the directory sessions are scoped to
+    /// @param environment      extra environment variables for the child
+    /// @param listener         the listener for session events
+    /// @return the connected client
+    /// @throws DshException when the child cannot start or the handshake fails
+    public static DshAcpClient connect(DshInstance instance,
+                                       List<String> command,
+                                       Path workingDirectory,
+                                       Map<String, String> environment,
+                                       Listener listener) throws DshException {
+        DshAcpClient client = new DshAcpClient(instance, command, workingDirectory, environment, listener);
         try {
             client.handshake();
         } catch (DshException e) {

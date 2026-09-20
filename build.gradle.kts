@@ -89,6 +89,17 @@ dependencies {
     for (module in listOf("base", "graphics", "controls")) {
         implementation("org.openjfx:javafx-$module:$javafxVersion:$javafxPlatform")
     }
+
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
+    testLogging {
+        events("passed", "failed", "skipped")
+        showStandardStreams = true
+    }
 }
 
 // --------------------------------------------------------------- resources ---

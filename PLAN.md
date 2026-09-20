@@ -23,7 +23,7 @@
 | **M7** | Node.js 运行时管理：虚拟环境安装多版本 node/npm（对标 HMCL 的 Java 管理） | ✅ |
 | **M8** | 安装向导（选版本 → 快速安装页填名称+勾选内容 → 下载等待）+ 快速预设目录 | ✅ |
 | **M9a** | 插件管理页（列出已装插件、生效状态、卸载） | ✅ |
-| **M9b** | 会话与 ACP 原生面板（Java 实现 ACP 客户端） | ✅ 协议打通，模型调用需 API Key |
+| **M9b** | 会话与 ACP 原生面板（Java 实现 ACP 客户端） | ✅ 已用 stub peer 单测覆盖流式路径 |
 | **M10** | Linux 打包（deb + 自解压 sh） | ✅ |
 
 验证截图见 `docs/screenshots/`。
@@ -536,3 +536,17 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 | `cutpoints.txt` | 27 个切点文件及其被阻断的引用 |
 | `bootstrap.sh` | 复制 wrapper / 源码 / 资源到新工程 |
 | `write-build.sh` | 写入 Gradle 构建文件 |
+
+---
+
+## 测试
+
+`./gradlew test`
+
+`DshAcpClientTest` 用一个 stub ACP peer 覆盖会话流式路径。之所以需要 stub：
+真实服务器把 stdout 完全留给协议帧，而且在配置好模型凭据之前不会流式输出助手文本 ——
+也就是说这条路径用真机是测不出来的。
+
+- `streamsAssistantTextAndReportsTheStopReason` —— 逐块送达 `session/update` 通知（顺序正确），
+  并从 `session/prompt` 的响应里取到 stop reason。
+- `closingTheConnectionStopsTheChild` —— 关闭 stdin 即协议自身的关停请求，peer 应当退出。
