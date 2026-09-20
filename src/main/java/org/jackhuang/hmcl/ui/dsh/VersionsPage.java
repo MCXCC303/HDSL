@@ -29,6 +29,7 @@ import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshRelease;
 import org.jackhuang.hmcl.dsh.DshVersion;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
+import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -86,14 +87,11 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
 
     /// Creates the versions page and starts loading.
     public VersionsPage() {
-        getStyleClass().remove("gray-background");
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("dsh.versions.title").toUpperCase(java.util.Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.versions.refresh"), SVG.UPDATE, this::refresh);
         FXUtils.setLimitWidth(sideBar, 200);
-        getLeft().getStyleClass().add("gray-background");
-        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
 
         VBox content = new VBox(10);
@@ -201,8 +199,9 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
         LineButton row = new LineButton();
         row.setTitle(version.version());
         row.setSubtitle(version.directory().toString());
-        row.setTitleTrailing(remove);
-        row.setOnAction(event -> FXUtils.showFileInExplorer(version.directory()));
+        row.setRowTrailing(remove);
+        row.setOnAction(event -> Controllers.getDecorator().startWizard(
+                new DshInstallWizardProvider(version.version()), i18n("dsh.instance.create")));
         return row;
     }
 
@@ -218,7 +217,7 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
         row.setTitle(release.version());
         String tag = release.primaryTag();
         row.setSubtitle(tag == null ? i18n("dsh.versions.channel.prerelease") : tag);
-        row.setTitleTrailing(install);
+        row.setRowTrailing(install);
         row.setOnAction(event -> install(release.version()));
         return row;
     }

@@ -75,9 +75,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The plugins tab.
     private final TabHeader.Tab<ScrollPane> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
-    /// The sessions tab.
-    private final TabHeader.Tab<SessionPanel> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
-
     /// The details tab.
     private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
 
@@ -90,33 +87,24 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The status line above the plugin list.
     private final Label pluginStatus = new Label();
 
-    /// The ACP chat panel. The connection it owns is opened lazily, on the
-    /// first prompt, so merely opening this page starts nothing.
-    private final SessionPanel sessionsPanel;
-
     /// Creates the page for an instance.
     ///
     /// @param instance the instance to show
     public InstancePage(DshInstance instance) {
         this.instance = instance;
-        this.sessionsPanel = new SessionPanel(instance);
         this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(instance.id()));
 
-        getStyleClass().remove("gray-background");
 
         pluginsTab.setNodeSupplier(this::buildPluginsTab);
-        sessionsTab.setNodeSupplier(() -> sessionsPanel);
         detailsTab.setNodeSupplier(this::buildDetailsTab);
-        tab = new TabHeader(transitionPane, pluginsTab, sessionsTab, detailsTab);
+        tab = new TabHeader(transitionPane, pluginsTab, detailsTab);
         tab.select(pluginsTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(instance.id().toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
-                .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.CHAT)
                 .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO);
         FXUtils.setLimitWidth(sideBar, 200);
-        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
         setCenter(transitionPane);
     }
@@ -255,7 +243,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         row.setSubtitle(active
                 ? i18n("dsh.instance.plugins.active", version)
                 : i18n("dsh.instance.plugins.inactive", version));
-        row.setTitleTrailing(remove);
+        row.setRowTrailing(remove);
         return row;
     }
 

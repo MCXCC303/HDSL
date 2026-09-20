@@ -102,12 +102,26 @@ public final class DshInstallWizardProvider implements WizardProvider {
         return specs;
     }
 
-    /// Creates the provider.
+    /// The version chosen before the wizard opened, or `null` to ask.
+    private final @Nullable String preselectedVersion;
+
+    /// Creates a provider that starts by asking which version to pin.
     public DshInstallWizardProvider() {
+        this(null);
+    }
+
+    /// Creates a provider that starts from an already-chosen version.
+    ///
+    /// @param preselectedVersion the version to pin, or `null` to ask
+    public DshInstallWizardProvider(@Nullable String preselectedVersion) {
+        this.preselectedVersion = preselectedVersion;
     }
 
     @Override
     public void start(SettingsMap settings) {
+        if (preselectedVersion != null) {
+            settings.put(VERSION, preselectedVersion);
+        }
         settings.put(HOME_MODE, DshHomeMode.ISOLATED);
         settings.put(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
         settings.put(PRESET_CHOICES, new java.util.LinkedHashMap<String, String>());
@@ -115,11 +129,14 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
     @Override
     public @Nullable Node createPage(WizardController controller, int step, SettingsMap settings) {
-        return switch (step) {
-            case 0 -> new VersionSelectPage(controller);
-            case 1 -> new QuickInstallPage(controller);
-            default -> null;
-        };
+        // Skipping the version step keeps the wizard's page indices honest: with
+        // a preselection there is simply one fewer page.
+        boolean askVersion = preselectedVersion == null;
+        int quickInstallStep = askVersion ? 1 : 0;
+        if (step == quickInstallStep) {
+            return new QuickInstallPage(controller);
+        }
+        return askVersion && step == 0 ? new VersionSelectPage(controller) : null;
     }
 
     @Override

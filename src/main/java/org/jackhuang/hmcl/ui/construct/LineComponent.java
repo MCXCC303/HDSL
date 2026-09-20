@@ -180,6 +180,17 @@ public abstract class LineComponent extends StackPane implements NoPaddingCompon
     }
 
     /// Sets the node displayed immediately after the title label.
+    /// Sets the node shown at the trailing edge of the whole row.
+    ///
+    /// Unlike [#setTitleTrailing(Node)], which sits immediately after the title,
+    /// this pins the node to the far right of the row — the position a launcher
+    /// puts its per-item action buttons in.
+    ///
+    /// @param node the node, or `null` to clear
+    public final void setRowTrailing(@Nullable Node node) {
+        setNode(IDX_TRAILING, node);
+    }
+
     public final void setTitleTrailing(@Nullable Node node) {
         if (titleTrailing == node) {
             return;

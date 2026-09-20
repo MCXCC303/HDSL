@@ -44,6 +44,7 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -90,30 +91,36 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// Keeps the button in step with the process while one is running.
     private final Timeline ticker;
 
+    /// The sidebar entry that opens the selected instance's management page.
+    ///
+    /// It carries the instance name as its subtitle, so the home page always
+    /// shows which instance the launch button and this entry act on.
+    private final AdvancedListItem currentInstanceItem = new AdvancedListItem();
+
     /// Lazily created destination pages.
     private @Nullable InstancesPage instancesPage;
     private @Nullable VersionsPage versionsPage;
     private @Nullable SettingsPage settingsPage;
-    private @Nullable NodeRuntimesPage nodeRuntimesPage;
 
     /// Creates the home page.
     public MainPage() {
         getStyleClass().remove("gray-background");
 
+        currentInstanceItem.setLeftIcon(SVG.SETTINGS_FILL);
+        currentInstanceItem.setTitle(i18n("dsh.instance.manage"));
+        currentInstanceItem.setSubtitle(i18n("dsh.launch.no_instance.hint"));
+        currentInstanceItem.setOnAction(event -> openCurrentInstance());
+
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("dsh.home").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
                         () -> Controllers.navigate(getInstancesPage()))
-                .addNavigationDrawerItem(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL,
-                        this::openCurrentInstance)
+                .add(currentInstanceItem)
                 .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
                         () -> Controllers.navigate(getVersionsPage()))
-                .addNavigationDrawerItem(i18n("dsh.node.title"), SVG.STADIA_CONTROLLER,
-                        () -> Controllers.navigate(getNodeRuntimesPage()))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
                         () -> Controllers.navigate(getSettingsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
-        getLeft().getStyleClass().add("gray-background");
         getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
 
@@ -185,7 +192,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             case "home", "" -> Controllers.navigate(this);
             case "instances" -> Controllers.navigate(getInstancesPage());
             case "versions" -> Controllers.navigate(getVersionsPage());
-            case "node", "runtimes" -> Controllers.navigate(getNodeRuntimesPage());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
@@ -212,16 +218,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             versionsPage = new VersionsPage();
         }
         return versionsPage;
-    }
-
-    /// Returns the Node runtime page, creating it on first use.
-    ///
-    /// @return the Node runtime page
-    public NodeRuntimesPage getNodeRuntimesPage() {
-        if (nodeRuntimesPage == null) {
-            nodeRuntimesPage = new NodeRuntimesPage();
-        }
-        return nodeRuntimesPage;
     }
 
     /// Returns the settings page, creating it on first use.
@@ -258,6 +254,10 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         if (current != null && !current.id().equals(selectedId)) {
             settings().selectedInstanceIdProperty().set(current.id());
         }
+
+        currentInstanceItem.setSubtitle(current == null
+                ? i18n("dsh.launch.no_instance.hint")
+                : current.id());
 
         refreshActionState();
     }

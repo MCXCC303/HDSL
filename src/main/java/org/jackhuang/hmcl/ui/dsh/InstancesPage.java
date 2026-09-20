@@ -75,14 +75,11 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// Creates the instance list page.
     public InstancesPage() {
-        getStyleClass().remove("gray-background");
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("dsh.instance.list").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.instance.create"), SVG.ADD, this::createInstance);
         FXUtils.setLimitWidth(sideBar, 200);
-        getLeft().getStyleClass().add("gray-background");
-        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
 
         VBox content = new VBox(10);
@@ -159,7 +156,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 instance.version(),
                 instance.profile(),
                 i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-        row.setTitleTrailing(actions);
+        row.setRowTrailing(actions);
         row.setOnAction(event -> Controllers.navigate(new InstancePage(instance)));
         return row;
     }

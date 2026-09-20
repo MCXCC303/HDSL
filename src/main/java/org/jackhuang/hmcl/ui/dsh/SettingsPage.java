@@ -54,6 +54,9 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     /// The general settings tab.
     private final TabHeader.Tab<GeneralSettingsPage> generalTab = new TabHeader.Tab<>("dshGeneralSettings");
 
+    /// The Node runtime tab, mirroring where HMCL puts Java management.
+    private final TabHeader.Tab<NodeRuntimesPane> nodeTab = new TabHeader.Tab<>("dshNodeRuntimes");
+
     /// The appearance settings tab.
     private final TabHeader.Tab<AppearanceSettingsPage> appearanceTab = new TabHeader.Tab<>("dshAppearanceSettings");
 
@@ -65,26 +68,23 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 
     /// Creates the settings page and installs its sidebar.
     public SettingsPage() {
-        // The translucent plate belongs to the sidebar, not the page,
-        // so the wallpaper stays visible behind the content.
-        getStyleClass().remove("gray-background");
 
         generalTab.setNodeSupplier(GeneralSettingsPage::new);
+        nodeTab.setNodeSupplier(NodeRuntimesPane::new);
         appearanceTab.setNodeSupplier(AppearanceSettingsPage::new);
         aboutTab.setNodeSupplier(AboutPage::new);
-        tab = new TabHeader(transitionPane, generalTab, appearanceTab, aboutTab);
+        tab = new TabHeader(transitionPane, generalTab, nodeTab, appearanceTab, aboutTab);
         tab.select(generalTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("settings").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, generalTab, i18n("settings.launcher.general"), SVG.TUNE)
+                .addNavigationDrawerTab(tab, nodeTab, i18n("dsh.node.title"), SVG.LOCAL_CAFE)
                 .addNavigationDrawerTab(tab, appearanceTab, i18n("settings.launcher.appearance"), SVG.STYLE, SVG.STYLE_FILL)
                 .startCategory(i18n("about").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
 
         FXUtils.setLimitWidth(sideBar, 200);
-        getLeft().getStyleClass().add("gray-background");
-        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
         setCenter(transitionPane);
     }
@@ -96,6 +96,7 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     public boolean openTab(String name) {
         switch (name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT)) {
             case "general" -> tab.select(generalTab, false);
+            case "node" -> tab.select(nodeTab, false);
             case "appearance" -> tab.select(appearanceTab, false);
             case "about" -> tab.select(aboutTab, false);
             default -> {

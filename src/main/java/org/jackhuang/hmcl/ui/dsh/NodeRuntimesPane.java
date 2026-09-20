@@ -18,12 +18,11 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
-import javafx.beans.property.ReadOnlyObjectProperty;
-import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
@@ -34,20 +33,16 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
-import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
-import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
-import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -62,13 +57,9 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// release and pin an instance to it instead of relying on whatever the
 /// distribution happens to ship.
 @NotNullByDefault
-public final class NodeRuntimesPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
+public final class NodeRuntimesPane extends ScrollPane implements Refreshable {
     /// How many downloadable releases are offered at once.
     private static final int REMOTE_LIMIT = 20;
-
-    /// The page state published to the window decorator.
-    private final ReadOnlyObjectWrapper<State> state =
-            new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.node.title")));
 
     /// The card listing installed runtimes.
     private final ComponentList installedList = new ComponentList();
@@ -85,36 +76,26 @@ public final class NodeRuntimesPage extends DecoratorAnimatedPage implements Dec
     /// Whether a refresh or install is running.
     private boolean busy;
 
-    /// Creates the runtime management page.
-    public NodeRuntimesPage() {
-        getStyleClass().remove("gray-background");
+    /// Creates the runtime management pane.
+    public NodeRuntimesPane() {
+        setFitToWidth(true);
 
-        AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(i18n("dsh.node.title").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerItem(i18n("dsh.versions.refresh"), SVG.UPDATE, this::refresh);
-        FXUtils.setLimitWidth(sideBar, 200);
-        getLeft().getStyleClass().add("gray-background");
-        getLeft().getStyleClass().add("gray-background");
-        setLeft(sideBar);
+        JFXButton refreshButton = new JFXButton(i18n("dsh.versions.refresh"));
+        refreshButton.setOnAction(event -> refresh());
+        HBox toolbar = new HBox(8, refreshButton);
+        toolbar.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         VBox content = new VBox(10);
         content.setPadding(new Insets(10));
-        content.getChildren().addAll(status, installedList, remoteList);
+        content.getChildren().addAll(toolbar, status, installedList, remoteList);
+        spinner.setContent(content);
 
-        ScrollPane scroll = new ScrollPane(content);
-        scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("edge-to-edge");
-        FXUtils.smoothScrolling(scroll);
-
-        spinner.setContent(scroll);
-        setCenter(spinner);
+        // Must run after the content is installed: smooth scrolling binds to
+        // the content node and fails on a null content.
+        FXUtils.smoothScrolling(this);
+        setContent(spinner);
 
         refresh();
-    }
-
-    @Override
-    public ReadOnlyObjectProperty<State> stateProperty() {
-        return state.getReadOnlyProperty();
     }
 
     @Override
