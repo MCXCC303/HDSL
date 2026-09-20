@@ -111,6 +111,7 @@ public final class DshVersionManager {
 
         Set<String> versions = queryVersions(runtime.npm());
         JsonObject distTags = queryDistTags(runtime.npm());
+        JsonObject times = queryTimes(runtime.npm());
 
         List<DshRelease> releases = new ArrayList<>(versions.size());
         for (String version : versions) {
@@ -121,7 +122,9 @@ public final class DshVersionManager {
                     tags.add(entry.getKey());
                 }
             }
-            releases.add(new DshRelease(version, Set.copyOf(tags)));
+            JsonElement published = times.get(version);
+            releases.add(new DshRelease(version, Set.copyOf(tags),
+                    published != null && published.isJsonPrimitive() ? published.getAsString() : null));
         }
 
         releases.sort(Comparator.comparing(DshRelease::version, DshVersionManager::compareVersions).reversed());
@@ -260,16 +263,53 @@ public final class DshVersionManager {
     ///
     /// @param npm the npm executable
     /// @return the tag-to-version mapping, empty when the query fails
+    /// Reads when each version was published.
+    ///
+    /// A failure is not fatal: the download page shows a version without its
+    /// date rather than refusing to list it.
+    ///
+    /// @param npm the npm executable
+    /// @return the version to publication-time map, empty when unavailable
+    private static JsonObject queryTimes(Path npm) {
+        try {
+            return asObject(parseJson(runNpmView(npm, "time").text()));
+        } catch (DshException e) {
+            LOG.warning("Failed to read npm publication times", e);
+            return new JsonObject();
+        }
+    }
+
+    /// Returns the object npm answered with.
+    ///
+    /// `npm view <package> <field> --json` wraps its answer in an array when the
+    /// field holds one value per package, which is the case for both `time` and
+    /// `dist-tags`. Reading only a bare object silently yields nothing, and the
+    /// symptom is an empty column rather than an error.
+    ///
+    /// @param parsed the parsed answer, possibly `null`
+    /// @return the object, or an empty one when there is none
+    private static JsonObject asObject(@Nullable JsonElement parsed) {
+        if (parsed == null) {
+            return new JsonObject();
+        }
+        if (parsed.isJsonArray()) {
+            for (JsonElement element : parsed.getAsJsonArray()) {
+                if (element.isJsonObject()) {
+                    return element.getAsJsonObject();
+                }
+            }
+            return new JsonObject();
+        }
+        return parsed.isJsonObject() ? parsed.getAsJsonObject() : new JsonObject();
+    }
+
     private static JsonObject queryDistTags(Path npm) {
         try {
-            JsonElement parsed = parseJson(runNpmView(npm, "dist-tags").text());
-            if (parsed != null && parsed.isJsonObject()) {
-                return parsed.getAsJsonObject();
-            }
+            return asObject(parseJson(runNpmView(npm, "dist-tags").text()));
         } catch (DshException e) {
             LOG.warning("Failed to read npm dist-tags", e);
+            return new JsonObject();
         }
-        return new JsonObject();
     }
 
     /// Runs `npm view <package> <field> --json`.

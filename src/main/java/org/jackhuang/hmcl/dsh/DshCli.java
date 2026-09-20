@@ -298,7 +298,10 @@ public final class DshCli {
                 case LIST_REMOTE -> {
                     for (DshRelease release : DshVersionManager.fetchReleases()) {
                         String tag = release.primaryTag();
-                        out.println(release.version() + (tag == null ? "" : "\t" + tag));
+                        out.println(release.version()
+                                + "\t" + release.type().id()
+                                + "\t" + (release.publishedAt() == null ? "-" : release.publishedAt())
+                                + (tag == null ? "" : "\t" + tag));
                     }
                     return 0;
                 }

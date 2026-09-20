@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.Set;
@@ -30,7 +31,57 @@ import java.util.Set;
 /// @param version  the published version string
 /// @param distTags the npm dist-tags that point at this version, such as `latest` or `alpha`
 @NotNullByDefault
-public record DshRelease(String version, @Unmodifiable Set<String> distTags) {
+public record DshRelease(String version,
+                         @Unmodifiable Set<String> distTags,
+                         @Nullable String publishedAt) {
+
+    /// Classifies a release the way the download page filters them.
+    ///
+    /// DeepSeek Harness has published no stable release yet, so `latest` is the
+    /// best available signal for one and the suffix decides the rest. A version
+    /// that is neither is reported as [Type#OTHER] rather than guessed at.
+    ///
+    /// @return the release type
+    public Type type() {
+        String lower = version.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains("-alpha")) {
+            return Type.ALPHA;
+        }
+        if (lower.contains("-rc")) {
+            return Type.RC;
+        }
+        if (lower.contains("-beta")) {
+            return Type.BETA;
+        }
+        return Type.STABLE;
+    }
+
+    /// The kinds of release the download page can filter by.
+    public enum Type {
+        /// A release with no pre-release suffix.
+        STABLE("stable"),
+        /// A release candidate.
+        RC("rc"),
+        /// A beta.
+        BETA("beta"),
+        /// An alpha.
+        ALPHA("alpha"),
+        /// Anything that does not match the others.
+        OTHER("other");
+
+        private final String id;
+
+        Type(String id) {
+            this.id = id;
+        }
+
+        /// Returns the identifier used in settings and translation keys.
+        ///
+        /// @return the identifier
+        public String id() {
+            return id;
+        }
+    }
     /// Reports whether this release is only reachable through a non-`latest` tag.
     ///
     /// Upstream publishes every release under a channel tag (`alpha`, `rc`, …)
