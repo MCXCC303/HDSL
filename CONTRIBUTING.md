@@ -259,6 +259,25 @@ ComponentList.add(child)
 **判定方法**：找内容卡片或第一行内容的左缘 x 坐标 —— 应当是 10~20，
 若是 200 多就是这条。
 
+### prompt 不是选中值
+
+`JFXComboBox` 里 **prompt 和选中值是两个不同的渲染节点，内边距不同**：
+
+```java
+// 错：看起来像选中，其实没有选中任何东西
+filter.setValue(null);
+filter.setPromptText(i18n("...all"));
+
+// 对：原版的做法 —— 把「全部」做成筛选枚举的一个真实成员
+filter.getSelectionModel().select(TypeFilter.ALL);
+```
+
+症状是**选中项文字比原版偏左几个像素**，肉眼容易归因成「字体」或「内边距」。
+
+原版为此把**筛选**和**分类**分成两个类型（`VersionTypeFilter` 与
+`ComponentRemoteVersion.Type`），因为「全部」是筛选值而不是一种分类。
+**出现「某某看起来像选中了」这种描述时，先查它是不是真的选中。**
+
 ### ComponentList 的子项要用它自己的 setVgrow
 
 `ComponentList` 会把每个子项**包进一个 `ItemWrapper`** 再放进 VBox。

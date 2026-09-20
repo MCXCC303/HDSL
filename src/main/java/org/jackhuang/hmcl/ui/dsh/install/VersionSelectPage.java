@@ -76,8 +76,38 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     private final javafx.scene.control.TextField nameField = new javafx.scene.control.TextField();
 
     /// The release types the list can be narrowed to.
-    private final javafx.scene.control.ComboBox<DshRelease.Type> typeFilter =
+    private final javafx.scene.control.ComboBox<TypeFilter> typeFilter =
             new javafx.scene.control.ComboBox<>();
+
+    /// What the type filter can be set to.
+    ///
+    /// Its own type with an "all" member rather than a nullable release type:
+    /// "all" has to be a real selection. Shown as a prompt it renders through a
+    /// different node with different padding, which is a few pixels of
+    /// difference that looks like a selection and is not one.
+    private enum TypeFilter {
+        ALL,
+        STABLE,
+        RC,
+        BETA,
+        ALPHA,
+        OTHER;
+
+        /// Reports whether a release matches this filter.
+        ///
+        /// @param release the release
+        /// @return whether it is shown
+        boolean accepts(DshRelease release) {
+            return this == ALL || release.type().name().equals(name());
+        }
+
+        /// Returns the translation key for this filter.
+        ///
+        /// @return the key suffix
+        String id() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
 
     /// Everything the last load returned, before filtering.
     private java.util.List<DshRelease> releases = java.util.List.of();
@@ -135,18 +165,18 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         nameField.setPrefWidth(240);
         nameField.textProperty().addListener((observable, was, value) -> renderRemote());
 
-        typeFilter.getItems().setAll(DshRelease.Type.values());
-        typeFilter.setValue(null);
-        typeFilter.setPromptText(i18n("download.type.all"));
+        typeFilter.getItems().setAll(TypeFilter.values());
+        // A selection, not a prompt.
+        typeFilter.getSelectionModel().select(TypeFilter.ALL);
         typeFilter.setConverter(new javafx.util.StringConverter<>() {
             @Override
-            public String toString(@Nullable DshRelease.Type type) {
+            public String toString(@Nullable TypeFilter type) {
                 return type == null ? i18n("download.type.all") : i18n("download.type." + type.id());
             }
 
             @Override
-            public DshRelease.Type fromString(String string) {
-                return null;
+            public TypeFilter fromString(String string) {
+                return TypeFilter.ALL;
             }
         });
         typeFilter.valueProperty().addListener((observable, was, value) -> renderRemote());
@@ -216,14 +246,14 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         remoteList.getContent().remove(remoteStatus);
 
         String needle = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase(java.util.Locale.ROOT);
-        DshRelease.Type type = typeFilter.getValue();
+        TypeFilter type = typeFilter.getValue();
 
         int added = 0;
         for (DshRelease release : releases) {
             if (installedNames.contains(release.version())) {
                 continue;
             }
-            if (type != null && release.type() != type) {
+            if (type != null && !type.accepts(release)) {
                 continue;
             }
             if (!needle.isEmpty() && !release.version().toLowerCase(java.util.Locale.ROOT).contains(needle)) {

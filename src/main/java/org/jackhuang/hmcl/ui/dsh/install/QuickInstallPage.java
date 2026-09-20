@@ -80,13 +80,13 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     private final JFXTextField nameField = new JFXTextField();
 
     /// The workspace chooser.
-    private final LineFileChooserButton workspaceChooser = new LineFileChooserButton();
+
 
     /// The home policy selector.
-    private final LineSelectButton<DshHomeMode> homeModeSelector = new LineSelectButton<>();
+
 
     /// The Node runtime selector.
-    private final LineSelectButton<String> nodeSelector = new LineSelectButton<>();
+
 
     /// The preset cards, in catalogue order.
     ///
@@ -148,16 +148,6 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         LineTextPane nameRow = new LineTextPane();
         nameRow.setTitle(i18n("dsh.instance.name"));
         nameRow.setTitleTrailing(nameField);
-
-        workspaceChooser.setTitle(i18n("dsh.install.workspace"));
-        workspaceChooser.setType(LineFileChooserButton.Type.OPEN_DIRECTORY);
-        workspaceChooser.setLocation(System.getProperty("user.home"));
-
-        homeModeSelector.setTitle(i18n("dsh.install.home"));
-        homeModeSelector.setItems(List.of(DshHomeMode.values()));
-        homeModeSelector.setNullSafeConverter(mode ->
-                i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
-        homeModeSelector.setValue(DshHomeMode.ISOLATED);
 
         ComponentList list = new ComponentList();
         list.getContent().add(nameRow);
@@ -364,14 +354,18 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         JFXButton back = new JFXButton(i18n("button.previous"));
         back.setOnAction(event -> controller.onPrev(false));
 
-        JFXButton finish = new JFXButton(i18n("dsh.install.start"));
-        finish.getStyleClass().add("dialog-accept");
+        // The original's install button: raised, and sized rather than left to
+        // its text.
+        JFXButton finish = FXUtils.newRaisedButton(i18n("dsh.install.start"));
+        finish.setPrefWidth(100);
+        finish.setPrefHeight(40);
         finish.setOnAction(event -> {
+            // Only what the page still asks for. The environment comes from the
+            // launcher's settings, and the working directory from the user's
+            // home; writing them here from controls that are no longer on the
+            // page would record values nobody chose.
             SettingsMap settings = controller.getSettings();
             settings.put(DshInstallWizardProvider.NAME, nameField.getText());
-            settings.put(DshInstallWizardProvider.WORKSPACE, workspaceChooser.getLocation());
-            settings.put(DshInstallWizardProvider.HOME_MODE, homeModeSelector.getValue());
-            settings.put(DshInstallWizardProvider.NODE_RUNTIME, nodeSelector.getValue());
             if (!validate(settings)) {
                 return;
             }
@@ -388,13 +382,6 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
 
     /// Applies sensible starting values.
     private void applyDefaults() {
-        List<String> runtimeOptions = new ArrayList<>();
-        runtimeOptions.add(DshNodeRuntime.SYSTEM);
-        for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
-            runtimeOptions.add(runtime.version());
-        }
-        nodeSelector.setItems(runtimeOptions);
-
         nameField.setText(suggestName());
         seedDefaultChoices();
     }
@@ -429,13 +416,6 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         }
         if (org.jackhuang.hmcl.dsh.DshInstanceManager.exists(name.trim())) {
             org.jackhuang.hmcl.ui.Controllers.dialog(i18n("dsh.install.name.taken", name.trim()),
-                    i18n("dsh.install.step.quick"),
-                    org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
-            return false;
-        }
-        String workspace = settings.get(DshInstallWizardProvider.WORKSPACE);
-        if (workspace == null || workspace.isBlank()) {
-            org.jackhuang.hmcl.ui.Controllers.dialog(i18n("dsh.install.workspace.empty"),
                     i18n("dsh.install.step.quick"),
                     org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
             return false;

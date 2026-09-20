@@ -66,14 +66,8 @@ public final class DshInstallWizardProvider implements WizardProvider {
     public static final SettingsMap.Key<String> NAME = new SettingsMap.Key<>("dsh.name");
 
     /// The settings key holding the workspace path.
-    public static final SettingsMap.Key<String> WORKSPACE = new SettingsMap.Key<>("dsh.workspace");
-
     /// The settings key holding the home policy.
-    public static final SettingsMap.Key<DshHomeMode> HOME_MODE = new SettingsMap.Key<>("dsh.homeMode");
-
     /// The settings key holding the Node runtime selection.
-    public static final SettingsMap.Key<String> NODE_RUNTIME = new SettingsMap.Key<>("dsh.nodeRuntime");
-
     /// The settings key holding the per-preset choice.
     ///
     /// Maps a preset id to the version to pin: an empty string means the
@@ -130,8 +124,6 @@ public final class DshInstallWizardProvider implements WizardProvider {
         if (preselectedVersion != null) {
             settings.put(VERSION, preselectedVersion);
         }
-        settings.put(HOME_MODE, DshHomeMode.ISOLATED);
-        settings.put(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
         settings.put(PRESET_CHOICES, new java.util.LinkedHashMap<String, String>());
     }
 
