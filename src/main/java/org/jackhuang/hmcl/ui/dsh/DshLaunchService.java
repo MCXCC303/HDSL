@@ -23,6 +23,9 @@ import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.task.Schedulers;
+import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
+import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
+import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.LogWindow;
@@ -92,6 +95,19 @@ public final class DshLaunchService {
         if (!LAUNCHING.add(instance.id())) {
             return;
         }
+
+        // The progress dialog is HMCL's: a TaskExecutorDialogPane bound to the
+        // work, which closes itself when the work stops. It is the launcher's
+        // only signal that something is happening, because a browser window
+        // appears whenever the child is ready and not a moment sooner.
+        TaskExecutorDialogPane progress = new TaskExecutorDialogPane(TaskCancellationAction.NORMAL);
+        progress.titleProperty().set(i18n("dsh.launch.launching", instance.id()));
+        progress.setCancel(new TaskCancellationAction(it -> {
+            DshProcessManager.find(instance.id()).ifPresent(running -> DshProcessManager.stop(instance.id()));
+            it.fireEvent(new DialogCloseEvent());
+        }));
+        Controllers.dialog(progress);
+
         CompletableFuture.supplyAsync(() -> {
             try {
                 DshProcess process = DshProcessManager.launch(instance);
@@ -102,6 +118,9 @@ public final class DshLaunchService {
             }
         }, Schedulers.io()).whenComplete((process, throwable) -> runInFX(() -> {
             LAUNCHING.remove(instance.id());
+            // Closes the dialog whether the launch worked or not; a failure then
+            // reports itself, which is what the original does too.
+            progress.fireEvent(new DialogCloseEvent());
             if (throwable != null) {
                 Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
                         ? throwable.getCause()
@@ -117,10 +136,7 @@ public final class DshLaunchService {
                     if (settings().openBrowserOnLaunchProperty().get()) {
                         FXUtils.openLink(url.get().toString());
                     }
-                    Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
-                } else if (process.isRunning()) {
-                    Controllers.showToast(i18n("dsh.launch.started", instance.id()));
-                } else {
+                } else if (!process.isRunning()) {
                     Controllers.dialog(
                             i18n("dsh.launch.exited", process.exitCode().orElse(-1)),
                             i18n("dsh.launch.failed"), MessageType.ERROR);
