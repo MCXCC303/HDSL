@@ -40,6 +40,7 @@ import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.PageAware;
 import org.jackhuang.hmcl.ui.construct.TabHeader;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
+import org.jackhuang.hmcl.ui.dsh.settings.InstanceSettingsPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -72,6 +73,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The tab strip driving the content pane.
     private final TabHeader tab;
 
+    /// The settings tab.
+    private final TabHeader.Tab<InstanceSettingsPage> settingsTab = new TabHeader.Tab<>("dshInstanceSettings");
+
     /// The plugins tab.
     private final TabHeader.Tab<ScrollPane> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
@@ -95,13 +99,15 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(instance.id()));
 
 
+        settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
         pluginsTab.setNodeSupplier(this::buildPluginsTab);
         detailsTab.setNodeSupplier(this::buildDetailsTab);
-        tab = new TabHeader(transitionPane, pluginsTab, detailsTab);
-        tab.select(pluginsTab, false);
+        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, detailsTab);
+        tab.select(settingsTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(instance.id().toUpperCase(Locale.ROOT))
+                .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
                 .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO);
         FXUtils.setLimitWidth(sideBar, 200);

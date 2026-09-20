@@ -152,7 +152,8 @@ public final class DshInstanceManager {
                 nodeRuntime,
                 homeMode,
                 customHome == null ? null : customHome.toAbsolutePath().normalize().toString(),
-                List.copyOf(arguments), Map.copyOf(environment), System.currentTimeMillis());
+                List.copyOf(arguments), Map.copyOf(environment),
+                DshPortMode.AUTO, 0, System.currentTimeMillis());
 
         Path directory = instance.instanceDirectory();
         try {

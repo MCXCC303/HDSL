@@ -30,7 +30,7 @@ import java.util.Locale;
 @NotNullByDefault
 public enum DshSurface {
     /// The browser interface. Served over local HTTP until stopped.
-    WEB("web", List.of("--no-open", "--port", "0")),
+    WEB("web", List.of("--no-open")),
 
     /// Answers one task and exits. Output is NDJSON when `--json` is passed.
     HEADLESS("headless", List.of()),
@@ -61,14 +61,32 @@ public enum DshSurface {
 
     /// Returns the flags the launcher must add for this surface.
     ///
-    /// The browser surface is always started with `--no-open --port 0`: the
-    /// launcher opens the browser itself once the readiness line arrives, and
-    /// letting the kernel pick the port avoids the hard failure upstream has on
-    /// an occupied port (it exits with status 1 instead of probing further).
+    /// The browser surface is always started with `--no-open`: the launcher
+    /// opens the browser itself once the readiness line arrives.
     ///
     /// @return the extra arguments, never `null`
     public List<String> arguments() {
         return arguments;
+    }
+
+    /// Returns the flags for this surface on a specific port.
+    ///
+    /// The port is always supplied rather than left to the kernel. DeepSeek
+    /// Harness exits with status 1 when its port is taken instead of probing
+    /// for another one, so the launcher has to choose a free port itself — and
+    /// it has to keep choosing the same one, because the browser interface keys
+    /// session state by origin.
+    ///
+    /// @param port the port to bind, or `0` to let the kernel choose
+    /// @return the extra arguments, never `null`
+    public List<String> arguments(int port) {
+        if (this != WEB) {
+            return arguments;
+        }
+        List<String> result = new java.util.ArrayList<>(arguments);
+        result.add("--port");
+        result.add(Integer.toString(Math.max(port, 0)));
+        return List.copyOf(result);
     }
 
     /// Reports whether this surface serves a local HTTP endpoint.

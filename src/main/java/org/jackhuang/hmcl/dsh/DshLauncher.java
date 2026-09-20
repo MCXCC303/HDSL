@@ -58,7 +58,15 @@ public final class DshLauncher {
             @Unmodifiable List<String> command,
             Path workingDirectory,
             @Unmodifiable Map<String, String> environment,
-            Path homeDirectory) {
+            Path homeDirectory,
+            int port) {
+
+        /// Returns the port the browser surface binds.
+        ///
+        /// @return the port, or `0` for a non-web surface
+        public int port() {
+            return port;
+        }
 
         /// Renders the plan as a single shell-ready line, for logs and bug reports.
         ///
@@ -143,12 +151,16 @@ public final class DshLauncher {
 
         DshSurface surface = DshSurface.ofProfile(instance.profile());
 
+        // The port is settled here rather than left to the child, and it is the
+        // same one on every launch of this instance.
+        int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
+
         List<String> command = new ArrayList<>();
         command.add(runtime.node().toString());
         command.add(script.toString());
         command.add("--profile");
         command.add(instance.profile());
-        command.addAll(surface.arguments());
+        command.addAll(surface.arguments(port));
         command.addAll(instance.extraArguments());
 
         Map<String, String> environment = new LinkedHashMap<>();
@@ -156,6 +168,6 @@ public final class DshLauncher {
         environment.putAll(instance.environment());
 
         return new LaunchPlan(instance, version, surface, List.copyOf(command), workspace,
-                Map.copyOf(environment), home);
+                Map.copyOf(environment), home, port);
     }
 }

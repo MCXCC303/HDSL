@@ -120,7 +120,9 @@ public final class DshCli {
                 && !args.contains("--install-node")
                 && !args.contains("--uninstall-node")
                 && !args.contains("--install-plugin")
-                && !args.contains("--acp-prompt")) {
+                && !args.contains("--acp-prompt")
+                && !args.contains("--help")
+                && !args.contains("-h")) {
             return null;
         }
 

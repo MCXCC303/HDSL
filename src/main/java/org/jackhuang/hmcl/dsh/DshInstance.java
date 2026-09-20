@@ -47,10 +47,49 @@ public record DshInstance(
         @SerializedName("customHome") @Nullable String customHome,
         @SerializedName("arguments") @Unmodifiable List<String> extraArguments,
         @SerializedName("environment") @Unmodifiable Map<String, String> environment,
+        @SerializedName("portMode") @Nullable DshPortMode portMode,
+        @SerializedName("port") int port,
         @SerializedName("createdAt") long createdAt) {
 
     /// The profile booted when this instance is launched.
     public static final String DEFAULT_PROFILE = "web";
+
+    /// Returns the port policy, defaulting to automatic.
+    ///
+    /// @return the port mode, never `null`
+    public DshPortMode portModeOrDefault() {
+        return portMode == null ? DshPortMode.AUTO : portMode;
+    }
+
+    /// Returns the port to pass to DeepSeek Harness.
+    ///
+    /// For a fixed instance this is the port the user chose. For an automatic
+    /// one it is the port the instance was first given, or `0` before that has
+    /// happened.
+    ///
+    /// @return the port, or `0` when none has been settled on yet
+    public int portOrDefault() {
+        return Math.max(port, 0);
+    }
+
+    /// Returns a copy with a different port.
+    ///
+    /// @param newPort the port
+    /// @return the copy
+    public DshInstance withPort(int newPort) {
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment, portMode, newPort, createdAt);
+    }
+
+    /// Returns a copy with a different port policy.
+    ///
+    /// @param newMode the policy
+    /// @param newPort the fixed port, ignored when the policy is automatic
+    /// @return the copy
+    public DshInstance withPortPolicy(DshPortMode newMode, int newPort) {
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment, newMode, newPort, createdAt);
+    }
 
     /// Returns the Node runtime this instance runs on.
     ///
@@ -125,7 +164,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withProfile(String newProfile) {
         return new DshInstance(id, version, newProfile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, createdAt);
+                extraArguments, environment, DshPortMode.AUTO, 0, createdAt);
     }
 
     /// Creates a new instance pinned to a different version.
@@ -134,7 +173,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withVersion(String newVersion) {
         return new DshInstance(id, newVersion, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, createdAt);
+                extraArguments, environment, DshPortMode.AUTO, 0, createdAt);
     }
 
     /// Creates a new instance pinned to a different Node runtime.
@@ -143,7 +182,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withNodeRuntime(@Nullable String runtime) {
         return new DshInstance(id, version, profile, workspace, runtime, homeMode, customHome,
-                extraArguments, environment, createdAt);
+                extraArguments, environment, DshPortMode.AUTO, 0, createdAt);
     }
 
     /// Creates a new instance with a different home policy.
@@ -154,7 +193,7 @@ public record DshInstance(
     public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, mode,
                 home == null ? null : home.toAbsolutePath().normalize().toString(),
-                extraArguments, environment, createdAt);
+                extraArguments, environment, DshPortMode.AUTO, 0, createdAt);
     }
 
     /// Creates a new instance with different launch arguments and environment.
@@ -165,6 +204,6 @@ public record DshInstance(
     public DshInstance withLaunchOptions(@Unmodifiable List<String> arguments,
                                          @Unmodifiable Map<String, String> environment) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                arguments, environment, createdAt);
+                arguments, environment, DshPortMode.AUTO, 0, createdAt);
     }
 }

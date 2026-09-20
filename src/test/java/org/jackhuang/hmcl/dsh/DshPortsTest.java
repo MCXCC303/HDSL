@@ -1,0 +1,98 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.dsh;
+
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/// Verifies the port policy that keeps an instance on one origin.
+class DshPortsTest {
+    /// Builds an instance with the given port policy.
+    ///
+    /// @param mode the policy
+    /// @param port the remembered or fixed port
+    /// @return the instance
+    private static DshInstance instance(DshPortMode mode, int port) {
+        return new DshInstance("test", "0.0.0", "web", "/tmp",
+                DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null,
+                List.of(), Map.of(), mode, port, 0L);
+    }
+
+    @Test
+    void aFixedPortIsUsedAsGiven() throws Exception {
+        assertEquals(34567, DshPorts.resolve(instance(DshPortMode.FIXED, 34567)));
+    }
+
+    @Test
+    void anAutomaticInstanceKeepsThePortItWasGiven() throws Exception {
+        // The probe socket must be released first: while it is bound, the port
+        // is by definition not free and the allocator would rightly move on.
+        int port;
+        try (ServerSocket probe = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            port = probe.getLocalPort();
+        }
+        assertEquals(port, DshPorts.resolve(instance(DshPortMode.AUTO, port)),
+                "a remembered port that is still free must be reused");
+    }
+
+    @Test
+    void anAutomaticInstanceMovesOffATakenPort() throws Exception {
+        try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            int port = taken.getLocalPort();
+            int resolved = DshPorts.resolve(instance(DshPortMode.AUTO, port));
+            assertNotEquals(port, resolved,
+                    "a port held by something else would make DeepSeek Harness exit with status 1");
+        }
+    }
+
+    @Test
+    void anAutomaticInstanceWithNoPortGetsAFreeOne() throws Exception {
+        int port = DshPorts.resolve(instance(DshPortMode.AUTO, 0));
+        assertTrue(port > 0);
+        try (ServerSocket probe = new ServerSocket(port, 1, InetAddress.getLoopbackAddress())) {
+            assertTrue(probe.isBound());
+        }
+    }
+
+    @Test
+    void validationRejectsPrivilegedAndOutOfRangePorts() {
+        assertNull(DshPorts.validate(25565));
+        assertFalse(DshPorts.validate(80) == null, "ports below 1024 need root");
+        assertFalse(DshPorts.validate(70000) == null);
+        assertFalse(DshPorts.validate(null) == null);
+    }
+
+    @Test
+    void theSurfacePassesTheResolvedPortThrough() {
+        assertTrue(DshSurface.WEB.arguments(39000).contains("39000"));
+        assertFalse(DshSurface.WEB.arguments(39000).contains("0"));
+        // Only the browser surface serves HTTP, so only it takes a port.
+        assertEquals(List.of(), DshSurface.ACP.arguments(39000));
+    }
+}

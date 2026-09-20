@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.task.Schedulers;
@@ -147,6 +148,17 @@ public final class DshLaunchService {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
+            }
+        }
+
+        // Remember the port an automatic instance settled on, so its next launch
+        // binds the same one. The browser interface keys session state by
+        // origin, so a moving port would let two writers reach one history.
+        if (process.state() == DshProcess.State.READY && process.plan().port() > 0) {
+            try {
+                DshPorts.remember(process.plan().instance(), process.plan().port());
+            } catch (DshException e) {
+                LOG.warning("Failed to record the port of " + process.plan().instance().id(), e);
             }
         }
     }
