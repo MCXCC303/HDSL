@@ -176,6 +176,15 @@ tasks.named<JavaExec>("run") {
     systemProperty("hmcldsh.version.override", project.version.toString())
 }
 
+// The application plugin is used for its `run` task only. Its distribution
+// tasks would try to package the jar this build disables, and the launcher
+// ships a self-executing .sh and a .deb instead, so they are switched off
+// rather than taught to agree about the shadow jar.
+tasks.named("distZip") { enabled = false }
+tasks.named("distTar") { enabled = false }
+tasks.named("startScripts") { enabled = false }
+tasks.named("installDist") { enabled = false }
+
 // ------------------------------------------------------------------ fat jar --
 // The launcher ships as a single self-contained jar, so the shell stub can be
 // prepended to it and the whole thing run with `java -jar`.
