@@ -93,6 +93,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // The directory leads and the actions sit at the bottom, which is how
         // HMCL's instance list is arranged: what you are looking at, then what
         // you can do.
+        currentDirectoryItem.setLeftIcon(SVG.FOLDER_OPEN);
+        currentDirectoryItem.setOnAction(event -> showDirectoryMenu());
         AdvancedListBox sideBar = new AdvancedListBox()
                 .add(currentDirectoryItem)
                 .addNavigationDrawerItem(i18n("dsh.directory.add"), SVG.ADD, this::addDirectory);
@@ -161,6 +163,71 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.setPadding(new Insets(8));
         return toolbar;
+    }
+
+    /// Offers the folders the launcher knows about.
+    ///
+    /// The entry names the folder being shown; this is how another is chosen or
+    /// one is dropped from the list. Dropping removes nothing but the entry —
+    /// the instances inside keep their files.
+    private void showDirectoryMenu() {
+        List<GameDirectory> directories = GameDirectoryManager.directories();
+        GameDirectory selected = GameDirectoryManager.selected();
+
+        AdvancedListBox menu = new AdvancedListBox();
+        List<Node> rows = new ArrayList<>();
+        for (GameDirectory directory : directories) {
+            LineButton row = new LineButton();
+            row.setTitle(directory.displayName());
+            row.setSubtitle(directory.path() + "  ·  "
+                    + i18n("dsh.directory.count", GameDirectoryManager.countInstances(directory)));
+            row.setLeading(directory.id().equals(selected.id()) ? SVG.CHECK : SVG.FOLDER_OPEN, 16);
+            row.setOnAction(event -> {
+                hidePopup(rows);
+                GameDirectoryManager.select(directory.id());
+                refresh();
+            });
+            rows.add(row);
+        }
+
+        for (Node row : rows) {
+            menu.add(row);
+        }
+        if (!selected.isDefault()) {
+            LineButton remove = new LineButton();
+            remove.setTitle(i18n("dsh.directory.remove"));
+            remove.setSubtitle(i18n("dsh.directory.remove.hint"));
+            remove.setLeading(SVG.DELETE, 16);
+            remove.setOnAction(event -> {
+                hidePopup(rows);
+                GameDirectoryManager.remove(selected.id());
+                refresh();
+            });
+            menu.add(remove);
+            rows.add(remove);
+        }
+
+        JFXPopup popup = new JFXPopup(menu);
+        for (Node row : rows) {
+            row.getProperties().put(DIRECTORY_POPUP, popup);
+        }
+        popup.show(currentDirectoryItem, JFXPopup.PopupVPosition.BOTTOM,
+                JFXPopup.PopupHPosition.LEFT, currentDirectoryItem.getWidth(), 0);
+    }
+
+    /// Key under which a directory menu row remembers the popup that owns it.
+    private static final String DIRECTORY_POPUP = "hmcl-dsh-directory-popup";
+
+    /// Hides the popup a directory menu row belongs to.
+    ///
+    /// @param rows the rows of the menu
+    private static void hidePopup(List<Node> rows) {
+        for (Node row : rows) {
+            if (row.getProperties().get(DIRECTORY_POPUP) instanceof JFXPopup popup) {
+                popup.hide();
+                return;
+            }
+        }
     }
 
     /// Asks for a folder to look for instances in.
