@@ -55,7 +55,7 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     private final TabHeader.Tab<GeneralSettingsPage> generalTab = new TabHeader.Tab<>("dshGeneralSettings");
 
     /// The Node runtime tab, mirroring where HMCL puts Java management.
-    private final TabHeader.Tab<NodeRuntimesPane> nodeTab = new TabHeader.Tab<>("dshNodeRuntimes");
+    private final TabHeader.Tab<NodeRuntimesPage> nodeTab = new TabHeader.Tab<>("dshNodeRuntimes");
 
     /// The appearance settings tab.
     private final TabHeader.Tab<AppearanceSettingsPage> appearanceTab = new TabHeader.Tab<>("dshAppearanceSettings");
@@ -70,7 +70,7 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     public SettingsPage() {
 
         generalTab.setNodeSupplier(GeneralSettingsPage::new);
-        nodeTab.setNodeSupplier(NodeRuntimesPane::new);
+        nodeTab.setNodeSupplier(NodeRuntimesPage::new);
         appearanceTab.setNodeSupplier(AppearanceSettingsPage::new);
         aboutTab.setNodeSupplier(AboutPage::new);
         tab = new TabHeader(transitionPane, generalTab, nodeTab, appearanceTab, aboutTab);

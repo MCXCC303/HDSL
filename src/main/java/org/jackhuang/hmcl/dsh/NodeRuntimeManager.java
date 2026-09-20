@@ -289,6 +289,99 @@ public final class NodeRuntimeManager {
     /// The pnpm major DeepSeek Harness is written against.
     private static final String PNPM_MAJOR = "11";
 
+    /// Reads the version of a Node installation in a directory.
+    ///
+    /// The version is asked of the binary rather than parsed from the directory
+    /// name, because a directory the user chose has no naming contract.
+    ///
+    /// @param directory the directory holding `bin/node`
+    /// @return the version, or `null` when there is no usable node there
+    public static @Nullable String versionOfDirectory(Path directory) {
+        Path node = directory.resolve("bin").resolve("node");
+        if (!Files.isExecutable(node)) {
+            return null;
+        }
+        try {
+            Process process = new ProcessBuilder(node.toString(), "--version")
+                    .redirectErrorStream(true)
+                    .start();
+            String output;
+            try (var reader = process.inputReader()) {
+                output = reader.readLine();
+            }
+            if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS) || process.exitValue() != 0) {
+                return null;
+            }
+            return output == null || output.isBlank() ? null : output.trim().replaceFirst("^v", "");
+        } catch (IOException e) {
+            return null;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        }
+    }
+
+    /// Adopts a Node installation the user already has.
+    ///
+    /// The directory is copied into the managed runtimes rather than referenced
+    /// in place, so an instance pinned to it does not depend on where the
+    /// installation happened to live — the same reasoning behind HMCL copying a
+    /// chosen Java home into its own store.
+    ///
+    /// @param source  the directory holding `bin/node`
+    /// @param version the version the directory reports
+    /// @return the managed runtime
+    /// @throws DshException when the directory is unusable or already managed
+    public static NodeRuntime adopt(Path source, String version) throws DshException {
+        if (findInstalled(version) != null) {
+            throw new DshException("Node.js " + version + " is already managed");
+        }
+
+        Path target = DshPaths.runtimeDirectory(version);
+        Path staging = target.resolveSibling(target.getFileName() + ".adopting");
+        try {
+            deleteQuietly(staging);
+            copyTree(source, staging);
+            deleteQuietly(target);
+            Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            deleteQuietly(staging);
+            throw new DshException("Failed to adopt " + source + ": " + e.getMessage(), e);
+        }
+
+        NodeRuntime runtime = new NodeRuntime(version, target);
+        if (!runtime.isUsable()) {
+            throw new DshException("The chosen directory does not contain a usable Node.js installation");
+        }
+        provisionPnpm(runtime, null);
+        return runtime;
+    }
+
+    /// Copies a directory tree.
+    ///
+    /// @param source      the directory to copy
+    /// @param destination the destination
+    /// @throws IOException when the copy fails
+    private static void copyTree(Path source, Path destination) throws IOException {
+        Files.createDirectories(destination);
+        try (var paths = Files.walk(source)) {
+            for (Path path : paths.toList()) {
+                Path relative = source.relativize(path);
+                Path target = destination.resolve(relative.toString());
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(target);
+                } else if (Files.isSymbolicLink(path)) {
+                    // Preserve links: a Node distribution links npm and npx into
+                    // lib/node_modules, and copying the targets would break them.
+                    Files.createSymbolicLink(target, Files.readSymbolicLink(path));
+                } else {
+                    Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING,
+                            StandardCopyOption.COPY_ATTRIBUTES);
+                }
+            }
+        }
+    }
+
     /// Removes an installed Node runtime.
     ///
     /// @param version the version to remove
