@@ -34,6 +34,8 @@ import java.util.Optional;
 import org.jackhuang.hmcl.ui.construct.RadioChoiceList;
 import org.jackhuang.hmcl.theme.ThemeColor;
 import org.jackhuang.hmcl.setting.ThemeColorType;
+import com.jfoenix.controls.JFXButton;
+import org.jackhuang.hmcl.ui.construct.FontComboBox;
 import org.jackhuang.hmcl.setting.FontManager;
 import javafx.scene.Node;
 import javafx.scene.control.ColorPicker;
@@ -45,6 +47,7 @@ import org.jackhuang.hmcl.theme.ThemePackManager;
 import org.jackhuang.hmcl.theme.ThemeReference;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
@@ -71,9 +74,6 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 public final class AppearanceSettingsPage extends ScrollPane {
     /// Brightness mode identifiers accepted by the theme engine.
     private static final List<String> BRIGHTNESS_MODES = List.of("auto", "light", "dark");
-
-    /// The sentinel used for "the platform default font" in the font chooser.
-    private static final String SYSTEM_FONT = "\u0000system";
 
     /// Creates the appearance settings tab.
     public AppearanceSettingsPage() {
@@ -160,6 +160,12 @@ public final class AppearanceSettingsPage extends ScrollPane {
 
     /// Builds the font section.
     ///
+    /// HMCL's font control is a `FontComboBox` rather than a generic selector,
+    /// and that is not cosmetic: this system reports thousands of font
+    /// families, and the generic selector builds a node per item the moment it
+    /// is opened. The combo box loads its list on first use and virtualises it,
+    /// so the count does not matter, and each row previews its own family.
+    ///
     /// @return the assembled component list
     private ComponentList buildFontList() {
         ComponentList list = new ComponentList();
@@ -169,24 +175,23 @@ public final class AppearanceSettingsPage extends ScrollPane {
         header.getStyleClass().add("section-header");
         list.getContent().add(header);
 
-        List<String> families = new ArrayList<>();
-        families.add(SYSTEM_FONT);
-        families.addAll(FontManager.availableFamilies());
+        LineTextPane row = new LineTextPane();
+        row.setTitle(i18n("dsh.settings.font"));
+        row.setSubtitle(i18n("dsh.settings.font.hint"));
 
-        LineSelectButton<String> font = new LineSelectButton<>();
-        font.setTitle(i18n("dsh.settings.font"));
-        font.setSubtitle(i18n("dsh.settings.font.hint"));
-        font.setItems(families);
-        font.setNullSafeConverter(family -> SYSTEM_FONT.equals(family)
-                ? i18n("dsh.settings.font.system") : family);
-        font.setValue(Objects.requireNonNullElse(
-                settings().launcherFontFamilyProperty().get(), SYSTEM_FONT));
-        font.valueProperty().addListener((observable, was, family) -> {
-            if (family != null && !Objects.equals(family, was)) {
-                FontManager.setFontFamily(SYSTEM_FONT.equals(family) ? null : family);
-            }
-        });
-        list.getContent().add(font);
+        FontComboBox font = new FontComboBox();
+        font.setValue(settings().launcherFontFamilyProperty().get());
+        FXUtils.onChangeAndOperate(font.valueProperty(), FontManager::setFontFamily);
+
+        JFXButton reset = FXUtils.newToggleButton4(SVG.RESTORE);
+        FXUtils.installFastTooltip(reset, i18n("button.reset"));
+        reset.setOnAction(event -> font.setValue(null));
+
+        HBox controls = new HBox(8, font, reset);
+        controls.setAlignment(Pos.CENTER_RIGHT);
+        row.setRowTrailing(controls);
+
+        list.getContent().add(row);
         return list;
     }
 
