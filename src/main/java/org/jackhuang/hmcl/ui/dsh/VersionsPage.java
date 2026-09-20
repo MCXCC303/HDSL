@@ -32,6 +32,8 @@ import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
+import javafx.geometry.Pos;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.BorderPane;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -93,8 +95,15 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
         // No sidebar: the original's versions page has none, and a category
         // holding one item named after the page says the same thing twice.
         // Refresh belongs in the toolbar, where every other list page keeps it.
-        Node toolbar = ToolbarListPageSkin.createToolbarButton2(
-                i18n("button.refresh"), SVG.REFRESH, this::refresh);
+        // A raised button inside the card, as the download page's refresh is:
+        // this is the same kind of list. The card goes on the container — both
+        // classes set a background and the card's wins, so putting it on the
+        // button turns the button into a panel.
+        JFXButton refreshButton = FXUtils.newRaisedButton(i18n("button.refresh"));
+        refreshButton.setOnAction(event -> refresh());
+
+        HBox toolbar = new HBox(refreshButton);
+        toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.getStyleClass().add("card");
         BorderPane.setMargin(toolbar, new Insets(10, 10, 0, 10));
 
