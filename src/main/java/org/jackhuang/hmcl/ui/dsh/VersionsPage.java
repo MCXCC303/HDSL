@@ -308,8 +308,8 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     /// @return the row
     private LineButton buildRemoteRow(DshRelease release) {
         JFXButton install = FXUtils.newToggleButton4(SVG.ADD, 18);
-        install.setOnAction(event -> install(release.version()));
-        FXUtils.installFastTooltip(install, i18n("download.install"));
+        install.setOnAction(event -> createFrom(release.version()));
+        FXUtils.installFastTooltip(install, i18n("dsh.versions.create_from"));
 
         // The row the wizard's version step uses. The two pages list the same
         // thing and a list reads better when its rows are one height: a thirty-
@@ -321,7 +321,7 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
         row.setSubtitle(tag == null ? i18n("dsh.versions.channel.prerelease") : tag);
         row.setLeading(SVG.DOWNLOAD, 16);
         row.setRowTrailing(install);
-        row.setOnAction(event -> install(release.version()));
+        row.setOnAction(event -> createFrom(release.version()));
         return row;
     }
 
@@ -337,36 +337,17 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
 
     /// Installs a version in the background and refreshes on completion.
     ///
-    /// @param version the version to install
-    private void install(String version) {
-        if (busy) {
-            return;
-        }
-        busy = true;
-        spinner.setLoading(true);
-        status.setText(i18n("dsh.versions.installing", version));
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                DshVersionManager.install(version, null);
-            } catch (DshException e) {
-                throw new java.util.concurrent.CompletionException(e);
-            }
-        }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-            busy = false;
-            spinner.setLoading(false);
-            if (throwable != null) {
-                Throwable cause = throwable instanceof java.util.concurrent.CompletionException && throwable.getCause() != null
-                        ? throwable.getCause()
-                        : throwable;
-                LOG.warning("Failed to install DSH " + version, cause);
-                Controllers.dialog(cause.getMessage(), i18n("dsh.versions.install_failed"),
-                        org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.ERROR);
-            } else {
-                Controllers.showToast(i18n("dsh.versions.installed", version));
-            }
-            refresh();
-        }));
+    /// Opens the create wizard for a version, installing it on the way.
+    ///
+    /// The version does not have to be on disk. The wizard downloads it as the
+    /// first thing its task does and then installs the chosen plugins into the
+    /// new profile, so the download has a progress dialog and a cancel button
+    /// rather than a line of status text on a page the user has usually left.
+    ///
+    /// @param version the version to create an instance from
+    private void createFrom(String version) {
+        Controllers.getDecorator().startWizard(
+                new DshInstallWizardProvider(version), i18n("dsh.instance.create"));
     }
 
     /// Removes an installed version after confirmation.
