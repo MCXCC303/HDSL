@@ -21,6 +21,8 @@ import com.jfoenix.controls.JFXButton;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.css.PseudoClass;
+import javafx.scene.Cursor;
+import javafx.scene.input.MouseButton;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
@@ -105,7 +107,25 @@ public final class InstallerCard extends StackPane {
         StackPane wrapper = new StackPane();
         wrapper.getStyleClass().add("installer-item-wrapper");
         wrapper.pseudoClassStateChanged(CARD, true);
-        wrapper.getChildren().add(new RipplerContainer(pane));
+        // One rippler, held so the card's own surface can be given the action
+        // beside the arrow's. Building a second one around the same pane would
+        // move the pane into it and leave the wrapper empty.
+        RipplerContainer rippler = new RipplerContainer(pane);
+        wrapper.getChildren().add(rippler);
+
+        if (onOpen != null) {
+            // The original wires the arrow and the card's whole surface to the
+            // same action, and gives the card the hand cursor. A card that only
+            // responds on its arrow is a card most of whose area does nothing,
+            // and the pointer does not say so until it is over the arrow.
+            rippler.setOnMouseClicked(event -> {
+                if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 1) {
+                    onOpen.run();
+                    event.consume();
+                }
+            });
+            pane.setCursor(Cursor.HAND);
+        }
 
         getChildren().setAll(wrapper);
 
