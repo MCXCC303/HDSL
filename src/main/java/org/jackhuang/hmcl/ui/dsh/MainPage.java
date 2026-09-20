@@ -105,6 +105,9 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
     /// Lazily created destination pages.
     private @Nullable InstancesPage instancesPage;
+
+    /// The download page, created on first use.
+    private @Nullable DownloadPage downloadPage;
     private @Nullable VersionsPage versionsPage;
     private @Nullable SettingsPage settingsPage;
 
@@ -121,6 +124,8 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("dsh.home").toUpperCase(Locale.ROOT))
+                .addNavigationDrawerItem(i18n("download"), SVG.DOWNLOAD,
+                        () -> Controllers.navigate(getDownloadPage()))
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
                         () -> Controllers.navigate(getInstancesPage()))
                 .add(currentInstanceItem)
@@ -210,6 +215,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         switch (value) {
             case "home", "" -> Controllers.navigate(this);
             case "instances" -> Controllers.navigate(getInstancesPage());
+            case "download" -> Controllers.navigate(getDownloadPage());
             // Deep links used when verifying the wizards; they are how a page
             // inside the decorator can be reached without clicking.
             case "create" -> {
@@ -225,6 +231,16 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             }
         }
         return true;
+    }
+
+    /// Returns the download page, creating it on first use.
+    ///
+    /// @return the download page
+    public DownloadPage getDownloadPage() {
+        if (downloadPage == null) {
+            downloadPage = new DownloadPage();
+        }
+        return downloadPage;
     }
 
     /// Returns the instance list page, creating it on first use.
