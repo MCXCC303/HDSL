@@ -72,7 +72,11 @@ public final class DshCli {
         /// Installs a plugin into an instance's profile.
         INSTALL_PLUGIN,
         /// Sends one prompt over the Agent Client Protocol and prints the reply.
-        ACP_PROMPT
+        ACP_PROMPT,
+        /// Prints the sessions of an instance.
+        LIST_SESSIONS,
+        /// Moves a session to another instance.
+        MIGRATE_SESSION
     }
 
     /// A parsed command line.
@@ -121,6 +125,8 @@ public final class DshCli {
                 && !args.contains("--uninstall-node")
                 && !args.contains("--install-plugin")
                 && !args.contains("--acp-prompt")
+                && !args.contains("--list-sessions")
+                && !args.contains("--migrate-session")
                 && !args.contains("--help")
                 && !args.contains("-h")) {
             return null;
@@ -168,6 +174,16 @@ public final class DshCli {
                 }
                 case "--uninstall-node" -> {
                     command = Command.UNINSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--list-sessions" -> {
+                    command = Command.LIST_SESSIONS;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--migrate-session" -> {
+                    command = Command.MIGRATE_SESSION;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--acp-prompt" -> {
@@ -320,6 +336,12 @@ public final class DshCli {
                     out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
+                case LIST_SESSIONS -> {
+                    return listSessions(invocation, out, err);
+                }
+                case MIGRATE_SESSION -> {
+                    return migrateSession(invocation, out, err);
+                }
                 case ACP_PROMPT -> {
                     return acpPrompt(invocation, out, err);
                 }
@@ -361,6 +383,75 @@ public final class DshCli {
         }
     }
 
+    /// Prints the sessions stored in an instance's home.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int listSessions(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --list-sessions needs an instance");
+            return 1;
+        }
+        DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+        if (instance == null) {
+            err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+            return 1;
+        }
+        try {
+            List<DshSession> sessions = DshSessions.list(instance.homeDirectory());
+            out.println(sessions.size() + " session(s) in " + instance.id());
+            for (DshSession session : sessions) {
+                out.println("  " + session.id()
+                        + "  v" + session.formatVersion()
+                        + "  " + DshSessions.formatSize(session.sizeBytes())
+                        + (session.locked() ? "  [locked]" : "")
+                        + "  " + session.label());
+            }
+            return 0;
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /// Moves one session to another instance.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int migrateSession(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().size() < 3) {
+            err.println("error: --migrate-session needs a source instance, a session id and a target instance");
+            return 1;
+        }
+        DshInstance source = DshInstanceManager.find(invocation.arguments().get(0));
+        DshInstance target = DshInstanceManager.find(invocation.arguments().get(2));
+        if (source == null || target == null) {
+            err.println("error: the source or target instance does not exist");
+            return 1;
+        }
+        String sessionId = invocation.arguments().get(1);
+
+        try {
+            DshSession session = DshSessions.list(source.homeDirectory()).stream()
+                    .filter(candidate -> candidate.id().equals(sessionId))
+                    .findFirst()
+                    .orElse(null);
+            if (session == null) {
+                err.println("error: " + sessionId + " is not a session of " + source.id());
+                return 1;
+            }
+            DshSessions.migrate(source, session, target, true);
+            out.println("Migrated " + sessionId + " from " + source.id() + " to " + target.id());
+            return 0;
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
     /// Sends one prompt over the Agent Client Protocol and prints the reply.
     ///
     /// The protocol reserves stdout for JSON-RPC frames, so this is the only way
@@ -541,6 +632,9 @@ public final class DshCli {
 
                 sessions:
                   --acp-prompt <id> <text>         send one prompt over ACP
+                  --list-sessions <id>             list an instance's sessions
+                  --migrate-session <src> <sid> <dst>
+                                                   move a session to another instance
 
                 plugins:
                   --install-plugin <id> <spec>     install a plugin into an instance profile

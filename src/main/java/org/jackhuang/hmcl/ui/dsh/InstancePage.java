@@ -76,6 +76,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The settings tab.
     private final TabHeader.Tab<InstanceSettingsPage> settingsTab = new TabHeader.Tab<>("dshInstanceSettings");
 
+    /// The sessions tab.
+    private final TabHeader.Tab<SessionManagementPane> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
+
     /// The plugins tab.
     private final TabHeader.Tab<ScrollPane> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
@@ -100,15 +103,17 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
+        sessionsTab.setNodeSupplier(() -> new SessionManagementPane(instance));
         pluginsTab.setNodeSupplier(this::buildPluginsTab);
         detailsTab.setNodeSupplier(this::buildDetailsTab);
-        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, detailsTab);
+        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, detailsTab);
         tab.select(settingsTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(instance.id().toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
+                .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
                 .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
