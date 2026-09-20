@@ -58,10 +58,6 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
     /// The catalogue entry being configured.
     private final DshPreset preset;
 
-    /// The two choices that are actions rather than versions, and so are never
-    /// filtered away: not installing the plugin at all, and taking its latest.
-    private final ComponentList actions = new ComponentList();
-
     /// The version rows, filtered by the name box and the type filter.
     private final ComponentList choices = new ComponentList();
 
@@ -100,7 +96,7 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
         Label description = new Label(preset.description());
         description.setWrapText(true);
 
-        root.getChildren().addAll(title, description, filterBar, actions, status, choices);
+        root.getChildren().addAll(title, description, filterBar, status, choices);
         spinner.setContent(root);
         setContent(spinner);
         FXUtils.smoothScrolling(this);
@@ -126,11 +122,9 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
                         && throwable.getCause() != null ? throwable.getCause() : throwable;
                 LOG.warning("Failed to list versions of " + preset.spec(), cause);
                 status.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
-                actions.getContent().setAll(buildNotInstalling(), buildLatest());
                 return;
             }
             status.setText(i18n("dsh.install.plugin.choose"));
-            actions.getContent().setAll(buildNotInstalling(), buildLatest());
             this.versions = versions;
             render();
         }));
@@ -152,30 +146,6 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
         }
     }
 
-    /// Builds the "do not install" choice.
-    ///
-    /// @return the row
-    private LineButton buildNotInstalling() {
-        LineButton row = new LineButton();
-        row.setTitle(i18n("dsh.install.plugin.not_installing"));
-        row.setOnAction(event -> choose(null));
-        return row;
-    }
-
-    /// Builds the "whatever the registry considers current" choice.
-    ///
-    /// @return the row
-    private LineButton buildLatest() {
-        LineButton row = new LineButton();
-        row.setTitle(i18n("dsh.install.plugin.latest"));
-        row.setSubtitle(preset.spec());
-        row.setOnAction(event -> choose(""));
-        return row;
-    }
-
-    /// Builds one version choice.
-    ///
-    /// @param version the version string
     /// @return the row
     private LineButton buildVersion(String version) {
         LineButton row = new LineButton();

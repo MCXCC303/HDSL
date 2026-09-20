@@ -287,6 +287,12 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
             PluginCard card = new PluginCard(preset, preset.recommended());
             card.setChosenVersion(choices.get(preset.id()));
             card.setOnConfigure(() -> controller.onNext(new PresetChoicePage(controller, preset)));
+            // The cross on the card is how a plugin is left out; the chooser's
+            // list holds versions and nothing else.
+            card.setOnClear(() -> {
+                choices.remove(preset.id());
+                card.setChosenVersion(null);
+            });
             FXUtils.installFastTooltip(card, preset.description());
             presetCards.add(card);
             grid.getChildren().add(card);

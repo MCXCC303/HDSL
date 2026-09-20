@@ -24,6 +24,8 @@ import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.binding.Bindings;
 import com.jfoenix.controls.JFXButton;
 import javafx.css.PseudoClass;
+import javafx.geometry.Pos;
+import javafx.scene.layout.HBox;
 import javafx.geometry.Insets;
 import javafx.scene.control.Control;
 import javafx.scene.control.Label;
@@ -66,6 +68,9 @@ public final class PluginCard extends Control {
 
     /// The version shown under the name, or `null` for "do not install".
     private final ObjectProperty<@Nullable String> chosenVersion = new SimpleObjectProperty<>(this, "chosenVersion");
+
+    /// Run when the choice is taken back.
+    private Runnable onClear = () -> { };
 
     /// Creates a card for a catalogue entry.
     ///
@@ -133,6 +138,27 @@ public final class PluginCard extends Control {
         return selected;
     }
 
+    /// Takes the choice back, leaving the plugin unselected.
+    private void clearChosenVersion() {
+        setChosenVersion(null);
+        onClear.run();
+    }
+
+    /// Opens the version list.
+    private void configure() {
+        @Nullable Runnable action = onConfigure.get();
+        if (action != null) {
+            action.run();
+        }
+    }
+
+    /// Sets what taking the choice back does.
+    ///
+    /// @param action the action
+    public void setOnClear(Runnable action) {
+        onClear = action;
+    }
+
     /// Returns the chosen-version property.
     ///
     /// @return the chosen-version property
@@ -182,13 +208,32 @@ public final class PluginCard extends Control {
                     control.chosenVersionProperty()));
             pane.getChildren().add(status);
 
-            JFXButton arrow = new JFXButton();
-            arrow.setGraphic(SVG.ARROW_FORWARD.createIcon());
-            arrow.getStyleClass().add("toggle-icon4");
-            // The card itself opens the chooser, so the arrow states that rather
-            // than acting on its own.
-            arrow.setMouseTransparent(true);
-            pane.getChildren().add(arrow);
+            // The original's card carries its own controls rather than being one
+            // large button: a cross that takes the choice back, and an arrow that
+            // opens the list — or, once a version is chosen, reopens it. Leaving
+            // the plugin out is the cross, not a row in the list, so the list
+            // holds versions and the way out of it is on the card.
+            HBox buttons = new HBox(8);
+            buttons.setAlignment(Pos.CENTER);
+
+            JFXButton remove = FXUtils.newToggleButton4(SVG.CLOSE);
+            FXUtils.installFastTooltip(remove, i18n("dsh.install.plugin.not_installing"));
+            remove.visibleProperty().bind(control.chosenVersionProperty().isNotNull());
+            remove.managedProperty().bind(remove.visibleProperty());
+            remove.setOnAction(event -> control.clearChosenVersion());
+
+            JFXButton choose = new JFXButton();
+            choose.graphicProperty().bind(Bindings.createObjectBinding(
+                    () -> control.chosenVersion() == null
+                            ? SVG.ARROW_FORWARD.createIcon()
+                            : SVG.UPDATE.createIcon(),
+                    control.chosenVersionProperty()));
+            choose.getStyleClass().add("toggle-icon4");
+            FXUtils.installFastTooltip(choose, i18n("dsh.install.plugin.choose"));
+            choose.setOnAction(event -> control.configure());
+
+            buttons.getChildren().setAll(remove, choose);
+            pane.getChildren().add(buttons);
 
             StackPane wrapper = new StackPane();
             wrapper.getStyleClass().add("installer-item-wrapper");
