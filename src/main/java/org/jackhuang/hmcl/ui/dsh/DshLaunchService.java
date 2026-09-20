@@ -25,6 +25,7 @@ import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.LogWindow;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -79,6 +80,15 @@ public final class DshLaunchService {
     /// @param instance the instance to launch
     /// @param onDone   invoked on the JavaFX thread once the launch settles, or `null`
     public static void launch(DshInstance instance, @Nullable Consumer<DshProcess> onDone) {
+        launch(instance, onDone, false);
+    }
+
+    /// Launches an instance, optionally showing its output.
+    ///
+    /// @param instance   the instance to launch
+    /// @param onDone     run after the launch settles, or `null`
+    /// @param showOutput whether to open the process's log window
+    public static void launch(DshInstance instance, @Nullable Consumer<DshProcess> onDone, boolean showOutput) {
         if (!LAUNCHING.add(instance.id())) {
             return;
         }
@@ -99,6 +109,9 @@ public final class DshLaunchService {
                 LOG.warning("Failed to launch instance " + instance.id(), cause);
                 Controllers.dialog(cause.getMessage(), i18n("dsh.launch.failed"), MessageType.ERROR);
             } else {
+                if (showOutput) {
+                    openLogWindow(process);
+                }
                 Optional<java.net.URI> url = process.webUrl();
                 if (url.isPresent()) {
                     if (settings().openBrowserOnLaunchProperty().get()) {
@@ -133,6 +146,19 @@ public final class DshLaunchService {
                         onDone.run();
                     }
                 }));
+    }
+
+    /// Opens HMCL's log window on a process.
+    ///
+    /// The window is the original's, reused unchanged: it asks the process
+    /// whether it is running and tells it to stop, and both are things the
+    /// launcher's process already answers. Its log list is the one the process
+    /// appends to, so lines appear as the child writes them.
+    ///
+    /// @param process the running process
+    private static void openLogWindow(DshProcess process) {
+        LogWindow window = new LogWindow(process.managedProcess(), process.windowLogs());
+        window.show();
     }
 
     /// Blocks until a process is ready, failed, or the timeout elapses.

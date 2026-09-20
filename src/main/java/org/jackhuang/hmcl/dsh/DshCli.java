@@ -76,7 +76,9 @@ public final class DshCli {
         /// Prints the sessions of an instance.
         LIST_SESSIONS,
         /// Moves a session to another instance.
-        MIGRATE_SESSION
+        MIGRATE_SESSION,
+        /// Launches an instance and prints its output.
+        TEST_LAUNCH
     }
 
     /// A parsed command line.
@@ -127,6 +129,7 @@ public final class DshCli {
                 && !args.contains("--acp-prompt")
                 && !args.contains("--list-sessions")
                 && !args.contains("--migrate-session")
+                && !args.contains("--test-launch")
                 && !args.contains("--help")
                 && !args.contains("-h")) {
             return null;
@@ -174,6 +177,10 @@ public final class DshCli {
                 }
                 case "--uninstall-node" -> {
                     command = Command.UNINSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--test-launch" -> {
+                    command = Command.TEST_LAUNCH;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--list-sessions" -> {
@@ -336,6 +343,9 @@ public final class DshCli {
                     out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
+                case TEST_LAUNCH -> {
+                    return testLaunch(invocation, out, err);
+                }
                 case LIST_SESSIONS -> {
                     return listSessions(invocation, out, err);
                 }
@@ -383,6 +393,49 @@ public final class DshCli {
         }
     }
 
+    /// Launches an instance and prints the output it produces.
+    ///
+    /// This is the headless half of test launch: it runs the same path the
+    /// interface does and drains the same buffer the log window is given, so the
+    /// capture can be checked without a display.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int testLaunch(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --test-launch needs an instance");
+            return 1;
+        }
+        DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+        if (instance == null) {
+            err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+            return 1;
+        }
+        try {
+            DshProcess process = DshProcessManager.launch(instance);
+            for (int i = 0; i < 120 && process.state() == DshProcess.State.STARTING; i++) {
+                Thread.sleep(500);
+                if (!process.isRunning()) {
+                    break;
+                }
+            }
+            out.println("state: " + process.state());
+            out.println("captured " + process.windowLogs().size() + " log line(s)");
+            for (var line : process.windowLogs()) {
+                out.println("  [" + line.getLevel() + "] " + line.getLog());
+            }
+            DshProcessManager.stop(instance.id());
+            return 0;
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return 1;
+        }
+    }
     /// Prints the sessions stored in an instance's home.
     ///
     /// @param invocation the parsed invocation
@@ -633,6 +686,7 @@ public final class DshCli {
                 sessions:
                   --acp-prompt <id> <text>         send one prompt over ACP
                   --list-sessions <id>             list an instance's sessions
+                  --test-launch <id>               launch and print its output
                   --migrate-session <src> <sid> <dst>
                                                    move a session to another instance
 

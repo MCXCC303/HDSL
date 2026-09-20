@@ -18,6 +18,9 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jackhuang.hmcl.util.Lang;
+import org.jackhuang.hmcl.ui.LogLine;
+import org.jackhuang.hmcl.util.CircularArrayList;
+import org.jackhuang.hmcl.util.Log4jLevel;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -85,6 +88,13 @@ public final class DshProcess {
     private final Instant startedAt = Instant.now();
 
     private final Deque<String> logLines = new ArrayDeque<>();
+
+    /// The same output in the form HMCL's log window consumes.
+    ///
+    /// Kept alongside the string deque rather than converted on demand: the
+    /// window is opened while the process is running and appends as lines
+    /// arrive, so it needs the list to grow under it.
+    private final CircularArrayList<LogLine> windowLogs = new CircularArrayList<>();
     private final Object logLock = new Object();
 
     private volatile State state = State.STARTING;
@@ -185,6 +195,23 @@ public final class DshProcess {
     /// Returns a snapshot of the retained log lines.
     ///
     /// @return the log lines, oldest first
+    /// Returns the process's output in HMCL's log-window form.
+    ///
+    /// @return the lines, live: the window appends to what it is given
+    public CircularArrayList<LogLine> windowLogs() {
+        return windowLogs;
+    }
+
+    /// Returns the underlying managed process.
+    ///
+    /// Exposed so HMCL's log window can be reused as-is: it needs only a process
+    /// it can ask whether it is running and tell to stop.
+    ///
+    /// @return the managed process
+    public ManagedProcess managedProcess() {
+        return process;
+    }
+
     public List<String> logLines() {
         synchronized (logLock) {
             return List.copyOf(logLines);
@@ -244,6 +271,9 @@ public final class DshProcess {
     /// @param error whether it arrived on stderr
     private void onOutput(String line, boolean error) {
         appendLog(line);
+        synchronized (logLock) {
+            windowLogs.add(new LogLine(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO));
+        }
         if (plan.surface().isWeb() && webUrl == null) {
             detectReadiness(line);
         }

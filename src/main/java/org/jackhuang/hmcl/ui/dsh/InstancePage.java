@@ -349,7 +349,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         if (DshProcessManager.find(instance.id()).isPresent()) {
             DshLaunchService.stop(instance.id(), this::refresh);
         } else {
-            DshLaunchService.launch(instance, ignored -> refresh());
+            // Test launch shows the output: the point of launching from here is
+            // to see what the program does, which is what the original's test
+            // game does too.
+            DshLaunchService.launch(instance, ignored -> refresh(), true);
         }
     }
 
