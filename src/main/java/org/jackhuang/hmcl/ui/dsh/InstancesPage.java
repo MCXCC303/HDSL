@@ -76,6 +76,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 .startCategory(i18n("instance.manage").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.instance.create"), SVG.ADD, this::createInstance);
         FXUtils.setLimitWidth(sideBar, 200);
+        getLeft().getStyleClass().add("gray-background");
+        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
 
         VBox content = new VBox(10);

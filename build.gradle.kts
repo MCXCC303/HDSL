@@ -6,9 +6,14 @@
 // requires the original copyright notices to stay intact. Everything that
 // launched Minecraft has been removed; the domain layer is HMCL-DSH's own.
 
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.jackhuang.hmcl.gradle.pack.CreateDeb
+import org.jackhuang.hmcl.gradle.pack.ReleaseType
+
 plugins {
     java
     application
+    alias(libs.plugins.shadow)
 }
 
 group = "org.jackhuang.hmcl"
@@ -158,4 +163,74 @@ tasks.withType<JavaCompile> {
 tasks.named<JavaExec>("run") {
     jvmArgs(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
     systemProperty("hmcldsh.version.override", project.version.toString())
+}
+
+// ------------------------------------------------------------------ fat jar --
+// The launcher ships as a single self-contained jar, so the shell stub can be
+// prepended to it and the whole thing run with `java -jar`.
+tasks.named<Jar>("jar") {
+    enabled = false
+}
+
+tasks.named<ShadowJar>("shadowJar") {
+    archiveClassifier.set("")
+    mergeServiceFiles()
+    // Dependency signatures do not survive merging, and a stale one makes the
+    // JVM refuse to start.
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/INDEX.LIST")
+    manifest {
+        attributes(
+            "Main-Class" to "org.jackhuang.hmcl.Main",
+            "Implementation-Title" to "HMCL-DSH",
+            "Implementation-Version" to project.version.toString(),
+        )
+    }
+}
+
+// -------------------------------------------------------------- packaging ----
+// Produce the same two Linux artifacts HMCL ships: a self-executing `.sh`
+// (shell stub with the jar appended) and a `.deb` carrying it.
+val artifactName: String
+    get() = "hmcl-dsh-${project.version}"
+
+val makeExecutable by tasks.registering {
+    group = "distribution"
+    description = "Builds the self-executing .sh launcher."
+    dependsOn(tasks.named("shadowJar"))
+
+    val jarTask = tasks.named<Jar>("shadowJar")
+    val stub = layout.projectDirectory.file("packaging/launcher.sh")
+    val output = layout.buildDirectory.file("libs/$artifactName.sh")
+
+    inputs.file(stub)
+    inputs.file(jarTask.flatMap { it.archiveFile })
+    outputs.file(output)
+
+    doLast {
+        val target = output.get().asFile
+        target.parentFile.mkdirs()
+        target.outputStream().use { stream ->
+            stub.asFile.inputStream().use { it.copyTo(stream) }
+            jarTask.get().archiveFile.get().asFile.inputStream().use { it.copyTo(stream) }
+        }
+        target.setExecutable(true, false)
+        logger.lifecycle("Built ${target.name} (${target.length() / 1024 / 1024} MiB)")
+    }
+}
+
+val makeDeb by tasks.registering(CreateDeb::class) {
+    group = "distribution"
+    description = "Builds the Debian package."
+    dependsOn(makeExecutable)
+
+    version.set(project.version.toString())
+    releaseType.set(ReleaseType.NIGHTLY)
+    launcherClassName.set("org.jackhuang.hmcl.Main")
+    appShFile.set(layout.buildDirectory.file("libs/$artifactName.sh"))
+    iconFile.set(layout.projectDirectory.file("src/main/resources/assets/img/icon.png"))
+    outputFile.set(layout.buildDirectory.file("libs/${artifactName}.deb"))
+}
+
+tasks.named("build") {
+    dependsOn(makeExecutable, makeDeb)
 }

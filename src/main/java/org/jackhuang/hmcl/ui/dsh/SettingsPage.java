@@ -65,6 +65,10 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 
     /// Creates the settings page and installs its sidebar.
     public SettingsPage() {
+        // The translucent plate belongs to the sidebar, not the page,
+        // so the wallpaper stays visible behind the content.
+        getStyleClass().remove("gray-background");
+
         generalTab.setNodeSupplier(GeneralSettingsPage::new);
         appearanceTab.setNodeSupplier(AppearanceSettingsPage::new);
         aboutTab.setNodeSupplier(AboutPage::new);
@@ -79,6 +83,8 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
                 .addNavigationDrawerTab(tab, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
 
         FXUtils.setLimitWidth(sideBar, 200);
+        getLeft().getStyleClass().add("gray-background");
+        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
         setCenter(transitionPane);
     }

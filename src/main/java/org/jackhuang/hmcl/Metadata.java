@@ -39,8 +39,28 @@ public final class Metadata {
     /// The full product name shown in window titles.
     public static final String FULL_NAME = "HMCL-DSH";
 
-    /// The running version, overridable for local builds.
-    public static final String VERSION = System.getProperty("hmcldsh.version.override", "0.1.0-dev");
+    /// The running version.
+    ///
+    /// Resolution order: an explicit override (used by `gradlew run`, which has
+    /// no packaged manifest to read), then the jar manifest written by the
+    /// shadow task, then a development placeholder.
+    public static final String VERSION = resolveVersion();
+
+    /// Resolves the running version.
+    ///
+    /// Order: an explicit override, which `gradlew run` passes because a class
+    /// directory has no manifest; then the jar manifest written by the shadow
+    /// task; then a development placeholder.
+    ///
+    /// @return the version string
+    private static String resolveVersion() {
+        String override = System.getProperty("hmcldsh.version.override");
+        if (StringUtils.isNotBlank(override)) {
+            return override;
+        }
+        String fromManifest = Metadata.class.getPackage().getImplementationVersion();
+        return StringUtils.isNotBlank(fromManifest) ? fromManifest : "0.1.0-dev";
+    }
 
     /// The window title including the version.
     public static final String TITLE = NAME + " " + VERSION;

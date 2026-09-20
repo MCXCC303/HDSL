@@ -92,6 +92,8 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
                 .startCategory(i18n("dsh.versions.title").toUpperCase(java.util.Locale.ROOT))
                 .addNavigationDrawerItem(i18n("dsh.versions.refresh"), SVG.UPDATE, this::refresh);
         FXUtils.setLimitWidth(sideBar, 200);
+        getLeft().getStyleClass().add("gray-background");
+        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
 
         VBox content = new VBox(10);

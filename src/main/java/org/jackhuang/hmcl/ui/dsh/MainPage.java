@@ -115,6 +115,8 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
                         () -> Controllers.navigate(getSettingsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
+        getLeft().getStyleClass().add("gray-background");
+        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
 
         // The launch control is the only centre content; it is placed inside a
