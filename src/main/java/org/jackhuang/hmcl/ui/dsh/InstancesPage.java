@@ -381,12 +381,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// The wizard mirrors HMCL's install flow: choose a version, then fill in
     /// the quick-install page and pick the plugins to add.
     private void createInstance() {
-        List<DshVersion> installed = DshVersionManager.listInstalled();
-        if (installed.isEmpty()) {
-            Controllers.dialog(i18n("dsh.instance.need_version"),
-                    i18n("dsh.instance.create"), MessageType.WARNING);
-            return;
-        }
+        // No check for an installed version: there does not have to be one. The
+        // wizard downloads the version the new instance will use as the first
+        // thing it does, so a launcher with nothing installed can still make an
+        // instance — which is the only way it ever gets anything installed.
         Controllers.getDecorator().startWizard(new DshInstallWizardProvider(), i18n("dsh.instance.create"));
     }
 
