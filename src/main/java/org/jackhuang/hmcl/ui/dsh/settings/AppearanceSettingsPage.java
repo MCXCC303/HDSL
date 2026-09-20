@@ -17,17 +17,29 @@
  */
 package org.jackhuang.hmcl.ui.dsh.settings;
 
+import com.jfoenix.controls.JFXSlider;
+import javafx.beans.binding.Bindings;
+import javafx.beans.binding.StringBinding;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.setting.BackgroundType;
 import org.jackhuang.hmcl.setting.LauncherSettings;
+import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
+import org.jackhuang.hmcl.theme.BuiltinBackground;
 import org.jackhuang.hmcl.theme.Theme;
 import org.jackhuang.hmcl.theme.ThemePackManager;
 import org.jackhuang.hmcl.theme.ThemeReference;
+import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
+import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.LineToggleButton;
 import org.jetbrains.annotations.NotNullByDefault;
 
@@ -43,14 +55,13 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// The "appearance" tab of the launcher settings page.
 ///
 /// Drives the transplanted theme engine: theme pack selection, brightness mode,
-/// background source, background opacity and window transparency.
+/// the background source and its opacity, and window transparency. Every row
+/// records the corresponding appearance-override key, because the theme engine
+/// distinguishes "the theme chose this" from "the user chose this".
 @NotNullByDefault
 public final class AppearanceSettingsPage extends ScrollPane {
     /// Brightness mode identifiers accepted by the theme engine.
     private static final List<String> BRIGHTNESS_MODES = List.of("auto", "light", "dark");
-
-    /// Background opacity presets.
-    private static final List<Double> OPACITY_PRESETS = List.of(0.25, 0.5, 0.75, 0.9, 1.0);
 
     /// Creates the appearance settings tab.
     public AppearanceSettingsPage() {
@@ -60,11 +71,13 @@ public final class AppearanceSettingsPage extends ScrollPane {
         root.setPadding(new Insets(10));
         setContent(root);
 
-        // Must run after the content is installed: smooth scrolling binds to
-        // the content node and fails on a null content.
         FXUtils.smoothScrolling(this);
 
-        root.getChildren().addAll(buildThemeList(), buildBackgroundList(), buildWindowList());
+        root.getChildren().addAll(
+                buildThemeList(),
+                buildBackgroundSourceList(),
+                buildBackgroundDetailList(),
+                buildWindowList());
     }
 
     /// Builds the theme section: theme pack and brightness mode.
@@ -72,7 +85,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
     /// @return the assembled component list
     private ComponentList buildThemeList() {
         LineSelectButton<ThemeReference> theme = new LineSelectButton<>();
-        theme.setTitle(i18n("settings.launcher.theme"));
+        theme.setTitle(i18n("dsh.settings.theme"));
         theme.setItems(installedThemeReferences());
         theme.setNullSafeConverter(AppearanceSettingsPage::displayNameOf);
         theme.setValue(settings().getSelectedThemeOrDefault());
@@ -100,10 +113,170 @@ public final class AppearanceSettingsPage extends ScrollPane {
         return list;
     }
 
-    /// Enumerates every theme the installed theme packs expose.
+    /// Builds the background-source selector.
     ///
-    /// Falls back to the built-in default reference when the theme pack
-    /// directory cannot be read, so the selector is never empty.
+    /// @return the assembled component list
+    private ComponentList buildBackgroundSourceList() {
+        LineSelectButton<BackgroundType> backgroundType = new LineSelectButton<>();
+        backgroundType.setTitle(i18n("dsh.settings.background"));
+        backgroundType.setItems(List.of(
+                BackgroundType.DEFAULT,
+                BackgroundType.THEME_COLOR,
+                BackgroundType.BUILTIN,
+                BackgroundType.CUSTOM,
+                BackgroundType.NETWORK));
+        backgroundType.setNullSafeConverter(type -> i18n("dsh.settings.background." + type.name().toLowerCase(java.util.Locale.ROOT)));
+        backgroundType.setValue(settings().backgroundTypeProperty().get());
+        backgroundType.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                selectBackground(newValue);
+            }
+        });
+
+        LineSelectButton<BackgroundLoadPolicy> loadPolicy = new LineSelectButton<>();
+        loadPolicy.setTitle(i18n("dsh.settings.background.load"));
+        loadPolicy.setItems(List.of(BackgroundLoadPolicy.WAIT_FOR_BACKGROUND,
+                BackgroundLoadPolicy.SHOW_FALLBACK_WHILE_LOADING));
+        loadPolicy.setNullSafeConverter(policy -> i18n("dsh.settings.background.load."
+                + policy.name().toLowerCase(java.util.Locale.ROOT)));
+        loadPolicy.setValue(settings().backgroundLoadPolicyProperty().get());
+        loadPolicy.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                settings().backgroundLoadPolicyProperty().set(newValue);
+            }
+        });
+
+        ComponentList list = new ComponentList();
+        list.getContent().addAll(backgroundType, loadPolicy);
+        return list;
+    }
+
+    /// Builds the source-specific controls and the opacity slider.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildBackgroundDetailList() {
+        LineFileChooserButton image = new LineFileChooserButton();
+        image.setTitle(i18n("dsh.settings.background.image"));
+        image.setType(LineFileChooserButton.Type.OPEN_FILE);
+        image.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.settings.background.image.filter"), "*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif"));
+        image.setLocation(settings().customBackgroundImagePathProperty().get());
+        image.locationProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null && !newValue.isBlank()) {
+                settings().customBackgroundImagePathProperty().set(newValue);
+                selectBackground(BackgroundType.CUSTOM);
+            }
+        });
+
+        LineTextPane network = new LineTextPane();
+        network.setTitle(i18n("dsh.settings.background.network"));
+        network.setText(settings().networkBackgroundImageUrlProperty().get());
+        network.setOnMouseClicked(event -> Controllers.prompt(
+                i18n("dsh.settings.background.network.prompt"),
+                (value, handler) -> {
+                    String url = value == null ? "" : value.trim();
+                    if (url.isEmpty()) {
+                        handler.reject(i18n("dsh.settings.background.network.empty"));
+                        return;
+                    }
+                    settings().networkBackgroundImageUrlProperty().set(url);
+                    selectBackground(BackgroundType.NETWORK);
+                    handler.resolve();
+                },
+                settings().networkBackgroundImageUrlProperty().get()));
+
+        LineSelectButton<String> builtin = new LineSelectButton<>();
+        builtin.setTitle(i18n("dsh.settings.background.builtin"));
+        builtin.setItems(BuiltinBackground.BUILTIN_BACKGROUND_IDS);
+        builtin.setNullSafeConverter(AppearanceSettingsPage::builtinName);
+        builtin.setValue(settings().builtinBackgroundIdProperty().get());
+        builtin.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                settings().builtinBackgroundIdProperty().set(newValue);
+                selectBackground(BackgroundType.BUILTIN);
+            }
+        });
+
+        LineTextPane opacity = new LineTextPane();
+        opacity.setTitle(i18n("dsh.settings.background.opacity"));
+        opacity.setTitleTrailing(buildOpacitySlider());
+
+        ComponentList list = new ComponentList();
+        list.getContent().addAll(image, network, builtin, opacity);
+        return list;
+    }
+
+    /// Builds the opacity slider shown on the right of its row.
+    ///
+    /// @return the slider and its percentage label
+    private HBox buildOpacitySlider() {
+        JFXSlider slider = new JFXSlider(0, 100, settings().backgroundOpacityProperty().get() * 100);
+        slider.setPrefWidth(220);
+        slider.setShowTickMarks(true);
+        slider.setMajorTickUnit(10);
+        slider.setMinorTickCount(1);
+        slider.setBlockIncrement(5);
+        slider.setSnapToTicks(true);
+        HBox.setHgrow(slider, Priority.ALWAYS);
+
+        Label percentage = new Label();
+        FXUtils.setLimitWidth(percentage, 50);
+        percentage.setAlignment(Pos.CENTER);
+        StringBinding text = Bindings.createStringBinding(
+                () -> ((int) slider.getValue()) + "%", slider.valueProperty());
+        percentage.textProperty().bind(text);
+        slider.setValueFactory(ignored -> text);
+
+        slider.valueProperty().addListener((observable, oldValue, newValue) -> {
+            double opacity = Math.max(0, Math.min(1, Math.round(newValue.doubleValue()) / 100.0));
+            settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BACKGROUND_OPACITY);
+            if (Double.compare(settings().backgroundOpacityProperty().get(), opacity) != 0) {
+                settings().backgroundOpacityProperty().set(opacity);
+            }
+        });
+
+        HBox box = new HBox(8, slider, percentage);
+        box.setAlignment(Pos.CENTER);
+        return box;
+    }
+
+    /// Builds the window section.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildWindowList() {
+        LineToggleButton transparentTitleBar = new LineToggleButton();
+        transparentTitleBar.setTitle(i18n("dsh.settings.title_bar_transparent"));
+        transparentTitleBar.setSelected(settings().titleBarTransparentProperty().get());
+        transparentTitleBar.selectedProperty().addListener((observable, oldValue, newValue) -> {
+            settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_TITLE_BAR_TRANSPARENT);
+            settings().titleBarTransparentProperty().set(newValue);
+        });
+
+        LineToggleButton transparentWindow = new LineToggleButton();
+        transparentWindow.setTitle(i18n("dsh.settings.window_transparent"));
+        transparentWindow.setSelected(settings().windowTransparentProperty().get());
+        transparentWindow.selectedProperty().addListener((observable, oldValue, newValue) -> {
+            settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_WINDOW_TRANSPARENT);
+            settings().windowTransparentProperty().set(newValue);
+        });
+
+        ComponentList list = new ComponentList();
+        list.getContent().addAll(transparentTitleBar, transparentWindow);
+        return list;
+    }
+
+    /// Switches the background source and records the user's override.
+    ///
+    /// Without the override key the theme engine would keep treating the
+    /// background as "chosen by the theme" and overwrite the user's selection.
+    ///
+    /// @param type the newly selected source
+    private static void selectBackground(BackgroundType type) {
+        settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BACKGROUND);
+        settings().backgroundTypeProperty().set(type);
+    }
+
+    /// Enumerates every theme the installed theme packs expose.
     ///
     /// @return the selectable theme references
     private static List<ThemeReference> installedThemeReferences() {
@@ -138,73 +311,12 @@ public final class AppearanceSettingsPage extends ScrollPane {
                 : reference.packId() + " / " + reference.themeId();
     }
 
-    /// Builds the background section.
+    /// Renders a built-in wallpaper id, falling back to the raw id.
     ///
-    /// @return the assembled component list
-    private ComponentList buildBackgroundList() {
-        LineSelectButton<BackgroundType> backgroundType = new LineSelectButton<>();
-        backgroundType.setTitle(i18n("dsh.settings.background"));
-        backgroundType.setItems(List.of(
-                BackgroundType.DEFAULT,
-                BackgroundType.BUILTIN,
-                BackgroundType.CUSTOM,
-                BackgroundType.NETWORK,
-                BackgroundType.PAINT,
-                BackgroundType.THEME_COLOR));
-        backgroundType.setNullSafeConverter(type -> i18n("dsh.settings.background." + type.name().toLowerCase()));
-        backgroundType.setValue(settings().backgroundTypeProperty().get());
-        backgroundType.valueProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue != null) {
-                settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BACKGROUND);
-                settings().backgroundTypeProperty().set(newValue);
-            }
-        });
-
-        LineSelectButton<Double> opacity = new LineSelectButton<>();
-        opacity.setTitle(i18n("dsh.settings.background.opacity"));
-        opacity.setItems(OPACITY_PRESETS);
-        opacity.setNullSafeConverter(value -> "%d%%".formatted((int) Math.round(value * 100)));
-        opacity.setValue(nearestPreset(settings().backgroundOpacityProperty().get()));
-        opacity.valueProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue != null) {
-                settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BACKGROUND_OPACITY);
-                settings().backgroundOpacityProperty().set(newValue);
-            }
-        });
-
-        ComponentList list = new ComponentList();
-        list.getContent().addAll(backgroundType, opacity);
-        return list;
-    }
-
-    /// Builds the window section.
-    ///
-    /// @return the assembled component list
-    private ComponentList buildWindowList() {
-        LineToggleButton transparentTitleBar = new LineToggleButton();
-        transparentTitleBar.setTitle(i18n("dsh.settings.title_bar_transparent"));
-        transparentTitleBar.setSelected(settings().titleBarTransparentProperty().get());
-        transparentTitleBar.selectedProperty().addListener((observable, oldValue, newValue) -> {
-            settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_TITLE_BAR_TRANSPARENT);
-            settings().titleBarTransparentProperty().set(newValue);
-        });
-
-        ComponentList list = new ComponentList();
-        list.getContent().add(transparentTitleBar);
-        return list;
-    }
-
-    /// Snaps an arbitrary opacity to the nearest preset so the selector can show it.
-    ///
-    /// @param value the current opacity
-    /// @return the closest preset
-    private static double nearestPreset(double value) {
-        double best = OPACITY_PRESETS.get(0);
-        for (double preset : OPACITY_PRESETS) {
-            if (Math.abs(preset - value) < Math.abs(best - value)) {
-                best = preset;
-            }
-        }
-        return best;
+    /// @param id the wallpaper id
+    /// @return a human-readable label
+    private static String builtinName(String id) {
+        BuiltinBackground background = BuiltinBackground.fromId(id);
+        return background == null ? id : background.id();
     }
 }

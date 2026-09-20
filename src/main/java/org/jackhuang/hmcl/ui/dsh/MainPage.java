@@ -30,7 +30,9 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -45,7 +47,6 @@ import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
-import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
@@ -53,72 +54,76 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
-import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The launcher home: what is running now, and the launch button.
+/// The launcher home.
 ///
-/// The layout deliberately mirrors HMCL's home page: a content area with cards
-/// and a large launch control anchored to the bottom-right corner, with a
-/// dropdown next to it for switching instance. What differs is what the button
-/// does — DeepSeek Harness runs as a background server, so a launch starts a
-/// child process and opens its browser interface rather than spawning a game.
+/// The page is deliberately spare: a sidebar and one large launch control
+/// anchored to the bottom-right corner. Instance management lives behind that
+/// control rather than on the page, because the launcher's primary action is
+/// starting and stopping a single chosen instance.
+///
+/// Because DeepSeek Harness has no single-instance lock of its own, the button
+/// reflects the selected instance's state: it launches a stopped instance and
+/// stops a running one, so a second server can never be started by accident.
 @NotNullByDefault
 public final class MainPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
     /// The page state published to the window decorator.
     private final ReadOnlyObjectWrapper<State> state =
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.home")));
 
-    /// The instance the launch button targets.
+    /// The instance the launch control targets.
     private final ObjectProperty<@Nullable DshInstance> currentInstance = new SimpleObjectProperty<>();
 
-    /// The card listing what is running right now.
-    private final ComponentList runningList = new ComponentList();
+    /// The launch/stop button's first line.
+    private final Label actionLabel = new Label();
 
-    /// The card shown when nothing is running.
-    private final ComponentList placeholderList = new ComponentList();
+    /// The launch/stop button's second line, showing the target instance.
+    private final Label actionTarget = new Label();
 
-    /// The label above the cards.
+    /// The button itself, so its state can be refreshed.
+    private final JFXButton actionButton = new JFXButton();
+
+    /// The status line above the button.
     private final Label status = new Label();
 
-    /// The launch button's first line.
-    private final Label launchLabel = new Label();
+    /// Keeps the button in step with the process while one is running.
+    private final Timeline ticker;
 
-    /// The launch button's second line, showing the target instance.
-    private final Label launchTarget = new Label();
-
-    /// Refreshes uptimes while anything is running.
-    private final Timeline uptimeTicker;
+    /// Lazily created destination pages.
+    private @Nullable InstancesPage instancesPage;
+    private @Nullable VersionsPage versionsPage;
+    private @Nullable SettingsPage settingsPage;
 
     /// Creates the home page.
     public MainPage() {
         getStyleClass().remove("gray-background");
 
-        setLeft(new AdvancedListBox()
-                .startCategory(i18n("dsh.home").toUpperCase(java.util.Locale.ROOT))
+        AdvancedListBox sideBar = new AdvancedListBox()
+                .startCategory(i18n("dsh.home").toUpperCase(Locale.ROOT))
+                .addNavigationDrawerItem(i18n("dsh.home"), SVG.HOME, () -> Controllers.navigate(this))
                 .addNavigationDrawerItem(i18n("instance.manage"), SVG.FORMAT_LIST_BULLETED,
-                        () -> Controllers.navigate(new InstancesPage()))
+                        () -> Controllers.navigate(getInstancesPage()))
                 .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
-                        () -> Controllers.navigate(new VersionsPage()))
+                        () -> Controllers.navigate(getVersionsPage()))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
-                        () -> Controllers.navigate(new SettingsPage())));
+                        () -> Controllers.navigate(getSettingsPage()));
+        FXUtils.setLimitWidth(sideBar, 200);
+        setLeft(sideBar);
 
-        VBox content = new VBox(10);
-        content.setPadding(new Insets(10));
-        content.getChildren().addAll(status, runningList, placeholderList);
-
-        // The launch pane lives inside the centre node: a Control's children are
-        // owned by its skin, so adding to getChildren() directly would be wiped
-        // the moment the skin is created.
-        StackPane centre = new StackPane(content, buildLaunchPane());
-        StackPane.setAlignment(content, Pos.TOP_LEFT);
+        // The launch control is the only centre content; it is placed inside a
+        // StackPane because a Control's children belong to its skin.
+        StackPane centre = new StackPane(buildLaunchPane());
+        StackPane.setAlignment(status, Pos.TOP_LEFT);
+        centre.getChildren().add(status);
         setCenter(centre);
 
-        uptimeTicker = new Timeline(new KeyFrame(Duration.seconds(2), event -> refreshRunning()));
-        uptimeTicker.setCycleCount(Animation.INDEFINITE);
-        uptimeTicker.play();
+        ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshActionState()));
+        ticker.setCycleCount(Animation.INDEFINITE);
+        ticker.play();
 
         refresh();
     }
@@ -127,16 +132,15 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     ///
     /// @return the launch pane
     private Node buildLaunchPane() {
-        JFXButton launchButton = new JFXButton();
-        launchButton.getStyleClass().add("launch-button");
-        launchButton.setDefaultButton(true);
+        actionButton.getStyleClass().add("launch-button");
+        actionButton.setDefaultButton(true);
 
-        launchLabel.setStyle("-fx-font-size: 16px;");
-        launchTarget.setStyle("-fx-font-size: 12px;");
-        VBox graphic = new VBox(launchLabel, launchTarget);
+        actionLabel.setStyle("-fx-font-size: 16px;");
+        actionTarget.setStyle("-fx-font-size: 12px;");
+        VBox graphic = new VBox(actionLabel, actionTarget);
         graphic.setAlignment(Pos.CENTER);
-        launchButton.setGraphic(graphic);
-        launchButton.setOnAction(event -> onLaunch());
+        actionButton.setGraphic(graphic);
+        actionButton.setOnAction(event -> onActionButton());
 
         JFXButton menuButton = new JFXButton();
         menuButton.getStyleClass().add("menu-button");
@@ -144,15 +148,68 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         FXUtils.installFastTooltip(menuButton, i18n("dsh.launch.select"));
         menuButton.setOnAction(event -> showInstanceMenu(menuButton));
 
-        HBox pane = new HBox(launchButton, menuButton);
+        HBox pane = new HBox(actionButton, menuButton);
         pane.getStyleClass().add("launch-pane");
         pane.setAlignment(Pos.BOTTOM_RIGHT);
-        pane.setMaxWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
-        pane.setMaxHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
+        pane.setMaxWidth(Region.USE_PREF_SIZE);
+        pane.setMaxHeight(Region.USE_PREF_SIZE);
         pane.setPickOnBounds(false);
         StackPane.setAlignment(pane, Pos.BOTTOM_RIGHT);
         StackPane.setMargin(pane, new Insets(0, 20, 20, 0));
         return pane;
+    }
+
+    /// Opens a page by name, used by the `--page` start-up option.
+    ///
+    /// @param name the page name: `home`, `instances`, `versions` or `settings`
+    /// @return whether a page was opened
+    public boolean openPage(String name) {
+        String value = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        if (value.startsWith("settings/")) {
+            SettingsPage page = getSettingsPage();
+            Controllers.navigate(page);
+            return page.openTab(value.substring("settings/".length()));
+        }
+        switch (value) {
+            case "home", "" -> Controllers.navigate(this);
+            case "instances" -> Controllers.navigate(getInstancesPage());
+            case "versions" -> Controllers.navigate(getVersionsPage());
+            case "settings" -> Controllers.navigate(getSettingsPage());
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /// Returns the instance list page, creating it on first use.
+    ///
+    /// @return the instance list page
+    public InstancesPage getInstancesPage() {
+        if (instancesPage == null) {
+            instancesPage = new InstancesPage();
+        }
+        return instancesPage;
+    }
+
+    /// Returns the version list page, creating it on first use.
+    ///
+    /// @return the versions page
+    public VersionsPage getVersionsPage() {
+        if (versionsPage == null) {
+            versionsPage = new VersionsPage();
+        }
+        return versionsPage;
+    }
+
+    /// Returns the settings page, creating it on first use.
+    ///
+    /// @return the settings page
+    public SettingsPage getSettingsPage() {
+        if (settingsPage == null) {
+            settingsPage = new SettingsPage();
+        }
+        return settingsPage;
     }
 
     @Override
@@ -180,79 +237,49 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             settings().selectedInstanceIdProperty().set(current.id());
         }
 
-        if (current == null) {
-            launchLabel.setText(i18n("dsh.launch.no_instance"));
-            launchTarget.setText(i18n("dsh.launch.no_instance.hint"));
-        } else {
-            boolean launching = DshLaunchService.isLaunching(current.id());
-            boolean running = DshProcessManager.find(current.id()).isPresent();
-            launchLabel.setText(launching
-                    ? i18n("dsh.launch.launching")
-                    : running ? i18n("dsh.launch.running") : i18n("dsh.launch"));
-            launchTarget.setText(current.id());
-        }
-
-        refreshRunning();
+        refreshActionState();
     }
 
-    /// Rebuilds the running-instances card.
-    private void refreshRunning() {
-        List<DshProcess> running = DshProcessManager.running();
-
-        runningList.getContent().clear();
-        placeholderList.getContent().clear();
-
-        if (running.isEmpty()) {
+    /// Recomputes the button's label, tooltip and status line.
+    private void refreshActionState() {
+        DshInstance current = currentInstance.get();
+        if (current == null) {
+            actionLabel.setText(i18n("dsh.launch.no_instance"));
+            actionTarget.setText(i18n("dsh.launch.no_instance.hint"));
             status.setText(i18n("dsh.running.none"));
-            placeholderList.getContent().add(buildSectionHeader(i18n("dsh.home")));
-            Label hint = new Label(i18n("dsh.home.hint"));
-            hint.setWrapText(true);
-            VBox hintBox = new VBox(hint);
-            hintBox.setPadding(new Insets(10));
-            placeholderList.getContent().add(hintBox);
             return;
         }
 
-        status.setText(i18n("dsh.running.count", running.size()));
-        runningList.getContent().add(buildSectionHeader(i18n("dsh.running.title")));
-        for (DshProcess process : running) {
-            runningList.getContent().add(buildRunningRow(process));
+        boolean launching = DshLaunchService.isLaunching(current.id());
+        DshProcess running = DshProcessManager.find(current.id()).orElse(null);
+
+        if (launching) {
+            actionLabel.setText(i18n("dsh.launch.launching"));
+        } else if (running != null) {
+            actionLabel.setText(i18n("dsh.stop"));
+        } else {
+            actionLabel.setText(i18n("dsh.launch"));
         }
+        actionTarget.setText(current.id());
+
+        int count = DshProcessManager.running().size();
+        status.setText(count == 0 ? i18n("dsh.running.none") : i18n("dsh.running.count", count));
     }
 
-    /// Builds one row for a running instance.
-    ///
-    /// @param process the running process
-    /// @return the row
-    private LineButton buildRunningRow(DshProcess process) {
-        JFXButton stop = FXUtils.newToggleButton4(SVG.CANCEL, 18);
-        stop.setOnAction(event -> DshLaunchService.stop(process.instance().id(), this::refresh));
-
-        LineButton row = new LineButton();
-        row.setTitle(process.instance().id());
-        String url = process.webUrl().map(Object::toString).orElse(null);
-        row.setSubtitle(url != null
-                ? i18n("dsh.running.summary.url", process.plan().surface().profileName(),
-                        process.uptime().toSeconds(), url)
-                : i18n("dsh.running.summary", process.plan().surface().profileName(),
-                        process.uptime().toSeconds()));
-        row.setTitleTrailing(stop);
-        row.setOnAction(event -> process.webUrl().ifPresent(uri -> FXUtils.openLink(uri.toString())));
-        return row;
-    }
-
-    /// Handles the launch button.
-    private void onLaunch() {
+    /// Launches or stops the selected instance.
+    private void onActionButton() {
         DshInstance instance = currentInstance.get();
         if (instance == null) {
-            Controllers.navigate(new InstancesPage());
+            Controllers.navigate(getInstancesPage());
             return;
         }
-        if (DshProcessManager.find(instance.id()).isPresent()) {
-            DshProcess running = DshProcessManager.find(instance.id()).orElseThrow();
-            running.webUrl().ifPresentOrElse(
-                    uri -> FXUtils.openLink(uri.toString()),
-                    () -> Controllers.showToast(i18n("dsh.launch.already_running", instance.id())));
+        if (DshLaunchService.isLaunching(instance.id())) {
+            return;
+        }
+
+        DshProcess running = DshProcessManager.find(instance.id()).orElse(null);
+        if (running != null) {
+            DshLaunchService.stop(instance.id(), this::refresh);
             return;
         }
         DshLaunchService.launch(instance, ignored -> refresh());
@@ -260,50 +287,70 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
     /// Shows the instance picker next to the launch button.
     ///
+    /// Selecting a running instance leaves the button showing Stop, which is
+    /// what keeps a second server from being started on the same home.
+    ///
     /// @param anchor the button the popup is anchored to
     private void showInstanceMenu(Node anchor) {
         List<DshInstance> instances = DshInstanceManager.list();
         if (instances.isEmpty()) {
-            Controllers.navigate(new InstancesPage());
+            Controllers.navigate(getInstancesPage());
             return;
         }
 
-        VBox box = new VBox();
-        box.setPadding(new Insets(8));
-        box.setSpacing(4);
+        ComponentList list = new ComponentList();
+        list.getContent().add(buildHeader(i18n("dsh.launch.select")));
+
         for (DshInstance instance : instances) {
-            TwoLineListItem item = new TwoLineListItem();
-            item.setTitle(instance.id());
-            item.setSubtitle(i18n("dsh.instance.summary",
-                    instance.version(), instance.profile(),
-                    i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(java.util.Locale.ROOT))));
-            item.setMouseTransparent(false);
-            JFXButton button = new JFXButton();
-            button.setGraphic(item);
-            button.getStyleClass().add("menu-item");
-            button.setOnAction(event -> {
+            DshProcess running = DshProcessManager.find(instance.id()).orElse(null);
+            LineButton row = new LineButton();
+            row.setTitle(instance.id());
+            row.setSubtitle(running != null
+                    ? i18n("dsh.instance.running.since", running.uptime().toSeconds())
+                    : i18n("dsh.instance.summary", instance.version(), instance.profile(),
+                            i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
+            JFXButton indicator = FXUtils.newToggleButton4(running != null ? SVG.CANCEL : SVG.ROCKET_LAUNCH, 18);
+            indicator.setMouseTransparent(true);
+            row.setTitleTrailing(indicator);
+            row.setOnAction(event -> {
                 settings().selectedInstanceIdProperty().set(instance.id());
-                refresh();
-                JFXPopup popup = (JFXPopup) button.getProperties().get("hmcl-dsh-popup");
-                if (popup != null) {
-                    popup.hide();
-                }
+                currentInstance.set(instance);
+                refreshActionState();
+                hidePopup(row);
             });
-            box.getChildren().add(button);
+            list.getContent().add(row);
         }
+
+        VBox box = new VBox(list);
+        box.setPadding(new Insets(8));
+        box.setMaxWidth(420);
 
         JFXPopup popup = new JFXPopup(box);
-        for (Node child : box.getChildren()) {
-            child.getProperties().put("hmcl-dsh-popup", popup);
+        for (Node child : list.getContent()) {
+            child.getProperties().put(POPUP_KEY, popup);
         }
-        popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT, 0, -anchor.getBoundsInLocal().getHeight());
+        popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT,
+                0, -anchor.getBoundsInLocal().getHeight());
     }
 
-    /// Builds a bold section heading rendered as the first row of a card.
+    /// Key under which a menu row remembers the popup that owns it.
+    private static final String POPUP_KEY = "hmcl-dsh-popup";
+
+    /// Hides the popup a row belongs to.
+    ///
+    /// @param row the row that was activated
+    private static void hidePopup(Node row) {
+        Object popup = row.getProperties().get(POPUP_KEY);
+        if (popup instanceof JFXPopup jfxPopup) {
+            jfxPopup.hide();
+        }
+    }
+
+    /// Builds a bold heading for a menu card.
     ///
     /// @param text the heading text
     /// @return the heading row
-    private Node buildSectionHeader(String text) {
+    private Node buildHeader(String text) {
         LineTextPane header = new LineTextPane();
         header.setTitle(text);
         header.getStyleClass().add("section-header");

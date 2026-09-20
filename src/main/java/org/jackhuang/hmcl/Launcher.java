@@ -21,12 +21,15 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.List;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
-import org.jackhuang.hmcl.ui.dsh.RootPage;
+import org.jackhuang.hmcl.ui.dsh.MainPage;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
@@ -40,7 +43,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class Launcher extends Application {
     /// The root page created for this application run.
-    private RootPage rootPage;
+    private MainPage mainPage;
 
     @Override
     public void start(Stage primaryStage) {
@@ -48,16 +51,33 @@ public final class Launcher extends Application {
         LOG.info("JavaFX version: " + System.getProperty("javafx.runtime.version"));
         LOG.info("User home: " + Metadata.HMCL_USER_HOME);
 
-        rootPage = new RootPage();
+        mainPage = new MainPage();
 
-        Scene mainScene = Controllers.initialize(primaryStage, rootPage);
+        Scene mainScene = Controllers.initialize(primaryStage, mainPage);
         StyleSheets.init(mainScene);
 
         FXUtils.setIcon(primaryStage);
         primaryStage.setTitle(Metadata.FULL_TITLE);
         primaryStage.show();
 
+        String page = startPage();
+        if (page != null) {
+            mainPage.openPage(page);
+        }
+
         LOG.info("Main window shown");
+    }
+
+    /// Reads the `--page` start-up option.
+    ///
+    /// Lets a desktop entry, a script or a screenshot harness open a specific
+    /// page without navigating by hand.
+    ///
+    /// @return the requested page name, or `null` when none was given
+    private @Nullable String startPage() {
+        List<String> raw = getParameters().getRaw();
+        int index = raw.indexOf("--page");
+        return index >= 0 && index + 1 < raw.size() ? raw.get(index + 1) : null;
     }
 
     @Override

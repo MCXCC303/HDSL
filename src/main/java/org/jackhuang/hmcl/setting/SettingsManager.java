@@ -138,6 +138,26 @@ public final class SettingsManager {
         return settings;
     }
 
+    /// Parses an enum value written by the shared Gson configuration.
+    ///
+    /// [JsonUtils#GSON] registers a lowercase enum adapter, so a value read back
+    /// is `custom` rather than `CUSTOM`; `Enum.valueOf` would reject it and, if
+    /// the failure were allowed to propagate, would abort the whole restore.
+    ///
+    /// @param type     the enum class
+    /// @param value    the stored value, possibly lowercase
+    /// @param fallback the value to use when the name is unknown
+    /// @param <E>      the enum type
+    /// @return the parsed constant, or the fallback
+    private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, E fallback) {
+        try {
+            return Enum.valueOf(type, value.trim().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            LOG.warning("Unknown " + type.getSimpleName() + " value in settings: " + value);
+            return fallback;
+        }
+    }
+
     /// Writes the current launcher settings to disk.
     ///
     /// Failures are logged rather than propagated so that a read-only home
@@ -266,6 +286,8 @@ public final class SettingsManager {
         ///
         /// @param settings the settings to update
         void applyTo(LauncherSettings settings) {
+            // Each field is applied on its own: a single unreadable value must
+            // not silently discard every setting that follows it.
             if (selectedThemePackId != null) {
                 settings.selectedThemeProperty().set(new ThemeReference(selectedThemePackId, selectedThemeId));
             }
@@ -280,10 +302,10 @@ public final class SettingsManager {
                 settings.customThemeColorProperty().set(new ThemeColor(themeColor, ThemeColor.DEFAULT.color()));
             }
             if (themeColorType != null) {
-                settings.themeColorTypeProperty().set(ThemeColorType.valueOf(themeColorType));
+                settings.themeColorTypeProperty().set(parseEnum(ThemeColorType.class, themeColorType, ThemeColorType.DEFAULT));
             }
             if (themeColorStyle != null) {
-                settings.themeColorStyleProperty().set(ColorStyle.valueOf(themeColorStyle));
+                settings.themeColorStyleProperty().set(parseEnum(ColorStyle.class, themeColorStyle, ColorStyle.FIDELITY));
             }
             if (titleBarTransparent != null) {
                 settings.titleBarTransparentProperty().set(titleBarTransparent);
@@ -292,7 +314,7 @@ public final class SettingsManager {
                 settings.windowTransparentProperty().set(windowTransparent);
             }
             if (backgroundType != null) {
-                settings.backgroundTypeProperty().set(BackgroundType.valueOf(backgroundType));
+                settings.backgroundTypeProperty().set(parseEnum(BackgroundType.class, backgroundType, BackgroundType.DEFAULT));
             }
             if (builtinBackgroundId != null) {
                 settings.builtinBackgroundIdProperty().set(builtinBackgroundId);
@@ -307,14 +329,15 @@ public final class SettingsManager {
                 settings.backgroundOpacityProperty().set(backgroundOpacity);
             }
             if (networkBackgroundImageCachePolicy != null) {
-                settings.networkBackgroundImageCachePolicyProperty()
-                        .set(NetworkBackgroundImageCachePolicy.valueOf(networkBackgroundImageCachePolicy));
+                settings.networkBackgroundImageCachePolicyProperty().set(parseEnum(
+                        NetworkBackgroundImageCachePolicy.class, networkBackgroundImageCachePolicy,
+                        NetworkBackgroundImageCachePolicy.ENABLED));
             }
             if (backgroundFallbackType != null) {
-                settings.backgroundFallbackTypeProperty().set(BackgroundType.valueOf(backgroundFallbackType));
+                settings.backgroundFallbackTypeProperty().set(parseEnum(BackgroundType.class, backgroundFallbackType, BackgroundType.BUILTIN));
             }
             if (backgroundLoadPolicy != null) {
-                settings.backgroundLoadPolicyProperty().set(BackgroundLoadPolicy.valueOf(backgroundLoadPolicy));
+                settings.backgroundLoadPolicyProperty().set(parseEnum(BackgroundLoadPolicy.class, backgroundLoadPolicy, BackgroundLoadPolicy.WAIT_FOR_BACKGROUND));
             }
             if (logFontFamily != null) {
                 settings.logFontFamilyProperty().set(logFontFamily);

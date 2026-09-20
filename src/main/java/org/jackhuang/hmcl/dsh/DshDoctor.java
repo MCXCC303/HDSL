@@ -55,6 +55,23 @@ public final class DshDoctor {
         out.println("  sample string:   " + org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.versions.title"));
         out.println();
 
+        out.println("Appearance");
+        try {
+            var settings = org.jackhuang.hmcl.setting.SettingsManager.settings();
+            out.println("  background source: " + settings.backgroundTypeProperty().get());
+            out.println("  image path:        " + settings.customBackgroundImagePathProperty().get());
+            out.println("  overrides:         " + settings.getThemeAppearanceOverrides());
+            out.println("  theme:             " + settings.getSelectedThemeOrDefault());
+            var resolved = org.jackhuang.hmcl.theme.ThemePackManager.resolveCurrentBackground(
+                    org.jackhuang.hmcl.theme.ThemePackManager.currentResolveContext());
+            out.println("  resolved:          type=" + resolved.type()
+                    + " imagePath=" + resolved.imagePath()
+                    + " builtin=" + resolved.builtinBackgroundId());
+        } catch (Throwable e) {
+            out.println("  FAILED: " + e);
+        }
+        out.println();
+
         out.println("Directories");
         out.println("  user home: " + Metadata.HMCL_USER_HOME);
         out.println("  versions:  " + DshPaths.VERSIONS);

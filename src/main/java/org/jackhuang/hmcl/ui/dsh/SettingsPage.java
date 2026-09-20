@@ -83,6 +83,22 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
         setCenter(transitionPane);
     }
 
+    /// Selects a tab by name.
+    ///
+    /// @param name the tab name: `general`, `appearance` or `about`
+    /// @return whether a tab was selected
+    public boolean openTab(String name) {
+        switch (name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "general" -> tab.select(generalTab, false);
+            case "appearance" -> tab.select(appearanceTab, false);
+            case "about" -> tab.select(aboutTab, false);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @Override
     public void onPageShown() {
         tab.onPageShown();
