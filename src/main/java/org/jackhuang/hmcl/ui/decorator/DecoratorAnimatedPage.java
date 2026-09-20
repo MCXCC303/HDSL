@@ -21,6 +21,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Control;
 import javafx.scene.control.Skin;
 import javafx.scene.control.SkinBase;
+import javafx.collections.ListChangeListener;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -63,8 +64,24 @@ public class DecoratorAnimatedPage extends Control {
 
             BorderPane pane = new BorderPane();
             pane.setLeft(control.left);
-            FXUtils.setLimitWidth(control.left, 200);
             pane.setCenter(control.center);
+
+            // The sidebar is two hundred wide when it holds something and takes
+            // no room when it does not. Pinning the width unconditionally leaves
+            // a column of nothing beside a page that has no sidebar — which
+            // every page of the original has, so it never came up there.
+            Runnable applySidebarWidth = () -> {
+                if (control.left.getChildren().isEmpty()) {
+                    control.left.setMinWidth(0);
+                    control.left.setPrefWidth(0);
+                    control.left.setMaxWidth(0);
+                } else {
+                    FXUtils.setLimitWidth(control.left, 200);
+                }
+            };
+            control.left.getChildren().addListener(
+                    (ListChangeListener<Node>) change -> applySidebarWidth.run());
+            applySidebarWidth.run();
             getChildren().setAll(pane);
         }
 

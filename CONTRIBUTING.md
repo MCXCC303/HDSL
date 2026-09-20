@@ -248,6 +248,17 @@ ComponentList.add(child)
 界面里所有颜色都会随窗口背后是什么而变化 —— 这种问题在截图上不明显，
 要把两个窗口的同一区域**采样成数值**才看得出来。
 
+### 没有侧栏的页面会留下 200px 空列
+
+`DecoratorAnimatedPage` 的皮肤**无条件**执行 `FXUtils.setLimitWidth(control.left, 200)`，
+所以即使 `left` 是空的 VBox，它照样占 200px 宽。
+
+原版所有用这个基类的页面都有侧栏，所以从没遇到；本项目有一个无侧栏的页面就撞上了。
+皮肤已改为：**left 为空时宽度归零，有内容时才限宽 200**。
+
+**判定方法**：找内容卡片或第一行内容的左缘 x 坐标 —— 应当是 10~20，
+若是 200 多就是这条。
+
 ### ComponentList 的子项要用它自己的 setVgrow
 
 `ComponentList` 会把每个子项**包进一个 `ItemWrapper`** 再放进 VBox。

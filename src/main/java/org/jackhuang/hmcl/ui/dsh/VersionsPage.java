@@ -32,6 +32,8 @@ import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
+import javafx.scene.layout.BorderPane;
+import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
@@ -88,11 +90,13 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     /// Creates the versions page and starts loading.
     public VersionsPage() {
 
-        AdvancedListBox sideBar = new AdvancedListBox()
-                .startCategory(i18n("dsh.versions.title").toUpperCase(java.util.Locale.ROOT))
-                .addNavigationDrawerItem(i18n("dsh.versions.refresh"), SVG.UPDATE, this::refresh);
-        FXUtils.setLimitWidth(sideBar, 200);
-        setLeft(sideBar);
+        // No sidebar: the original's versions page has none, and a category
+        // holding one item named after the page says the same thing twice.
+        // Refresh belongs in the toolbar, where every other list page keeps it.
+        Node toolbar = ToolbarListPageSkin.createToolbarButton2(
+                i18n("button.refresh"), SVG.REFRESH, this::refresh);
+        toolbar.getStyleClass().add("card");
+        BorderPane.setMargin(toolbar, new Insets(10, 10, 0, 10));
 
         VBox content = new VBox(10);
         content.setPadding(new Insets(10));
@@ -100,13 +104,16 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
 
         ScrollPane scroll = new ScrollPane(content);
         scroll.setFitToWidth(true);
-        scroll.getStyleClass().add("edge-to-edge");
         // Must run after the content is installed: smooth scrolling binds to
         // the content node and fails on a null content.
         FXUtils.smoothScrolling(scroll);
 
         spinner.setContent(scroll);
-        setCenter(spinner);
+
+        BorderPane layout = new BorderPane();
+        layout.setTop(toolbar);
+        layout.setCenter(spinner);
+        setCenter(layout);
 
         refresh();
     }
