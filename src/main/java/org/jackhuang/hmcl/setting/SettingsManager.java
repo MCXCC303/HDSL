@@ -204,6 +204,9 @@ public final class SettingsManager {
         @SerializedName("titleBarTransparent")
         private @Nullable Boolean titleBarTransparent;
 
+        @SerializedName("launcherFontFamily")
+        private @Nullable String launcherFontFamily;
+
         @SerializedName("windowTransparent")
         private @Nullable Boolean windowTransparent;
 
@@ -264,6 +267,7 @@ public final class SettingsManager {
             snapshot.themeColorType = settings.themeColorTypeProperty().get().name();
             snapshot.themeColorStyle = settings.themeColorStyleProperty().get().name();
             snapshot.titleBarTransparent = settings.titleBarTransparentProperty().get();
+            snapshot.launcherFontFamily = settings.launcherFontFamilyProperty().get();
             snapshot.windowTransparent = settings.windowTransparentProperty().get();
             snapshot.backgroundType = settings.backgroundTypeProperty().get().name();
             snapshot.builtinBackgroundId = settings.builtinBackgroundIdProperty().get();
@@ -306,6 +310,9 @@ public final class SettingsManager {
             }
             if (themeColorStyle != null) {
                 settings.themeColorStyleProperty().set(parseEnum(ColorStyle.class, themeColorStyle, ColorStyle.FIDELITY));
+            }
+            if (launcherFontFamily != null) {
+                settings.launcherFontFamilyProperty().set(launcherFontFamily);
             }
             if (titleBarTransparent != null) {
                 settings.titleBarTransparentProperty().set(titleBarTransparent);

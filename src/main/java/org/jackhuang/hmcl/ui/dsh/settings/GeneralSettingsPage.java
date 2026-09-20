@@ -75,15 +75,8 @@ public final class GeneralSettingsPage extends ScrollPane {
             }
         });
 
-        LineToggleButton animations = new LineToggleButton();
-        animations.setTitle(i18n("dsh.settings.animations"));
-        animations.setSubtitle(i18n("dsh.settings.animations.desc"));
-        animations.setSelected(!settings().isAnimationDisabled());
-        animations.selectedProperty().addListener((observable, oldValue, newValue) ->
-                settings().animationDisabledProperty().set(!newValue));
-
         ComponentList list = new ComponentList();
-        list.getContent().addAll(language, animations);
+        list.getContent().add(language);
         return list;
     }
 

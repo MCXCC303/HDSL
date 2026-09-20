@@ -29,6 +29,14 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.setting.BackgroundType;
 import org.jackhuang.hmcl.setting.LauncherSettings;
+import java.util.Optional;
+import org.jackhuang.hmcl.ui.construct.RadioChoiceList;
+import org.jackhuang.hmcl.theme.ThemeColor;
+import org.jackhuang.hmcl.setting.ThemeColorType;
+import org.jackhuang.hmcl.setting.FontManager;
+import javafx.scene.Node;
+import javafx.scene.control.ColorPicker;
+import com.jfoenix.controls.JFXColorPicker;
 import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
 import org.jackhuang.hmcl.theme.BuiltinBackground;
 import org.jackhuang.hmcl.theme.Theme;
@@ -63,6 +71,9 @@ public final class AppearanceSettingsPage extends ScrollPane {
     /// Brightness mode identifiers accepted by the theme engine.
     private static final List<String> BRIGHTNESS_MODES = List.of("auto", "light", "dark");
 
+    /// The sentinel used for "the platform default font" in the font chooser.
+    private static final String SYSTEM_FONT = "\u0000system";
+
     /// Creates the appearance settings tab.
     public AppearanceSettingsPage() {
         setFitToWidth(true);
@@ -75,9 +86,121 @@ public final class AppearanceSettingsPage extends ScrollPane {
 
         root.getChildren().addAll(
                 buildThemeList(),
+                buildThemeColorList(),
+                buildFontList(),
+                buildAnimationList(),
                 buildBackgroundSourceList(),
                 buildBackgroundDetailList(),
                 buildWindowList());
+    }
+
+    /// Builds the theme colour section.
+    ///
+    /// The colours are radio choices rather than a dropdown because the custom
+    /// entry carries a colour picker beside it, which a dropdown row has no room
+    /// for. This mirrors HMCL's `RadioChoiceList` of `ThemeColorType`.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildThemeColorList() {
+        ComponentList list = new ComponentList();
+
+        LineTextPane header = new LineTextPane();
+        header.setTitle(i18n("dsh.settings.theme_color"));
+        header.getStyleClass().add("section-header");
+        list.getContent().add(header);
+
+        ThemeColor currentCustom = Optional.ofNullable(settings().customThemeColorProperty().get())
+                .orElse(ThemeColor.DEFAULT);
+
+        ColorPicker picker = new JFXColorPicker();
+        picker.setValue(currentCustom.color());
+        picker.valueProperty().addListener((observable, was, color) -> {
+            if (color != null) {
+                settings().customThemeColorProperty().set(new ThemeColor(currentCustom.name(), color));
+                // Picking a colour is only meaningful if it is also the mode in
+                // use, so choosing one selects the custom entry.
+                settings().themeColorTypeProperty().set(ThemeColorType.CUSTOM);
+            }
+        });
+
+        RadioChoiceList.Choice<ThemeColorType> custom = new RadioChoiceList.Choice<>(
+                i18n("dsh.settings.theme_color.custom"), ThemeColorType.CUSTOM) {
+            @Override
+            protected Node createRightNode() {
+                return picker;
+            }
+        };
+
+        RadioChoiceList<ThemeColorType> choices = new RadioChoiceList<>();
+        choices.setFallbackValue(ThemeColorType.DEFAULT);
+        choices.setChoices(
+                new RadioChoiceList.Choice<>(i18n("dsh.settings.theme_color.default"), ThemeColorType.DEFAULT),
+                new RadioChoiceList.Choice<>(i18n("dsh.settings.theme_color.system"), ThemeColorType.SYSTEM),
+                custom,
+                new RadioChoiceList.Choice<>(i18n("dsh.settings.theme_color.background"),
+                        ThemeColorType.BACKGROUND));
+        choices.setSelectedValue(Objects.requireNonNullElse(
+                settings().themeColorTypeProperty().get(), ThemeColorType.DEFAULT));
+        choices.selectedValueProperty().addListener((observable, was, value) -> {
+            if (value != null && value != was) {
+                settings().themeColorTypeProperty().set(value);
+            }
+        });
+
+        list.getContent().add(choices);
+        return list;
+    }
+
+    /// Builds the font section.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildFontList() {
+        ComponentList list = new ComponentList();
+
+        LineTextPane header = new LineTextPane();
+        header.setTitle(i18n("dsh.settings.font"));
+        header.getStyleClass().add("section-header");
+        list.getContent().add(header);
+
+        List<String> families = new ArrayList<>();
+        families.add(SYSTEM_FONT);
+        families.addAll(FontManager.availableFamilies());
+
+        LineSelectButton<String> font = new LineSelectButton<>();
+        font.setTitle(i18n("dsh.settings.font"));
+        font.setSubtitle(i18n("dsh.settings.font.hint"));
+        font.setItems(families);
+        font.setNullSafeConverter(family -> SYSTEM_FONT.equals(family)
+                ? i18n("dsh.settings.font.system") : family);
+        font.setValue(Objects.requireNonNullElse(
+                settings().launcherFontFamilyProperty().get(), SYSTEM_FONT));
+        font.valueProperty().addListener((observable, was, family) -> {
+            if (family != null && !Objects.equals(family, was)) {
+                FontManager.setFontFamily(SYSTEM_FONT.equals(family) ? null : family);
+            }
+        });
+        list.getContent().add(font);
+        return list;
+    }
+
+    /// Builds the animation section.
+    ///
+    /// The toggle is inverted because the setting stores the disabling rather
+    /// than the enabling, which is how the animation helpers read it.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildAnimationList() {
+        ComponentList list = new ComponentList();
+
+        LineToggleButton animations = new LineToggleButton();
+        animations.setTitle(i18n("dsh.settings.animations"));
+        animations.setSubtitle(i18n("dsh.settings.animations.desc"));
+        animations.setSelected(!settings().isAnimationDisabled());
+        animations.selectedProperty().addListener((observable, was, value) ->
+                settings().animationDisabledProperty().set(!value));
+
+        list.getContent().add(animations);
+        return list;
     }
 
     /// Builds the theme section: theme pack and brightness mode.

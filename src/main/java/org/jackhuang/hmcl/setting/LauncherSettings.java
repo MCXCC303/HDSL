@@ -99,6 +99,9 @@ public final class LauncherSettings {
     private final BooleanProperty windowTransparent = new SimpleBooleanProperty(false);
 
     /// The source used to render the launcher background.
+    private final ObjectProperty<@Nullable String> launcherFontFamily =
+            new SimpleObjectProperty<>(this, LAUNCHER_FONT_FAMILY, null);
+
     private final ObjectProperty<BackgroundType> backgroundType = new SimpleObjectProperty<>(BackgroundType.DEFAULT);
 
     /// The id of the selected built-in wallpaper.
@@ -130,6 +133,9 @@ public final class LauncherSettings {
     /// When the background is loaded relative to the window becoming visible.
     private final ObjectProperty<BackgroundLoadPolicy> backgroundLoadPolicy =
             new SimpleObjectProperty<>(BackgroundLoadPolicy.WAIT_FOR_BACKGROUND);
+
+    /// The font family used by the interface, or `null` for the platform default.
+    public static final String LAUNCHER_FONT_FAMILY = "launcherFontFamily";
 
     /// The font family used by the log view, or empty for the default.
     private final StringProperty logFontFamily = new SimpleStringProperty();
@@ -168,6 +174,13 @@ public final class LauncherSettings {
     /// @return the appearance-override set
     public ObservableSet<String> getThemeAppearanceOverrides() {
         return themeAppearanceOverrides;
+    }
+
+    /// Returns the interface font family property.
+    ///
+    /// @return the font family property, whose value may be `null`
+    public ObjectProperty<@Nullable String> launcherFontFamilyProperty() {
+        return launcherFontFamily;
     }
 
     /// Returns the theme brightness mode property.

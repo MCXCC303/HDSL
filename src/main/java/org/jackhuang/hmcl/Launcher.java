@@ -25,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.setting.FontManager;
 import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -55,6 +56,7 @@ public final class Launcher extends Application {
 
         Scene mainScene = Controllers.initialize(primaryStage, mainPage);
         StyleSheets.init(mainScene);
+        FontManager.attach(mainScene);
 
         FXUtils.setIcon(primaryStage);
         primaryStage.setTitle(Metadata.FULL_TITLE);
