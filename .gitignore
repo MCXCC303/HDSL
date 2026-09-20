@@ -1,0 +1,11 @@
+.gradle/
+build/
+*.class
+.idea/
+*.iml
+out/
+
+# build outputs, but keep the vendored JFoenix patch base
+*.jar
+!lib/JFoenix.jar
+!gradle/wrapper/*.jar

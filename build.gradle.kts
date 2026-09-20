@@ -1,0 +1,132 @@
+// HMCL-DSH — a DeepSeek Harness launcher built on HMCL's JavaFX UI kit.
+//
+// The presentation layer (window chrome, component library, animations, theme
+// engine, image pipeline, async task engine, i18n) is transplanted from HMCL
+// and kept under its original `org.jackhuang.hmcl.*` package names, as GPLv3
+// requires the original copyright notices to stay intact. Everything that
+// launched Minecraft has been removed; the domain layer is HMCL-DSH's own.
+
+plugins {
+    java
+    application
+}
+
+group = "org.jackhuang.hmcl"
+version = "0.1.0"
+
+application {
+    // HMCL-DSH application entry point.
+    mainClass = "org.jackhuang.hmcl.Main"
+}
+
+repositories {
+    mavenCentral()
+    maven(url = "https://jitpack.io")
+
+    // HMCL patches a handful of JFoenix classes with vendored sources that
+    // shadow this jar at compile time; the rest of the library (converters,
+    // unchecked skins, ...) still comes from here.
+    flatDir {
+        name = "libs"
+        dirs = setOf(rootProject.file("lib"))
+    }
+}
+
+// --------------------------------------------------------------- JavaFX ------
+// HMCL-DSH targets Linux only. JavaFX must match the JDK that runs Gradle:
+// the 21.x line supports JDK 17–22, the 25 line is required from JDK 23 on.
+// This mirrors HMCL's own JavaFXPlatform.CLASSIC/MODERN split without carrying
+// its buildSrc plugin.
+val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    require(os.contains("linux")) { "HMCL-DSH supports Linux only (detected os.name=$os)" }
+    when (arch) {
+        "aarch64", "arm64" -> "linux-aarch64"
+        "x86_64", "amd64" -> "linux"
+        else -> error("Unsupported Linux architecture: $arch")
+    }
+}
+
+val javafxVersion: String = (findProperty("javafxVersion") as String?) ?: run {
+    val feature = System.getProperty("java.specification.version").substringBefore('.').toInt()
+    if (feature >= 23) "25" else "21.0.8"
+}
+
+// ---------------------------------------------------------- dependencies -----
+dependencies {
+    implementation("libs:JFoenix")
+
+    implementation(libs.jetbrains.annotations)
+    implementation(libs.gson)
+    implementation(libs.jna)
+    implementation(libs.jna.platform)
+    implementation(libs.kala.compress.zip)
+    implementation(libs.kala.compress.tar)
+    implementation(libs.kala.compress.ar)
+    implementation(libs.kala.encoding.detctor)
+    implementation(libs.simple.png.javafx)
+    implementation(libs.xz)
+    implementation(libs.pci.ids)
+    implementation(libs.nanohttpd)
+    implementation(libs.jsoup)
+    implementation(libs.fxsvgimage)
+    implementation(libs.monet.fx)
+    implementation(libs.jwebp)
+    implementation(libs.weburl)
+    implementation(libs.uuid.tools)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.autolink)
+    implementation(libs.commonmark.underline)
+    implementation(libs.commonmark.strikethrough)
+    implementation(libs.commonmark.table)
+
+    for (module in listOf("base", "graphics", "controls")) {
+        implementation("org.openjfx:javafx-$module:$javafxVersion:$javafxPlatform")
+    }
+}
+
+// ------------------------------------------------------------- toolchain -----
+java {
+    // HMCL-DSH requires JDK 21+. We do not pin a toolchain so the build works
+    // with whichever >= 21 JDK the developer has active (Arch: `archlinux-java`).
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+// JavaFX internals used by the transplanted UI kit (skins, prism, glass).
+// Kept identical to HMCL's build so the ported code compiles unchanged.
+val addExports = listOf(
+    "java.base/java.lang",
+    "java.base/java.lang.reflect",
+    "java.base/jdk.internal.loader",
+    "javafx.base/com.sun.javafx.binding",
+    "javafx.base/com.sun.javafx.event",
+    "javafx.base/com.sun.javafx.runtime",
+    "javafx.base/javafx.beans.property",
+    "javafx.graphics/javafx.css",
+    "javafx.graphics/javafx.stage",
+    "javafx.graphics/javafx.scene",
+    "javafx.graphics/com.sun.glass.ui",
+    "javafx.graphics/com.sun.javafx.stage",
+    "javafx.graphics/com.sun.javafx.util",
+    "javafx.graphics/com.sun.prism",
+    "javafx.controls/com.sun.javafx.scene.control",
+    "javafx.controls/com.sun.javafx.scene.control.behavior",
+    "javafx.graphics/com.sun.javafx.tk.quantum",
+    "javafx.controls/javafx.scene.control.skin",
+)
+
+tasks.withType<JavaCompile> {
+    options.encoding = "UTF-8"
+    options.compilerArgs.addAll(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
+    // Report every error instead of stopping at the default 100. During the
+    // port this is what proves that all remaining errors live in the known
+    // cut-point files.
+    options.compilerArgs.addAll(listOf("-Xmaxerrs", "10000"))
+}
+
+tasks.named<JavaExec>("run") {
+    jvmArgs(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
+    systemProperty("hmcldsh.version.override", project.version.toString())
+}

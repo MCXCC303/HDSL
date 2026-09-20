@@ -1,0 +1,82 @@
+HMCL-DSH
+Copyright (C) 2026  HMCL-DSH contributors
+
+This program is a modified version of Hello Minecraft! Launcher (HMCL).
+
+    Hello Minecraft! Launcher
+    Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+
+HMCL is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+HMCL is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <https://www.gnu.org/licenses/>.
+
+--------------------------------------------------------------------------------
+
+STATEMENT OF CHANGES  (GNU GPL v3, section 5(a) and section 7)
+
+The original work has been modified as follows:
+
+1.  Renamed.  The software is distributed under the name "HMCL-DSH", not
+    "HMCL" or "Hello Minecraft! Launcher", as required by the additional
+    terms attached to HMCL under GNU GPL v3 section 7(c).
+
+2.  Scope.  All functionality related to launching, installing or managing
+    Minecraft has been removed, together with the corresponding source
+    packages (game, download, auth, modpack, addon, schematic, nbt, java,
+    launch, upgrade, terracotta, countly) and the associated user-interface
+    pages.
+
+3.  Purpose.  The application now launches and manages DeepSeek Harness
+    (`dsh`) profiles and versions, which is implemented in the new
+    `org.jackhuang.hmcl.dsh` package and the new user-interface pages under
+    `org.jackhuang.hmcl.ui.dsh`.
+
+4.  Retained.  The presentation layer -- the JavaFX window decorator, the
+    component library, the animation helpers, the theme engine, the image
+    pipeline, the asynchronous task engine, the localization framework and
+    the general-purpose utilities -- is carried over from HMCL, keeping its
+    original package names and its original copyright headers, which are
+    preserved in full as required by GNU GPL v3 section 7(b).
+
+5.  Removed.  The self-update mechanism (which used HMCL's own update server
+    and signing key), the crash-reporting submission path, the Countly
+    package name, the Terracotta integration and every hard-coded reference
+    to HMCL's servers, documentation, community links and branding have been
+    removed or replaced.
+
+6.  Platform.  Only Linux is supported.  Windows- and macOS-specific code
+    paths are not maintained.
+
+The full source code of this modified version is available from the project
+repository in which this notice is distributed.
+
+--------------------------------------------------------------------------------
+
+TRADEMARKS
+
+"Hello Minecraft! Launcher", "HMCL" and their logos are the property of their
+respective owners.  They are used in this file only to give credit and to
+satisfy the attribution requirements of the GNU General Public License.  Their
+use does not imply any endorsement of HMCL-DSH by the HMCL project.
+
+"DeepSeek", "DeepSeek Harness" and "dsh" are the property of their respective
+owners.  HMCL-DSH is an independent, unofficial launcher and is not affiliated
+with or endorsed by the DeepSeek Harness project.
+
+--------------------------------------------------------------------------------
+
+THIRD-PARTY COMPONENTS
+
+This program includes or depends on third-party software, including JFoenix,
+OpenJFX, Gson, JNA, kala-compress, commonmark, jsoup, NanoHTTPD, MonetFX,
+weburl, webp, uuid-tools, pci-ids, simple-png-javafx and fxsvgimage.  The
+licenses and attributions of those components are listed in
+`src/main/resources/assets/about/deps.json` and in `assets/about/thanks.json`.
