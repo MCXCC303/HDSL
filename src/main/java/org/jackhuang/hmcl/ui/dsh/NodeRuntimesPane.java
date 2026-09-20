@@ -90,10 +90,11 @@ public final class NodeRuntimesPane extends ScrollPane implements Refreshable {
         content.getChildren().addAll(toolbar, status, installedList, remoteList);
         spinner.setContent(content);
 
-        // Must run after the content is installed: smooth scrolling binds to
-        // the content node and fails on a null content.
-        FXUtils.smoothScrolling(this);
         setContent(spinner);
+
+        // Must run after this pane's own content is installed: smooth scrolling
+        // binds to the content node and fails on a null content.
+        FXUtils.smoothScrolling(this);
 
         refresh();
     }

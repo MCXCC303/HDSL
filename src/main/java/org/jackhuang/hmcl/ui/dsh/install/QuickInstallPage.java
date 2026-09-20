@@ -143,17 +143,8 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         homeModeSelector.setValue(DshHomeMode.ISOLATED);
 
         ComponentList list = new ComponentList();
-        list.getContent().addAll(nameRow, workspaceChooser, buildHomeWarning(), homeModeSelector);
+        list.getContent().addAll(nameRow, workspaceChooser, homeModeSelector);
         return list;
-    }
-
-    /// Builds the advisory shown under the home-policy selector.
-    ///
-    /// @return the warning row
-    private LineTextPane buildHomeWarning() {
-        LineTextPane warning = new LineTextPane();
-        warning.setText(i18n("dsh.install.home.warning"));
-        return warning;
     }
 
     /// Builds the Node runtime section.

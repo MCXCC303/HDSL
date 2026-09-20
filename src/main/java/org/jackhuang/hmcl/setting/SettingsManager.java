@@ -149,6 +149,29 @@ public final class SettingsManager {
     /// @param fallback the value to use when the name is unknown
     /// @param <E>      the enum type
     /// @return the parsed constant, or the fallback
+    /// Resolves a stored theme colour.
+    ///
+    /// Older settings files hold one of the standard colour names; the current
+    /// format holds the colour itself as `#RRGGBB`, which is what lets a colour
+    /// chosen in the picker survive a restart. Both are accepted.
+    ///
+    /// @param stored the stored name or hex value
+    /// @return the resolved colour, or the default when the value is unusable
+    private static ThemeColor resolveThemeColor(String stored) {
+        String value = stored.trim();
+        for (ThemeColor standard : ThemeColor.STANDARD_COLORS) {
+            if (standard.name().equalsIgnoreCase(value)) {
+                return standard;
+            }
+        }
+        try {
+            return new ThemeColor(value, javafx.scene.paint.Color.web(value));
+        } catch (IllegalArgumentException e) {
+            LOG.warning("Unknown theme colour in settings: " + stored);
+            return ThemeColor.DEFAULT;
+        }
+    }
+
     private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, E fallback) {
         try {
             return Enum.valueOf(type, value.trim().toUpperCase(java.util.Locale.ROOT));
@@ -263,7 +286,8 @@ public final class SettingsManager {
             snapshot.selectedThemeId = theme.themeId();
             snapshot.themeAppearanceOverrides = new ArrayList<>(settings.getThemeAppearanceOverrides());
             snapshot.themeBrightnessMode = settings.themeBrightnessModeProperty().get();
-            snapshot.themeColor = settings.customThemeColorProperty().get().name();
+            snapshot.themeColor = ThemeColor.getColorDisplayName(
+                    settings.customThemeColorProperty().get().color());
             snapshot.themeColorType = settings.themeColorTypeProperty().get().name();
             snapshot.themeColorStyle = settings.themeColorStyleProperty().get().name();
             snapshot.titleBarTransparent = settings.titleBarTransparentProperty().get();
@@ -303,7 +327,7 @@ public final class SettingsManager {
                 settings.themeBrightnessModeProperty().set(themeBrightnessMode);
             }
             if (themeColor != null) {
-                settings.customThemeColorProperty().set(new ThemeColor(themeColor, ThemeColor.DEFAULT.color()));
+                settings.customThemeColorProperty().set(resolveThemeColor(themeColor));
             }
             if (themeColorType != null) {
                 settings.themeColorTypeProperty().set(parseEnum(ThemeColorType.class, themeColorType, ThemeColorType.DEFAULT));

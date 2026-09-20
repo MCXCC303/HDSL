@@ -29,6 +29,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.setting.BackgroundType;
 import org.jackhuang.hmcl.setting.LauncherSettings;
+import org.jackhuang.hmcl.setting.SettingsManager;
 import java.util.Optional;
 import org.jackhuang.hmcl.ui.construct.RadioChoiceList;
 import org.jackhuang.hmcl.theme.ThemeColor;
@@ -117,6 +118,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
         picker.valueProperty().addListener((observable, was, color) -> {
             if (color != null) {
                 settings().customThemeColorProperty().set(new ThemeColor(currentCustom.name(), color));
+                settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_COLOR);
                 // Picking a colour is only meaningful if it is also the mode in
                 // use, so choosing one selects the custom entry.
                 settings().themeColorTypeProperty().set(ThemeColorType.CUSTOM);
@@ -143,7 +145,12 @@ public final class AppearanceSettingsPage extends ScrollPane {
                 settings().themeColorTypeProperty().get(), ThemeColorType.DEFAULT));
         choices.selectedValueProperty().addListener((observable, was, value) -> {
             if (value != null && value != was) {
+                // The colour is only consulted when it is recorded as an
+                // override; without this the theme pack's own colour wins and
+                // the choice appears to do nothing.
+                settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_COLOR);
                 settings().themeColorTypeProperty().set(value);
+                SettingsManager.save();
             }
         });
 

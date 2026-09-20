@@ -84,7 +84,22 @@ public record DshNodeRuntime(
     /// @param runtime the installed runtime
     /// @return the descriptor
     public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
-        return new DshNodeRuntime(runtime.node(), runtime.version(), runtime.npm(), null, null, null);
+        // pnpm lives beside node, not in the distribution metadata, so it is
+        // probed directly. Leaving it unresolved made every managed runtime look
+        // incapable of plugin management even after pnpm was installed into it.
+        Path bin = runtime.node().getParent();
+        Path pnpm = bin == null ? null : bin.resolve("pnpm");
+        if (pnpm != null && !Files.isExecutable(pnpm)) {
+            pnpm = null;
+        }
+
+        return new DshNodeRuntime(
+                runtime.node(),
+                runtime.version(),
+                runtime.npm(),
+                runtime.npm() == null ? null : versionOf(runtime.npm()),
+                pnpm,
+                pnpm == null ? null : versionOf(pnpm));
     }
 
     /// Probes the toolchain on the current `PATH`.
@@ -132,6 +147,33 @@ public record DshNodeRuntime(
     /// @return whether `pnpm` is available
     public boolean canManagePlugins() {
         return pnpm != null;
+    }
+
+    /// Returns the environment entries that put this runtime's tools first.
+    ///
+    /// DeepSeek Harness resolves `pnpm` by name through PATH, so any child the
+    /// launcher starts for an instance must be given the instance's runtime
+    /// ahead of the system's. Otherwise a managed runtime silently borrows the
+    /// system tooling, or finds none.
+    ///
+    /// @return the environment additions
+    public java.util.Map<String, String> pathEnvironment() {
+        String existing = System.getenv("PATH");
+        String bin = binDirectory().toString();
+        return java.util.Map.of("PATH", existing == null || existing.isBlank()
+                ? bin
+                : bin + java.io.File.pathSeparator + existing);
+    }
+
+    /// Returns the directory holding this runtime's executables.
+    ///
+    /// Used to put the runtime ahead of the system's tooling on the child's
+    /// PATH, which is what makes a managed runtime self-contained.
+    ///
+    /// @return the `bin` directory
+    public Path binDirectory() {
+        Path parent = node.getParent();
+        return parent == null ? node : parent;
     }
 
     /// Tests a version string against DeepSeek Harness's Node range.

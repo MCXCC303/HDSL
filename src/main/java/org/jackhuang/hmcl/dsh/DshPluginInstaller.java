@@ -221,6 +221,7 @@ public final class DshPluginInstaller {
         // wrong would silently operate on the user's real ~/.dsh.
         Map<String, String> environment = new java.util.LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());
+        environment.putAll(runtime.pathEnvironment());
         environment.putAll(instance.environment());
 
         try {

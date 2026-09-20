@@ -229,9 +229,65 @@ public final class NodeRuntimeManager {
         if (!runtime.isUsable()) {
             throw new DshException("Node.js " + normalized + " unpacked without a node executable");
         }
+
+        provisionPnpm(runtime, onStage);
+
         LOG.info("Installed Node.js " + normalized + " into " + target);
         return runtime;
     }
+
+    /// Installs the pnpm a managed runtime needs to run DeepSeek Harness.
+    ///
+    /// A Node distribution carries corepack but no `pnpm` binary, and corepack
+    /// left to itself picks the newest pnpm — while DeepSeek Harness is written
+    /// against pnpm 11, down to how that major reports blocked dependency
+    /// scripts. The major is therefore pinned here so a profile behaves the same
+    /// on a managed runtime as on the system one.
+    ///
+    /// A failure is reported but does not fail the install: the runtime is
+    /// usable without pnpm, and the plugin installer explains what is missing.
+    ///
+    /// @param runtime the freshly installed runtime
+    /// @param onStage receives progress lines, or `null`
+    private static void provisionPnpm(NodeRuntime runtime, @Nullable Consumer<String> onStage) {
+        Path npm = runtime.directory().resolve("bin").resolve("npm");
+        if (!Files.isExecutable(npm)) {
+            stage(onStage, "npm is missing, so pnpm was not installed");
+            return;
+        }
+
+        stage(onStage, "Installing pnpm " + PNPM_MAJOR + ".x");
+        List<String> command = List.of(npm.toString(), "install", "--global", "pnpm@" + PNPM_MAJOR);
+
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.environment().put("PATH",
+                runtime.directory().resolve("bin") + java.io.File.pathSeparator
+                        + String.valueOf(System.getenv("PATH")));
+        builder.redirectErrorStream(true);
+
+        try {
+            Process process = builder.start();
+            try (var reader = process.inputReader()) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    stage(onStage, line);
+                }
+            }
+            int exit = process.waitFor();
+            if (exit != 0) {
+                LOG.warning("Installing pnpm into " + runtime.directory() + " exited with " + exit);
+                stage(onStage, "pnpm could not be installed (npm exited with " + exit + ")");
+            }
+        } catch (IOException e) {
+            LOG.warning("Failed to install pnpm into " + runtime.directory(), e);
+            stage(onStage, "pnpm could not be installed: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /// The pnpm major DeepSeek Harness is written against.
+    private static final String PNPM_MAJOR = "11";
 
     /// Removes an installed Node runtime.
     ///
