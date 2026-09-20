@@ -70,7 +70,9 @@ public final class DshCli {
         /// Removes an installed Node runtime.
         UNINSTALL_NODE,
         /// Installs a plugin into an instance's profile.
-        INSTALL_PLUGIN
+        INSTALL_PLUGIN,
+        /// Sends one prompt over the Agent Client Protocol and prints the reply.
+        ACP_PROMPT
     }
 
     /// A parsed command line.
@@ -117,7 +119,8 @@ public final class DshCli {
                 && !args.contains("--list-node-versions")
                 && !args.contains("--install-node")
                 && !args.contains("--uninstall-node")
-                && !args.contains("--install-plugin")) {
+                && !args.contains("--install-plugin")
+                && !args.contains("--acp-prompt")) {
             return null;
         }
 
@@ -163,6 +166,11 @@ public final class DshCli {
                 }
                 case "--uninstall-node" -> {
                     command = Command.UNINSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--acp-prompt" -> {
+                    command = Command.ACP_PROMPT;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--install-plugin" -> {
@@ -310,6 +318,9 @@ public final class DshCli {
                     out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
+                case ACP_PROMPT -> {
+                    return acpPrompt(invocation, out, err);
+                }
                 case INSTALL_PLUGIN -> {
                     if (invocation.arguments().size() < 2) {
                         err.println("error: --install-plugin needs an instance and a package spec");
@@ -342,6 +353,62 @@ public final class DshCli {
                     return 2;
                 }
             }
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /// Sends one prompt over the Agent Client Protocol and prints the reply.
+    ///
+    /// The protocol reserves stdout for JSON-RPC frames, so this is the only way
+    /// to exercise the session path without a display.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int acpPrompt(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().size() < 2) {
+            err.println("error: --acp-prompt needs an instance and a prompt");
+            return 1;
+        }
+        DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+        if (instance == null) {
+            err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+            return 1;
+        }
+
+        DshAcpClient.Listener listener = new DshAcpClient.Listener() {
+            @Override
+            public void onText(String text) {
+                out.print(text);
+                out.flush();
+            }
+
+            @Override
+            public void onToolCall(String title, String status) {
+                out.println();
+                out.println("[tool] " + title + " (" + status + ")");
+            }
+
+            @Override
+            public void onPromptFinished(String stopReason) {
+                out.println();
+                out.println("[stop] " + stopReason);
+            }
+
+            @Override
+            public void onFailure(String message) {
+                err.println("[acp] " + message);
+            }
+        };
+
+        try (DshAcpClient client = DshAcpClient.connect(instance, listener)) {
+            String sessionId = client.newSession();
+            out.println("[session] " + sessionId);
+            client.prompt(sessionId, invocation.arguments().get(1));
+            return 0;
         } catch (DshException e) {
             err.println("error: " + e.getMessage());
             return 1;
@@ -469,6 +536,9 @@ public final class DshCli {
                       --home <path>                  required for --home-mode custom
                       --runtime <version>            Node runtime to pin (default: system)
                   --delete-instance <id>           remove an instance
+
+                sessions:
+                  --acp-prompt <id> <text>         send one prompt over ACP
 
                 plugins:
                   --install-plugin <id> <spec>     install a plugin into an instance profile

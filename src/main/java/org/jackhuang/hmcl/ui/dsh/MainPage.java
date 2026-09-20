@@ -87,9 +87,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// The button itself, so its state can be refreshed.
     private final JFXButton actionButton = new JFXButton();
 
-    /// The status line above the button.
-    private final Label status = new Label();
-
     /// Keeps the button in step with the process while one is running.
     private final Timeline ticker;
 
@@ -105,9 +102,10 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("dsh.home").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerItem(i18n("dsh.home"), SVG.HOME, () -> Controllers.navigate(this))
-                .addNavigationDrawerItem(i18n("instance.manage"), SVG.FORMAT_LIST_BULLETED,
+                .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
                         () -> Controllers.navigate(getInstancesPage()))
+                .addNavigationDrawerItem(i18n("instance.manage"), SVG.SETTINGS_FILL,
+                        this::openCurrentInstance)
                 .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
                         () -> Controllers.navigate(getVersionsPage()))
                 .addNavigationDrawerItem(i18n("dsh.node.title"), SVG.STADIA_CONTROLLER,
@@ -121,10 +119,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
         // The launch control is the only centre content; it is placed inside a
         // StackPane because a Control's children belong to its skin.
-        StackPane centre = new StackPane(buildLaunchPane());
-        StackPane.setAlignment(status, Pos.TOP_LEFT);
-        centre.getChildren().add(status);
-        setCenter(centre);
+        setCenter(new StackPane(buildLaunchPane()));
 
         ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshActionState()));
         ticker.setCycleCount(Animation.INDEFINITE);
@@ -169,7 +164,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// @param name the page name: `home`, `instances`, `versions` or `settings`
     /// @return whether a page was opened
     public boolean openPage(String name) {
-        String value = name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+        String raw = name == null ? "" : name.trim();
+        if (raw.toLowerCase(Locale.ROOT).startsWith("instance:")) {
+            String id = raw.substring("instance:".length());
+            org.jackhuang.hmcl.dsh.DshInstance instance = org.jackhuang.hmcl.dsh.DshInstanceManager.find(id);
+            if (instance == null) {
+                return false;
+            }
+            Controllers.navigate(new InstancePage(instance));
+            return true;
+        }
+
+        String value = raw.toLowerCase(Locale.ROOT);
         if (value.startsWith("settings/")) {
             SettingsPage page = getSettingsPage();
             Controllers.navigate(page);
@@ -256,13 +262,12 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         refreshActionState();
     }
 
-    /// Recomputes the button's label, tooltip and status line.
+    /// Recomputes the button's label and tooltip.
     private void refreshActionState() {
         DshInstance current = currentInstance.get();
         if (current == null) {
             actionLabel.setText(i18n("dsh.launch.no_instance"));
             actionTarget.setText(i18n("dsh.launch.no_instance.hint"));
-            status.setText(i18n("dsh.running.none"));
             return;
         }
 
@@ -278,8 +283,19 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         }
         actionTarget.setText(current.id());
 
-        int count = DshProcessManager.running().size();
-        status.setText(count == 0 ? i18n("dsh.running.none") : i18n("dsh.running.count", count));
+    }
+
+    /// Opens the management page of the instance the launch button targets.
+    ///
+    /// With no instance chosen there is nothing to manage, so the list is shown
+    /// instead of an empty editor.
+    private void openCurrentInstance() {
+        DshInstance instance = currentInstance.get();
+        if (instance == null) {
+            Controllers.navigate(getInstancesPage());
+            return;
+        }
+        Controllers.navigate(new InstancePage(instance));
     }
 
     /// Launches or stops the selected instance.

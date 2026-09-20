@@ -18,18 +18,22 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
+import com.jfoenix.controls.JFXPopup;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshVersion;
+import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -48,6 +52,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import java.util.List;
 import java.util.Locale;
 
+import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /// Lists the DeepSeek Harness instances managed by HMCL-DSH.
@@ -119,23 +124,103 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 : i18n("dsh.instance.count", instances.size()));
     }
 
-    /// Builds one row for an instance, with a remove action.
+    /// Builds one row for an instance.
+    ///
+    /// The row carries the three affordances HMCL's instance list has: a dot to
+    /// choose the instance the home page acts on, a rocket to run or stop it,
+    /// and a menu — or the row itself — to open its management page.
     ///
     /// @param instance the instance to render
     /// @return the row
     private LineButton buildRow(DshInstance instance) {
-        JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE, 18);
-        remove.setOnAction(event -> removeInstance(instance));
+        boolean selected = instance.id().equals(settings().selectedInstanceIdProperty().get());
+        boolean running = DshProcessManager.find(instance.id()).isPresent();
+
+        JFXButton selector = FXUtils.newToggleButton4(
+                selected ? SVG.CHECK_CIRCLE : SVG.ALPHA_CIRCLE, 14);
+        FXUtils.installFastTooltip(selector, i18n("dsh.instance.select"));
+        selector.setOnAction(event -> select(instance));
+
+        JFXButton launch = FXUtils.newToggleButton4(running ? SVG.CANCEL : SVG.ROCKET_LAUNCH, 18);
+        FXUtils.installFastTooltip(launch, running ? i18n("dsh.stop") : i18n("dsh.launch"));
+        launch.setOnAction(event -> toggleLaunch(instance, running));
+
+        JFXButton menu = FXUtils.newToggleButton4(SVG.MORE_VERT, 18);
+        FXUtils.installFastTooltip(menu, i18n("dsh.instance.menu"));
+        menu.setOnAction(event -> showMenu(menu, instance));
+
+        HBox actions = new HBox(4, launch, menu);
+        actions.setAlignment(Pos.CENTER);
 
         LineButton row = new LineButton();
+        row.setLeading(selector);
         row.setTitle(instance.id());
         row.setSubtitle(i18n("dsh.instance.summary",
                 instance.version(),
                 instance.profile(),
                 i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-        row.setTitleTrailing(remove);
+        row.setTitleTrailing(actions);
         row.setOnAction(event -> Controllers.navigate(new InstancePage(instance)));
         return row;
+    }
+
+    /// Chooses the instance the home page acts on.
+    ///
+    /// @param instance the instance to select
+    private void select(DshInstance instance) {
+        settings().selectedInstanceIdProperty().set(instance.id());
+        refresh();
+    }
+
+    /// Starts or stops an instance.
+    ///
+    /// @param instance the instance
+    /// @param running  whether it is currently running
+    private void toggleLaunch(DshInstance instance, boolean running) {
+        if (running) {
+            DshLaunchService.stop(instance.id(), this::refresh);
+        } else {
+            DshLaunchService.launch(instance, ignored -> refresh());
+        }
+    }
+
+    /// Shows the per-instance menu.
+    ///
+    /// @param anchor   the button the popup is anchored to
+    /// @param instance the instance
+    private void showMenu(Node anchor, DshInstance instance) {
+        JFXPopup[] popupRef = new JFXPopup[1];
+        Runnable close = () -> {
+            if (popupRef[0] != null) {
+                popupRef[0].hide();
+            }
+        };
+
+        AdvancedListBox menu = new AdvancedListBox();
+        menu.addNavigationDrawerItem(i18n("dsh.instance.select"), SVG.CHECK, () -> {
+            select(instance);
+            close.run();
+        });
+        menu.addNavigationDrawerItem(i18n("instance.manage"), SVG.SETTINGS_FILL, () -> {
+            close.run();
+            Controllers.navigate(new InstancePage(instance));
+        });
+        menu.addNavigationDrawerItem(i18n("dsh.instance.open_home"), SVG.FOLDER_OPEN, () -> {
+            close.run();
+            try {
+                FXUtils.showFileInExplorer(instance.instanceDirectory());
+            } catch (DshException e) {
+                Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+            }
+        });
+        menu.addNavigationDrawerItem(i18n("dsh.instance.remove"), SVG.DELETE, () -> {
+            close.run();
+            removeInstance(instance);
+        });
+
+        popupRef[0] = new JFXPopup(menu);
+        popupRef[0].show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT,
+                -anchor.getBoundsInLocal().getWidth(), 0);
     }
 
     /// Opens the create-an-instance wizard.

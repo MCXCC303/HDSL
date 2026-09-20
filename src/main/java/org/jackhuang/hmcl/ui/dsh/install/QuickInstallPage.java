@@ -206,7 +206,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     ///
     /// @return the footer
     private HBox buildFooter() {
-        JFXButton back = new JFXButton(i18n("dsh.install.back"));
+        JFXButton back = new JFXButton(i18n("button.previous"));
         back.setOnAction(event -> controller.onPrev(false));
 
         JFXButton finish = new JFXButton(i18n("dsh.install.start"));
