@@ -27,6 +27,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
@@ -191,12 +192,19 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     ///
     /// @return the tab content
     private ScrollPane buildDetailsTab() {
+        String runtime = instance.nodeRuntimeOrDefault();
+
         ComponentList list = new ComponentList();
         list.getContent().add(buildDetail(i18n("dsh.install.step.version"), instance.version()));
         list.getContent().add(buildDetail(i18n("dsh.instance.profile"), instance.profile()));
         list.getContent().add(buildDetail(i18n("dsh.install.home"),
                 i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-        list.getContent().add(buildDetail(i18n("dsh.node.title"), instance.nodeRuntimeOrDefault()));
+        // The runtime is shown by name, not by its stored key: "system" is what
+        // the manifest holds, not what the rest of the interface calls it.
+        list.getContent().add(buildDetail(i18n("dsh.node.title"),
+                DshNodeRuntime.SYSTEM.equals(runtime)
+                        ? i18n("dsh.install.node.system")
+                        : runtime));
         list.getContent().add(buildDetail(i18n("dsh.install.workspace"), instance.workspace()));
 
         LineButton open = new LineButton();
@@ -210,8 +218,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         });
         list.getContent().add(open);
 
-        VBox root = new VBox(list);
-        root.setPadding(new javafx.geometry.Insets(10));
+        // A section title above the card, as every list in the original has, and
+        // the same card-list class the settings tab uses for its spacing.
+        VBox root = new VBox(ComponentList.createComponentListTitle(i18n("settings.game.section.basic")), list);
+        root.getStyleClass().add("card-list");
 
         ScrollPane scroll = new ScrollPane(root);
         scroll.setFitToWidth(true);
