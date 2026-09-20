@@ -34,6 +34,10 @@ import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import com.jfoenix.controls.JFXTextField;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import java.util.Locale;
 import org.jackhuang.hmcl.ui.ListPageBase;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
@@ -115,8 +119,12 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 return;
             }
 
+            String needle = filter == null ? "" : filter.trim().toLowerCase(Locale.ROOT);
             List<PluginRow> rows = new ArrayList<>();
             for (Map.Entry<String, String> entry : loaded.dependencies().entrySet()) {
+                if (!needle.isEmpty() && !entry.getKey().toLowerCase(Locale.ROOT).contains(needle)) {
+                    continue;
+                }
                 rows.add(new PluginRow(entry.getKey(), entry.getValue(),
                         loaded.bundles().contains(entry.getKey())));
             }
@@ -180,6 +188,40 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                           @Unmodifiable List<String> bundles) {
     }
 
+    /// The name the list is narrowed to, or `null` for all of them.
+    private @Nullable String filter;
+
+    /// The search field, shown in place of the toolbar's buttons.
+    private final JFXTextField searchField = new JFXTextField();
+
+    /// Holds whichever of the toolbar and the search bar is in use.
+    ///
+    /// A stack, as the instance list uses: the skin puts what this returns into
+    /// an HBox, and a box sizes a child to its preferred width, so a container
+    /// that does not stretch leaves the search field at its own width instead of
+    /// across the row.
+    private final StackPane toolbarHost = new StackPane();
+
+    /// The toolbar's buttons.
+    private final HBox normalBar = new HBox();
+
+    /// The search field and its close button.
+    private final HBox searchBar = new HBox();
+
+    /// Replaces the toolbar with the search field.
+    private void showSearch() {
+        toolbarHost.getChildren().setAll(searchBar);
+        searchField.requestFocus();
+    }
+
+    /// Restores the toolbar and clears the filter.
+    private void hideSearch() {
+        searchField.clear();
+        filter = null;
+        toolbarHost.getChildren().setAll(normalBar);
+        refresh();
+    }
+
     /// The page's skin: a toolbar above the plugin list.
     private static final class PluginListPageSkin extends ToolbarListPageSkin<PluginRow, PluginListPage> {
         /// Creates the skin.
@@ -192,11 +234,36 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
         @Override
         protected List<Node> initializeToolbar(PluginListPage page) {
-            List<Node> toolbar = new ArrayList<>();
-            toolbar.add(createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh));
-            toolbar.add(createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
-                    page::revealProfile));
-            return toolbar;
+            page.normalBar.setAlignment(Pos.CENTER_LEFT);
+            page.normalBar.getChildren().setAll(
+                    createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh),
+                    createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
+                            page::revealProfile),
+                    createToolbarButton2(i18n("search"), SVG.SEARCH, page::showSearch));
+
+            // The original's search row: the field takes the width, the close
+            // button is built by the same factory as the buttons it replaces —
+            // a toggle button of the same apparent shape is a different class
+            // with different metrics — and the padding is horizontal only, so it
+            // costs the row no height.
+            page.searchField.setPromptText(i18n("search"));
+            HBox.setHgrow(page.searchField, Priority.ALWAYS);
+            page.searchField.textProperty().addListener((observable, was, value) -> {
+                page.filter = value;
+                page.refresh();
+            });
+
+            JFXButton close = createToolbarButton2(null, SVG.CLOSE, page::hideSearch);
+            FXUtils.installFastTooltip(close, i18n("button.cancel"));
+            FXUtils.onEscPressed(page.searchField, close::fire);
+
+            page.searchBar.setAlignment(Pos.CENTER);
+            page.searchBar.setPadding(new Insets(0, 5, 0, 5));
+            page.searchBar.getChildren().setAll(page.searchField, close);
+
+            page.toolbarHost.setAlignment(Pos.CENTER_LEFT);
+            page.toolbarHost.getChildren().setAll(page.normalBar);
+            return List.of(page.toolbarHost);
         }
 
         @Override

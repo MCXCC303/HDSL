@@ -72,6 +72,13 @@ public abstract class ToolbarListPageSkin<E, P extends ListPageBase<E>> extends 
             toolbar.setAlignment(Pos.CENTER_LEFT);
             toolbar.setPickOnBounds(false);
             toolbar.getChildren().setAll(toolbarButtons);
+            // A box gives each child its preferred width, so a toolbar that is
+            // one container — a page that swaps its buttons for a search field —
+            // would sit at its own width. Buttons are laid out as a row; a single
+            // node takes the row.
+            if (toolbarButtons.size() == 1) {
+                HBox.setHgrow(toolbarButtons.get(0), Priority.ALWAYS);
+            }
             FXUtils.setOverflowHidden(toolbar, 8);
             root.getContent().add(toolbar);
         }
