@@ -27,6 +27,7 @@ import javafx.geometry.Pos;
 import javafx.scene.control.ListCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Region;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -115,7 +116,11 @@ public final class InstanceListCell extends ListCell<DshInstance> {
         HBox center = new HBox(8);
         center.setAlignment(Pos.CENTER_LEFT);
         center.setMouseTransparent(true);
+        // The original holds the middle at its preferred width and centres the
+        // text within the row rather than stretching it.
+        center.setPrefWidth(Region.USE_PREF_SIZE);
         BorderPane.setMargin(center, new Insets(0, 0, 0, 8));
+        BorderPane.setAlignment(content, Pos.CENTER);
         center.getChildren().setAll(icon, content);
         root.setCenter(center);
 
