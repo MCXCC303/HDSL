@@ -57,6 +57,15 @@ public final class InstanceIconDialog extends JFXDialogLayout {
     /// Called after a successful change.
     private final Runnable onFinish;
 
+    /// The tile marked as the pending choice.
+    private RipplerContainer marked;
+
+    /// The pending built-in icon, or `null` when a file is pending.
+    private @Nullable DshInstanceIcon pendingIcon;
+
+    /// The pending icon file, or `null` when a built-in icon is pending.
+    private @Nullable Path pendingFile;
+
     /// Creates the dialog.
     ///
     /// @param instance the instance being edited
@@ -72,19 +81,29 @@ public final class InstanceIconDialog extends JFXDialogLayout {
         tiles.setVgap(4);
 
         tiles.getChildren().add(buildCustomTile());
+        // DEFAULT shares GRASS's artwork, so the chooser starts at GRASS and the
+        // duplicate would only be a second tile with the same picture.
         for (DshInstanceIcon icon : DshInstanceIcon.values()) {
+            if (icon == DshInstanceIcon.DEFAULT) {
+                continue;
+            }
             Image image = icon.load();
             if (image != null) {
-                tiles.getChildren().add(buildTile(image, true, () -> apply(icon, null)));
+                tiles.getChildren().add(buildTile(image, icon));
             }
         }
         setBody(tiles);
+
+        JFXButton confirm = new JFXButton(i18n("button.ok"));
+        confirm.getStyleClass().add("dialog-accept");
+        confirm.setOnAction(event -> apply());
 
         JFXButton cancel = new JFXButton(i18n("button.cancel"));
         cancel.getStyleClass().add("dialog-cancel");
         cancel.setOnAction(event -> fireEvent(new DialogCloseEvent()));
         onEscPressed(this, cancel::fire);
-        setActions(cancel);
+
+        setActions(confirm, cancel);
     }
 
     /// Builds the tile that picks an image file.
@@ -98,17 +117,33 @@ public final class InstanceIconDialog extends JFXDialogLayout {
         FXUtils.setLimitWidth(container, 36);
         FXUtils.setLimitHeight(container, 36);
         FXUtils.installFastTooltip(container, i18n("dsh.instance.icon.choose_file"));
-        FXUtils.onClicked(container, this::chooseFile);
+        FXUtils.onClicked(container, () -> chooseFile(container));
         return container;
     }
 
-    /// Builds one tile.
+    /// Builds one tile for a built-in icon.
     ///
-    /// @param image   the image to show
-    /// @param selected whether this tile is the current choice
-    /// @param action  the action to run on click
+    /// @param image the image to show
+    /// @param icon  the icon the tile represents
     /// @return the tile
-    private Node buildTile(Image image, boolean selected, Runnable action) {
+    private Node buildTile(Image image, DshInstanceIcon icon) {
+        RipplerContainer container = buildTile(image);
+        if (instance.iconFileOrDefault() == null && instance.iconOrDefault() == icon) {
+            mark(container);
+        }
+        FXUtils.onClicked(container, () -> {
+            mark(container);
+            pendingIcon = icon;
+            pendingFile = null;
+        });
+        return container;
+    }
+
+    /// Builds a tile frame around an image.
+    ///
+    /// @param image the image to show
+    /// @return the tile
+    private RipplerContainer buildTile(Image image) {
         ImageView view = new ImageView(image);
         view.setFitWidth(32);
         view.setFitHeight(32);
@@ -118,33 +153,47 @@ public final class InstanceIconDialog extends JFXDialogLayout {
         RipplerContainer container = new RipplerContainer(view);
         FXUtils.setLimitWidth(container, 36);
         FXUtils.setLimitHeight(container, 36);
-        if (selected) {
-            container.getStyleClass().add("icon-tile-selected");
-        }
-        FXUtils.onClicked(container, action);
         return container;
     }
 
-    /// Asks for an image file and uses it as the instance icon.
-    private void chooseFile() {
+    /// Marks a tile as the pending choice, clearing the previous mark.
+    ///
+    /// @param container the tile to mark
+    private void mark(RipplerContainer container) {
+        if (marked != null) {
+            marked.getStyleClass().remove("icon-tile-selected");
+        }
+        marked = container;
+        if (!container.getStyleClass().contains("icon-tile-selected")) {
+            container.getStyleClass().add("icon-tile-selected");
+        }
+    }
+
+    /// Asks for an image file and marks it as the pending choice.
+    ///
+    /// @param container the add tile, marked so the choice is visible
+    private void chooseFile(RipplerContainer container) {
         FileChooser chooser = new FileChooser();
         chooser.getExtensionFilters().add(FXUtils.getImageExtensionFilter());
         Path selected = Controllers.showOpenDialog(chooser);
         if (selected == null) {
             return;
         }
-        apply(null, selected);
+        mark(container);
+        pendingIcon = null;
+        pendingFile = selected;
     }
 
-    /// Writes the choice back to the instance.
-    ///
-    /// @param icon the chosen built-in icon, or `null` when a file was chosen
-    /// @param file the chosen file, or `null` when a built-in icon was chosen
-    private void apply(@Nullable DshInstanceIcon icon, @Nullable Path file) {
+    /// Writes the pending choice back to the instance.
+    private void apply() {
+        if (pendingIcon == null && pendingFile == null) {
+            fireEvent(new DialogCloseEvent());
+            return;
+        }
         try {
-            DshInstance updated = file != null
-                    ? instance.withIconFile(file)
-                    : instance.withIcon(icon == null ? DshInstanceIcon.DEFAULT : icon).withNoIconFile();
+            DshInstance updated = pendingFile != null
+                    ? instance.withIconFile(pendingFile)
+                    : instance.withIcon(pendingIcon == null ? DshInstanceIcon.DEFAULT : pendingIcon).withNoIconFile();
             DshInstanceManager.update(updated);
             onFinish.run();
             fireEvent(new DialogCloseEvent());

@@ -28,10 +28,11 @@ import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import javafx.scene.image.Image;
-import org.jackhuang.hmcl.ui.construct.LineComponent;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.dsh.InstanceIconDialog;
+import org.jackhuang.hmcl.ui.construct.ImagePickerItem;
+import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -97,32 +98,33 @@ public final class InstanceSettingsPage extends ScrollPane {
 
     /// Builds the instance icon row.
     ///
-    /// The mechanism is HMCL's: the row shows the current icon and opens a
-    /// dialog of tiles, because the choice is visual and a list of names would
-    /// make the user read what they are meant to recognise.
+    /// HMCL's icon row is an `ImagePickerItem`: the image sits on the trailing
+    /// edge with an edit button beside it and a reset button after that, rather
+    /// than the whole row being clickable. The distinction matters because the
+    /// row is a setting like any other — the controls say what can be done to
+    /// it — and because resetting to the default has to be reachable without
+    /// opening the chooser.
     ///
     /// @return the row
-    private LineButton buildIconRow() {
-        LineButton row = new LineButton();
+    private ImagePickerItem buildIconRow() {
+        ImagePickerItem row = new ImagePickerItem();
         row.setTitle(i18n("dsh.instance.icon"));
-        row.setSubtitle(i18n("dsh.instance.icon.hint"));
-        applyLeadingIcon(row, instance);
-        row.setOnAction(event -> Controllers.dialog(new InstanceIconDialog(instance, () -> {
-            if (onChanged != null) {
-                onChanged.run();
-            }
-        })));
+        row.setImage(DshInstanceIcons.load(instance));
+        row.setOnSelectButtonClicked(event -> Controllers.dialog(
+                new InstanceIconDialog(instance, this::onIconChanged)));
+        row.setOnDeleteButtonClicked(event -> resetIcon());
         return row;
     }
 
-    /// Shows an instance's icon as a row's leading graphic.
-    ///
-    /// @param row      the row to decorate
-    /// @param instance the instance whose icon to show
-    private static void applyLeadingIcon(LineComponent row, DshInstance instance) {
-        Image image = DshInstanceIcons.load(instance);
-        if (image != null) {
-            row.setLeading(image, 24);
+    /// Restores the default icon.
+    private void resetIcon() {
+        write(instance.withIcon(DshInstanceIcon.DEFAULT).withNoIconFile());
+    }
+
+    /// Refreshes the row after the chooser changed the icon.
+    private void onIconChanged() {
+        if (onChanged != null) {
+            onChanged.run();
         }
     }
 

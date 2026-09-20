@@ -25,10 +25,11 @@ import java.util.Locale;
 
 /// The icon shown for a launcher instance.
 ///
-/// The mechanism is HMCL's: an instance carries an icon selection, and the list
-/// and the sidebar show it. The images available are the ones HMCL ships, minus
-/// the mod-loader and contributor artwork, which mean nothing for a DeepSeek
-/// Harness instance.
+/// The mechanism and the set are HMCL's: an instance carries an icon selection,
+/// the list and the sidebar show it, and the chooser offers the same images the
+/// original does. The mod-loader artwork is kept for that parity — a launcher
+/// that offers fewer choices than the one it is modelled on reads as a
+/// limitation rather than a decision.
 @NotNullByDefault
 public enum DshInstanceIcon {
     /// The default icon.
@@ -41,18 +42,26 @@ public enum DshInstanceIcon {
     CHICKEN("chicken"),
     /// Command block.
     COMMAND("command"),
+    /// The April Fools artwork.
+    APRIL_FOOLS("april_fools"),
+    /// The OptiFine logo.
+    OPTIFINE("optifine"),
     /// Crafting table.
     CRAFT_TABLE("craft_table"),
+    /// The Fabric logo.
+    FABRIC("fabric"),
+    /// The Legacy Fabric logo.
+    LEGACY_FABRIC("legacyfabric"),
+    /// The Forge logo.
+    FORGE("forge"),
+    /// The Cleanroom logo.
+    CLEANROOM("cleanroom"),
+    /// The NeoForge logo.
+    NEO_FORGE("neoforge"),
     /// Furnace.
     FURNACE("furnace"),
-    /// Burning TNT.
-    BURNING_TNT("burningtnt"),
-    /// Terracotta.
-    TERRACOTTA("terracotta"),
-    /// Unknown pack.
-    UNKNOWN_PACK("unknown_pack"),
-    /// Unknown server.
-    UNKNOWN_SERVER("unknown_server");
+    /// The Quilt logo.
+    QUILT("quilt");
 
     private final String asset;
 
