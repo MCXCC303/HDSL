@@ -369,8 +369,20 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @param instance the instance to select
     private void select(DshInstance instance) {
+        // A single left click opens the instance, which is what the original
+        // does: the row is the way in, and choosing which instance to launch is
+        // a consequence of having opened it rather than a separate step.
         settings().selectedInstanceIdProperty().set(instance.id());
         refresh();
+        Controllers.navigate(getInstancePage(instance));
+    }
+
+    /// Returns the page for an instance, creating it on first use.
+    ///
+    /// @param instance the instance
+    /// @return the page
+    private static InstancePage getInstancePage(DshInstance instance) {
+        return new InstancePage(instance);
     }
 
     /// Starts or stops an instance.

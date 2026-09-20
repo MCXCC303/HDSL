@@ -142,9 +142,29 @@ import -window $WID /tmp/shot.png
 
 新增功能时**顺手加一条对应的 CLI 子命令**，收益远大于成本。
 
-### 必须点击时
+### 点击其实可用 —— 关键是事件的拆法
 
-KWin 下可用的配方（点两次是为了穿过 ripple/动画）：
+**`xdotool click` 在这台机器上几乎从不生效，但下面的写法稳定可用**（本会话失败十余次后才找到）：
+
+```bash
+click() {
+  xdotool mousemove --sync $1 $2
+  sleep 1.2                        # 让 hover/ripple 先完成
+  xdotool mousedown 1
+  sleep 0.15                       # 按下与抬起之间要有间隔
+  xdotool mouseup 1
+  sleep 3                          # 等页面切换动画
+}
+# 先激活并置顶，否则点击落在别的窗口上
+xdotool windowactivate $WID; xdotool windowraise $WID; xdotool windowfocus $WID
+```
+
+`windowmove` 与 `getwindowgeometry` 的坐标是**一致的**（实测设 300,200 就读回 300,200），
+窗口是自绘标题栏、没有 WM 装饰，所以**窗口内坐标可直接与截图对齐**，不需要补偿偏移。
+
+导航原版 HMCL 时用它；自己的页面仍然优先用深链。
+
+### 旧配方（仅在上面失效时尝试）
 
 ```bash
 eval $(xdotool getwindowgeometry --shell $WID)

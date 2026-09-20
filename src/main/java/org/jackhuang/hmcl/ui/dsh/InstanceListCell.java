@@ -20,6 +20,8 @@ package org.jackhuang.hmcl.ui.dsh;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXRadioButton;
 import javafx.event.ActionEvent;
+import javafx.scene.Cursor;
+import javafx.scene.input.MouseButton;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.ListCell;
@@ -136,6 +138,17 @@ public final class InstanceListCell extends ListCell<DshInstance> {
 
         this.graphic = new RipplerContainer(root);
         setGraphic(graphic);
+
+        // The whole row chooses the instance, which is what the original does.
+        // A row that only responds on its radio button is a row most of whose
+        // surface does nothing, and the pointer says so before it is clicked.
+        root.setCursor(Cursor.HAND);
+        graphic.setOnMouseClicked(event -> {
+            DshInstance instance = getItem();
+            if (instance != null && event.getButton() == MouseButton.PRIMARY) {
+                onSelect.accept(instance);
+            }
+        });
     }
 
     /// Sets the handlers the row reports to.

@@ -116,7 +116,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     ///                   `details`, or `null` for the first
     public InstancePage(DshInstance instance, @Nullable String initialTab) {
         this.instance = instance;
-        this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(instance.id()));
+        // The original titles this page with the page's name and the instance's,
+        // not with the instance alone: the window says where you are as well as
+        // what you are looking at.
+        this.state = new ReadOnlyObjectWrapper<>(
+                State.fromTitle(i18n("instance.manage.manage.title", instance.id())));
 
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
