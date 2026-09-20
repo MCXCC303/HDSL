@@ -31,7 +31,6 @@ import javafx.scene.image.Image;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.LineComponent;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -84,19 +83,6 @@ public final class InstanceSettingsPage extends ScrollPane {
         list.getContent().add(buildPortModeRow());
         list.getContent().add(buildPortRow());
         list.getContent().add(buildPortNote());
-
-        LineTextPane folderHeader = new LineTextPane();
-        folderHeader.setTitle(i18n("dsh.instance.folders"));
-        folderHeader.getStyleClass().add("section-header");
-        list.getContent().add(folderHeader);
-        // A custom-home instance can point outside anything the launcher owns,
-        // so the directory is resolved defensively.
-        try {
-            list.getContent().add(buildFolderRow(i18n("dsh.instance.open_home"), instance.instanceDirectory()));
-        } catch (DshException e) {
-            LOG.warning("The instance directory could not be resolved", e);
-        }
-        list.getContent().add(buildFolderRow(i18n("dsh.instance.open_workspace"), instance.workspacePath()));
 
         VBox root = new VBox(list);
         root.setPadding(new Insets(10));
@@ -232,19 +218,6 @@ public final class InstanceSettingsPage extends ScrollPane {
         LineTextPane note = new LineTextPane();
         note.setText(i18n("dsh.instance.port.note"));
         return note;
-    }
-
-    /// Builds a row that opens a directory in the file manager.
-    ///
-    /// @param title     the row label
-    /// @param directory the directory to open
-    /// @return the row
-    private LineButton buildFolderRow(String title, java.nio.file.Path directory) {
-        LineButton row = new LineButton();
-        row.setTitle(title);
-        row.setSubtitle(directory.toString());
-        row.setOnAction(event -> FXUtils.showFileInExplorer(directory));
-        return row;
     }
 
     /// Persists a modified instance and notifies the caller.

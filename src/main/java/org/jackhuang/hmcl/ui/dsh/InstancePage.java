@@ -26,6 +26,9 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceManager;
+import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
+import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -82,6 +85,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The plugins tab.
     private final TabHeader.Tab<ScrollPane> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
+    /// The browse tab.
+    private final TabHeader.Tab<BrowsePane> browseTab = new TabHeader.Tab<>("dshInstanceBrowse");
+
     /// The details tab.
     private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
 
@@ -105,8 +111,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
         sessionsTab.setNodeSupplier(() -> new SessionManagementPane(instance));
         pluginsTab.setNodeSupplier(this::buildPluginsTab);
+        browseTab.setNodeSupplier(() -> new BrowsePane(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
-        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, detailsTab);
+        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, browseTab, detailsTab);
         tab.select(settingsTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
@@ -114,7 +121,14 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
                 .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
-                .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO);
+                .addNavigationDrawerTab(tab, browseTab, i18n("dsh.instance.browse"), SVG.FOLDER_OPEN)
+                .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO)
+                // HMCL's instance page ends with an action group rather than more
+                // tabs; these are the two that have a counterpart here.
+                .startCategory("")
+                .addNavigationDrawerItem(i18n("dsh.instance.test_launch"), SVG.ROCKET_LAUNCH,
+                        this::toggleLaunch)
+                .addNavigationDrawerItem(i18n("dsh.instance.remove"), SVG.DELETE, this::removeInstance);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
         setCenter(transitionPane);
@@ -199,6 +213,30 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         row.setTitle(title);
         row.setText(value == null ? "" : value);
         return row;
+    }
+
+    /// Starts or stops this instance from its own page.
+    private void toggleLaunch() {
+        if (DshProcessManager.find(instance.id()).isPresent()) {
+            DshLaunchService.stop(instance.id(), this::refresh);
+        } else {
+            DshLaunchService.launch(instance, ignored -> refresh());
+        }
+    }
+
+    /// Deletes this instance after confirmation, leaving the page afterwards.
+    private void removeInstance() {
+        Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
+                i18n("dsh.instance.remove"),
+                () -> {
+                    try {
+                        DshInstanceManager.delete(instance.id());
+                        Controllers.navigate(new InstancesPage());
+                    } catch (DshException e) {
+                        Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+                    }
+                },
+                null);
     }
 
     /// Rebuilds the plugin list from the profile manifest on disk.
