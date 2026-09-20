@@ -16,12 +16,14 @@ import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.dsh.VersionFilterBar;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
@@ -54,11 +56,20 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
     /// The version the launcher itself runs, which needs no warning.
     private final @Nullable String launcherVersion;
 
-    /// The name box above the list.
-    private final JFXTextField nameField = new JFXTextField();
+    /// The name box, type filter and refresh this page shares with the other
+    /// version lists.
+    private final VersionFilterBar filterBar = new VersionFilterBar(this::render, this::load);
+
+    /// Spins while the versions are being fetched.
+    private final SpinnerPane spinner = new SpinnerPane();
 
     /// Holds the version rows.
-    private final ComponentList list = new ComponentList();
+    ///
+    /// A plain box rather than a [ComponentList]: these rows carry their own
+    /// surface, and a component list wraps each child in one more item with
+    /// padding of its own, which stacks on the row's margin and makes every row
+    /// taller than the original's.
+    private final VBox list = new VBox();
 
     /// Every version the last load returned, before filtering.
     private List<String> versions = List.of();
@@ -77,24 +88,32 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
         setSpacing(10);
         setAlignment(Pos.TOP_LEFT);
 
-        nameField.setPromptText(i18n("download.name.prompt"));
-        nameField.textProperty().addListener((observable, was, value) -> render());
+        VBox.setMargin(filterBar, new Insets(10, 10, 0, 10));
 
-        JFXButton refresh = FXUtils.newRaisedButton(i18n("button.refresh"));
-        refresh.setOnAction(event -> load());
+        // The card surface the rows sit on, as the original's list has.
+        StackPane listSurface = new StackPane(list);
+        listSurface.getStyleClass().add("card");
+        VBox.setMargin(listSurface, new Insets(10));
+        listSurface.setAlignment(Pos.TOP_LEFT);
 
-        HBox toolbar = new HBox(16, new Label(i18n("download.name")), nameField, refresh);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-        toolbar.getStyleClass().add("card");
-        HBox.setHgrow(nameField, Priority.ALWAYS);
-        VBox.setMargin(toolbar, new Insets(10, 10, 0, 10));
-
-        ScrollPane scroll = new ScrollPane(list);
+        ScrollPane scroll = new ScrollPane(listSurface);
         scroll.setFitToWidth(true);
         FXUtils.smoothScrolling(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        getChildren().setAll(toolbar, scroll);
+        // A spinner while the versions are being fetched, as the original shows,
+        // rather than a line of text where the list will be.
+        spinner.setContent(scroll);
+        VBox.setVgrow(spinner, Priority.ALWAYS);
+
+        getChildren().setAll(filterBar, spinner);
+
+        // The warning belongs at the door rather than at the choice: it says
+        // what this page is for and what changing it costs, which is worth
+        // reading before deciding, not after.
+        Controllers.dialog(
+                i18n("dsh.install.app_boot.warning", String.valueOf(launcherVersion)),
+                i18n("dsh.install.app_boot"), MessageType.WARNING, null);
 
         load();
     }
@@ -106,10 +125,8 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
 
     /// Loads the published boot library versions.
     private void load() {
-        list.getContent().clear();
-        LineTextPane loading = new LineTextPane();
-        loading.setText(i18n("dsh.versions.loading"));
-        list.getContent().add(loading);
+        list.getChildren().clear();
+        spinner.setLoading(true);
 
         java.util.concurrent.CompletableFuture.supplyAsync(() -> {
             try {
@@ -122,23 +139,22 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
                 Throwable cause = throwable instanceof java.util.concurrent.CompletionException
                         && throwable.getCause() != null ? throwable.getCause() : throwable;
                 LOG.warning("Failed to list boot library versions", cause);
-                list.getContent().clear();
+                list.getChildren().clear();
                 LineTextPane failure = new LineTextPane();
                 failure.setText(i18n("dsh.install.app_boot.unavailable") + ": " + cause.getMessage());
-                list.getContent().add(failure);
+                list.getChildren().add(failure);
+                spinner.setLoading(false);
                 return;
             }
             versions = loaded;
             render();
+            spinner.setLoading(false);
         }));
     }
 
     /// Rebuilds the list from the loaded versions and the name box.
     private void render() {
-        list.getContent().clear();
-
-        String needle = nameField.getText() == null
-                ? "" : nameField.getText().trim().toLowerCase(Locale.ROOT);
+        list.getChildren().clear();
 
         // The launcher's own version leads: it is the safe answer, so it is the
         // one at the top rather than something to go looking for.
@@ -154,16 +170,16 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
 
         int shown = 0;
         for (String version : ordered) {
-            if (!needle.isEmpty() && !version.toLowerCase(Locale.ROOT).contains(needle)) {
+            if (!filterBar.accepts(version)) {
                 continue;
             }
-            list.getContent().add(buildRow(version));
+            list.getChildren().add(buildRow(version));
             shown++;
         }
         if (shown == 0) {
             LineTextPane empty = new LineTextPane();
             empty.setText(i18n("dsh.versions.remote.empty"));
-            list.getContent().add(empty);
+            list.getChildren().add(empty);
         }
     }
 
@@ -213,25 +229,19 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
         return rippler;
     }
 
-    /// Records a choice, warning first when it departs from the pairing.
+    /// Records a choice and returns to the page that asked.
+    ///
+    /// The original applies the choice and goes back in one step; there is
+    /// nothing left to confirm, because the warning was shown on the way in.
     ///
     /// @param version the chosen version
     /// @param paired  whether it is the version the launcher itself runs
     private void choose(String version, boolean paired) {
-        if (paired) {
-            onChosen.accept(null);
-            controller.onFinish();
-            return;
-        }
-
-        // The warning says what the choice costs: the pairing is not a
-        // preference, and it belongs to the installed version rather than to this
-        // instance, so every instance running that version is affected.
-        Controllers.dialog(
-                i18n("dsh.install.app_boot.warning", version, String.valueOf(launcherVersion)),
-                i18n("dsh.install.app_boot"), MessageType.WARNING, () -> {
-                    onChosen.accept(version);
-                    controller.onFinish();
-                });
+        onChosen.accept(paired ? null : version);
+        // Closing the page is how a one-page wizard finishes: its work is done
+        // when the choice is made, so it has no task to run and nothing to
+        // announce. onCancel is the only door out of the wizard that does not
+        // put a dialog on the screen on the way.
+        controller.onCancel();
     }
 }
