@@ -50,12 +50,25 @@ public record DshSession(
         long modifiedAt,
         boolean locked) {
 
-    /// Returns a label for the session, falling back to a shortened id.
+    /// Returns the name to show for the session.
     ///
-    /// @return the title when one is known, otherwise the id
+    /// The title is DeepSeek Harness's own, and it is absent for a session that
+    /// was opened but never used — the projection cache marks those `blank`.
+    /// Falling back to a shortened id produces rows reading `session-`, which
+    /// says nothing; the working directory's own name at least distinguishes one
+    /// such session from another.
+    ///
+    /// @return the title, the working directory's name, or a shortened id
     public String label() {
         if (title != null && !title.isBlank()) {
             return title;
+        }
+        if (workingDirectory != null && !workingDirectory.isBlank()) {
+            Path path = Path.of(workingDirectory);
+            Path name = path.getFileName();
+            if (name != null && !name.toString().isBlank()) {
+                return name.toString();
+            }
         }
         return id.length() > 8 ? id.substring(0, 8) : id;
     }
