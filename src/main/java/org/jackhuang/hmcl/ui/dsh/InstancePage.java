@@ -50,6 +50,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -86,9 +89,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The plugins tab.
     private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
-    /// The browse tab.
-    private final TabHeader.Tab<BrowsePane> browseTab = new TabHeader.Tab<>("dshInstanceBrowse");
-
     /// The details tab.
     private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
 
@@ -121,13 +121,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
         sessionsTab.setNodeSupplier(() -> new SessionListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
-        browseTab.setNodeSupplier(() -> new BrowsePane(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
-        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, browseTab, detailsTab);
+        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, detailsTab);
         TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
             case "plugins" -> pluginsTab;
             case "sessions" -> sessionsTab;
-            case "browse" -> browseTab;
             case "details" -> detailsTab;
             default -> settingsTab;
         };
@@ -138,14 +136,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
                 .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
-                .addNavigationDrawerTab(tab, browseTab, i18n("dsh.instance.browse"), SVG.FOLDER_OPEN)
                 .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO)
                 // HMCL's instance page ends with an action group rather than more
-                // tabs; these are the two that have a counterpart here.
+                // tabs: one action, then two popups. Browse holds the folders and
+                // manage holds the operations, which is the split the original
+                // makes and the reason neither lives on a tab of its own.
                 .startCategory("")
                 .addNavigationDrawerItem(i18n("dsh.instance.test_launch"), SVG.ROCKET_LAUNCH,
-                        this::toggleLaunch)
-                .addNavigationDrawerItem(i18n("dsh.instance.remove"), SVG.DELETE, this::removeInstance);
+                        this::testLaunch)
+                .addNavigationDrawerItem(i18n("settings.game.exploration"), SVG.FOLDER_OPEN, null,
+                        item -> item.setOnAction(event -> showBrowsePopup(item)))
+                .addNavigationDrawerItem(i18n("settings.game.management"), SVG.MENU, null,
+                        item -> item.setOnAction(event -> showManagePopup(item)));
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
         setCenter(transitionPane);
@@ -217,8 +219,133 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         return row;
     }
 
+    /// Shows the folders this instance owns.
+    ///
+    /// The original puts these in a popup on the sidebar rather than on a tab:
+    /// they are places to go, not a view to read, and a popup says so.
+    ///
+    /// @param anchor the sidebar item the popup is anchored to
+    private void showBrowsePopup(org.jackhuang.hmcl.ui.construct.AdvancedListItem anchor) {
+        org.jackhuang.hmcl.ui.construct.PopupMenu menu = new org.jackhuang.hmcl.ui.construct.PopupMenu();
+        com.jfoenix.controls.JFXPopup popup = new com.jfoenix.controls.JFXPopup(menu);
+
+        List<javafx.scene.Node> entries = new ArrayList<>();
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.STADIA_CONTROLLER, i18n("dsh.instance.open_home"),
+                () -> revealQuietly(instanceDirectoryOrNull()), popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.FOLDER, i18n("dsh.instance.open_home.dsh"),
+                () -> revealQuietly(homeChild("")), popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.FOLDER_OPEN, i18n("dsh.instance.open_workspace"),
+                () -> revealQuietly(instance.workspacePath()), popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.FOLDER_COPY, i18n("dsh.instance.open.sessions"),
+                () -> revealQuietly(homeChild("sessions")), popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.EXTENSION, i18n("dsh.instance.open.profiles"),
+                () -> revealQuietly(homeChild("profiles")), popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.ARCHIVE, i18n("dsh.instance.open.storages"),
+                () -> revealQuietly(homeChild("storages")), popup));
+        menu.getContent().setAll(entries);
+
+        popup.show(anchor, com.jfoenix.controls.JFXPopup.PopupVPosition.BOTTOM,
+                com.jfoenix.controls.JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
+    }
+
+    /// Shows the operations available on this instance.
+    ///
+    /// @param anchor the sidebar item the popup is anchored to
+    private void showManagePopup(org.jackhuang.hmcl.ui.construct.AdvancedListItem anchor) {
+        org.jackhuang.hmcl.ui.construct.PopupMenu menu = new org.jackhuang.hmcl.ui.construct.PopupMenu();
+        com.jfoenix.controls.JFXPopup popup = new com.jfoenix.controls.JFXPopup(menu);
+
+        List<javafx.scene.Node> entries = new ArrayList<>();
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.ROCKET_LAUNCH, i18n("dsh.instance.test_launch"), this::testLaunch, popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.MenuSeparator());
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.EDIT, i18n("instance.manage.rename"), this::renameInstance, popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.FOLDER_COPY, i18n("instance.manage.duplicate"), this::duplicateInstance, popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.DELETE, i18n("instance.manage.remove"), this::removeInstance, popup));
+        menu.getContent().setAll(entries);
+
+        popup.show(anchor, com.jfoenix.controls.JFXPopup.PopupVPosition.BOTTOM,
+                com.jfoenix.controls.JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
+    }
+
+    /// Returns the instance directory, or `null` when it cannot be resolved.
+    ///
+    /// @return the directory
+    private Path instanceDirectoryOrNull() {
+        try {
+            return instance.instanceDirectory();
+        } catch (DshException e) {
+            return null;
+        }
+    }
+
+    /// Returns a directory inside the instance's home, or the home itself.
+    ///
+    /// @param name the directory name, or an empty string for the home
+    /// @return the path, or `null` when the home cannot be resolved
+    private Path homeChild(String name) {
+        try {
+            Path home = instance.homeDirectory();
+            return name.isEmpty() ? home : home.resolve(name);
+        } catch (DshException e) {
+            return null;
+        }
+    }
+
+    /// Reveals a directory, reporting rather than throwing when it is missing.
+    ///
+    /// @param directory the directory to reveal, or `null`
+    private void revealQuietly(@Nullable Path directory) {
+        if (directory == null || !java.nio.file.Files.isDirectory(directory)) {
+            Controllers.dialog(i18n("dsh.instance.open.unavailable"), i18n("message.error"), MessageType.ERROR);
+            return;
+        }
+        FXUtils.showFileInExplorer(directory);
+    }
+
+    /// Opens the launcher log directory.
+    private void openLogs() {
+        revealQuietly(org.jackhuang.hmcl.Metadata.HMCL_USER_HOME.resolve("logs"));
+    }
+
+    /// Renames this instance.
+    private void renameInstance() {
+        Controllers.dialog(new org.jackhuang.hmcl.ui.construct.InputDialogPane(
+                i18n("instance.manage.rename"), instance.id(),
+                (newId, handler) -> {
+                    try {
+                        DshInstanceManager.rename(instance.id(), newId);
+                        handler.resolve();
+                        Controllers.navigate(new InstancesPage());
+                    } catch (DshException e) {
+                        handler.reject(e.getMessage());
+                    }
+                }));
+    }
+
+    /// Copies this instance's configuration into a new one.
+    private void duplicateInstance() {
+        try {
+            DshInstanceManager.duplicate(instance.id(), DshInstanceManager.nextId(instance.id()));
+            Controllers.showToast(i18n("dsh.instance.duplicated"));
+        } catch (DshException e) {
+            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+        }
+    }
+
     /// Starts or stops this instance from its own page.
-    private void toggleLaunch() {
+    private void testLaunch() {
         if (DshProcessManager.find(instance.id()).isPresent()) {
             DshLaunchService.stop(instance.id(), this::refresh);
         } else {

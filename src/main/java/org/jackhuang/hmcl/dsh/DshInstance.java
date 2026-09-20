@@ -92,6 +92,15 @@ public record DshInstance(
                 extraArguments, environment, icon, null, portMode, port, createdAt);
     }
 
+    /// Returns a copy under a different id.
+    ///
+    /// @param newId the new id
+    /// @return the copy
+    public DshInstance withId(String newId) {
+        return new DshInstance(newId, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
+    }
+
     /// Returns a copy with a different icon.
     ///
     /// @param newIcon the icon

@@ -217,6 +217,132 @@ public final class DshInstanceManager {
     ///
     /// @param directory the candidate instance directory
     /// @return the instance, or `null` when there is no readable manifest
+    /// Renames an instance.
+    ///
+    /// An instance whose home the launcher owns has that directory moved with
+    /// it, because the directory is named after the instance; a custom home is
+    /// left alone, since it is somewhere the user chose.
+    ///
+    /// @param id    the current id
+    /// @param newId the new id
+    /// @return the renamed instance
+    /// @throws DshException when either id is unusable or the move fails
+    public static DshInstance rename(String id, String newId) throws DshException {
+        DshInstance existing = find(id);
+        if (existing == null) {
+            throw new DshException("Instance " + id + " does not exist");
+        }
+        String normalized = newId == null ? "" : newId.trim();
+        if (normalized.isEmpty()) {
+            throw new DshException("An instance needs a name");
+        }
+        if (normalized.equals(id)) {
+            return existing;
+        }
+        if (exists(normalized)) {
+            throw new DshException("Instance " + normalized + " already exists");
+        }
+
+        DshInstance renamed = existing.withId(normalized);
+        Path oldDirectory = DshPaths.instanceDirectory(id);
+        Path newDirectory = DshPaths.instanceDirectory(normalized);
+
+        boolean moved = false;
+        if (existing.homeMode() == DshHomeMode.ISOLATED && Files.isDirectory(oldDirectory)) {
+            try {
+                deleteQuietly(newDirectory);
+                Files.move(oldDirectory, newDirectory);
+                moved = true;
+            } catch (IOException e) {
+                throw new DshException("Failed to move " + oldDirectory + ": " + e.getMessage(), e);
+            }
+        }
+
+        try {
+            write(renamed);
+        } catch (DshException e) {
+            // Put the directory back rather than leaving the home orphaned under
+            // a name no instance answers to.
+            if (moved) {
+                try {
+                    Files.move(newDirectory, oldDirectory);
+                } catch (IOException rollback) {
+                    LOG.warning("Failed to undo the rename of " + id, rollback);
+                }
+            }
+            throw e;
+        }
+
+        if (moved) {
+            deleteQuietly(newDirectory.resolve(MANIFEST_NAME));
+        }
+        return renamed;
+    }
+
+    /// Copies an instance's configuration into a new one.
+    ///
+    /// Only the configuration is copied. A copy gets its own isolated home
+    /// rather than a duplicate of the original's, because the home holds the
+    /// sessions and credentials — duplicating those silently is not what
+    /// "copy this instance" should mean.
+    ///
+    /// @param id    the instance to copy
+    /// @param newId the new instance's id
+    /// @return the copy
+    /// @throws DshException when either id is unusable
+    public static DshInstance duplicate(String id, String newId) throws DshException {
+        DshInstance source = find(id);
+        if (source == null) {
+            throw new DshException("Instance " + id + " does not exist");
+        }
+        String normalized = newId == null ? "" : newId.trim();
+        if (normalized.isEmpty()) {
+            throw new DshException("An instance needs a name");
+        }
+        if (exists(normalized)) {
+            throw new DshException("Instance " + normalized + " already exists");
+        }
+
+        return create(normalized, source.version(), source.profile(),
+                source.workspacePath(), source.nodeRuntime(), DshHomeMode.ISOLATED, null,
+                source.extraArguments(), source.environment())
+                .withIcon(source.iconOrDefault())
+                .withPortPolicy(source.portMode(), source.port());
+    }
+
+    /// Returns the next free id derived from a base name.
+    ///
+    /// @param base the base name
+    /// @return the id, suffixed with a number when needed
+    public static String nextId(String base) {
+        String candidate = base + "-copy";
+        int suffix = 2;
+        while (exists(candidate)) {
+            candidate = base + "-copy" + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
+    /// Deletes a path, ignoring anything that goes wrong.
+    ///
+    /// Used for the copies a rename or delete leaves behind, where a failure to
+    /// tidy up must not fail the operation that already succeeded.
+    ///
+    /// @param path the path to delete
+    private static void deleteQuietly(Path path) {
+        if (path == null || !Files.exists(path)) {
+            return;
+        }
+        try (var paths = Files.walk(path)) {
+            for (Path entry : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(entry);
+            }
+        } catch (IOException e) {
+            LOG.warning("Failed to delete " + path, e);
+        }
+    }
+
     private static @Nullable DshInstance read(Path directory) {
         Path manifest = directory.resolve(MANIFEST_NAME);
         if (!Files.isRegularFile(manifest)) {
