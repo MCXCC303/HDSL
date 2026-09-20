@@ -76,14 +76,45 @@ public final class DshLauncher {
         }
     }
 
+    /// Resolves the Node runtime an instance is pinned to.
+    ///
+    /// A system runtime is rejected when it falls outside DeepSeek Harness's
+    /// `engines.node` range, because the failure would otherwise surface much
+    /// later as an obscure startup error inside the child process.
+    ///
+    /// @param instance the instance
+    /// @return the resolved runtime
+    /// @throws DshException when the selected runtime is missing or unsupported
+    public static DshNodeRuntime resolveRuntime(DshInstance instance) throws DshException {
+        String selection = instance.nodeRuntimeOrDefault();
+        if (DshNodeRuntime.SYSTEM.equalsIgnoreCase(selection)) {
+            DshNodeRuntime runtime = DshNodeRuntime.detect()
+                    .orElseThrow(() -> new DshException("Node.js was not found on PATH; "
+                            + DshNodeRuntime.requirement()));
+            if (!runtime.isNodeSupported()) {
+                throw new DshException("The system Node.js " + runtime.nodeVersion()
+                        + " is outside the supported range (" + DshNodeRuntime.requirement()
+                        + "). Install a suitable runtime on the Node page, or pick one for this instance.");
+            }
+            return runtime;
+        }
+
+        NodeRuntime managed = NodeRuntimeManager.findInstalled(selection);
+        if (managed == null) {
+            throw new DshException("Node.js " + selection
+                    + " is not installed; install it on the Node page or switch this instance to the system runtime");
+        }
+        return DshNodeRuntime.fromManaged(managed);
+    }
+
     /// Builds the launch plan for an instance.
     ///
     /// @param instance the instance to launch
-    /// @param runtime  the Node runtime to run the CLI with
     /// @return the launch plan
-    /// @throws DshException when the pinned version is missing, its entry script
-    ///                       is absent, or the workspace cannot be created
-    public static LaunchPlan plan(DshInstance instance, DshNodeRuntime runtime) throws DshException {
+    /// @throws DshException when the pinned version or runtime is missing, the
+    ///                       entry script is absent, or the workspace cannot be created
+    public static LaunchPlan plan(DshInstance instance) throws DshException {
+        DshNodeRuntime runtime = resolveRuntime(instance);
         DshVersion version = DshVersionManager.findInstalled(instance.version());
         if (version == null) {
             throw new DshException("DeepSeek Harness " + instance.version()

@@ -69,11 +69,9 @@ public final class DshProcessManager {
                 return existing;
             }
 
-            DshNodeRuntime runtime = DshNodeRuntime.detect()
-                    .orElseThrow(() -> new DshException("Node.js was not found on PATH; "
-                            + DshNodeRuntime.requirement()));
-
-            DshProcess process = DshProcess.start(instance, runtime);
+            // The runtime is resolved inside the launcher, so an instance pinned
+            // to a managed Node runtime is honoured here too.
+            DshProcess process = DshProcess.start(instance);
             RUNNING.put(instance.id(), process);
             process.setStateListener(state -> {
                 if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {

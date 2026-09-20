@@ -125,11 +125,10 @@ public final class DshProcess {
     /// Starts a child process for an instance.
     ///
     /// @param instance the instance to launch
-    /// @param runtime  the Node runtime to run it with
     /// @return the running handle
     /// @throws DshException when the plan cannot be built or the process cannot start
-    public static DshProcess start(DshInstance instance, DshNodeRuntime runtime) throws DshException {
-        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, runtime);
+    public static DshProcess start(DshInstance instance) throws DshException {
+        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
         LOG.info("Launching instance " + instance.id() + ": " + plan.commandLine());
         return new DshProcess(plan);
     }

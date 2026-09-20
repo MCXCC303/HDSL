@@ -110,6 +110,33 @@ public final class DshInstanceManager {
                                      @Nullable Path customHome,
                                      List<String> arguments,
                                      Map<String, String> environment) throws DshException {
+        return create(id, version, profile, workspace, DshNodeRuntime.SYSTEM, homeMode, customHome,
+                arguments, environment);
+    }
+
+    /// Creates and persists a new instance pinned to a Node runtime.
+    ///
+    /// @param id            the instance id, which must be unique and a safe path segment
+    /// @param version       the installed version to pin
+    /// @param profile       the profile to boot
+    /// @param workspace     the directory sessions are scoped to
+    /// @param nodeRuntime   the Node runtime selection, or `null` for the system runtime
+    /// @param homeMode      how the `DSH_HOME` is resolved
+    /// @param customHome    the custom home, required when `homeMode` is [DshHomeMode#CUSTOM]
+    /// @param arguments     extra command-line arguments
+    /// @param environment   extra environment variables
+    /// @return the created instance
+    /// @throws DshException when the id is taken, the version is not installed,
+    ///                       or the instance cannot be written
+    public static DshInstance create(String id,
+                                     String version,
+                                     String profile,
+                                     Path workspace,
+                                     @Nullable String nodeRuntime,
+                                     DshHomeMode homeMode,
+                                     @Nullable Path customHome,
+                                     List<String> arguments,
+                                     Map<String, String> environment) throws DshException {
         if (find(id) != null) {
             throw new DshException("An instance named \"" + id + "\" already exists");
         }
@@ -122,6 +149,7 @@ public final class DshInstanceManager {
 
         DshInstance instance = new DshInstance(id, version, profile,
                 workspace.toAbsolutePath().normalize().toString(),
+                nodeRuntime,
                 homeMode,
                 customHome == null ? null : customHome.toAbsolutePath().normalize().toString(),
                 List.copyOf(arguments), Map.copyOf(environment), System.currentTimeMillis());

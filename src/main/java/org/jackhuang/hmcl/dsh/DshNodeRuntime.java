@@ -73,6 +73,20 @@ public record DshNodeRuntime(
         }
     }
 
+    /// The selection value meaning "use whatever is on `PATH`".
+    public static final String SYSTEM = "system";
+
+    /// Describes a launcher-managed runtime in the same shape as a probed one.
+    ///
+    /// `pnpm` is deliberately left unset: a managed runtime has no `pnpm` of its
+    /// own, so plugin management falls back to whatever the system provides.
+    ///
+    /// @param runtime the installed runtime
+    /// @return the descriptor
+    public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
+        return new DshNodeRuntime(runtime.node(), runtime.version(), runtime.npm(), null, null, null);
+    }
+
     /// Probes the toolchain on the current `PATH`.
     ///
     /// @return the detected runtime, or empty when no usable `node` was found

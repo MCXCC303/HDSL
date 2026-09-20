@@ -42,6 +42,7 @@ public record DshInstance(
         @SerializedName("version") String version,
         @SerializedName("profile") String profile,
         @SerializedName("workspace") String workspace,
+        @SerializedName("nodeRuntime") @Nullable String nodeRuntime,
         @SerializedName("homeMode") DshHomeMode homeMode,
         @SerializedName("customHome") @Nullable String customHome,
         @SerializedName("arguments") @Unmodifiable List<String> extraArguments,
@@ -50,6 +51,17 @@ public record DshInstance(
 
     /// The profile booted when this instance is launched.
     public static final String DEFAULT_PROFILE = "web";
+
+    /// Returns the Node runtime this instance runs on.
+    ///
+    /// `system` means whatever `node` is on `PATH`; anything else names a runtime
+    /// installed under `runtimes/<version>/`.
+    ///
+    /// @return the runtime selection, never `null`
+    public String nodeRuntimeOrDefault() {
+        String value = nodeRuntime;
+        return value == null || value.isBlank() ? DshNodeRuntime.SYSTEM : value;
+    }
 
     /// Returns the working directory sessions are scoped to.
     ///
@@ -112,7 +124,7 @@ public record DshInstance(
     /// @param newProfile the profile to boot
     /// @return the updated instance
     public DshInstance withProfile(String newProfile) {
-        return new DshInstance(id, version, newProfile, workspace, homeMode, customHome,
+        return new DshInstance(id, version, newProfile, workspace, nodeRuntime, homeMode, customHome,
                 extraArguments, environment, createdAt);
     }
 
@@ -121,7 +133,16 @@ public record DshInstance(
     /// @param newVersion the version to pin
     /// @return the updated instance
     public DshInstance withVersion(String newVersion) {
-        return new DshInstance(id, newVersion, profile, workspace, homeMode, customHome,
+        return new DshInstance(id, newVersion, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment, createdAt);
+    }
+
+    /// Creates a new instance pinned to a different Node runtime.
+    ///
+    /// @param runtime the runtime selection, or `null` for the system runtime
+    /// @return the updated instance
+    public DshInstance withNodeRuntime(@Nullable String runtime) {
+        return new DshInstance(id, version, profile, workspace, runtime, homeMode, customHome,
                 extraArguments, environment, createdAt);
     }
 
@@ -131,7 +152,7 @@ public record DshInstance(
     /// @param home the custom home, required when `mode` is [DshHomeMode#CUSTOM]
     /// @return the updated instance
     public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {
-        return new DshInstance(id, version, profile, workspace, mode,
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, mode,
                 home == null ? null : home.toAbsolutePath().normalize().toString(),
                 extraArguments, environment, createdAt);
     }
@@ -143,7 +164,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withLaunchOptions(@Unmodifiable List<String> arguments,
                                          @Unmodifiable Map<String, String> environment) {
-        return new DshInstance(id, version, profile, workspace, homeMode, customHome,
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
                 arguments, environment, createdAt);
     }
 }

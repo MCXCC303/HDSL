@@ -60,7 +60,15 @@ public final class DshCli {
         /// Prints the instances that are currently running.
         LIST_RUNNING,
         /// Stops a running instance.
-        STOP
+        STOP,
+        /// Lists the Node runtimes the launcher installed.
+        LIST_RUNTIMES,
+        /// Lists the Node releases available for this platform.
+        LIST_NODE_VERSIONS,
+        /// Installs a Node runtime.
+        INSTALL_NODE,
+        /// Removes an installed Node runtime.
+        UNINSTALL_NODE
     }
 
     /// A parsed command line.
@@ -102,7 +110,11 @@ public final class DshCli {
                 && !args.contains("--delete-instance")
                 && !args.contains("--launch")
                 && !args.contains("--list-running")
-                && !args.contains("--stop")) {
+                && !args.contains("--stop")
+                && !args.contains("--list-runtimes")
+                && !args.contains("--list-node-versions")
+                && !args.contains("--install-node")
+                && !args.contains("--uninstall-node")) {
             return null;
         }
 
@@ -140,6 +152,16 @@ public final class DshCli {
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--list-running" -> command = Command.LIST_RUNNING;
+                case "--list-runtimes" -> command = Command.LIST_RUNTIMES;
+                case "--list-node-versions" -> command = Command.LIST_NODE_VERSIONS;
+                case "--install-node" -> {
+                    command = Command.INSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--uninstall-node" -> {
+                    command = Command.UNINSTALL_NODE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
                 case "--stop" -> {
                     command = Command.STOP;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
@@ -173,7 +195,9 @@ public final class DshCli {
                 && invocation.command() != Command.LIST_INSTALLED
                 && invocation.command() != Command.LIST_REMOTE
                 && invocation.command() != Command.LIST_INSTANCES
-                && invocation.command() != Command.LIST_RUNNING)) {
+                && invocation.command() != Command.LIST_RUNNING
+                && invocation.command() != Command.LIST_RUNTIMES
+                && invocation.command() != Command.LIST_NODE_VERSIONS)) {
             printUsage(out);
             return invocation.showHelp() ? 0 : 1;
         }
@@ -247,6 +271,35 @@ public final class DshCli {
                                 + "\t" + process.webUrl().map(Object::toString).orElse("-")
                                 + "\tup " + process.uptime().toSeconds() + "s");
                     }
+                    return 0;
+                }
+                case LIST_RUNTIMES -> {
+                    List<NodeRuntime> runtimes = NodeRuntimeManager.listInstalled();
+                    if (runtimes.isEmpty()) {
+                        out.println("(no managed Node runtimes)");
+                    }
+                    for (NodeRuntime runtime : runtimes) {
+                        out.println(runtime.version() + "\t" + runtime.directory());
+                    }
+                    return 0;
+                }
+                case LIST_NODE_VERSIONS -> {
+                    for (NodeRelease release : NodeRuntimeManager.fetchReleases()) {
+                        out.println(release.version()
+                                + (release.isLts() ? "\t" + release.label() : "")
+                                + (release.isSupported() ? "" : "\tunsupported"));
+                    }
+                    return 0;
+                }
+                case INSTALL_NODE -> {
+                    out.println("Installing Node.js " + invocation.subject() + " ...");
+                    NodeRuntime runtime = NodeRuntimeManager.install(invocation.subject(), out::println);
+                    out.println("Installed Node.js " + runtime.version() + " into " + runtime.directory());
+                    return 0;
+                }
+                case UNINSTALL_NODE -> {
+                    NodeRuntimeManager.uninstall(invocation.subject());
+                    out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
                 case STOP -> {
@@ -350,12 +403,13 @@ public final class DshCli {
         if (modeOption != null) {
             mode = DshHomeMode.valueOf(modeOption.toUpperCase(java.util.Locale.ROOT));
         }
+        String nodeRuntime = invocation.option("runtime");
         Path customHome = invocation.option("home") == null
                 ? null
                 : Path.of(invocation.option("home")).toAbsolutePath().normalize();
 
-        DshInstance instance = DshInstanceManager.create(id, version, profile, workspace, mode, customHome,
-                List.of(), Map.of());
+        DshInstance instance = DshInstanceManager.create(id, version, profile, workspace,
+                nodeRuntime, mode, customHome, List.of(), Map.of());
         out.println("Created instance " + instance.id() + " (dsh " + instance.version()
                 + ", profile " + instance.profile() + ", home " + instance.homeDirectory() + ")");
         return 0;
@@ -384,7 +438,14 @@ public final class DshCli {
                       --workspace <path>             session working directory (default: $HOME)
                       --home-mode <mode>             isolated | version_shared | custom
                       --home <path>                  required for --home-mode custom
+                      --runtime <version>            Node runtime to pin (default: system)
                   --delete-instance <id>           remove an instance
+
+                node runtimes:
+                  --list-runtimes                  list installed Node runtimes
+                  --list-node-versions             list Node releases for this platform
+                  --install-node <version>         install a Node runtime
+                  --uninstall-node <version>       remove a Node runtime
 
                 running:
                   --launch <id>                    start an instance and block until it exits

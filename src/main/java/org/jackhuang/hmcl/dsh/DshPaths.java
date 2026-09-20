@@ -47,6 +47,13 @@ public final class DshPaths {
     /// One directory per launcher instance.
     public static final Path INSTANCES = ROOT.resolve("instances");
 
+    /// One directory per Node.js runtime the launcher installed.
+    ///
+    /// Kept separate from [#VERSIONS] because a DeepSeek Harness version and a
+    /// Node runtime are independent choices: many instances share one runtime,
+    /// and one instance can be repinned without touching the other.
+    public static final Path RUNTIMES = ROOT.resolve("runtimes");
+
     /// Cached copies of remote catalogues such as the quick-install presets.
     public static final Path CATALOG = ROOT.resolve("catalog");
 
@@ -59,6 +66,15 @@ public final class DshPaths {
     /// @throws DshException when the version string cannot be used as a directory name
     public static Path versionDirectory(String version) throws DshException {
         return VERSIONS.resolve(requireSafeSegment(version, "version"));
+    }
+
+    /// Returns the directory for a launcher-managed Node runtime.
+    ///
+    /// @param version the Node version, which must be a safe path segment
+    /// @return the runtime directory
+    /// @throws DshException when the version cannot be used as a directory name
+    public static Path runtimeDirectory(String version) throws DshException {
+        return RUNTIMES.resolve(requireSafeSegment(version, "runtime version"));
     }
 
     /// Returns the launcher instance directory for an instance id.

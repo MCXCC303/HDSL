@@ -97,6 +97,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     private @Nullable InstancesPage instancesPage;
     private @Nullable VersionsPage versionsPage;
     private @Nullable SettingsPage settingsPage;
+    private @Nullable NodeRuntimesPage nodeRuntimesPage;
 
     /// Creates the home page.
     public MainPage() {
@@ -109,6 +110,8 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                         () -> Controllers.navigate(getInstancesPage()))
                 .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
                         () -> Controllers.navigate(getVersionsPage()))
+                .addNavigationDrawerItem(i18n("dsh.node.title"), SVG.STADIA_CONTROLLER,
+                        () -> Controllers.navigate(getNodeRuntimesPage()))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
                         () -> Controllers.navigate(getSettingsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
@@ -174,6 +177,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             case "home", "" -> Controllers.navigate(this);
             case "instances" -> Controllers.navigate(getInstancesPage());
             case "versions" -> Controllers.navigate(getVersionsPage());
+            case "node", "runtimes" -> Controllers.navigate(getNodeRuntimesPage());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
@@ -200,6 +204,16 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             versionsPage = new VersionsPage();
         }
         return versionsPage;
+    }
+
+    /// Returns the Node runtime page, creating it on first use.
+    ///
+    /// @return the Node runtime page
+    public NodeRuntimesPage getNodeRuntimesPage() {
+        if (nodeRuntimesPage == null) {
+            nodeRuntimesPage = new NodeRuntimesPage();
+        }
+        return nodeRuntimesPage;
     }
 
     /// Returns the settings page, creating it on first use.
