@@ -23,6 +23,7 @@ import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
@@ -135,20 +136,30 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
                 .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
-                .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO)
-                // HMCL's instance page ends with an action group rather than more
-                // tabs: one action, then two popups. Browse holds the folders and
-                // manage holds the operations, which is the split the original
-                // makes and the reason neither lives on a tab of its own.
-                .startCategory("")
+                .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO);
+
+        // The actions are a second box rather than a category inside the first.
+        // HMCL splits them the same way, and the split is why there is no
+        // divider: a category draws one, a separate box sits on its own.
+        AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.instance.test_launch"), SVG.ROCKET_LAUNCH,
                         this::testLaunch)
                 .addNavigationDrawerItem(i18n("settings.game.exploration"), SVG.FOLDER_OPEN, null,
                         item -> item.setOnAction(event -> showBrowsePopup(item)))
                 .addNavigationDrawerItem(i18n("settings.game.management"), SVG.MENU, null,
                         item -> item.setOnAction(event -> showManagePopup(item)));
+        actions.getStyleClass().add("advanced-list-box-clear-padding");
+
         FXUtils.setLimitWidth(sideBar, 200);
-        setLeft(sideBar);
+        FXUtils.setLimitHeight(actions, 40 * 3 + 12 * 2);
+        // The navigation box takes the room so the actions settle at the bottom.
+        // Its maximum height has to be lifted first: a control sized to its
+        // content will not grow just because the box asks it to.
+        sideBar.setMaxHeight(Double.MAX_VALUE);
+        VBox.setVgrow(sideBar, Priority.ALWAYS);
+
+        getLeft().getStyleClass().add("gray-background");
+        setLeft(sideBar, actions);
         setCenter(transitionPane);
     }
 
