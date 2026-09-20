@@ -57,14 +57,7 @@ public final class InstanceIconDialog extends JFXDialogLayout {
     /// Called after a successful change.
     private final Runnable onFinish;
 
-    /// The tile marked as the pending choice.
-    private RipplerContainer marked;
 
-    /// The pending built-in icon, or `null` when a file is pending.
-    private @Nullable DshInstanceIcon pendingIcon;
-
-    /// The pending icon file, or `null` when a built-in icon is pending.
-    private @Nullable Path pendingFile;
 
     /// Creates the dialog.
     ///
@@ -96,7 +89,7 @@ public final class InstanceIconDialog extends JFXDialogLayout {
 
         JFXButton confirm = new JFXButton(i18n("button.ok"));
         confirm.getStyleClass().add("dialog-accept");
-        confirm.setOnAction(event -> apply());
+        confirm.setOnAction(event -> fireEvent(new DialogCloseEvent()));
 
         JFXButton cancel = new JFXButton(i18n("button.cancel"));
         cancel.getStyleClass().add("dialog-cancel");
@@ -117,25 +110,22 @@ public final class InstanceIconDialog extends JFXDialogLayout {
         FXUtils.setLimitWidth(container, 36);
         FXUtils.setLimitHeight(container, 36);
         FXUtils.installFastTooltip(container, i18n("dsh.instance.icon.choose_file"));
-        FXUtils.onClicked(container, () -> chooseFile(container));
+        FXUtils.onClicked(container, this::chooseFile);
         return container;
     }
 
     /// Builds one tile for a built-in icon.
+    ///
+    /// Choosing applies at once and closes, which is what HMCL does: the OK and
+    /// Cancel buttons are present in the original dialog but neither confirms a
+    /// pending choice, so reproducing them must not invent that step.
     ///
     /// @param image the image to show
     /// @param icon  the icon the tile represents
     /// @return the tile
     private Node buildTile(Image image, DshInstanceIcon icon) {
         RipplerContainer container = buildTile(image);
-        if (instance.iconFileOrDefault() == null && instance.iconOrDefault() == icon) {
-            mark(container);
-        }
-        FXUtils.onClicked(container, () -> {
-            mark(container);
-            pendingIcon = icon;
-            pendingFile = null;
-        });
+        FXUtils.onClicked(container, () -> apply(icon, null));
         return container;
     }
 
@@ -156,44 +146,25 @@ public final class InstanceIconDialog extends JFXDialogLayout {
         return container;
     }
 
-    /// Marks a tile as the pending choice, clearing the previous mark.
-    ///
-    /// @param container the tile to mark
-    private void mark(RipplerContainer container) {
-        if (marked != null) {
-            marked.getStyleClass().remove("icon-tile-selected");
-        }
-        marked = container;
-        if (!container.getStyleClass().contains("icon-tile-selected")) {
-            container.getStyleClass().add("icon-tile-selected");
-        }
-    }
-
-    /// Asks for an image file and marks it as the pending choice.
-    ///
-    /// @param container the add tile, marked so the choice is visible
-    private void chooseFile(RipplerContainer container) {
+    /// Asks for an image file and applies it.
+    private void chooseFile() {
         FileChooser chooser = new FileChooser();
         chooser.getExtensionFilters().add(FXUtils.getImageExtensionFilter());
         Path selected = Controllers.showOpenDialog(chooser);
-        if (selected == null) {
-            return;
+        if (selected != null) {
+            apply(null, selected);
         }
-        mark(container);
-        pendingIcon = null;
-        pendingFile = selected;
     }
 
-    /// Writes the pending choice back to the instance.
-    private void apply() {
-        if (pendingIcon == null && pendingFile == null) {
-            fireEvent(new DialogCloseEvent());
-            return;
-        }
+    /// Writes the choice back to the instance.
+    ///
+    /// @param icon the chosen built-in icon, or `null` when a file was chosen
+    /// @param file the chosen file, or `null` when a built-in icon was chosen
+    private void apply(@Nullable DshInstanceIcon icon, @Nullable Path file) {
         try {
-            DshInstance updated = pendingFile != null
-                    ? instance.withIconFile(pendingFile)
-                    : instance.withIcon(pendingIcon == null ? DshInstanceIcon.DEFAULT : pendingIcon).withNoIconFile();
+            DshInstance updated = file != null
+                    ? instance.withIconFile(file)
+                    : instance.withIcon(icon == null ? DshInstanceIcon.DEFAULT : icon).withNoIconFile();
             DshInstanceManager.update(updated);
             onFinish.run();
             fireEvent(new DialogCloseEvent());

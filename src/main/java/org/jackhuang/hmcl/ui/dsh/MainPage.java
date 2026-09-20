@@ -37,6 +37,8 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceIcon;
+import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
@@ -45,6 +47,7 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
+import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -97,6 +100,9 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// shows which instance the launch button and this entry act on.
     private final AdvancedListItem currentInstanceItem = new AdvancedListItem();
 
+    /// The instance icon shown on the manage entry.
+    private final ImageContainer currentInstanceIcon = new ImageContainer(AdvancedListItem.LEFT_GRAPHIC_SIZE);
+
     /// Lazily created destination pages.
     private @Nullable InstancesPage instancesPage;
     private @Nullable VersionsPage versionsPage;
@@ -106,7 +112,9 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     public MainPage() {
         getStyleClass().remove("gray-background");
 
-        currentInstanceItem.setLeftIcon(SVG.SETTINGS_FILL);
+        currentInstanceIcon.setMouseTransparent(true);
+        AdvancedListItem.setAlignment(currentInstanceIcon, Pos.CENTER);
+        currentInstanceItem.setLeftGraphic(currentInstanceIcon);
         currentInstanceItem.setTitle(i18n("dsh.instance.manage"));
         currentInstanceItem.setSubtitle(i18n("dsh.launch.no_instance.hint"));
         currentInstanceItem.setOnAction(event -> openCurrentInstance());
@@ -274,6 +282,9 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstanceItem.setSubtitle(current == null
                 ? i18n("dsh.launch.no_instance.hint")
                 : current.id());
+        currentInstanceIcon.setImage(current == null
+                ? DshInstanceIcon.DEFAULT.load()
+                : DshInstanceIcons.load(current));
 
         refreshActionState();
     }

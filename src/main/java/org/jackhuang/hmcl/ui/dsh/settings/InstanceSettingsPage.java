@@ -54,8 +54,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// two writers corrupt it.
 @NotNullByDefault
 public final class InstanceSettingsPage extends ScrollPane {
-    /// The instance being edited.
-    private final DshInstance instance;
+    /// The instance being edited, refreshed from storage after every write.
+    private DshInstance instance;
+
+    /// The icon row, kept so its image can follow a change.
+    private final ImagePickerItem iconRow = new ImagePickerItem();
 
     /// Called after a change is written back.
     private final Runnable onChanged;
@@ -107,25 +110,32 @@ public final class InstanceSettingsPage extends ScrollPane {
     ///
     /// @return the row
     private ImagePickerItem buildIconRow() {
-        ImagePickerItem row = new ImagePickerItem();
-        row.setTitle(i18n("dsh.instance.icon"));
-        row.setImage(DshInstanceIcons.load(instance));
-        row.setOnSelectButtonClicked(event -> Controllers.dialog(
-                new InstanceIconDialog(instance, this::onIconChanged)));
-        row.setOnDeleteButtonClicked(event -> resetIcon());
-        return row;
+        iconRow.setTitle(i18n("dsh.instance.icon"));
+        iconRow.setImage(DshInstanceIcons.load(instance));
+        iconRow.setOnSelectButtonClicked(event -> Controllers.dialog(
+                new InstanceIconDialog(instance, this::reloadFromStorage)));
+        iconRow.setOnDeleteButtonClicked(event -> resetIcon());
+        return iconRow;
+    }
+
+    /// Re-reads the instance after a change made outside this pane.
+    ///
+    /// The icon chooser writes to storage itself, so the pane cannot rely on
+    /// having produced the change and has to pick it up afterwards.
+    private void reloadFromStorage() {
+        DshInstance stored = DshInstanceManager.find(instance.id());
+        if (stored != null) {
+            instance = stored;
+        }
+        iconRow.setImage(DshInstanceIcons.load(instance));
+        if (onChanged != null) {
+            onChanged.run();
+        }
     }
 
     /// Restores the default icon.
     private void resetIcon() {
         write(instance.withIcon(DshInstanceIcon.DEFAULT).withNoIconFile());
-    }
-
-    /// Refreshes the row after the chooser changed the icon.
-    private void onIconChanged() {
-        if (onChanged != null) {
-            onChanged.run();
-        }
     }
 
     /// Builds the automatic-versus-fixed choice.
@@ -223,6 +233,13 @@ public final class InstanceSettingsPage extends ScrollPane {
     private void write(DshInstance updated) {
         try {
             DshInstanceManager.update(updated);
+            // Re-read rather than trusting the copy passed in: the stored
+            // instance is what the rest of the interface will show.
+            DshInstance stored = DshInstanceManager.find(updated.id());
+            if (stored != null) {
+                instance = stored;
+            }
+            iconRow.setImage(DshInstanceIcons.load(instance));
             if (onChanged != null) {
                 onChanged.run();
             }
