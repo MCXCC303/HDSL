@@ -24,6 +24,7 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshPreset;
+import org.jackhuang.hmcl.dsh.DshPresetCatalog;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.Schedulers;
@@ -34,6 +35,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -64,8 +66,41 @@ public final class DshInstallWizardProvider implements WizardProvider {
     /// The settings key holding the Node runtime selection.
     public static final SettingsMap.Key<String> NODE_RUNTIME = new SettingsMap.Key<>("dsh.nodeRuntime");
 
-    /// The settings key holding the chosen presets.
-    public static final SettingsMap.Key<List<DshPreset>> PRESETS = new SettingsMap.Key<>("dsh.presets");
+    /// The settings key holding the per-preset choice.
+    ///
+    /// Maps a preset id to the version to pin: an empty string means the
+    /// registry's current version, and an absent entry means "do not install".
+    public static final SettingsMap.Key<Map<String, String>> PRESET_CHOICES =
+            new SettingsMap.Key<>("dsh.presetChoices");
+
+    /// Returns the mutable per-preset choice map, creating it when absent.
+    ///
+    /// @param settings the wizard settings
+    /// @return the choice map
+    public static Map<String, String> presetChoices(SettingsMap settings) {
+        Map<String, String> choices = settings.get(PRESET_CHOICES);
+        if (choices == null) {
+            choices = new java.util.LinkedHashMap<>();
+            settings.put(PRESET_CHOICES, choices);
+        }
+        return choices;
+    }
+
+    /// Builds the package specs the user chose to install.
+    ///
+    /// @param choices the preset-id to version map
+    /// @return the specs, in catalogue order
+    public static List<String> specsOf(Map<String, String> choices) {
+        List<String> specs = new ArrayList<>();
+        for (DshPreset preset : DshPresetCatalog.builtin()) {
+            String version = choices.get(preset.id());
+            if (version == null) {
+                continue;
+            }
+            specs.add(version.isEmpty() ? preset.spec() : preset.spec() + "@" + version);
+        }
+        return specs;
+    }
 
     /// Creates the provider.
     public DshInstallWizardProvider() {
@@ -75,7 +110,7 @@ public final class DshInstallWizardProvider implements WizardProvider {
     public void start(SettingsMap settings) {
         settings.put(HOME_MODE, DshHomeMode.ISOLATED);
         settings.put(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
-        settings.put(PRESETS, List.of());
+        settings.put(PRESET_CHOICES, new java.util.LinkedHashMap<String, String>());
     }
 
     @Override
@@ -95,7 +130,8 @@ public final class DshInstallWizardProvider implements WizardProvider {
             String workspace = settings.get(WORKSPACE);
             DshHomeMode homeMode = settings.getOrDefault(HOME_MODE, DshHomeMode.ISOLATED);
             String nodeRuntime = settings.getOrDefault(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
-            List<DshPreset> presets = settings.getOrDefault(PRESETS, List.of());
+            Map<String, String> choices = settings.getOrDefault(PRESET_CHOICES, Map.of());
+            List<String> specs = specsOf(choices);
 
             if (version == null || name == null || workspace == null) {
                 throw new DshException("The install wizard finished without a complete configuration");
@@ -107,8 +143,8 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
             LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
 
-            if (!presets.isEmpty()) {
-                DshPluginInstaller.install(instance, presets, line -> LOG.info("[install] " + line));
+            if (!specs.isEmpty()) {
+                DshPluginInstaller.installSpecs(instance, specs, line -> LOG.info("[install] " + line));
             }
         }).setName(i18n("dsh.install.working"));
     }

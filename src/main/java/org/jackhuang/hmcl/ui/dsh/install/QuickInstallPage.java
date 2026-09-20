@@ -23,6 +23,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -39,7 +40,6 @@ import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
-import org.jackhuang.hmcl.ui.construct.LineToggleButton;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardPage;
 import org.jackhuang.hmcl.util.SettingsMap;
@@ -77,11 +77,11 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// The Node runtime selector.
     private final LineSelectButton<String> nodeSelector = new LineSelectButton<>();
 
-    /// The preset toggles, in catalogue order.
+    /// The preset cards, in catalogue order.
     ///
     /// The selection is read straight from the controls rather than mirrored
     /// into a map: a parallel copy can drift from what the user sees.
-    private final List<PresetToggle> presetToggles = new ArrayList<>();
+    private final List<PluginCard> presetCards = new ArrayList<>();
 
     /// Creates the quick-install page.
     ///
@@ -99,10 +99,27 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         Label title = new Label(i18n("dsh.install.step.quick"));
         title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
 
+        // Seed the recommendations before the cards are built, so they render
+        // the same state the wizard will install.
+        seedDefaultChoices();
+
         root.getChildren().addAll(title, buildInstanceList(), buildRuntimeList(), buildPresetList(), buildFooter());
         VBox.setVgrow(root, Priority.ALWAYS);
 
         applyDefaults();
+    }
+
+    /// Seeds the choice map so recommended plugins start selected.
+    ///
+    /// The map is the single source of truth the wizard finishes from; the
+    /// cards only render it.
+    private void seedDefaultChoices() {
+        Map<String, String> choices = choices();
+        for (DshPreset preset : DshPresetCatalog.builtin()) {
+            if (preset.recommended() && !choices.containsKey(preset.id())) {
+                choices.put(preset.id(), "");
+            }
+        }
     }
 
     /// Builds the instance identity section.
@@ -154,26 +171,35 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         return list;
     }
 
-    /// Builds the quick-install preset section.
+    /// Builds the quick-install preset section as a grid of cards.
     ///
-    /// @return the assembled component list
-    private ComponentList buildPresetList() {
-        ComponentList list = new ComponentList();
+    /// The grid mirrors HMCL's installer list: one card per thing that can be
+    /// installed, showing at a glance whether it will be. A card is toggled by
+    /// clicking it, because the description is the only extra information a
+    /// plugin has and it does not need a page of its own.
+    ///
+    /// @return the assembled section
+    private VBox buildPresetList() {
+        Label header = new Label(i18n("dsh.install.presets"));
+        header.setStyle("-fx-font-weight: bold;");
+        header.setPadding(new Insets(8, 0, 0, 4));
 
-        LineTextPane header = new LineTextPane();
-        header.setTitle(i18n("dsh.install.presets"));
-        header.getStyleClass().add("section-header");
-        list.getContent().add(header);
+        FlowPane grid = new FlowPane();
+        grid.setHgap(12);
+        grid.setVgap(12);
+        grid.setPadding(new Insets(4));
 
+        Map<String, String> choices = choices();
         for (DshPreset preset : DshPresetCatalog.builtin()) {
-            LineToggleButton toggle = new LineToggleButton();
-            toggle.setTitle(preset.name());
-            toggle.setSubtitle(preset.description());
-            toggle.setSelected(preset.recommended());
-            presetToggles.add(new PresetToggle(preset, toggle));
-            list.getContent().add(toggle);
+            PluginCard card = new PluginCard(preset, preset.recommended());
+            card.setChosenVersion(choices.get(preset.id()));
+            card.setOnConfigure(() -> controller.onNext(new PresetChoicePage(controller, preset)));
+            FXUtils.installFastTooltip(card, preset.description());
+            presetCards.add(card);
+            grid.getChildren().add(card);
         }
-        return list;
+
+        return new VBox(4, header, grid);
     }
 
     /// Builds the page footer.
@@ -191,7 +217,6 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
             settings.put(DshInstallWizardProvider.WORKSPACE, workspaceChooser.getLocation());
             settings.put(DshInstallWizardProvider.HOME_MODE, homeModeSelector.getValue());
             settings.put(DshInstallWizardProvider.NODE_RUNTIME, nodeSelector.getValue());
-            settings.put(DshInstallWizardProvider.PRESETS, selectedPresets());
             if (!validate(settings)) {
                 return;
             }
@@ -216,6 +241,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         nodeSelector.setItems(runtimeOptions);
 
         nameField.setText(suggestName());
+        seedDefaultChoices();
     }
 
     /// Suggests an unused instance name.
@@ -234,23 +260,6 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// Returns the presets the user ticked.
     ///
     /// @return the selected presets
-    private List<DshPreset> selectedPresets() {
-        List<DshPreset> selected = new ArrayList<>();
-        for (PresetToggle entry : presetToggles) {
-            if (entry.toggle().isSelected()) {
-                selected.add(entry.preset());
-            }
-        }
-        return selected;
-    }
-
-    /// Pairs a catalogue entry with the control that selects it.
-    ///
-    /// @param preset the catalogue entry
-    /// @param toggle the control
-    private record PresetToggle(DshPreset preset, LineToggleButton toggle) {
-    }
-
     /// Checks the collected values before the wizard commits.
     ///
     /// @param settings the collected settings
@@ -277,6 +286,22 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
             return false;
         }
         return true;
+    }
+
+    @Override
+    public void onNavigate(SettingsMap settings) {
+        // Returning from a plugin's choice page must show the new selection.
+        Map<String, String> choices = choices();
+        for (PluginCard card : presetCards) {
+            card.setChosenVersion(choices.get(card.preset().id()));
+        }
+    }
+
+    /// Returns the wizard's per-preset choice map.
+    ///
+    /// @return the mutable choice map
+    private Map<String, String> choices() {
+        return DshInstallWizardProvider.presetChoices(controller.getSettings());
     }
 
     @Override

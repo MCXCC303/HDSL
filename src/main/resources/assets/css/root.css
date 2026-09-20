@@ -2017,3 +2017,20 @@
 .line-text-pane.section-header > .container {
     -fx-padding: 8 10 4 10;
 }
+
+/* HMCL-DSH: plugin cards in the install wizard. */
+.installer-item-card {
+    -fx-pref-width: 180px;
+    -fx-pref-height: 130px;
+}
+
+.installer-item-card:selected > .installer-item-wrapper {
+    -fx-border-color: -monet-primary;
+    -fx-border-width: 2px;
+    -fx-border-radius: 4;
+}
+
+.installer-item-card:selected > .installer-item-wrapper .installer-item-name {
+    -fx-text-fill: -monet-primary;
+    -fx-font-weight: bold;
+}

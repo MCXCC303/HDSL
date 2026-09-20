@@ -62,7 +62,23 @@ public final class DshPluginInstaller {
     ///                       is missing, or an install fails
     public static void install(DshInstance instance, List<DshPreset> presets,
                                @Nullable Consumer<String> onLine) throws DshException {
-        if (presets.isEmpty()) {
+        installSpecs(instance, presets.stream().map(DshPreset::spec).toList(), onLine);
+    }
+
+    /// Installs explicit package specs into an instance's profile.
+    ///
+    /// The specs may pin a version — `name@1.2.3` — which is what the install
+    /// wizard records when the user picks a specific release on a plugin's
+    /// choice page.
+    ///
+    /// @param instance the instance whose profile is modified
+    /// @param specs    the package specs to install
+    /// @param onLine   receives every output line, or `null`
+    /// @throws DshException when the runtime or version is unavailable, `pnpm`
+    ///                       is missing, or an install fails
+    public static void installSpecs(DshInstance instance, List<String> specs,
+                                    @Nullable Consumer<String> onLine) throws DshException {
+        if (specs.isEmpty()) {
             return;
         }
 
@@ -72,10 +88,10 @@ public final class DshPluginInstaller {
         }
 
         Path home = instance.homeDirectory();
-        for (DshPreset preset : presets) {
-            report(onLine, "Installing " + preset.spec() + " ...");
-            runPluginCommand(instance, runtime, home, List.of("add", preset.spec()), onLine);
-            report(onLine, "Installed " + preset.spec());
+        for (String spec : specs) {
+            report(onLine, "Installing " + spec + " ...");
+            runPluginCommand(instance, runtime, home, List.of("add", spec), onLine);
+            report(onLine, "Installed " + spec);
         }
     }
 
@@ -176,6 +192,10 @@ public final class DshPluginInstaller {
                     line -> report(onLine, line));
             int exitCode = result.exitCode();
             if (exitCode != 0) {
+                String explanation = explainIgnoredBuilds(result.output(), home, instance.profile());
+                if (explanation != null) {
+                    throw new DshException(explanation);
+                }
                 throw new DshException("`dsh plugin " + String.join(" ", args)
                         + "` exited with code " + exitCode + ":\n" + tail(result.output()));
             }
@@ -185,6 +205,54 @@ public final class DshPluginInstaller {
             Thread.currentThread().interrupt();
             throw new DshException("`dsh plugin " + String.join(" ", args) + "` was interrupted", e);
         }
+    }
+
+    /// Turns pnpm's ignored-build-script failure into something actionable.
+    ///
+    /// A freshly created profile carries a placeholder in `pnpm-workspace.yaml`:
+    ///
+    /// ```yaml
+    /// allowBuilds:
+    ///   node-pty: set this to true or false
+    /// ```
+    ///
+    /// Until that is resolved, pnpm refuses to run the package's build script
+    /// and exits non-zero — after it has already added the package. The raw
+    /// output is a wall of pnpm progress lines, so the launcher translates the
+    /// condition instead of relaying it.
+    ///
+    /// The launcher does not resolve the placeholder itself: `allowBuilds`
+    /// decides whether arbitrary post-install scripts may run, and that is the
+    /// user's decision to make, not the launcher's.
+    ///
+    /// @param output  the captured command output
+    /// @param home    the instance's `DSH_HOME`
+    /// @param profile the profile name
+    /// @return the explanation, or `null` when this is a different failure
+    private static @Nullable String explainIgnoredBuilds(List<String> output, Path home, String profile) {
+        String text = String.join("\n", output);
+        if (!text.contains("ERR_PNPM_IGNORED_BUILDS") && !text.contains("approve-builds")) {
+            return null;
+        }
+
+        String packages = "one or more dependencies";
+        for (String line : output) {
+            int marker = line.indexOf("Ignored build scripts:");
+            if (marker >= 0) {
+                packages = line.substring(marker + "Ignored build scripts:".length()).trim();
+                break;
+            }
+        }
+
+        Path profileDirectory = home.resolve("profiles").resolve(profile);
+        return "The plugin was added, but its build script was not run.\n\n"
+                + "pnpm ignored the build script for " + packages + " because the profile still carries the\n"
+                + "template placeholder in its pnpm-workspace.yaml. Some features may not work until this\n"
+                + "is resolved.\n\n"
+                + "To resolve it, run in " + profileDirectory + ":\n"
+                + "    pnpm approve-builds\n"
+                + "or set allowBuilds for that package to true in\n"
+                + "    " + profileDirectory.resolve("pnpm-workspace.yaml");
     }
 
     /// Returns the last few output lines, for an error message.

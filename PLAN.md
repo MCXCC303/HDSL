@@ -40,6 +40,16 @@
   DSH 用 npm/pnpm 运行，所以逻辑对应：探测已装运行时 → 列出可下载版本 → 装到 `runtimes/<version>/` →
   实例选择运行时。真实价值是让用户不依赖系统 Node，尤其是系统 Node 版本不满足 `engines` 时。
 
+### 已知上游注意点
+
+- **新建 profile 的 `allowBuilds` 是占位符**。profile 模板写入的是
+  `allowBuilds: { node-pty: set this to true or false }`，在用户解析它之前，
+  pnpm 会拒绝运行 `node-pty` 的构建脚本并**以非零码退出**（但包其实已经装进去了）。
+  这是上游行为（直接跑 `dsh plugin` 同样失败），HMCL-DSH **不会代替用户批准** ——
+  `allowBuilds` 决定是否允许执行任意 postinstall 脚本，属于用户的安全决策。
+  启动器做的是把 pnpm 那一堆进度输出翻译成一条可执行的提示
+  （给出 `pnpm approve-builds` 与该 profile 的路径）。
+
 ### 关键决策
 
 | 决策点 | 结论 | 理由 |
