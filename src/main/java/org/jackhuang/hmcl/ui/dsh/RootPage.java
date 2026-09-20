@@ -47,6 +47,9 @@ public final class RootPage extends DecoratorAnimatedPage implements DecoratorPa
     /// The lazily created instance list page.
     private InstancesPage instancesPage;
 
+    /// The lazily created DeepSeek Harness version list page.
+    private VersionsPage versionsPage;
+
     /// Creates the root page and installs its sidebar.
     public RootPage() {
         getStyleClass().remove("gray-background");
@@ -78,6 +81,16 @@ public final class RootPage extends DecoratorAnimatedPage implements DecoratorPa
         return instancesPage;
     }
 
+    /// Returns the version list page, creating it on first use.
+    ///
+    /// @return the versions page
+    public VersionsPage getVersionsPage() {
+        if (versionsPage == null) {
+            versionsPage = new VersionsPage();
+        }
+        return versionsPage;
+    }
+
     @Override
     public ReadOnlyObjectProperty<State> stateProperty() {
         return state.getReadOnlyProperty();
@@ -94,6 +107,8 @@ public final class RootPage extends DecoratorAnimatedPage implements DecoratorPa
         private SideBar() {
             addNavigationDrawerItem(i18n("instance.manage"), SVG.FORMAT_LIST_BULLETED,
                     () -> Controllers.navigate(getInstancesPage()));
+            addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
+                    () -> Controllers.navigate(getVersionsPage()));
             addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
                     () -> Controllers.navigate(getSettingsPage()));
         }

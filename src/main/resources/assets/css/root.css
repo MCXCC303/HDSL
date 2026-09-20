@@ -2009,3 +2009,11 @@
 .addon-changelog-table-cell {
     -fx-text-fill: -monet-primary;
 }
+
+/* HMCL-DSH: heading row at the top of a versions card. */
+.line-text-pane.section-header > .container > .title {
+    -fx-font-weight: bold;
+}
+.line-text-pane.section-header > .container {
+    -fx-padding: 8 10 4 10;
+}

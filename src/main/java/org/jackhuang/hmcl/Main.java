@@ -17,7 +17,11 @@
  */
 package org.jackhuang.hmcl;
 
+import org.jackhuang.hmcl.dsh.DshCli;
 import org.jetbrains.annotations.NotNullByDefault;
+
+import java.util.Arrays;
+import java.util.List;
 
 /// The process entry point.
 ///
@@ -25,6 +29,10 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// launcher refuses to start when the main class is an `Application` subclass
 /// but the JavaFX modules are only on the classpath. Delegating from a plain
 /// class avoids that check and keeps the classpath-based build working.
+///
+/// Command-line arguments are handled here so that version management never
+/// needs a display: see [DshCli] for the supported commands. Anything the CLI
+/// does not recognise starts the interface.
 @NotNullByDefault
 public final class Main {
     private Main() {
@@ -32,8 +40,20 @@ public final class Main {
 
     /// Starts HMCL-DSH.
     ///
-    /// @param args command-line arguments, forwarded to the JavaFX application
+    /// @param args command-line arguments
     public static void main(String[] args) {
+        List<String> arguments = Arrays.asList(args);
+
+        if (arguments.contains("--version")) {
+            System.out.println(Metadata.FULL_TITLE);
+            return;
+        }
+
+        DshCli.Invocation invocation = DshCli.parse(arguments);
+        if (invocation != null) {
+            System.exit(DshCli.run(invocation, System.out, System.err));
+        }
+
         Launcher.main(args);
     }
 }
