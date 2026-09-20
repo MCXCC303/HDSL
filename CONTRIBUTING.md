@@ -248,6 +248,23 @@ ComponentList.add(child)
 界面里所有颜色都会随窗口背后是什么而变化 —— 这种问题在截图上不明显，
 要把两个窗口的同一区域**采样成数值**才看得出来。
 
+### ComponentList 的子项要用它自己的 setVgrow
+
+`ComponentList` 会把每个子项**包进一个 `ItemWrapper`** 再放进 VBox。
+所以在子项上写 `VBox.setVgrow(child, ALWAYS)` 是**无效的** ——
+VGrow 设在了盒子并不直接布局的那个节点上。
+
+原版为此提供了静态方法：
+
+```java
+ComponentList.setVgrow(node, Priority.ALWAYS);
+// 内部：node.getProperties().put("ComponentList.vgrow", priority);
+// 建 wrapper 时再读出这个属性并 VBox.setVgrow(wrapper, priority)
+```
+
+**症状**：列表不随窗口高度伸展，看起来像「高度被固定了」。
+判定方法：把窗口拉高，看卡片下边界是否跟着移动。
+
 ### 工具的固定高度：别给容器再加内边距
 
 `.jfx-tool-bar-button` 自带**固定高度**：

@@ -145,7 +145,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         root.getStyleClass().add("no-padding");
         root.getContent().add(buildToolbar());
         root.getContent().add(instanceList);
-        VBox.setVgrow(instanceList, Priority.ALWAYS);
+        // ComponentList wraps its children, so a VGrow set on the child lands on a
+        // node the box does not lay out and does nothing. The box reads this
+        // property off the child and applies it to the wrapper it builds.
+        ComponentList.setVgrow(instanceList, Priority.ALWAYS);
         pane.getChildren().setAll(root);
 
         setCenter(pane);

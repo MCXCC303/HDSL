@@ -123,7 +123,8 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         ComponentList root = new ComponentList();
         root.getStyleClass().add("no-padding");
         root.getContent().add(releaseList);
-        VBox.setVgrow(releaseList, Priority.ALWAYS);
+        // See the note on the instance list: the box applies this to its own wrapper.
+        ComponentList.setVgrow(releaseList, Priority.ALWAYS);
         pane.getChildren().setAll(root);
 
         Node toolbar = buildToolbar();
