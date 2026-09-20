@@ -43,6 +43,7 @@ import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import javafx.stage.DirectoryChooser;
 import com.jfoenix.controls.JFXTextField;
@@ -220,8 +221,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // release in use keeps both in the sidebar, and the release is what this
         // is being matched against.
         normalBar.getChildren().setAll(
-                toolbarButton(i18n("button.refresh"), SVG.REFRESH, this::refresh),
-                toolbarButton(i18n("search"), SVG.SEARCH, this::showSearch));
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
+                ToolbarListPageSkin.createToolbarButton2(i18n("search"), SVG.SEARCH, this::showSearch));
 
         searchField.setPromptText(i18n("search"));
         HBox.setHgrow(searchField, Priority.ALWAYS);
@@ -230,9 +231,12 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
             refresh();
         });
 
-        JFXButton close = FXUtils.newToggleButton4(SVG.CLOSE);
+        // The original builds this with the same factory as the buttons it
+        // replaces, so it has the same height and the same icon size. A toggle
+        // button of the same apparent shape is a different class with different
+        // metrics, and lands a few pixels from where the original's does.
+        JFXButton close = ToolbarListPageSkin.createToolbarButton2(null, SVG.CLOSE, this::hideSearch);
         FXUtils.installFastTooltip(close, i18n("button.cancel"));
-        close.setOnAction(event -> hideSearch());
         FXUtils.onEscPressed(searchField, close::fire);
 
         // The original pads the search row horizontally and centres it; the
@@ -243,20 +247,6 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
         toolbarHost.getChildren().setAll(normalBar);
         return toolbarHost;
-    }
-
-    /// Builds a toolbar button.
-    ///
-    /// @param text   the label
-    /// @param icon   the leading icon
-    /// @param action the action
-    /// @return the button
-    private static JFXButton toolbarButton(String text, SVG icon, Runnable action) {
-        JFXButton button = new JFXButton(text);
-        button.setGraphic(icon.createIcon(20));
-        button.getStyleClass().add("jfx-tool-bar-button");
-        button.setOnAction(event -> action.run());
-        return button;
     }
 
     /// Replaces the toolbar with the search field.
