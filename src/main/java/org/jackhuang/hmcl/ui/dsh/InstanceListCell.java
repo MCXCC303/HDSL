@@ -187,9 +187,6 @@ public final class InstanceListCell extends ListCell<DshInstance> {
                 instance.profile(),
                 i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
 
-        content.getTags().clear();
-        content.addTag(i18n("dsh.instance.port.mode." + instance.portModeOrDefault().id()));
-
         boolean running = runningCheck.test(instance);
         SVG action = running ? SVG.CANCEL : SVG.ROCKET_LAUNCH;
         launch.setGraphic(action.createIcon(20));

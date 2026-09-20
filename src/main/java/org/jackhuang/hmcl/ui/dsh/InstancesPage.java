@@ -28,6 +28,7 @@ import javafx.scene.control.Label;
 import com.jfoenix.controls.JFXListView;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
@@ -87,6 +88,18 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// The sidebar entry naming the directory whose instances are listed.
     private final AdvancedListItem currentDirectoryItem = new AdvancedListItem();
 
+    /// The field the search toolbar carries.
+    private final JFXTextField searchField = new JFXTextField();
+
+    /// The toolbar of buttons, shown when not searching.
+    private final HBox normalBar = new HBox(4);
+
+    /// The search toolbar, shown in place of the buttons.
+    private final HBox searchBar = new HBox(4);
+
+    /// Holds whichever toolbar is current.
+    private final StackPane toolbarHost = new StackPane();
+
     /// Creates the instance list page.
     public InstancesPage() {
 
@@ -95,6 +108,9 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // you can do.
         currentDirectoryItem.setLeftIcon(SVG.FOLDER_OPEN);
         currentDirectoryItem.setOnAction(event -> showDirectoryMenu());
+        // The original pairs the entry with a close button that drops the folder
+        // from the list; the entry itself opens the chooser.
+        currentDirectoryItem.setRightAction(SVG.CLOSE, this::removeCurrentDirectory);
         AdvancedListBox sideBar = new AdvancedListBox()
                 .add(currentDirectoryItem)
                 .addNavigationDrawerItem(i18n("dsh.directory.add"), SVG.ADD, this::addDirectory);
@@ -109,7 +125,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         sideBar.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(sideBar, Priority.ALWAYS);
 
-        getLeft().getStyleClass().add("gray-background");
+        // The page itself already paints the translucent plate, so the sidebar
+        // must not paint it again: two layers of a half-transparent colour is
+        // visibly darker, and the original's sidebar and content match. Only the
+        // home page plates its sidebar separately, because it clears the page's.
         setLeft(sideBar, actions);
 
         VBox content = new VBox(buildToolbar(), instanceList);
@@ -143,26 +162,82 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// Builds the toolbar above the list.
     ///
-    /// @return the toolbar
-    private HBox buildToolbar() {
-        JFXButton refresh = new JFXButton(i18n("button.refresh"));
-        refresh.setGraphic(SVG.REFRESH.createIcon(18));
-        refresh.getStyleClass().add("jfx-tool-bar-button");
-        refresh.setOnAction(event -> refresh());
+    /// The original's toolbar swaps rather than carries both: search is a
+    /// button, and pressing it replaces the row with a field and a close
+    /// button. A permanently visible field takes the width the buttons need
+    /// and offers a control nobody asked for yet.
+    ///
+    /// @return the toolbar container
+    private Node buildToolbar() {
+        normalBar.setAlignment(Pos.CENTER_LEFT);
+        normalBar.setPadding(new Insets(4));
+        normalBar.getChildren().setAll(
+                toolbarButton(i18n("button.refresh"), SVG.REFRESH, this::refresh),
+                toolbarButton(i18n("dsh.instance.install"), SVG.ADD, this::createInstance),
+                toolbarButton(i18n("search"), SVG.SEARCH, this::showSearch));
 
-        JFXTextField search = new JFXTextField();
-        search.setPromptText(i18n("search"));
-        search.setPrefWidth(260);
-        HBox.setHgrow(search, Priority.ALWAYS);
-        search.textProperty().addListener((observable, was, value) -> {
+        searchField.setPromptText(i18n("search"));
+        HBox.setHgrow(searchField, Priority.ALWAYS);
+        searchField.textProperty().addListener((observable, was, value) -> {
             filter = value;
             refresh();
         });
 
-        HBox toolbar = new HBox(8, refresh, search);
-        toolbar.setAlignment(Pos.CENTER_LEFT);
-        toolbar.setPadding(new Insets(8));
-        return toolbar;
+        JFXButton close = FXUtils.newToggleButton4(SVG.CLOSE);
+        FXUtils.installFastTooltip(close, i18n("button.cancel"));
+        close.setOnAction(event -> hideSearch());
+        FXUtils.onEscPressed(searchField, close::fire);
+
+        searchBar.setAlignment(Pos.CENTER_LEFT);
+        searchBar.setPadding(new Insets(4));
+        searchBar.getChildren().setAll(searchField, close);
+
+        toolbarHost.getChildren().setAll(normalBar);
+        return toolbarHost;
+    }
+
+    /// Builds a toolbar button.
+    ///
+    /// @param text   the label
+    /// @param icon   the leading icon
+    /// @param action the action
+    /// @return the button
+    private static JFXButton toolbarButton(String text, SVG icon, Runnable action) {
+        JFXButton button = new JFXButton(text);
+        button.setGraphic(icon.createIcon(18));
+        button.getStyleClass().add("jfx-tool-bar-button");
+        button.setOnAction(event -> action.run());
+        return button;
+    }
+
+    /// Replaces the toolbar with the search field.
+    private void showSearch() {
+        toolbarHost.getChildren().setAll(searchBar);
+        searchField.requestFocus();
+    }
+
+    /// Restores the toolbar and clears the filter.
+    private void hideSearch() {
+        searchField.clear();
+        filter = null;
+        toolbarHost.getChildren().setAll(normalBar);
+        refresh();
+    }
+
+    /// Drops the folder being shown from the list.
+    ///
+    /// Nothing is deleted: the instances inside keep their files and stop being
+    /// listed. The default folder cannot be dropped, because it is where a new
+    /// instance goes when nowhere else is chosen.
+    private void removeCurrentDirectory() {
+        GameDirectory directory = GameDirectoryManager.selected();
+        if (directory.isDefault()) {
+            Controllers.dialog(i18n("dsh.directory.remove.default"),
+                    i18n("dsh.directory.remove"), MessageType.ERROR);
+            return;
+        }
+        GameDirectoryManager.remove(directory.id());
+        refresh();
     }
 
     /// Offers the folders the launcher knows about.
