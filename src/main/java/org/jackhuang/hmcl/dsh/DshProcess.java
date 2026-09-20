@@ -218,6 +218,9 @@ public final class DshProcess {
             return;
         }
         Process raw = process.getProcess();
+        // DeepSeek Harness spawns helper processes of its own; collect them
+        // before the parent goes away, then take the whole tree down.
+        List<ProcessHandle> descendants = raw.descendants().toList();
         raw.destroy();
         try {
             if (!raw.waitFor(SHUTDOWN_GRACE.toSeconds(), TimeUnit.SECONDS)) {
@@ -228,6 +231,11 @@ public final class DshProcess {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             raw.destroyForcibly();
+        }
+        for (ProcessHandle descendant : descendants) {
+            if (descendant.isAlive()) {
+                descendant.destroy();
+            }
         }
     }
 

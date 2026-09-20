@@ -42,6 +42,13 @@ public final class DshProcessManager {
     /// Running processes, keyed by instance id.
     private static final Map<String, DshProcess> RUNNING = new ConcurrentHashMap<>();
 
+    /// Serialises the check-then-start sequence in [#launch].
+    ///
+    /// Without it, two quick activations of the launch button both observe an
+    /// empty registry and start a second server on the same home, which races
+    /// the profile files and leaves the extra process untracked.
+    private static final Object LAUNCH_LOCK = new Object();
+
     static {
         Runtime.getRuntime().addShutdownHook(new Thread(DshProcessManager::stopAll, "HMCL-DSH shutdown"));
     }
@@ -56,22 +63,25 @@ public final class DshProcessManager {
     /// @return the running handle
     /// @throws DshException when the runtime is missing or the process cannot start
     public static DshProcess launch(DshInstance instance) throws DshException {
-        DshProcess existing = RUNNING.get(instance.id());
-        if (existing != null && existing.isRunning()) {
-            return existing;
-        }
-
-        DshNodeRuntime runtime = DshNodeRuntime.detect()
-                .orElseThrow(() -> new DshException("Node.js was not found on PATH; " + DshNodeRuntime.requirement()));
-
-        DshProcess process = DshProcess.start(instance, runtime);
-        RUNNING.put(instance.id(), process);
-        process.setStateListener(state -> {
-            if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
-                RUNNING.remove(instance.id(), process);
+        synchronized (LAUNCH_LOCK) {
+            DshProcess existing = RUNNING.get(instance.id());
+            if (existing != null && existing.isRunning()) {
+                return existing;
             }
-        });
-        return process;
+
+            DshNodeRuntime runtime = DshNodeRuntime.detect()
+                    .orElseThrow(() -> new DshException("Node.js was not found on PATH; "
+                            + DshNodeRuntime.requirement()));
+
+            DshProcess process = DshProcess.start(instance, runtime);
+            RUNNING.put(instance.id(), process);
+            process.setStateListener(state -> {
+                if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
+                    RUNNING.remove(instance.id(), process);
+                }
+            });
+            return process;
+        }
     }
 
     /// Returns the running process for an instance.

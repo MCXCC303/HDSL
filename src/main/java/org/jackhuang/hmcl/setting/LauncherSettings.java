@@ -143,6 +143,12 @@ public final class LauncherSettings {
     /// Whether animations are disabled; `null` follows the platform setting.
     private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
 
+    /// The instance the launch button targets, or `null` before one is chosen.
+    private final ObjectProperty<@Nullable String> selectedInstanceId = new SimpleObjectProperty<>();
+
+    /// Whether the browser is opened automatically once an instance is ready.
+    private final BooleanProperty openBrowserOnLaunch = new SimpleBooleanProperty(true);
+
     /// Returns the selected theme reference, falling back to the default when unset.
     ///
     /// @return the effective theme reference
@@ -312,5 +318,19 @@ public final class LauncherSettings {
     /// @return the animation-disabled property
     public ObjectProperty<@Nullable Boolean> animationDisabledProperty() {
         return animationDisabled;
+    }
+
+    /// Returns the property holding the instance the launch button targets.
+    ///
+    /// @return the selected-instance-id property
+    public ObjectProperty<@Nullable String> selectedInstanceIdProperty() {
+        return selectedInstanceId;
+    }
+
+    /// Returns whether the browser should be opened when an instance becomes ready.
+    ///
+    /// @return the open-browser property
+    public BooleanProperty openBrowserOnLaunchProperty() {
+        return openBrowserOnLaunch;
     }
 }

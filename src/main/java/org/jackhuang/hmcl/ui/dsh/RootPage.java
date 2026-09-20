@@ -20,10 +20,6 @@ package org.jackhuang.hmcl.ui.dsh;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import org.jackhuang.hmcl.Metadata;
-import org.jackhuang.hmcl.ui.Controllers;
-import org.jackhuang.hmcl.ui.SVG;
-import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
-import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -50,6 +46,9 @@ public final class RootPage extends DecoratorAnimatedPage implements DecoratorPa
     /// The lazily created DeepSeek Harness version list page.
     private VersionsPage versionsPage;
 
+    /// The launcher home page, created eagerly because it is the default view.
+    private final MainPage mainPage = new MainPage();
+
     /// Creates the root page and installs its sidebar.
     public RootPage() {
         getStyleClass().remove("gray-background");
@@ -57,8 +56,10 @@ public final class RootPage extends DecoratorAnimatedPage implements DecoratorPa
 
         state.set(State.fromTitle(Metadata.FULL_TITLE));
 
-        setLeft(new SideBar());
-        setCenter(getInstancesPage());
+        // Navigation lives on the home page, which is the only page a
+        // user sees before choosing a destination.
+
+        setCenter(mainPage);
     }
 
     /// Returns the settings page, creating it on first use.
@@ -99,18 +100,5 @@ public final class RootPage extends DecoratorAnimatedPage implements DecoratorPa
     @Override
     public void refresh() {
         // The root page owns no refreshable data of its own.
-    }
-
-    /// Builds the left-hand sidebar.
-    private final class SideBar extends AdvancedListBox {
-        /// Creates the sidebar and wires its navigation actions.
-        private SideBar() {
-            addNavigationDrawerItem(i18n("instance.manage"), SVG.FORMAT_LIST_BULLETED,
-                    () -> Controllers.navigate(getInstancesPage()));
-            addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.DOWNLOAD,
-                    () -> Controllers.navigate(getVersionsPage()));
-            addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
-                    () -> Controllers.navigate(getSettingsPage()));
-        }
     }
 }

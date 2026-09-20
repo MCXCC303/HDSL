@@ -223,6 +223,12 @@ public final class SettingsManager {
         @SerializedName("animationDisabled")
         private @Nullable Boolean animationDisabled;
 
+        @SerializedName("selectedInstanceId")
+        private @Nullable String selectedInstanceId;
+
+        @SerializedName("openBrowserOnLaunch")
+        private @Nullable Boolean openBrowserOnLaunch;
+
         /// Captures the current settings into a serialisable snapshot.
         ///
         /// @param settings the settings to capture
@@ -251,6 +257,8 @@ public final class SettingsManager {
             snapshot.logFontSize = settings.logFontSizeProperty().get();
             snapshot.logLines = settings.logLinesProperty().get();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
+            snapshot.selectedInstanceId = settings.selectedInstanceIdProperty().get();
+            snapshot.openBrowserOnLaunch = settings.openBrowserOnLaunchProperty().get();
             return snapshot;
         }
 
@@ -319,6 +327,12 @@ public final class SettingsManager {
             }
             if (animationDisabled != null) {
                 settings.animationDisabledProperty().set(animationDisabled);
+            }
+            if (selectedInstanceId != null) {
+                settings.selectedInstanceIdProperty().set(selectedInstanceId);
+            }
+            if (openBrowserOnLaunch != null) {
+                settings.openBrowserOnLaunchProperty().set(openBrowserOnLaunch);
             }
         }
     }
