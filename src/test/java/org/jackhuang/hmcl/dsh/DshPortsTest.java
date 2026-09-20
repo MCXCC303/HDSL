@@ -41,7 +41,7 @@ class DshPortsTest {
     private static DshInstance instance(DshPortMode mode, int port) {
         return new DshInstance("test", "0.0.0", "web", "/tmp",
                 DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null,
-                List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), mode, port, 0L);
+                List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), null, mode, port, 0L);
     }
 
     @Test

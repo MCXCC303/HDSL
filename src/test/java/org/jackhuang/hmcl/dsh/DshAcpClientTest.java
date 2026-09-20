@@ -42,7 +42,7 @@ class DshAcpClientTest {
     private static DshInstance testInstance() {
         return new DshInstance("test", "0.0.0", "acp", "/tmp",
                 DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null,
-                List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), DshPortMode.AUTO, 0, 0L);
+                List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), null, DshPortMode.AUTO, 0, 0L);
     }
 
     /// Builds the command that runs the stub on the current test classpath.
