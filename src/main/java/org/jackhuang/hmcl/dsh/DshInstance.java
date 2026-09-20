@@ -155,7 +155,13 @@ public record DshInstance(
     /// @return the runtime selection, never `null`
     public String nodeRuntimeOrDefault() {
         String value = nodeRuntime;
-        return value == null || value.isBlank() ? DshNodeRuntime.SYSTEM : value;
+        // An instance that never chose follows the launcher. Existing manifests
+        // carry null, which used to mean the system runtime and still resolves to
+        // it, because the launcher's own default is the system runtime.
+        if (value == null || value.isBlank() || DshNodeRuntime.GLOBAL.equals(value)) {
+            return DshEnvironment.nodeRuntimeDefault();
+        }
+        return value;
     }
 
     /// Returns the working directory sessions are scoped to.
@@ -183,7 +189,13 @@ public record DshInstance(
     /// @throws DshException when a custom home was requested but not configured,
     ///                       or when a path segment is unusable
     public Path homeDirectory() throws DshException {
+        // GLOBAL is resolved through the launcher's default rather than here,
+        // because the settings live a layer above this package.
+        if (homeMode == DshHomeMode.GLOBAL) {
+            return withHome(DshEnvironment.homeModeDefault(), customHomePath()).homeDirectory();
+        }
         return switch (homeMode) {
+            case GLOBAL -> throw new AssertionError("handled above");
             case ISOLATED -> DshPaths.instanceDirectory(id).resolve("home").toAbsolutePath().normalize();
             case VERSION_SHARED -> DshPaths.versionDirectory(version).resolve(".dsh-home").toAbsolutePath().normalize();
             case CUSTOM -> {

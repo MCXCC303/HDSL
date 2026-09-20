@@ -76,6 +76,9 @@ public record DshNodeRuntime(
     /// The selection value meaning "use whatever is on `PATH`".
     public static final String SYSTEM = "system";
 
+    /// The selection meaning "whatever the launcher is set to".
+    public static final String GLOBAL = "global";
+
     /// Describes a launcher-managed runtime in the same shape as a probed one.
     ///
     /// `pnpm` is deliberately left unset: a managed runtime has no `pnpm` of its

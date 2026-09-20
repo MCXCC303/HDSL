@@ -319,9 +319,14 @@ public final class DshCli {
                         out.println("(no instances)");
                     }
                     for (DshInstance instance : instances) {
+                        // The resolved values are printed, not the stored ones:
+                        // an instance that follows the launcher stores "global"
+                        // or nothing, and the answer a reader wants is what it
+                        // will actually run with.
                         out.println(instance.id()
                                 + "\tdsh " + instance.version()
                                 + "\tprofile " + instance.profile()
+                                + "\tnode " + instance.nodeRuntimeOrDefault()
                                 + "\t" + instance.homeMode()
                                 + "\thome " + instance.homeDirectory()
                                 + "\tworkspace " + instance.workspacePath());

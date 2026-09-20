@@ -46,6 +46,11 @@ public final class Main {
 
         // The CLI is consulted first so that subcommand options never collide
         // with the launcher's own flags.
+        // Before anything reads an instance: an instance that follows the
+        // launcher needs the launcher's defaults to resolve, and the command
+        // line reads them exactly as the interface does.
+        org.jackhuang.hmcl.setting.EnvironmentDefaults.install();
+
         DshCli.Invocation invocation = DshCli.parse(arguments);
         if (invocation != null) {
             System.exit(DshCli.run(invocation, System.out, System.err));

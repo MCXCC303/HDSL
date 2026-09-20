@@ -22,6 +22,14 @@ import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import java.util.List;
+import java.util.Locale;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import org.jackhuang.hmcl.dsh.NodeRuntimeManager;
+import org.jackhuang.hmcl.dsh.NodeRuntime;
+import org.jackhuang.hmcl.dsh.DshNodeRuntime;
+import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshPortMode;
 import org.jackhuang.hmcl.dsh.DshPorts;
@@ -42,6 +50,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 
+import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -76,6 +85,10 @@ public final class InstanceSettingsPage extends ScrollPane {
         ComponentList iconList = new ComponentList();
         iconList.getContent().add(buildIconRow());
 
+        ComponentList environmentList = new ComponentList();
+        environmentList.getContent().add(buildNodeRuntimeRow());
+        environmentList.getContent().add(buildHomeModeRow());
+
         ComponentList portList = new ComponentList();
 
         ComponentList list = portList;
@@ -85,6 +98,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 
         VBox root = new VBox(10,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
+                ComponentList.createComponentListTitle(i18n("dsh.settings.environment")), environmentList,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList);
         root.setPadding(new Insets(10));
         setContent(root);
@@ -92,6 +106,82 @@ public final class InstanceSettingsPage extends ScrollPane {
         // Must run after the content is installed: smooth scrolling binds to the
         // content node and throws on a null content.
         FXUtils.smoothScrolling(this);
+    }
+
+    /// Builds the Node runtime row.
+    ///
+    /// The first entry follows the launcher, which is what HMCL's game settings
+    /// offer for Java: an instance states its own only when it has a reason to.
+    ///
+    /// @return the row
+    private LineSelectButton<String> buildNodeRuntimeRow() {
+        List<String> choices = new ArrayList<>();
+        choices.add(DshNodeRuntime.GLOBAL);
+        choices.add(DshNodeRuntime.SYSTEM);
+        for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
+            choices.add(runtime.version());
+        }
+
+        LineSelectButton<String> row = new LineSelectButton<>();
+        row.setTitle(i18n("dsh.node.title"));
+        row.setItems(choices);
+        row.setNullSafeConverter(selection -> {
+            if (DshNodeRuntime.GLOBAL.equals(selection)) {
+                return i18n("dsh.instance.follow_global") + " (" + describeGlobalRuntime() + ")";
+            }
+            return DshNodeRuntime.SYSTEM.equals(selection)
+                    ? i18n("dsh.install.node.system")
+                    : selection;
+        });
+        row.setValue(instance.nodeRuntime() == null ? DshNodeRuntime.GLOBAL : instance.nodeRuntime());
+        row.valueProperty().addListener((observable, was, value) -> {
+            if (value != null && !value.equals(was)) {
+                write(instance.withNodeRuntime(DshNodeRuntime.GLOBAL.equals(value) ? null : value));
+            }
+        });
+        return row;
+    }
+
+    /// Describes what following the launcher currently resolves to.
+    ///
+    /// @return the runtime the launcher is set to
+    private String describeGlobalRuntime() {
+        String value = settings().defaultNodeRuntimeProperty().get();
+        return DshNodeRuntime.SYSTEM.equals(value) ? i18n("dsh.install.node.system") : value;
+    }
+
+    /// Builds the DSH_HOME policy row.
+    ///
+    /// @return the row
+    private LineSelectButton<DshHomeMode> buildHomeModeRow() {
+        LineSelectButton<DshHomeMode> row = new LineSelectButton<>();
+        row.setTitle(i18n("dsh.install.home"));
+        row.setSubtitle(i18n("dsh.instance.home.hint"));
+        row.setItems(DshHomeMode.GLOBAL, DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
+        row.setNullSafeConverter(mode -> DshHomeMode.GLOBAL.equals(mode)
+                ? i18n("dsh.instance.follow_global") + " ("
+                        + i18n("dsh.instance.home."
+                                + settings().defaultHomeModeProperty().get().name().toLowerCase(Locale.ROOT)) + ")"
+                : i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
+        row.setValue(instance.homeMode());
+        row.valueProperty().addListener((observable, was, mode) -> {
+            if (mode == null || mode == was) {
+                return;
+            }
+            if (mode == DshHomeMode.CUSTOM) {
+                javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
+                chooser.setTitle(i18n("dsh.install.home"));
+                Path chosen = Controllers.showDialog(chooser);
+                if (chosen == null) {
+                    row.setValue(was);
+                    return;
+                }
+                write(instance.withHome(DshHomeMode.CUSTOM, chosen));
+            } else {
+                write(instance.withHome(mode, null));
+            }
+        });
+        return row;
     }
 
     /// Builds the instance icon row.

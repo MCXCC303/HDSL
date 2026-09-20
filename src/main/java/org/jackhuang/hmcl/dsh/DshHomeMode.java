@@ -33,6 +33,12 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// version churn.
 @NotNullByDefault
 public enum DshHomeMode {
+    /// Use whatever policy the launcher is set to.
+    ///
+    /// The value a new instance is given, so changing the launcher's default
+    /// affects the instances that never chose one and leaves the rest alone.
+    GLOBAL,
+
     /// The instance owns a private home under its own instance directory.
     ///
     /// This is the default. Profiles, sessions, settings and credentials are
