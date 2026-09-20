@@ -21,15 +21,20 @@ import com.jfoenix.controls.JFXButton;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshVersion;
+import org.jackhuang.hmcl.dsh.DshException;
+import org.jackhuang.hmcl.dsh.DshRelease;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -39,20 +44,28 @@ import org.jackhuang.hmcl.util.SettingsMap;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
+import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// The first step of the install wizard: choose which DeepSeek Harness version
 /// the new instance pins.
 ///
 /// Mirrors HMCL's version-selection step. Unlike HMCL, the chosen version must
-/// already be installed: downloading a version is the Versions page's job, and
+/// already be installed, and offers the published ones that are not: choosing an
+/// uninstalled version downloads it as the first step of the install task, so a
+/// new instance can be created without visiting the Versions page first.
 /// keeping the two apart means the wizard never has to explain two different
 /// progress bars.
 @NotNullByDefault
 public final class VersionSelectPage extends VBox implements WizardPage {
     /// The wizard controller used to advance.
     private final WizardController controller;
+
+    /// The placeholder shown while the published versions load.
+    private LineTextPane remoteStatus;
 
     /// Creates the version-selection page.
     ///
@@ -70,26 +83,118 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         ComponentList list = new ComponentList();
         List<DshVersion> installed = DshVersionManager.listInstalled();
 
+        LineTextPane installedHeader = new LineTextPane();
+        installedHeader.setTitle(i18n("dsh.install.version.installed"));
+        installedHeader.getStyleClass().add("section-header");
+        list.getContent().add(installedHeader);
+
         if (installed.isEmpty()) {
             list.getContent().add(buildNote(i18n("dsh.install.step.version.empty")));
         } else {
             for (DshVersion version : installed) {
-                list.getContent().add(buildVersionRow(version));
+                list.getContent().add(buildVersionRow(version, true));
             }
         }
 
-        getChildren().addAll(title, list, buildFooter());
-        VBox.setVgrow(list, Priority.ALWAYS);
+        LineTextPane remoteHeader = new LineTextPane();
+        remoteHeader.setTitle(i18n("dsh.install.version.remote"));
+        remoteHeader.getStyleClass().add("section-header");
+        list.getContent().add(remoteHeader);
+
+        remoteStatus = new LineTextPane();
+        remoteStatus.setText(i18n("dsh.versions.loading"));
+        list.getContent().add(remoteStatus);
+
+        ScrollPane scroll = new ScrollPane(list);
+        scroll.setFitToWidth(true);
+        scroll.getStyleClass().add("edge-to-edge");
+        FXUtils.smoothScrolling(scroll);
+
+        getChildren().addAll(title, scroll, buildFooter());
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+
+        loadRemote(list, remoteHeader, installed);
+    }
+
+    /// Loads the published versions that are not installed yet.
+    ///
+    /// A failure here is not fatal: the page still offers what is installed, so
+    /// a network problem must not block creating an instance from a local copy.
+    ///
+    /// @param list          the list the rows are added to
+    /// @param remoteHeader  the header the remote rows follow
+    /// @param installed     the already-installed versions
+    private void loadRemote(ComponentList list, LineTextPane remoteHeader, List<DshVersion> installed) {
+        java.util.Set<String> installedNames = new java.util.HashSet<>();
+        for (DshVersion version : installed) {
+            installedNames.add(version.version());
+        }
+
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return DshVersionManager.fetchReleases();
+            } catch (DshException e) {
+                throw new java.util.concurrent.CompletionException(e);
+            }
+        }, Schedulers.io()).whenComplete((releases, throwable) -> runInFX(() -> {
+            int index = list.getContent().indexOf(remoteStatus);
+            if (index >= 0) {
+                list.getContent().remove(index);
+            }
+
+            if (throwable != null) {
+                Throwable cause = throwable instanceof java.util.concurrent.CompletionException
+                        && throwable.getCause() != null ? throwable.getCause() : throwable;
+                LOG.warning("Failed to list published versions", cause);
+                LineTextPane failure = new LineTextPane();
+                failure.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
+                list.getContent().add(list.getContent().indexOf(remoteHeader) + 1, failure);
+                return;
+            }
+
+            int added = 0;
+            int at = list.getContent().indexOf(remoteHeader) + 1;
+            for (DshRelease release : releases) {
+                if (installedNames.contains(release.version())) {
+                    continue;
+                }
+                list.getContent().add(at + added, buildReleaseRow(release));
+                added++;
+            }
+            if (added == 0) {
+                LineTextPane empty = new LineTextPane();
+                empty.setText(i18n("dsh.versions.remote.empty"));
+                list.getContent().add(at, empty);
+            }
+        }));
+    }
+
+    /// Builds a row for a published version that still has to be downloaded.
+    ///
+    /// @param release the published release
+    /// @return the row
+    private LineButton buildReleaseRow(DshRelease release) {
+        LineButton row = new LineButton();
+        row.setTitle(release.version());
+        row.setSubtitle(release.isPrerelease()
+                ? i18n("dsh.versions.prerelease")
+                : i18n("dsh.versions.will_download"));
+        row.setLeading(SVG.DOWNLOAD, 16);
+        row.setOnAction(event -> {
+            controller.getSettings().put(DshInstallWizardProvider.VERSION, release.version());
+            controller.onNext();
+        });
+        return row;
     }
 
     /// Builds one selectable version row.
     ///
     /// @param version the installed version
     /// @return the row
-    private LineButton buildVersionRow(DshVersion version) {
+    private LineButton buildVersionRow(DshVersion version, boolean installed) {
         LineButton row = new LineButton();
         row.setTitle(version.version());
-        row.setSubtitle(version.directory().toString());
+        row.setSubtitle(installed ? version.directory().toString() : i18n("dsh.versions.will_download"));
         row.setOnAction(event -> {
             controller.getSettings().put(DshInstallWizardProvider.VERSION, version.version());
             controller.onNext();

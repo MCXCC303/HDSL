@@ -182,6 +182,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             return true;
         }
 
+        if (raw.toLowerCase(Locale.ROOT).startsWith("create-version:")) {
+            Controllers.getDecorator().startWizard(
+                    new org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider(
+                            raw.substring("create-version:".length())),
+                    i18n("dsh.instance.create"));
+            return true;
+        }
+
         String value = raw.toLowerCase(Locale.ROOT);
         if (value.startsWith("settings/")) {
             SettingsPage page = getSettingsPage();
@@ -191,6 +199,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         switch (value) {
             case "home", "" -> Controllers.navigate(this);
             case "instances" -> Controllers.navigate(getInstancesPage());
+            // Deep links used when verifying the wizards; they are how a page
+            // inside the decorator can be reached without clicking.
+            case "create" -> {
+                Controllers.getDecorator().startWizard(
+                        new org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider(),
+                        i18n("dsh.instance.create"));
+                return true;
+            }
             case "versions" -> Controllers.navigate(getVersionsPage());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {

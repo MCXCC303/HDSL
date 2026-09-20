@@ -25,6 +25,7 @@ import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.dsh.DshPresetCatalog;
+import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.Schedulers;
@@ -152,6 +153,14 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
             if (version == null || name == null || workspace == null) {
                 throw new DshException("The install wizard finished without a complete configuration");
+            }
+
+            // A version chosen from the published list is not on disk yet, so it
+            // is downloaded before anything is installed into a profile — there
+            // is no profile to install into until the version exists.
+            if (DshVersionManager.findInstalled(version) == null) {
+                LOG.info("Wizard is downloading DeepSeek Harness " + version + " first");
+                DshVersionManager.install(version, line -> LOG.info("[dsh] " + line));
             }
 
             DshInstance instance = DshInstanceManager.create(
