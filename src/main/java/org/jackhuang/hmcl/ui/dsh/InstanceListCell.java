@@ -26,6 +26,7 @@ import javafx.scene.control.ListCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
@@ -179,7 +180,7 @@ public final class InstanceListCell extends ListCell<DshInstance> {
         setGraphic(graphic);
 
         selector.setSelected(instance.id().equals(selectedId.get()));
-        icon.setImage(instance.iconOrDefault().load());
+        icon.setImage(DshInstanceIcons.load(instance));
         content.setTitle(instance.id());
         content.setSubtitle(i18n("dsh.instance.summary",
                 instance.version(),

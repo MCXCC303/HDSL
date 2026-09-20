@@ -48,6 +48,7 @@ public record DshInstance(
         @SerializedName("arguments") @Unmodifiable List<String> extraArguments,
         @SerializedName("environment") @Unmodifiable Map<String, String> environment,
         @SerializedName("icon") @Nullable String icon,
+        @SerializedName("iconFile") @Nullable String iconFile,
         @SerializedName("portMode") @Nullable DshPortMode portMode,
         @SerializedName("port") int port,
         @SerializedName("createdAt") long createdAt) {
@@ -62,13 +63,42 @@ public record DshInstance(
         return DshInstanceIcon.of(icon);
     }
 
+    /// Returns the custom icon file, when the instance uses one.
+    ///
+    /// A file takes precedence over the built-in icon, because choosing one is
+    /// the more specific act.
+    ///
+    /// @return the file, or `null` when a built-in icon is in use
+    public @Nullable Path iconFileOrDefault() {
+        return iconFile == null || iconFile.isBlank() ? null : Path.of(iconFile);
+    }
+
+    /// Returns a copy that uses a custom icon file.
+    ///
+    /// @param file the image file
+    /// @return the copy
+    public DshInstance withIconFile(Path file) {
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment,
+                DshInstanceIcon.DEFAULT.id(), file.toAbsolutePath().normalize().toString(),
+                portMode, port, createdAt);
+    }
+
+    /// Returns a copy that uses a built-in icon.
+    ///
+    /// @return the copy
+    public DshInstance withNoIconFile() {
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment, icon, null, portMode, port, createdAt);
+    }
+
     /// Returns a copy with a different icon.
     ///
     /// @param newIcon the icon
     /// @return the copy
     public DshInstance withIcon(DshInstanceIcon newIcon) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, newIcon.id(), portMode, port, createdAt);
+                extraArguments, environment, newIcon.id(), iconFile, portMode, port, createdAt);
     }
 
     /// Returns the port policy, defaulting to automatic.
@@ -95,7 +125,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withPort(int newPort) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, portMode, newPort, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, newPort, createdAt);
     }
 
     /// Returns a copy with a different port policy.
@@ -105,7 +135,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withPortPolicy(DshPortMode newMode, int newPort) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, newMode, newPort, createdAt);
+                extraArguments, environment, icon, iconFile, newMode, newPort, createdAt);
     }
 
     /// Returns the Node runtime this instance runs on.
@@ -181,7 +211,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withProfile(String newProfile) {
         return new DshInstance(id, version, newProfile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
     }
 
     /// Creates a new instance pinned to a different version.
@@ -190,7 +220,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withVersion(String newVersion) {
         return new DshInstance(id, newVersion, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
     }
 
     /// Creates a new instance pinned to a different Node runtime.
@@ -199,7 +229,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withNodeRuntime(@Nullable String runtime) {
         return new DshInstance(id, version, profile, workspace, runtime, homeMode, customHome,
-                extraArguments, environment, icon, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
     }
 
     /// Creates a new instance with a different home policy.
@@ -210,7 +240,7 @@ public record DshInstance(
     public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, mode,
                 home == null ? null : home.toAbsolutePath().normalize().toString(),
-                extraArguments, environment, icon, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
     }
 
     /// Creates a new instance with different launch arguments and environment.
@@ -221,6 +251,6 @@ public record DshInstance(
     public DshInstance withLaunchOptions(@Unmodifiable List<String> arguments,
                                          @Unmodifiable Map<String, String> environment) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                arguments, environment, icon, portMode, port, createdAt);
+                arguments, environment, icon, iconFile, portMode, port, createdAt);
     }
 }

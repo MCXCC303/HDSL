@@ -28,8 +28,10 @@ import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import javafx.scene.image.Image;
-import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.LineComponent;
+import org.jackhuang.hmcl.dsh.DshInstanceIcons;
+import org.jackhuang.hmcl.ui.construct.LineButton;
+import org.jackhuang.hmcl.ui.dsh.InstanceIconDialog;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -93,39 +95,32 @@ public final class InstanceSettingsPage extends ScrollPane {
         FXUtils.smoothScrolling(this);
     }
 
-    /// Builds the instance icon chooser.
+    /// Builds the instance icon row.
     ///
-    /// The mechanism is HMCL's: an instance carries an icon, and the list and
-    /// sidebar show it. The chooser mirrors the current selection into the row's
-    /// leading graphic, so the choice is visible without opening the list.
+    /// The mechanism is HMCL's: the row shows the current icon and opens a
+    /// dialog of tiles, because the choice is visual and a list of names would
+    /// make the user read what they are meant to recognise.
     ///
     /// @return the row
-    private LineSelectButton<DshInstanceIcon> buildIconRow() {
-        LineSelectButton<DshInstanceIcon> row = new LineSelectButton<>();
+    private LineButton buildIconRow() {
+        LineButton row = new LineButton();
         row.setTitle(i18n("dsh.instance.icon"));
         row.setSubtitle(i18n("dsh.instance.icon.hint"));
-        row.setItems(DshInstanceIcon.values());
-        row.setValue(instance.iconOrDefault());
-        row.setNullSafeConverter(icon -> i18n("dsh.instance.icon." + icon.id()));
-        applyLeadingIcon(row, instance.iconOrDefault());
-
-        row.valueProperty().addListener((observable, was, icon) -> {
-            if (icon != null && icon != was) {
-                // The leading graphic must follow the choice: the row is the only
-                // place the icon is shown on this page.
-                applyLeadingIcon(row, icon);
-                write(instance.withIcon(icon));
+        applyLeadingIcon(row, instance);
+        row.setOnAction(event -> Controllers.dialog(new InstanceIconDialog(instance, () -> {
+            if (onChanged != null) {
+                onChanged.run();
             }
-        });
+        })));
         return row;
     }
 
-    /// Shows an icon as a row's leading graphic.
+    /// Shows an instance's icon as a row's leading graphic.
     ///
-    /// @param row  the row to decorate
-    /// @param icon the icon to show
-    private static void applyLeadingIcon(LineComponent row, DshInstanceIcon icon) {
-        Image image = icon.load();
+    /// @param row      the row to decorate
+    /// @param instance the instance whose icon to show
+    private static void applyLeadingIcon(LineComponent row, DshInstance instance) {
+        Image image = DshInstanceIcons.load(instance);
         if (image != null) {
             row.setLeading(image, 24);
         }

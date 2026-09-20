@@ -2034,3 +2034,10 @@
     -fx-text-fill: -monet-primary;
     -fx-font-weight: bold;
 }
+
+/* HMCL-DSH: the chosen tile in the instance icon chooser. */
+.icon-tile-selected {
+    -fx-border-color: -monet-primary;
+    -fx-border-width: 2px;
+    -fx-border-radius: 4;
+}
