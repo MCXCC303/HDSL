@@ -183,23 +183,11 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     ///
     /// @return the card
     private Node buildAppBootCard() {
-        Label status = new Label();
-        status.getStyleClass().add("installer-item-status");
-        status.textProperty().bind(appBootStatus);
-
-        Label name = new Label(i18n("dsh.install.app_boot"));
-        name.getStyleClass().add("installer-item-name");
-
-        Label arrow = new Label("\u2192");
-        arrow.getStyleClass().add("installer-item-arrow");
-
-        VBox card = new VBox(4, SVG.EXTENSION.createIcon(32), name, status, arrow);
-        card.getStyleClass().addAll("installer-item-wrapper", "installer-item-card");
-        card.setAlignment(Pos.CENTER);
-        FXUtils.onClicked(card, () -> chooseAppBoot(card));
-
-        FXUtils.installFastTooltip(card, i18n("dsh.install.app_boot.hint"));
         appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
+        InstallerCard card = new InstallerCard(SVG.EXTENSION, i18n("dsh.install.app_boot"),
+                appBootStatus.get(), () -> chooseAppBoot());
+        card.statusProperty().bind(appBootStatus);
+        FXUtils.installFastTooltip(card, i18n("dsh.install.app_boot.hint"));
         return card;
     }
 
@@ -220,7 +208,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     /// running that version shares it.
     ///
     /// @param card the card to update after a choice
-    private void chooseAppBoot(Node card) {
+    private void chooseAppBoot() {
         List<String> versions = availableAppBootVersions();
         if (versions.isEmpty()) {
             Controllers.dialog(i18n("dsh.install.app_boot.unavailable"),
@@ -286,7 +274,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     ///
     /// @return the card
     private Node buildVersionCard() {
-        return buildCard(SVG.DOWNLOAD, i18n("dsh.install.version.card"),
+        return new InstallerCard(SVG.DOWNLOAD, i18n("dsh.install.version.card"),
                 currentVersion() == null ? i18n("dsh.install.version.none") : currentVersion(),
                 null);
     }

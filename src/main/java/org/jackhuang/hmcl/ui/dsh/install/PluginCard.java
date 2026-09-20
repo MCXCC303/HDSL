@@ -22,6 +22,7 @@ import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.binding.Bindings;
+import com.jfoenix.controls.JFXButton;
 import javafx.css.PseudoClass;
 import javafx.geometry.Insets;
 import javafx.scene.control.Control;
@@ -179,6 +180,14 @@ public final class PluginCard extends Control {
                     },
                     control.chosenVersionProperty()));
             pane.getChildren().add(status);
+
+            JFXButton arrow = new JFXButton();
+            arrow.setGraphic(SVG.ARROW_FORWARD.createIcon());
+            arrow.getStyleClass().add("toggle-icon4");
+            // The card itself opens the chooser, so the arrow states that rather
+            // than acting on its own.
+            arrow.setMouseTransparent(true);
+            pane.getChildren().add(arrow);
 
             StackPane wrapper = new StackPane();
             wrapper.getStyleClass().add("installer-item-wrapper");

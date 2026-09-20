@@ -148,6 +148,29 @@ im = Image.open('/tmp/shot.png')
 im.crop((x0, y0, x1, y1)).resize(((x1-x0)*2, (y1-y0)*2), Image.NEAREST).save('/tmp/zoom.png')
 ```
 
+### 卡片类控件要照抄节点结构
+
+原版的 `installer-item` 系列 CSS 是三层结构：
+
+```
+StackPane.installer-item-wrapper   :card   ← 背景、圆角、宽度 180、阴影
+└── RipplerContainer
+    └── VBox.installer-item        :card   ← 居中
+        ├── SVGContainer(32) .installer-item-image   margin (8,0,8,0)
+        ├── Label .installer-item-name
+        ├── Label .installer-item-status
+        └── JFXButton .toggle-icon4  带 SVG.ARROW_FORWARD
+```
+
+三个要点：
+
+1. **`:card` 是伪类**（`pseudoClassStateChanged`），不是类名 `installer-item-card`
+2. **高度绑定为宽度的 0.7 倍**（皮肤里用 `onWeakChangeAndOperate(widthProperty, ...)`），
+   不绑的话内容行数不同的卡片会参差
+3. **箭头是图标按钮**，不是字符 `→`。字符依赖界面字体有该字形及其度量，会和图标集脱节
+4. **同一行的卡片子元素数量必须一致**，否则内容居中后图标位置对不齐。
+   原版连「陈述版本、不可点」的卡片也带箭头（禁用态），就是为了对齐
+
 ### 截图要看全，别只看一眼
 
 同一页面的**工具条会有多种状态**，截到哪一张取决于它当时停在哪里。
@@ -187,6 +210,7 @@ im.crop((x0, y0, x1, y1)).resize(((x1-x0)*2, (y1-y0)*2), Image.NEAREST).save('/t
 | 侧栏比内容区暗 | 页面和 `getLeft()` **各加了一次** `gray-background`；50% 的板层叠两层就是更暗 |
 | 某列永远空白 | 解析了 npm 的返回值，但它是**数组包一层对象**；静默返回空而不是报错 |
 | i18n 值没生效 | 键**原版 bundle 里已存在**，「不存在才追加」的逻辑跳过了它 —— 先 `grep` 再新增 |
+| 样式「几乎对但就是不对」 | **CSS 随包带来了，控件却没移植**。原版的选择器是 `.installer-item-wrapper .installer-item:card`，把两个类加在同一个节点上匹配不到任何规则 —— 移植前先 `grep` CSS 确认它期望的节点结构 |
 
 ### i18n 键必须按枚举核对
 
