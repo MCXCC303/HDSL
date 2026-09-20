@@ -158,7 +158,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         sideBar.setMaxHeight(Double.MAX_VALUE);
         VBox.setVgrow(sideBar, Priority.ALWAYS);
 
-        getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar, actions);
         setCenter(transitionPane);
     }
