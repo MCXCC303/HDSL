@@ -36,6 +36,9 @@ import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import javafx.scene.Node;
+import org.jackhuang.hmcl.dsh.DshInstanceIcon;
+import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.SVGContainer;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -183,7 +186,17 @@ public final class PluginCard extends Control {
             pane.getStyleClass().add("installer-item");
             pane.pseudoClassStateChanged(PseudoClass.getPseudoClass("card"), true);
 
-            SVGContainer icon = new SVGContainer(iconFor(control.preset()), 32);
+            // The marketplace leads with the mark of the loader it stands in for,
+            // which is the picture the install page shows for it; every other
+            // plugin has one of the launcher's own marks.
+            Node icon;
+            if (control.preset().id().equals("dshmarket")) {
+                ImageContainer picture = new ImageContainer(32);
+                picture.setImage(DshInstanceIcon.FABRIC.load());
+                icon = picture;
+            } else {
+                icon = new SVGContainer(iconFor(control.preset()), 32);
+            }
             icon.setMouseTransparent(true);
             icon.getStyleClass().add("installer-item-image");
             VBox.setMargin(icon, new Insets(8, 0, 8, 0));

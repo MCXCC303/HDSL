@@ -175,7 +175,7 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
     /// @return the card
     private Node buildAppBootCard() {
         appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
-        InstallerCard card = new InstallerCard(SVG.EXTENSION, i18n("dsh.install.app_boot"),
+        InstallerCard card = new InstallerCard(DshInstanceIcon.DSH_WHITE.load(), i18n("dsh.install.app_boot"),
                 appBootStatus.get(), () -> chooseAppBoot());
         card.statusProperty().bind(appBootStatus);
         FXUtils.installFastTooltip(card, i18n("dsh.install.app_boot.hint"));
