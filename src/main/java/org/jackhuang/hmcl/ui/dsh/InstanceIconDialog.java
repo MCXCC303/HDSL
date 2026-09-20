@@ -67,11 +67,12 @@ public final class InstanceIconDialog extends JFXDialogLayout {
         this.instance = instance;
         this.onFinish = onFinish;
 
-        setHeading(new Label(i18n("dsh.instance.icon")));
+        setHeading(new Label(i18n("settings.icon")));
 
+        // No gap: the original's tiles are thirty-six across and sit flush, so
+        // ten fit on a row. Four pixels of gap here is four pixels of pitch, and
+        // the row holds eight instead — the same dialog with a different shape.
         FlowPane tiles = new FlowPane();
-        tiles.setHgap(4);
-        tiles.setVgap(4);
 
         tiles.getChildren().add(buildCustomTile());
         // DEFAULT shares GRASS's artwork, so the chooser starts at GRASS and the
