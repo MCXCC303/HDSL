@@ -175,8 +175,7 @@ public final class VersionSelectPage extends VBox implements WizardPage {
                 : i18n("dsh.versions.will_download"));
         row.setLeading(SVG.DOWNLOAD, 16);
         row.setOnAction(event -> {
-            controller.getSettings().put(DshInstallWizardProvider.VERSION, release.version());
-            controller.onNext();
+            choose(release.version());
         });
         return row;
     }
@@ -190,8 +189,7 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         row.setTitle(version.version());
         row.setSubtitle(installed ? version.directory().toString() : i18n("dsh.versions.will_download"));
         row.setOnAction(event -> {
-            controller.getSettings().put(DshInstallWizardProvider.VERSION, version.version());
-            controller.onNext();
+            choose(version.version());
         });
         return row;
     }
@@ -207,7 +205,11 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         next.getStyleClass().add("dialog-accept");
         String selected = controller.getSettings().get(DshInstallWizardProvider.VERSION);
         next.setDisable(selected == null || selected.isBlank());
-        next.setOnAction(event -> controller.onNext());
+        next.setOnAction(event -> {
+            if (selected != null && !selected.isBlank()) {
+                choose(selected);
+            }
+        });
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
@@ -215,6 +217,18 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         HBox footer = new HBox(8, cancel, spacer, next);
         footer.setAlignment(Pos.CENTER_RIGHT);
         return footer;
+    }
+
+    /// Records the version and moves on to the create page.
+    ///
+    /// Choosing the version is a step, not a detour: it is what is being
+    /// installed, and the page after it states that choice rather than asking
+    /// for it again.
+    ///
+    /// @param version the chosen version
+    private void choose(String version) {
+        controller.getSettings().put(DshInstallWizardProvider.VERSION, version);
+        controller.onNext();
     }
 
     /// Builds a non-interactive note row.

@@ -130,14 +130,16 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
     @Override
     public @Nullable Node createPage(WizardController controller, int step, SettingsMap settings) {
-        // Skipping the version step keeps the wizard's page indices honest: with
-        // a preselection there is simply one fewer page.
+        // The version comes first and the create page follows, which is the
+        // original's order: the version is the thing being installed, and the
+        // page after it states that choice rather than asking for it again.
+        // A preselected version skips the first step.
         boolean askVersion = preselectedVersion == null;
-        int quickInstallStep = askVersion ? 1 : 0;
-        if (step == quickInstallStep) {
+        int createStep = askVersion ? 1 : 0;
+        if (step == createStep) {
             return new QuickInstallPage(controller);
         }
-        return askVersion && step == 0 ? new VersionSelectPage(controller) : null;
+        return step == 0 ? new VersionSelectPage(controller) : null;
     }
 
     @Override
@@ -145,15 +147,23 @@ public final class DshInstallWizardProvider implements WizardProvider {
         return Task.runAsync(i18n("dsh.install.working"), Schedulers.io(), () -> {
             String version = settings.get(VERSION);
             String name = settings.get(NAME);
-            String workspace = settings.get(WORKSPACE);
-            DshHomeMode homeMode = settings.getOrDefault(HOME_MODE, DshHomeMode.ISOLATED);
-            String nodeRuntime = settings.getOrDefault(NODE_RUNTIME, DshNodeRuntime.SYSTEM);
             Map<String, String> choices = settings.getOrDefault(PRESET_CHOICES, Map.of());
             List<String> specs = specsOf(choices);
 
-            if (version == null || name == null || workspace == null) {
+            if (version == null || name == null) {
                 throw new DshException("The install wizard finished without a complete configuration");
             }
+
+            // The environment comes from the launcher's settings rather than
+            // from the page: a runtime and a home policy are the launcher's
+            // business, and an instance that wants its own says so afterwards.
+            // The workspace is the user's home, which is what a session scoped
+            // to nothing in particular should be.
+            String nodeRuntime = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .defaultNodeRuntimeProperty().get();
+            DshHomeMode homeMode = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .defaultHomeModeProperty().get();
+            Path workspace = Path.of(System.getProperty("user.home"));
 
             // A version chosen from the published list is not on disk yet, so it
             // is downloaded before anything is installed into a profile — there
@@ -165,7 +175,7 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
             DshInstance instance = DshInstanceManager.create(
                     name.trim(), version, DshInstance.DEFAULT_PROFILE,
-                    Path.of(workspace), nodeRuntime, homeMode, null, List.of(), Map.of());
+                    workspace, nodeRuntime, homeMode, null, List.of(), Map.of());
 
             LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
 

@@ -30,8 +30,19 @@ import java.util.Locale;
 /// original does. The mod-loader artwork is kept for that parity — a launcher
 /// that offers fewer choices than the one it is modelled on reads as a
 /// limitation rather than a decision.
+///
+/// The DeepSeek Harness marks lead the set. They were supplied as SVG and are
+/// kept as PNG, which is what every other icon here is and what the image
+/// container reads: HMCL's own icons are inline path data in an enum, and
+/// introducing a second mechanism for three images would not pay for itself.
 @NotNullByDefault
 public enum DshInstanceIcon {
+    /// The DeepSeek Harness mark, in colour.
+    DSH_APPLICATION("dsh_application"),
+    /// The DeepSeek Harness mark on a light background.
+    DSH_BLACK("dsh_black"),
+    /// The DeepSeek Harness mark on a dark background.
+    DSH_WHITE("dsh_white"),
     /// The default icon.
     DEFAULT("grass"),
     /// Grass block.
@@ -74,6 +85,17 @@ public enum DshInstanceIcon {
     /// @return the lower-case identifier
     public String id() {
         return name().toLowerCase(Locale.ROOT);
+    }
+
+    /// Returns the bundled image this icon uses.
+    ///
+    /// Not the same as [#id]: `DEFAULT` and `GRASS` are separate choices that
+    /// share one image, because a stored choice records what the user picked
+    /// rather than which file it came from.
+    ///
+    /// @return the asset name without its extension
+    public String assetName() {
+        return asset;
     }
 
     /// Resolves an icon from its stored identifier.

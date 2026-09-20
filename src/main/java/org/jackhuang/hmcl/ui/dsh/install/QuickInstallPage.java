@@ -39,6 +39,7 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
+import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardPage;
@@ -103,7 +104,7 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         // the same state the wizard will install.
         seedDefaultChoices();
 
-        root.getChildren().addAll(title, buildInstanceList(), buildRuntimeList(), buildPresetList(), buildFooter());
+        root.getChildren().addAll(title, buildInstanceList(), buildPresetList(), buildFooter());
         VBox.setVgrow(root, Priority.ALWAYS);
 
         applyDefaults();
@@ -143,23 +144,36 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         homeModeSelector.setValue(DshHomeMode.ISOLATED);
 
         ComponentList list = new ComponentList();
-        list.getContent().addAll(nameRow, workspaceChooser, homeModeSelector);
+        list.getContent().add(nameRow);
         return list;
     }
 
-    /// Builds the Node runtime section.
+    /// Returns the version chosen on the page before this one.
     ///
-    /// @return the assembled component list
-    private ComponentList buildRuntimeList() {
-        nodeSelector.setTitle(i18n("dsh.node.title"));
-        nodeSelector.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
-                ? i18n("dsh.install.node.system")
-                : selection);
-        nodeSelector.setValue(DshNodeRuntime.SYSTEM);
+    /// @return the version, or `null` when none was chosen
+    private String currentVersion() {
+        String version = controller.getSettings().get(DshInstallWizardProvider.VERSION);
+        return version == null || version.isBlank() ? null : version;
+    }
 
-        ComponentList list = new ComponentList();
-        list.getContent().add(nodeSelector);
-        return list;
+    /// Builds the card stating which version is being installed.
+    ///
+    /// @return the card
+    private javafx.scene.Node buildVersionCard() {
+        javafx.scene.layout.VBox card = new javafx.scene.layout.VBox(4);
+        card.getStyleClass().addAll("installer-item-wrapper", "installer-item-card");
+        card.setAlignment(javafx.geometry.Pos.CENTER);
+        card.setDisable(true);
+
+        javafx.scene.control.Label name = new javafx.scene.control.Label(i18n("dsh.install.version.card"));
+        name.getStyleClass().add("installer-item-name");
+
+        javafx.scene.control.Label value = new javafx.scene.control.Label(
+                currentVersion() == null ? i18n("dsh.install.version.none") : currentVersion());
+        value.getStyleClass().add("installer-item-status");
+
+        card.getChildren().addAll(org.jackhuang.hmcl.ui.SVG.DOWNLOAD.createIcon(32), name, value);
+        return card;
     }
 
     /// Builds the quick-install preset section as a grid of cards.
@@ -181,6 +195,11 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         grid.setPadding(new Insets(4));
 
         Map<String, String> choices = choices();
+        // The version leads the grid, as the game does in the original. It is
+        // not a control: HMCL's vanilla card is not one either, because the
+        // version was settled on the page before this one.
+        grid.getChildren().add(buildVersionCard());
+
         for (DshPreset preset : DshPresetCatalog.builtin()) {
             PluginCard card = new PluginCard(preset, preset.recommended());
             card.setChosenVersion(choices.get(preset.id()));
