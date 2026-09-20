@@ -50,6 +50,7 @@ import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -140,6 +141,59 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
             builder.append(" · ").append(session.workingDirectory());
         }
         return builder.toString();
+    }
+
+    /// Copies the sessions of the machine's own DeepSeek Harness installation.
+    ///
+    /// The source is read and never written: this launcher does not manage that
+    /// installation, and importing is meant to take what it has without
+    /// becoming responsible for it. Sessions already present are left alone, and
+    /// ones whose lease is held are reported rather than skipped silently.
+    private void importFromSystem() {
+        Path source = Path.of(System.getProperty("user.home"), ".dsh");
+        if (!java.nio.file.Files.isDirectory(source)) {
+            Controllers.dialog(i18n("dsh.session.import.missing", source.toString()),
+                    i18n("dsh.session.import"), MessageType.ERROR);
+            return;
+        }
+
+        setLoading(true);
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                List<DshSession> sessions = DshSessions.readForeignHome(source);
+                int imported = 0;
+                int present = 0;
+                int refused = 0;
+                for (DshSession session : sessions) {
+                    try {
+                        DshSessions.importFrom(source, session, instance);
+                        imported++;
+                    } catch (DshException e) {
+                        if (e.getMessage() != null && e.getMessage().contains("already has a session")) {
+                            present++;
+                        } else {
+                            refused++;
+                        }
+                    }
+                }
+                return new int[]{imported, present, refused, sessions.size()};
+            } catch (DshException e) {
+                throw new CompletionException(e);
+            }
+        }, Schedulers.io()).whenComplete((counts, throwable) -> runInFX(() -> {
+            setLoading(false);
+            if (throwable != null) {
+                Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+                        ? throwable.getCause() : throwable;
+                LOG.warning("Failed to import sessions", cause);
+                Controllers.dialog(cause.getMessage(), i18n("dsh.session.import.failed"), MessageType.ERROR);
+            } else {
+                Controllers.dialog(i18n("dsh.session.import.done",
+                        counts[0], counts[1], counts[2], counts[3]),
+                        i18n("dsh.session.import"));
+            }
+            refresh();
+        }));
     }
 
     /// Deletes a session after confirmation.
@@ -267,6 +321,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         protected List<Node> initializeToolbar(SessionListPage page) {
             List<Node> toolbar = new ArrayList<>();
             toolbar.add(createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh));
+            toolbar.add(createToolbarButton2(i18n("dsh.session.import"), SVG.DOWNLOAD, page::importFromSystem));
             return toolbar;
         }
 

@@ -21,6 +21,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -78,7 +79,9 @@ public final class DshCli {
         /// Moves a session to another instance.
         MIGRATE_SESSION,
         /// Launches an instance and prints its output.
-        TEST_LAUNCH
+        TEST_LAUNCH,
+        /// Copies sessions from another home into an instance.
+        IMPORT_SESSIONS
     }
 
     /// A parsed command line.
@@ -130,6 +133,7 @@ public final class DshCli {
                 && !args.contains("--list-sessions")
                 && !args.contains("--migrate-session")
                 && !args.contains("--test-launch")
+                && !args.contains("--import-sessions")
                 && !args.contains("--help")
                 && !args.contains("-h")) {
             return null;
@@ -178,6 +182,13 @@ public final class DshCli {
                 case "--uninstall-node" -> {
                     command = Command.UNINSTALL_NODE;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--import-sessions" -> {
+                    command = Command.IMPORT_SESSIONS;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--from" -> {
+                    if (i + 1 < args.size()) options.put("from", args.get(++i));
                 }
                 case "--test-launch" -> {
                     command = Command.TEST_LAUNCH;
@@ -343,6 +354,9 @@ public final class DshCli {
                     out.println("Removed Node.js " + invocation.subject());
                     return 0;
                 }
+                case IMPORT_SESSIONS -> {
+                    return importSessions(invocation, out, err);
+                }
                 case TEST_LAUNCH -> {
                     return testLaunch(invocation, out, err);
                 }
@@ -393,6 +407,63 @@ public final class DshCli {
         }
     }
 
+    /// Copies another home's sessions into an instance.
+    ///
+    /// The source is read and never written: the point of importing is to take
+    /// what an existing installation has without becoming its manager.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int importSessions(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --import-sessions needs a target instance");
+            return 1;
+        }
+        DshInstance target = DshInstanceManager.find(invocation.arguments().get(0));
+        if (target == null) {
+            err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+            return 1;
+        }
+
+        String from = invocation.options().get("from");
+        Path sourceHome = from == null || from.isBlank()
+                ? Path.of(System.getProperty("user.home"), ".dsh")
+                : Path.of(from);
+        if (!Files.isDirectory(sourceHome)) {
+            err.println("error: " + sourceHome + " is not a directory");
+            return 1;
+        }
+
+        try {
+            List<DshSession> sessions = DshSessions.readForeignHome(sourceHome);
+            int imported = 0;
+            int skipped = 0;
+            int refused = 0;
+            for (DshSession session : sessions) {
+                try {
+                    DshSessions.importFrom(sourceHome, session, target);
+                    imported++;
+                    out.println("  imported " + session.id() + "  " + session.label());
+                } catch (DshException e) {
+                    if (e.getMessage() != null && e.getMessage().contains("already has a session")) {
+                        skipped++;
+                    } else {
+                        refused++;
+                        out.println("  skipped  " + session.id() + "  " + e.getMessage());
+                    }
+                }
+            }
+            out.println("Imported " + imported + ", already present " + skipped
+                    + ", refused " + refused + " of " + sessions.size()
+                    + " session(s) from " + sourceHome + " into " + target.id());
+            return 0;
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
     /// Launches an instance and prints the output it produces.
     ///
     /// This is the headless half of test launch: it runs the same path the
@@ -686,6 +757,8 @@ public final class DshCli {
                 sessions:
                   --acp-prompt <id> <text>         send one prompt over ACP
                   --list-sessions <id>             list an instance's sessions
+                  --import-sessions <id> [--from <home>]
+                                                   copy sessions in from another home
                   --test-launch <id>               launch and print its output
                   --migrate-session <src> <sid> <dst>
                                                    move a session to another instance

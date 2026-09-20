@@ -328,8 +328,55 @@ public final class DshSessions {
             throw new DshException(refusal);
         }
 
-        Path sourceHome = sourceInstance.homeDirectory();
-        Path targetHome = targetInstance.homeDirectory();
+        copyInto(sourceInstance.homeDirectory(), session, targetInstance, move);
+    }
+
+    /// Copies a session from any home into an instance.
+    ///
+    /// Used to take sessions from an installation the launcher does not manage —
+    /// the user's own `~/.dsh` — where nothing may be written. The copy is
+    /// therefore always one-way: the source is only ever read.
+    ///
+    /// @param sourceHome the home the session belongs to
+    /// @param session    the session to copy
+    /// @param target     the instance receiving it
+    /// @throws DshException when the session cannot be read or copied
+    public static void importFrom(Path sourceHome, DshSession session, DshInstance target)
+            throws DshException {
+        if (session.locked()) {
+            throw new DshException("This session is open; close it in DeepSeek Harness before importing it");
+        }
+        Path existing = target.homeDirectory().resolve("sessions")
+                .resolve(session.workspaceSlug())
+                .resolve(session.id());
+        if (Files.exists(existing)) {
+            throw new DshException("The instance already has a session with this id");
+        }
+        copyInto(sourceHome, session, target, false);
+    }
+
+    /// Reads a home that the launcher does not manage.
+    ///
+    /// The same listing as [#list(Path)], named for the case it is used in so a
+    /// reader can see that the home is a source and not a destination.
+    ///
+    /// @param home the home to read
+    /// @return the sessions it holds, newest first
+    /// @throws DshException when the home cannot be read
+    public static @Unmodifiable List<DshSession> readForeignHome(Path home) throws DshException {
+        return list(home);
+    }
+
+    /// Copies a session directory and its cache row into an instance.
+    ///
+    /// @param sourceHome the home the session belongs to
+    /// @param session    the session to copy
+    /// @param target     the instance receiving it
+    /// @param move       whether to delete the source afterwards
+    /// @throws DshException when the copy fails
+    private static void copyInto(Path sourceHome, DshSession session, DshInstance target, boolean move)
+            throws DshException {
+        Path targetHome = target.homeDirectory();
 
         Path targetSessionDirectory = targetHome.resolve("sessions")
                 .resolve(session.workspaceSlug())
