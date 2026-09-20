@@ -86,6 +86,35 @@ dependencies {
     }
 }
 
+// --------------------------------------------------------------- resources ---
+// HMCL generates this list at build time. HMCL-DSH does the same, so the
+// language picker can never drift from the .properties files actually shipped.
+val generateLanguageList by tasks.registering {
+    val langDir = layout.projectDirectory.dir("src/main/resources/assets/lang")
+    val outputDir = layout.buildDirectory.dir("generated/languageList")
+
+    inputs.dir(langDir)
+    outputs.dir(outputDir)
+
+    doLast {
+        val tags = sortedSetOf<String>()
+        langDir.asFile.listFiles()?.forEach { file ->
+            val name = file.name
+            if (name.startsWith("I18N") && name.endsWith(".properties")) {
+                val tag = name.removePrefix("I18N").removeSuffix(".properties").removePrefix("_")
+                tags.add(if (tag.isEmpty()) "en" else tag.replace('_', '-'))
+            }
+        }
+        val target = outputDir.get().dir("assets/lang").file("languages.json").asFile
+        target.parentFile.mkdirs()
+        target.writeText(tags.joinToString(prefix = "[", postfix = "]", separator = ", ") { "\"" + it + "\"" })
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(generateLanguageList)
+}
+
 // ------------------------------------------------------------- toolchain -----
 java {
     // HMCL-DSH requires JDK 21+. We do not pin a toolchain so the build works

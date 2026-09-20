@@ -44,14 +44,16 @@ public final class Main {
     public static void main(String[] args) {
         List<String> arguments = Arrays.asList(args);
 
-        if (arguments.contains("--version")) {
-            System.out.println(Metadata.FULL_TITLE);
-            return;
-        }
-
+        // The CLI is consulted first so that subcommand options never collide
+        // with the launcher's own flags.
         DshCli.Invocation invocation = DshCli.parse(arguments);
         if (invocation != null) {
             System.exit(DshCli.run(invocation, System.out, System.err));
+        }
+
+        if (arguments.contains("--version")) {
+            System.out.println(Metadata.FULL_TITLE);
+            return;
         }
 
         Launcher.main(args);

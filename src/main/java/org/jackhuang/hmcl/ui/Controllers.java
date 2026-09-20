@@ -24,14 +24,18 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.ui.animation.ContainerAnimations;
 import org.jackhuang.hmcl.ui.animation.Motion;
+import org.jackhuang.hmcl.ui.construct.InputDialogPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import com.jfoenix.validation.base.ValidatorBase;
 import org.jackhuang.hmcl.ui.decorator.Decorator;
+import org.jackhuang.hmcl.util.FutureCallback;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
+import java.util.concurrent.CompletableFuture;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -254,6 +258,29 @@ public final class Controllers {
             return;
         }
         FXUtils.openLink(uri);
+    }
+
+    /// Prompts for a single line of text.
+    ///
+    /// @param title        the prompt shown above the field
+    /// @param onResult     the callback that accepts or rejects the entered value
+    /// @param initialValue the value shown when the dialog opens
+    /// @param validators   optional validators applied as the user types
+    /// @return a future completed with the accepted value, or completed exceptionally on cancel
+    public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult,
+                                                  String initialValue, ValidatorBase... validators) {
+        InputDialogPane pane = new InputDialogPane(title, initialValue, onResult, validators);
+        dialog(pane);
+        return pane.getCompletableFuture();
+    }
+
+    /// Prompts for a single line of text with an empty initial value.
+    ///
+    /// @param title    the prompt shown above the field
+    /// @param onResult the callback that accepts or rejects the entered value
+    /// @return a future completed with the accepted value, or completed exceptionally on cancel
+    public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult) {
+        return prompt(title, onResult, "");
     }
 
     /// Requests a garbage collection when heap trimming is enabled.

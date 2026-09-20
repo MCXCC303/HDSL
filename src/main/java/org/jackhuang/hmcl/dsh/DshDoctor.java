@@ -46,6 +46,15 @@ public final class DshDoctor {
         out.println("OS:        " + System.getProperty("os.name") + " / " + System.getProperty("os.arch"));
         out.println();
 
+        out.println("Language");
+        out.println("  system locale:   " + java.util.Locale.getDefault());
+        out.println("  resolved locale: " + org.jackhuang.hmcl.util.i18n.I18n.getLocale().getLocale()
+                + "  (display: " + org.jackhuang.hmcl.util.i18n.I18n.getLocale().getDisplayLocale() + ")");
+        out.println("  supported:       " + org.jackhuang.hmcl.util.i18n.SupportedLocale.getSupportedLocales().size()
+                + " locale(s)");
+        out.println("  sample string:   " + org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.versions.title"));
+        out.println();
+
         out.println("Directories");
         out.println("  user home: " + Metadata.HMCL_USER_HOME);
         out.println("  versions:  " + DshPaths.VERSIONS);

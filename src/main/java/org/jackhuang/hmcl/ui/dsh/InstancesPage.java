@@ -17,52 +17,80 @@
  */
 package org.jackhuang.hmcl.ui.dsh;
 
+import com.jfoenix.controls.JFXButton;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.layout.StackPane;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshException;
+import org.jackhuang.hmcl.dsh.DshHomeMode;
+import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceManager;
+import org.jackhuang.hmcl.dsh.DshVersion;
+import org.jackhuang.hmcl.dsh.DshVersionManager;
+import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
-import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.LineButton;
+import org.jackhuang.hmcl.ui.construct.LineTextPane;
+import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
+import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /// Lists the DeepSeek Harness instances managed by HMCL-DSH.
 ///
-/// Phase 0 renders the empty state only; the instance model, its actions and
-/// the launch controls arrive in Phase 1 and Phase 3 (see `PLAN.md`).
+/// An instance pins one installed `dsh` version together with the profile,
+/// working directory and `DSH_HOME` it runs against. Creating one is
+/// intentionally cheap: the default is a private, isolated home, which is the
+/// only shape that stays safe while upstream churns through releases.
 @NotNullByDefault
-public final class InstancesPage extends DecoratorAnimatedPage implements DecoratorPage {
+public final class InstancesPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
     /// The page state published to the window decorator.
     private final ReadOnlyObjectWrapper<State> state =
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("instance.manage")));
+
+    /// The card listing the instances.
+    private final ComponentList instanceList = new ComponentList();
+
+    /// The status line above the list.
+    private final Label status = new Label();
 
     /// Creates the instance list page.
     public InstancesPage() {
         getStyleClass().remove("gray-background");
 
-        TwoLineListItem placeholder = new TwoLineListItem();
-        placeholder.setTitle(i18n("dsh.instance.empty"));
-        placeholder.setSubtitle(i18n("dsh.instance.empty.hint"));
+        AdvancedListBox sideBar = new AdvancedListBox()
+                .startCategory(i18n("instance.manage").toUpperCase(Locale.ROOT))
+                .addNavigationDrawerItem(i18n("dsh.instance.create"), SVG.ADD, this::createInstance);
+        FXUtils.setLimitWidth(sideBar, 200);
+        setLeft(sideBar);
 
-        placeholder.setMaxWidth(420);
-        placeholder.setPrefWidth(420);
+        VBox content = new VBox(10);
+        content.setPadding(new Insets(10));
+        content.getChildren().addAll(status, instanceList);
 
-        VBox box = new VBox(8, placeholder);
-        box.setAlignment(Pos.CENTER);
-        box.setPadding(new Insets(40));
-        box.setMaxWidth(420);
+        ScrollPane scroll = new ScrollPane(content);
+        scroll.setFitToWidth(true);
+        scroll.getStyleClass().add("edge-to-edge");
+        FXUtils.smoothScrolling(scroll);
 
-        StackPane center = new StackPane(box);
-        center.setAlignment(Pos.CENTER);
+        setCenter(scroll);
 
-        setLeft(new AdvancedListBox().startCategory(i18n("instance.manage")));
-        setCenter(center);
+        refresh();
     }
 
     @Override
@@ -72,6 +100,118 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     @Override
     public void refresh() {
-        // Refreshed once the instance model exists.
+        List<DshInstance> instances = DshInstanceManager.list();
+
+        instanceList.getContent().clear();
+        instanceList.getContent().add(buildSectionHeader(i18n("dsh.instance.section")));
+
+        if (instances.isEmpty()) {
+            instanceList.getContent().add(buildNote(i18n("dsh.instance.empty.hint")));
+        } else {
+            for (DshInstance instance : instances) {
+                instanceList.getContent().add(buildRow(instance));
+            }
+        }
+
+        status.setText(instances.isEmpty()
+                ? i18n("dsh.instance.none")
+                : i18n("dsh.instance.count", instances.size()));
+    }
+
+    /// Builds one row for an instance, with a remove action.
+    ///
+    /// @param instance the instance to render
+    /// @return the row
+    private LineButton buildRow(DshInstance instance) {
+        JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE, 18);
+        remove.setOnAction(event -> removeInstance(instance));
+
+        LineButton row = new LineButton();
+        row.setTitle(instance.id());
+        row.setSubtitle(i18n("dsh.instance.summary",
+                instance.version(),
+                instance.profile(),
+                i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
+        row.setTitleTrailing(remove);
+        row.setOnAction(event -> {
+            try {
+                FXUtils.showFileInExplorer(instance.instanceDirectory());
+            } catch (DshException e) {
+                Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+            }
+        });
+        return row;
+    }
+
+    /// Asks for a name and creates an instance with default settings.
+    ///
+    /// The defaults are deliberately the safe ones: the newest installed
+    /// version, the `web` profile, the user's home as the session workspace,
+    /// and a private isolated `DSH_HOME`.
+    private void createInstance() {
+        List<DshVersion> installed = DshVersionManager.listInstalled();
+        if (installed.isEmpty()) {
+            Controllers.dialog(i18n("dsh.instance.need_version"),
+                    i18n("dsh.instance.create"), MessageType.WARNING);
+            return;
+        }
+
+        DshVersion newest = installed.get(0);
+        Controllers.prompt(i18n("dsh.instance.name"), (value, handler) -> {
+            String id = value == null ? "" : value.trim();
+            if (id.isEmpty()) {
+                handler.reject(i18n("dsh.instance.name.empty"));
+                return;
+            }
+            try {
+                DshInstanceManager.create(id, newest.version(), DshInstance.DEFAULT_PROFILE,
+                        Path.of(System.getProperty("user.home")), DshHomeMode.ISOLATED, null,
+                        List.of(), Map.of());
+                handler.resolve();
+                refresh();
+                Controllers.showToast(i18n("dsh.instance.created", id));
+            } catch (DshException e) {
+                handler.reject(e.getMessage());
+            }
+        });
+    }
+
+    /// Removes an instance after confirmation.
+    ///
+    /// @param instance the instance to remove
+    private void removeInstance(DshInstance instance) {
+        Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
+                i18n("dsh.instance.remove"),
+                () -> {
+                    try {
+                        DshInstanceManager.delete(instance.id());
+                        refresh();
+                        Controllers.showToast(i18n("dsh.instance.removed", instance.id()));
+                    } catch (DshException e) {
+                        Controllers.dialog(e.getMessage(), i18n("dsh.instance.remove_failed"), MessageType.ERROR);
+                    }
+                },
+                null);
+    }
+
+    /// Builds a bold section heading rendered as the first row of a card.
+    ///
+    /// @param text the heading text
+    /// @return the heading row
+    private Node buildSectionHeader(String text) {
+        LineTextPane header = new LineTextPane();
+        header.setTitle(text);
+        header.getStyleClass().add("section-header");
+        return header;
+    }
+
+    /// Builds a non-interactive note row.
+    ///
+    /// @param text the text to show
+    /// @return the row
+    private Node buildNote(String text) {
+        LineTextPane note = new LineTextPane();
+        note.setText(text);
+        return note;
     }
 }
