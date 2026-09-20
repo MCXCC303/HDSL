@@ -20,11 +20,14 @@ package org.jackhuang.hmcl.ui.dsh.settings;
 import javafx.geometry.Insets;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.image.Image;
+import java.util.Objects;
+import org.jetbrains.annotations.Nullable;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
-import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
@@ -48,27 +51,32 @@ public final class AboutPage extends ScrollPane {
         // the content node and fails on a null content.
         FXUtils.smoothScrolling(this);
 
-        TwoLineListItem identity = new TwoLineListItem();
-        identity.setTitle(Metadata.FULL_NAME);
-        identity.setSubtitle(Metadata.VERSION);
-
         ComponentList aboutList = new ComponentList();
-        aboutList.getContent().add(identity);
+        aboutList.getContent().add(buildInfoRow(Metadata.FULL_NAME, Metadata.VERSION, "/assets/img/icon.png"));
         aboutList.getContent().add(buildInfoRow(i18n("dsh.about.runtime"),
-                System.getProperty("java.vm.name") + " " + System.getProperty("java.version")));
+                System.getProperty("java.vm.name") + " " + System.getProperty("java.version"), null));
 
         root.getChildren().addAll(aboutList, buildPathsList());
     }
 
     /// Builds a read-only information row.
     ///
-    /// @param title    the row label
-    /// @param subtitle the value to display
+    /// `setLargeTitle` is what HMCL's about page uses on every row, and it is
+    /// what raises the title from the row default to its 15px about-page size.
+    ///
+    /// @param title     the row label
+    /// @param subtitle  the value to display
+    /// @param iconPath  a bundled image to show as the leading graphic, or `null`
     /// @return the row
-    private static TwoLineListItem buildInfoRow(String title, String subtitle) {
-        TwoLineListItem item = new TwoLineListItem();
+    private static LineButton buildInfoRow(String title, String subtitle, @Nullable String iconPath) {
+        LineButton item = new LineButton();
+        item.setLargeTitle(true);
         item.setTitle(title);
         item.setSubtitle(subtitle);
+        if (iconPath != null) {
+            item.setLeading(new Image(Objects.requireNonNull(
+                    AboutPage.class.getResource(iconPath)).toExternalForm()), 32);
+        }
         return item;
     }
 
@@ -77,6 +85,8 @@ public final class AboutPage extends ScrollPane {
     /// @return the assembled component list
     private static ComponentList buildPathsList() {
         LineButton userHome = new LineButton();
+        userHome.setLargeTitle(true);
+        userHome.setLeading(SVG.FOLDER_OPEN, 24);
         userHome.setTitle(i18n("dsh.settings.home"));
         userHome.setSubtitle(Metadata.HMCL_USER_HOME.toString());
         userHome.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HMCL_USER_HOME));
