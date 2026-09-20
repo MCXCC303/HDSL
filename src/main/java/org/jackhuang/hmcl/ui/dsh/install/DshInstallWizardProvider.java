@@ -53,6 +53,13 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class DshInstallWizardProvider implements WizardProvider {
     /// The settings key holding the chosen DeepSeek Harness version.
+    /// The chosen application boot library version.
+    ///
+    /// Absent means the launcher's own version, which is the pairing that is
+    /// known to work; the two are published together and a mismatch is found at
+    /// start-up rather than degraded around.
+    public static final SettingsMap.Key<String> APP_BOOT = new SettingsMap.Key<>("dsh.appBoot");
+
     public static final SettingsMap.Key<String> VERSION = new SettingsMap.Key<>("dsh.version");
 
     /// The settings key holding the instance name.
@@ -171,6 +178,13 @@ public final class DshInstallWizardProvider implements WizardProvider {
             if (DshVersionManager.findInstalled(version) == null) {
                 LOG.info("Wizard is downloading DeepSeek Harness " + version + " first");
                 DshVersionManager.install(version, line -> LOG.info("[dsh] " + line));
+            }
+
+            String appBoot = settings.get(APP_BOOT);
+            if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(version)) {
+                LOG.info("Instance " + name + " was asked for boot library " + appBoot
+                        + " instead of the launcher's own " + version);
+                DshVersionManager.overrideAppBoot(version, appBoot);
             }
 
             DshInstance instance = DshInstanceManager.create(

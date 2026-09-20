@@ -169,6 +169,56 @@ public final class DshVersionManager {
         }
     }
 
+    /// Holds a version's boot library to a different release.
+    ///
+    /// The pairing is not a preference — the two are published together, and a
+    /// release whose libraries disagree with it fails at import rather than
+    /// degrading — so this is written only when someone asked for it, and the
+    /// caller warns first.
+    ///
+    /// The choice belongs to the installed version, not to an instance: every
+    /// instance running this version shares the tree, and therefore shares this.
+    ///
+    /// @param version the DeepSeek Harness version to change
+    /// @param appBoot the boot library version to hold it to
+    /// @throws DshException when the manifest cannot be written or npm fails
+    public static void overrideAppBoot(String version, String appBoot) throws DshException {
+        Path target = DshPaths.versionDirectory(version);
+        if (!Files.isDirectory(target)) {
+            throw new DshException("Version " + version + " is not installed");
+        }
+
+        DshNodeRuntime runtime = requireRuntime();
+        if (!runtime.canInstall()) {
+            throw new DshException("npm was not found on PATH; changing the boot library requires it");
+        }
+
+        writeManifest(target, version, appBoot);
+
+        List<String> command = List.of(
+                runtime.npm().toString(),
+                "install",
+                "--prefix", target.toString(),
+                "--no-audit",
+                "--no-fund",
+                "--loglevel=error");
+
+        LOG.info("Holding " + version + " to boot library " + appBoot);
+        int exitCode;
+        try {
+            exitCode = DshCommand.run(command, null, null).exitCode();
+        } catch (IOException e) {
+            throw new DshException("Failed to run npm", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new DshException("The boot library change was interrupted", e);
+        }
+        if (exitCode != 0) {
+            throw new DshException("npm exited with code " + exitCode
+                    + " while changing the boot library of " + version);
+        }
+    }
+
     /// Installs one DeepSeek Harness version into its own npm prefix.
     ///
     /// The install is staged into a sibling directory and moved into place on
@@ -291,7 +341,33 @@ public final class DshVersionManager {
     /// @return the published version strings
     /// @throws DshException when the query fails or returns unexpected data
     private static Set<String> queryVersions(Path npm) throws DshException {
-        DshCommand.Result result = runNpmView(npm, "versions");
+        return queryVersions(npm, PACKAGE_NAME);
+    }
+
+    /// Reads a package's published version list from the registry.
+    ///
+    /// @param npm     the npm executable
+    /// @param pkg     the package to read
+    /// @return the published version strings, newest first
+    /// @throws DshException when the query fails or returns unexpected data
+    public static List<String> fetchPackageVersions(String pkg) throws DshException {
+        DshNodeRuntime runtime = requireRuntime();
+        if (!runtime.canInstall()) {
+            throw new DshException("npm was not found on PATH; reading the registry requires it");
+        }
+        List<String> versions = new ArrayList<>(queryVersions(runtime.npm(), pkg));
+        versions.sort((left, right) -> compareVersions(right, left));
+        return List.copyOf(versions);
+    }
+
+    /// Reads the published version list of one package from the registry.
+    ///
+    /// @param npm the npm executable
+    /// @param pkg the package to read
+    /// @return the published version strings
+    /// @throws DshException when the query fails or returns unexpected data
+    private static Set<String> queryVersions(Path npm, String pkg) throws DshException {
+        DshCommand.Result result = runNpmView(npm, pkg, "versions");
         JsonElement parsed = parseJson(result.text());
         if (parsed == null) {
             throw new DshException("npm returned no version list; check the network and the npm registry configuration");
@@ -370,7 +446,18 @@ public final class DshVersionManager {
     /// @return the command result
     /// @throws DshException when npm cannot be run
     private static DshCommand.Result runNpmView(Path npm, String field) throws DshException {
-        List<String> command = List.of(npm.toString(), "view", PACKAGE_NAME, field, "--json");
+        return runNpmView(npm, PACKAGE_NAME, field);
+    }
+
+    /// Runs `npm view <package> <field> --json`.
+    ///
+    /// @param npm   the npm executable
+    /// @param pkg   the package to read
+    /// @param field the field to read
+    /// @return the command result
+    /// @throws DshException when the command cannot be run
+    private static DshCommand.Result runNpmView(Path npm, String pkg, String field) throws DshException {
+        List<String> command = List.of(npm.toString(), "view", pkg, field, "--json");
         try {
             DshCommand.Result result = DshCommand.run(command);
             if (!result.isSuccess()) {

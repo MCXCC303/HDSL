@@ -21,6 +21,7 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXTextField;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.FlowPane;
@@ -28,17 +29,22 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.dsh.DshPresetCatalog;
+import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.dsh.NodeRuntime;
 import org.jackhuang.hmcl.dsh.NodeRuntimeManager;
+import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
+import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
@@ -53,6 +59,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// The second step of the install wizard: name the instance and choose what to
 /// install into it.
@@ -156,6 +163,104 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         return version == null || version.isBlank() ? null : version;
     }
 
+    /// Builds the card choosing the application boot library.
+    ///
+    /// It starts on the version that matches the launcher, which is the only
+    /// combination that is known to work — the two are published together and a
+    /// release whose libraries disagree with it fails at import rather than
+    /// degrading. Choosing another is allowed because a user may know something
+    /// this launcher does not, but it is a deliberate step with a warning rather
+    /// than a default.
+    ///
+    /// @return the card
+    private Node buildAppBootCard() {
+        LineButton card = new LineButton();
+        card.setTitle(i18n("dsh.install.app_boot"));
+        card.setSubtitle(i18n("dsh.install.app_boot.matched", currentAppBoot()));
+        card.setLeading(SVG.EXTENSION, 16);
+        card.setOnAction(event -> chooseAppBoot(card));
+        return card;
+    }
+
+    /// Returns the boot library version that pairs with the chosen launcher.
+    ///
+    /// @return the version
+    private String currentAppBoot() {
+        String chosen = controller.getSettings().get(DshInstallWizardProvider.APP_BOOT);
+        return chosen == null || chosen.isBlank() ? currentVersion() : chosen;
+    }
+
+    /// Offers the published boot library versions.
+    ///
+    /// Choosing one that is not the launcher's own version is what the warning
+    /// is for: the pairing is not a preference, and a mismatch is discovered at
+    /// start-up. The warning also states the scope, because the choice belongs
+    /// to the installed version rather than to this instance — every instance
+    /// running that version shares it.
+    ///
+    /// @param card the card to update after a choice
+    private void chooseAppBoot(LineButton card) {
+        List<String> versions = availableAppBootVersions();
+        if (versions.isEmpty()) {
+            Controllers.dialog(i18n("dsh.install.app_boot.unavailable"),
+                    i18n("dsh.install.app_boot"), MessageType.WARNING);
+            return;
+        }
+
+        LineSelectButton<String> chooser = new LineSelectButton<>();
+        chooser.setTitle(i18n("dsh.install.app_boot"));
+        chooser.setSubtitle(i18n("dsh.install.app_boot.hint"));
+        chooser.setItems(versions);
+        chooser.setValue(currentAppBoot());
+        // Choosing the launcher's own version is the safe answer, so it is the
+        // one already selected; anything else is a departure the warning covers.
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(chooser);
+        Controllers.dialog(list);
+
+        chooser.valueProperty().addListener((observable, was, chosen) -> {
+            if (chosen == null || chosen.isBlank() || chosen.equals(currentVersion())) {
+                controller.getSettings().remove(DshInstallWizardProvider.APP_BOOT);
+                card.setSubtitle(i18n("dsh.install.app_boot.matched", currentAppBoot()));
+                return;
+            }
+            // The warning says what the choice costs: the pairing is not a
+            // preference, and it belongs to the installed version rather than to
+            // this instance, so every instance running that version is affected.
+            Controllers.dialog(i18n("dsh.install.app_boot.warning", chosen, currentVersion()),
+                    i18n("dsh.install.app_boot"), MessageType.WARNING, () -> {
+                        controller.getSettings().put(DshInstallWizardProvider.APP_BOOT, chosen);
+                        card.setSubtitle(i18n("dsh.install.app_boot.chosen", chosen));
+                    });
+        });
+    }
+
+    /// Lists the published boot library versions.
+    ///
+    /// The launcher's own version leads, so the safe choice is the first one
+    /// offered rather than something to go looking for.
+    ///
+    /// @return the versions, newest first
+    private List<String> availableAppBootVersions() {
+        try {
+            List<String> versions = new ArrayList<>();
+            String launcherVersion = currentVersion();
+            if (launcherVersion != null) {
+                versions.add(launcherVersion);
+            }
+            for (String version : DshVersionManager.fetchPackageVersions(DshVersionManager.APP_BOOT_PACKAGE)) {
+                if (!versions.contains(version)) {
+                    versions.add(version);
+                }
+            }
+            return versions;
+        } catch (DshException e) {
+            LOG.warning("Failed to list application boot versions", e);
+            return List.of();
+        }
+    }
+
     /// Builds the card stating which version is being installed.
     ///
     /// @return the card
@@ -199,6 +304,11 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         // not a control: HMCL's vanilla card is not one either, because the
         // version was settled on the page before this one.
         grid.getChildren().add(buildVersionCard());
+
+        // The boot library sits beside the version it belongs with. It is not a
+        // plugin and is not installed as one: it is a dependency of DeepSeek
+        // Harness, and the card states the pairing the manifest will record.
+        grid.getChildren().add(buildAppBootCard());
 
         for (DshPreset preset : DshPresetCatalog.builtin()) {
             PluginCard card = new PluginCard(preset, preset.recommended());
