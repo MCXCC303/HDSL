@@ -37,6 +37,9 @@ import java.util.function.Consumer;
 /// Long-running processes — booting a profile — use [DshProcess] instead.
 @NotNullByDefault
 public final class DshCommand {
+    /// The programs this launcher has started and is waiting on.
+    private static final java.util.Set<Process> RUNNING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private DshCommand() {
     }
 
@@ -109,6 +112,12 @@ public final class DshCommand {
         builder.redirectErrorStream(true);
 
         ManagedProcess process = new ManagedProcess(builder);
+        // Registered while it runs, so an install the user cancels can stop the
+        // program it started. Interrupting the thread waiting on a process does
+        // not stop the process: npm keeps writing to a directory nothing is
+        // watching any more.
+        Process running = process.getProcess();
+        RUNNING.add(running);
         List<String> output = Collections.synchronizedList(new ArrayList<>());
         Charset charset = OperatingSystem.NATIVE_CHARSET;
 
@@ -125,9 +134,34 @@ public final class DshCommand {
             }
         });
 
-        int exitCode = process.getProcess().waitFor();
-        process.destroyRelatedThreads();
+        try {
+            int exitCode = running.waitFor();
+            process.destroyRelatedThreads();
+            return new Result(exitCode, List.copyOf(output));
+        } finally {
+            RUNNING.remove(running);
+        }
+    }
 
-        return new Result(exitCode, List.copyOf(output));
+    /// Stops every command this launcher is running, and waits for them to stop.
+    ///
+    /// Called when an install is cancelled. It waits, because the caller deletes
+    /// what the command was writing: a program that has been asked to stop is
+    /// still writing until it has.
+    public static void stopRunning() {
+        for (Process process : RUNNING) {
+            process.destroy();
+        }
+        for (Process process : RUNNING) {
+            try {
+                if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        RUNNING.clear();
     }
 }

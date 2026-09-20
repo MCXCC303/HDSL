@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh.install;
 
 import javafx.scene.Node;
+import org.jackhuang.hmcl.dsh.DshCommand;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
@@ -143,8 +144,19 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
     @Override
     public Object finish(SettingsMap settings) {
-        return Task.runAsync(i18n("dsh.install.working"), Schedulers.io(), () -> {
+        // Two stages, as the install has two: the runtime is fetched and the
+        // instance made from it, then the chosen plugins are installed into it.
+        // The dialog lists them, which is the shape the original's install has —
+        // a list of the steps it is taking rather than one line saying it is
+        // busy.
+        String runtimeStage = i18n("dsh.install.stage.runtime");
+        String pluginStage = i18n("dsh.install.stage.plugins");
+
+        return Task.runAsync(runtimeStage, Schedulers.io(), () -> {
             String version = settings.get(VERSION);
+            installingVersion = version;
+            versionWasPresent = version != null && DshVersionManager.findInstalled(version) != null;
+            try {
             String name = settings.get(NAME);
             Map<String, String> choices = settings.getOrDefault(PRESET_CHOICES, Map.of());
             List<String> specs = specsOf(choices);
@@ -184,15 +196,67 @@ public final class DshInstallWizardProvider implements WizardProvider {
                     workspace, nodeRuntime, homeMode, null, List.of(), Map.of());
 
             LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
-
-            if (!specs.isEmpty()) {
-                DshPluginInstaller.installSpecs(instance, specs, line -> LOG.info("[install] " + line));
+            } catch (RuntimeException | DshException stopped) {
+                // Whether this was a cancellation is asked of the thread rather
+                // than of the exception: the commands wrap an interrupt in a
+                // DshException of their own, so the type does not say.
+                if (Thread.currentThread().isInterrupted()) {
+                // Cancelled from the dialog. The thread waiting on npm is
+                // interrupted, which stops the wait and not the program: npm
+                // carries on writing into a directory nothing is watching. Stop
+                // it, then take the half-written version away, because a version
+                // that is half-written cannot run.
+                    LOG.info("Install of " + version + " was cancelled");
+                    DshCommand.stopRunning();
+                    if (version != null && !versionWasPresent) {
+                        try {
+                            DshVersionManager.uninstall(version);
+                            LOG.info("Removed the partial install of " + version);
+                        } catch (DshException e) {
+                            LOG.warning("Could not remove the partial install of " + version, e);
+                        }
+                    }
+                }
+                throw stopped;
             }
-        }).setName(i18n("dsh.install.working"));
+        })
+                .withStage(runtimeStage)
+                .withRunAsync(pluginStage, Schedulers.io(), () -> {
+                    String version2 = settings.get(VERSION);
+                    String name2 = settings.get(NAME);
+                    DshInstance instance = DshInstanceManager.find(name2);
+                    List<String> specs2 = specsOf(settings.getOrDefault(PRESET_CHOICES, Map.of()));
+                    if (instance != null && !specs2.isEmpty()) {
+                        DshPluginInstaller.installSpecs(instance, specs2, line -> LOG.info("[install] " + line));
+                    }
+                })
+                .withStage(pluginStage)
+                .withStagesHints(runtimeStage, pluginStage)
+                .setName(i18n("dsh.install.working"));
     }
+
+    /// The version this wizard is installing, while it is running.
+    private volatile @Nullable String installingVersion;
+
+    /// Whether that version was already on disk when the install began.
+    private volatile boolean versionWasPresent;
 
     @Override
     public boolean cancel() {
+        // Stop what was started, then take away what it wrote. A cancelled
+        // install used to leave npm running and a half-written version behind:
+        // the dialog closed and the download carried on.
+        DshCommand.stopRunning();
+
+        String version = installingVersion;
+        if (version != null && !versionWasPresent) {
+            try {
+                DshVersionManager.uninstall(version);
+                LOG.info("Removed the partial install of " + version);
+            } catch (DshException e) {
+                LOG.warning("Could not remove the partial install of " + version, e);
+            }
+        }
         return true;
     }
 }
