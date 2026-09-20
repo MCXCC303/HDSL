@@ -315,6 +315,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         /// @param control the page
         SessionListPageSkin(SessionListPage control) {
             super(control);
+            setPlaceholder(i18n("dsh.sessions.empty"));
         }
 
         @Override

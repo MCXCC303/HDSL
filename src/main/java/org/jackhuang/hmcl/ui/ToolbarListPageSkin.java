@@ -23,6 +23,7 @@ import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.SkinBase;
 import javafx.scene.input.KeyCode;
@@ -38,6 +39,22 @@ import java.util.List;
 public abstract class ToolbarListPageSkin<E, P extends ListPageBase<E>> extends SkinBase<P> {
 
     protected final JFXListView<E> listView;
+
+    /// Sets the message a list shows while it holds nothing.
+    ///
+    /// A list with rows in it says what it has; an empty one says nothing at all
+    /// unless it is told to, and an empty area with no explanation reads as a
+    /// page that failed rather than a list that is empty. The original builds
+    /// this from a `notice-pane` holding a label, and its stylesheet sizes the
+    /// label for exactly this use.
+    ///
+    /// @param message the message to show
+    protected void setPlaceholder(String message) {
+        Label label = new Label(message);
+        StackPane container = new StackPane(label);
+        container.getStyleClass().add("notice-pane");
+        listView.setPlaceholder(container);
+    }
 
     public ToolbarListPageSkin(P skinnable) {
         super(skinnable);

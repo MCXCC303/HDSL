@@ -187,6 +187,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
         /// @param control the page
         PluginListPageSkin(PluginListPage control) {
             super(control);
+            setPlaceholder(i18n("dsh.plugins.empty"));
         }
 
         @Override
