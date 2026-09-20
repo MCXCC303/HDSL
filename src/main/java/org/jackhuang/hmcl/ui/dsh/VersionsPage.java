@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.ui.dsh;
 
+import com.jfoenix.controls.JFXComboBox;
+import com.jfoenix.controls.JFXTextField;
 import com.jfoenix.controls.JFXButton;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -36,17 +38,10 @@ import javafx.geometry.Pos;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.StackPane;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
-import javafx.scene.Cursor;
-import javafx.scene.input.MouseButton;
-import org.jackhuang.hmcl.ui.construct.ImageContainer;
-import org.jackhuang.hmcl.ui.construct.RipplerContainer;
-import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
-import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -91,6 +86,39 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     /// The status line above the lists.
     private final Label status = new Label();
 
+    /// The name box above the published list.
+    private final JFXTextField nameField = new JFXTextField();
+
+    /// The release-type filter above the published list.
+    private final JFXComboBox<TypeFilter> typeFilter = new JFXComboBox();
+
+    /// Every published release the last load returned, before filtering.
+    private List<DshRelease> releases = List.of();
+
+    /// What the type filter can be set to.
+    ///
+    /// Its own type with an "all" member, as the wizard step has: "all" has to be
+    /// a real selection rather than a prompt, and a prompt is a different node
+    /// with different padding.
+    private enum TypeFilter {
+        ALL, STABLE, RC, BETA, ALPHA, OTHER;
+
+        /// Reports whether a release matches this filter.
+        ///
+        /// @param release the release
+        /// @return whether it is shown
+        boolean accepts(DshRelease release) {
+            return this == ALL || release.type().name().equals(name());
+        }
+
+        /// Returns the translation key for this filter.
+        ///
+        /// @return the key suffix
+        String id() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
+    }
+
     /// Covers the content while a refresh is running.
     private final SpinnerPane spinner = new SpinnerPane();
 
@@ -110,14 +138,44 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
         JFXButton refreshButton = FXUtils.newRaisedButton(i18n("button.refresh"));
         refreshButton.setOnAction(event -> refresh());
 
-        HBox toolbar = new HBox(refreshButton);
+        nameField.setPromptText(i18n("download.name.prompt"));
+        nameField.textProperty().addListener((observable, was, value) -> renderRemote());
+
+        typeFilter.getItems().setAll(TypeFilter.values());
+        typeFilter.getSelectionModel().select(TypeFilter.ALL);
+        typeFilter.setConverter(new javafx.util.StringConverter<>() {
+            @Override
+            public String toString(@Nullable TypeFilter type) {
+                return type == null ? i18n("download.type.all") : i18n("download.type." + type.id());
+            }
+
+            @Override
+            public TypeFilter fromString(String string) {
+                return TypeFilter.ALL;
+            }
+        });
+        typeFilter.valueProperty().addListener((observable, was, value) -> renderRemote());
+
+        // The wizard step's toolbar, on the page that manages the same list: a
+        // list of published versions is searched and filtered the same way
+        // wherever it appears, and a refresh button alone leaves the row looking
+        // as though something had been dropped from it.
+        HBox toolbar = new HBox(16,
+                new Label(i18n("download.name")), nameField,
+                new Label(i18n("download.type")), typeFilter,
+                refreshButton);
         toolbar.setAlignment(Pos.CENTER_LEFT);
         toolbar.getStyleClass().add("card");
+        HBox.setHgrow(nameField, Priority.ALWAYS);
         BorderPane.setMargin(toolbar, new Insets(10, 10, 0, 10));
 
-        VBox content = new VBox(10);
+        VBox content = new VBox(10,
+                status,
+                ComponentList.createComponentListTitle(i18n("dsh.versions.section.installed")),
+                installedList,
+                ComponentList.createComponentListTitle(i18n("dsh.versions.section.available")),
+                remoteList);
         content.setPadding(new Insets(10));
-        content.getChildren().addAll(status, installedList, remoteList);
 
         ScrollPane scroll = new ScrollPane(content);
         scroll.setFitToWidth(true);
@@ -180,9 +238,6 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
         installedList.getContent().clear();
         remoteList.getContent().clear();
 
-        installedList.getContent().add(buildSectionHeader(i18n("dsh.versions.section.installed")));
-        remoteList.getContent().add(buildSectionHeader(i18n("dsh.versions.section.available")));
-
         if (result.installed().isEmpty()) {
             installedList.getContent().add(buildNote(i18n("dsh.versions.installed.empty")));
         } else {
@@ -197,9 +252,27 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
             status.setText(i18n("dsh.versions.remote_count", result.remote().size()));
         }
 
+        releases = result.remote();
+        renderRemote();
+    }
+
+    /// Rebuilds the published list from the last load and the filters.
+    private void renderRemote() {
+        remoteList.getContent().clear();
+
+        String needle = nameField.getText() == null
+                ? "" : nameField.getText().trim().toLowerCase(java.util.Locale.ROOT);
+        TypeFilter type = typeFilter.getValue();
+
         int shown = 0;
-        for (DshRelease release : result.remote()) {
+        for (DshRelease release : releases) {
             if (DshVersionManager.findInstalled(release.version()) != null) {
+                continue;
+            }
+            if (type != null && !type.accepts(release)) {
+                continue;
+            }
+            if (!needle.isEmpty() && !release.version().toLowerCase(java.util.Locale.ROOT).contains(needle)) {
                 continue;
             }
             if (shown++ >= REMOTE_DISPLAY_LIMIT) {
@@ -207,7 +280,7 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
             }
             remoteList.getContent().add(buildRemoteRow(release));
         }
-        if (shown == 0 && result.error() == null) {
+        if (shown == 0) {
             remoteList.getContent().add(buildNote(i18n("dsh.versions.available.empty")));
         }
     }
@@ -233,60 +306,23 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     ///
     /// @param release the published release
     /// @return the row
-    private Node buildRemoteRow(DshRelease release) {
-        JFXButton install = FXUtils.newToggleButton4(SVG.ADD);
+    private LineButton buildRemoteRow(DshRelease release) {
+        JFXButton install = FXUtils.newToggleButton4(SVG.ADD, 18);
         install.setOnAction(event -> install(release.version()));
         FXUtils.installFastTooltip(install, i18n("download.install"));
 
-        // The download page's row, because it lists the same thing: an icon, the
-        // version as the title, the release type as a tag, the date beneath, and
-        // the action at the end, sixteen apart and centred. Showing the type as
-        // plain text under the version instead puts in the subtitle what the rest
-        // of the interface puts in a tag.
-        ImageContainer icon = new ImageContainer(32);
-        icon.setImage(DshInstanceIcon.DSH_APPLICATION.load());
-
-        TwoLineListItem content = new TwoLineListItem();
-        content.setTitle(release.version());
-        content.getTags().clear();
-        content.addTag(i18n("download.type." + release.type().id()));
-        content.setSubtitle(release.publishedAt() == null
-                ? i18n("dsh.session.unknown_time")
-                : org.jackhuang.hmcl.util.i18n.I18n.formatDateTime(java.time.Instant.parse(release.publishedAt())));
-        content.setAlignment(Pos.CENTER);
-
-        HBox row = new HBox(16, icon, content, install);
-        row.setAlignment(Pos.CENTER);
-        HBox.setHgrow(content, Priority.ALWAYS);
-        StackPane.setMargin(row, new Insets(10, 16, 10, 16));
-
-        // Left, not centred: a stack centres what it holds, which would leave the
-        // row floating in the middle of the card with the action beside the text
-        // rather than at the card's edge.
-        StackPane cell = new StackPane(row);
-        cell.getStyleClass().add("md-list-cell");
-        StackPane.setAlignment(row, Pos.CENTER_LEFT);
-
-        RipplerContainer rippler = new RipplerContainer(cell);
-        rippler.setOnMouseClicked(event -> {
-            if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 1) {
-                install(release.version());
-                event.consume();
-            }
-        });
-        cell.setCursor(Cursor.HAND);
-        return rippler;
-    }
-
-    /// Builds a section title.
-    ///
-    /// HMCL's helper rather than a styled row: the original puts the title
-    /// between card groups, outside their background.
-    ///
-    /// @param text the title
-    /// @return the title node
-    private static Node buildSectionHeader(String text) {
-        return ComponentList.createComponentListTitle(text);
+        // The row the wizard's version step uses. The two pages list the same
+        // thing and a list reads better when its rows are one height: a thirty-
+        // two pixel icon beside a tag and a date makes each row as tall as the
+        // icon, and the dates make them uneven.
+        LineButton row = new LineButton();
+        row.setTitle(release.version());
+        String tag = release.primaryTag();
+        row.setSubtitle(tag == null ? i18n("dsh.versions.channel.prerelease") : tag);
+        row.setLeading(SVG.DOWNLOAD, 16);
+        row.setRowTrailing(install);
+        row.setOnAction(event -> install(release.version()));
+        return row;
     }
 
     /// Builds a non-interactive note row.
