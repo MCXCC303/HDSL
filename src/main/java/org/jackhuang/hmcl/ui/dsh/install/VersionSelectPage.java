@@ -126,9 +126,6 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         setPadding(new Insets(20));
         setAlignment(Pos.TOP_LEFT);
 
-        Label title = new Label(i18n("dsh.install.step.version"));
-        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
-
         List<DshVersion> installed = DshVersionManager.listInstalled();
 
         ComponentList installedList = new ComponentList();
@@ -204,7 +201,9 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         FXUtils.smoothScrolling(scroll);
         VBox.setVgrow(scroll, Priority.ALWAYS);
 
-        getChildren().setAll(title, filterRow, scroll, buildFooter());
+        // No in-page heading: the original's install pages have none, and the
+        // window's own title bar already names the step.
+        getChildren().setAll(filterRow, scroll, buildFooter());
 
         loadRemote(installed);
     }

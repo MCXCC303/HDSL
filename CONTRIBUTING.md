@@ -259,6 +259,17 @@ ComponentList.add(child)
 **判定方法**：找内容卡片或第一行内容的左缘 x 坐标 —— 应当是 10~20，
 若是 200 多就是这条。
 
+### 内联 setStyle 是「差不多」的高发区
+
+原版界面里**几乎没有内联样式** —— `grep 'fx-font-size: 15px'` 在整个 HMCL UI 里是空的。
+样式要么走 CSS 类，要么走 `ComponentList.createComponentListTitle(...)` 这类**机制**。
+
+我自造的 `Label + setStyle("-fx-font-size: 15px; -fx-font-weight: bold;")` 做了两件错事：
+1. 造了一个原版没有的**页内标题**（向导页标题在窗口标题栏里，页面内没有）
+2. 用**手写样式**冒充章节标题，而原版有专门的机制，字号/颜色/内边距都不同
+
+**每次写 `setStyle` 前先 grep 原版有没有对应机制。**
+
 ### 图标尺寸交给 CSS，不要硬编码
 
 `newToggleButton4(svg)` 用的是 `svg.createIcon()`（**不给尺寸**），

@@ -113,14 +113,12 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
         setContent(root);
         FXUtils.smoothScrolling(this);
 
-        Label title = new Label(i18n("dsh.install.step.quick"));
-        title.setStyle("-fx-font-size: 15px; -fx-font-weight: bold;");
-
         // Seed the recommendations before the cards are built, so they render
         // the same state the wizard will install.
         seedDefaultChoices();
 
-        root.getChildren().addAll(title, buildInstanceList(), buildPresetList(), buildFooter());
+        // No in-page heading: the window's title bar names the step.
+        root.getChildren().addAll(buildInstanceList(), buildPresetList(), buildFooter());
         VBox.setVgrow(root, Priority.ALWAYS);
 
         applyDefaults();
@@ -315,14 +313,16 @@ public final class QuickInstallPage extends ScrollPane implements WizardPage {
     ///
     /// @return the assembled section
     private VBox buildPresetList() {
-        Label header = new Label(i18n("dsh.install.presets"));
-        header.setStyle("-fx-font-weight: bold;");
-        header.setPadding(new Insets(8, 0, 0, 4));
+        // The original's section heading, not a label styled to look like one:
+        // the class carries the size, colour and padding the interface uses for
+        // a heading, and a hand-styled label matches none of them exactly.
+        Node header = ComponentList.createComponentListTitle(i18n("dsh.install.presets"));
 
+        // Cards sit twelve apart with nothing around the grid; the surrounding
+        // spacing is the page's, not the grid's.
         FlowPane grid = new FlowPane();
         grid.setHgap(12);
         grid.setVgap(12);
-        grid.setPadding(new Insets(4));
 
         Map<String, String> choices = choices();
         // The version leads the grid, as the game does in the original. It is
