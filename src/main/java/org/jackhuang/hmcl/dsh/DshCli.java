@@ -54,7 +54,13 @@ public final class DshCli {
         /// Creates an instance.
         CREATE_INSTANCE,
         /// Removes an instance.
-        DELETE_INSTANCE
+        DELETE_INSTANCE,
+        /// Launches an instance and blocks until it exits.
+        LAUNCH,
+        /// Prints the instances that are currently running.
+        LIST_RUNNING,
+        /// Stops a running instance.
+        STOP
     }
 
     /// A parsed command line.
@@ -93,7 +99,10 @@ public final class DshCli {
                 && !args.contains("--install")
                 && !args.contains("--uninstall")
                 && !args.contains("--create-instance")
-                && !args.contains("--delete-instance")) {
+                && !args.contains("--delete-instance")
+                && !args.contains("--launch")
+                && !args.contains("--list-running")
+                && !args.contains("--stop")) {
             return null;
         }
 
@@ -126,6 +135,15 @@ public final class DshCli {
                     command = Command.DELETE_INSTANCE;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
+                case "--launch" -> {
+                    command = Command.LAUNCH;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--list-running" -> command = Command.LIST_RUNNING;
+                case "--stop" -> {
+                    command = Command.STOP;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
                 default -> {
                     if (token.startsWith("--")) {
                         String name = token.substring(2);
@@ -154,7 +172,8 @@ public final class DshCli {
         if (invocation.showHelp() || (invocation.command() != Command.DOCTOR && invocation.subject() == null
                 && invocation.command() != Command.LIST_INSTALLED
                 && invocation.command() != Command.LIST_REMOTE
-                && invocation.command() != Command.LIST_INSTANCES)) {
+                && invocation.command() != Command.LIST_INSTANCES
+                && invocation.command() != Command.LIST_RUNNING)) {
             printUsage(out);
             return invocation.showHelp() ? 0 : 1;
         }
@@ -213,6 +232,29 @@ public final class DshCli {
                     out.println("Removed instance " + invocation.subject());
                     return 0;
                 }
+                case LAUNCH -> {
+                    return launchInstance(invocation, out, err);
+                }
+                case LIST_RUNNING -> {
+                    List<DshProcess> running = DshProcessManager.running();
+                    if (running.isEmpty()) {
+                        out.println("(nothing running)");
+                    }
+                    for (DshProcess process : running) {
+                        out.println(process.instance().id()
+                                + "\t" + process.state()
+                                + "\t" + process.plan().surface()
+                                + "\t" + process.webUrl().map(Object::toString).orElse("-")
+                                + "\tup " + process.uptime().toSeconds() + "s");
+                    }
+                    return 0;
+                }
+                case STOP -> {
+                    out.println(DshProcessManager.stop(invocation.subject())
+                            ? "Stopped " + invocation.subject()
+                            : "Instance " + invocation.subject() + " is not running");
+                    return 0;
+                }
                 default -> {
                     err.println("Unhandled command: " + invocation.command());
                     return 2;
@@ -222,6 +264,58 @@ public final class DshCli {
             err.println("error: " + e.getMessage());
             return 1;
         }
+    }
+
+    /// Launches an instance and blocks until it exits.
+    ///
+    /// The launcher keeps child processes in its own process group: the JVM
+    /// shutdown hook stops them, so reattaching or interrupting this command
+    /// never leaves an orphaned `dsh` behind.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int launchInstance(Invocation invocation, PrintStream out, PrintStream err)
+            throws DshException {
+        DshInstance instance = DshInstanceManager.find(invocation.subject());
+        if (instance == null) {
+            err.println("error: instance " + invocation.subject() + " does not exist");
+            return 1;
+        }
+
+        DshProcess process = DshProcessManager.launch(instance);
+        process.setLogSink(line -> System.out.println("[" + instance.id() + "] " + line));
+
+        long deadline = System.currentTimeMillis() + java.time.Duration.ofSeconds(90).toMillis();
+        while (process.state() == DshProcess.State.STARTING
+                && process.isRunning()
+                && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        if (process.webUrl().isPresent()) {
+            out.println("ready: " + process.webUrl().get());
+        } else {
+            out.println("state: " + process.state() + " (exit " + process.exitCode().orElse(-1) + ")");
+        }
+        out.println("Press Ctrl-C to stop.");
+
+        while (process.isRunning()) {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        process.stop();
+        return process.exitCode().orElse(0);
     }
 
     /// Creates an instance from the command line.
@@ -291,6 +385,11 @@ public final class DshCli {
                       --home-mode <mode>             isolated | version_shared | custom
                       --home <path>                  required for --home-mode custom
                   --delete-instance <id>           remove an instance
+
+                running:
+                  --launch <id>                    start an instance and block until it exits
+                  --list-running                   list running instances
+                  --stop <id>                      stop a running instance
 
                 diagnostics:
                   --doctor                         print a full diagnostics report

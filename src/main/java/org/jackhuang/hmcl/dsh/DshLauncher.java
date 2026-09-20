@@ -1,0 +1,130 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.dsh;
+
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Unmodifiable;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/// Turns an [DshInstance] into the exact command and environment to run.
+///
+/// The launcher always invokes the version's own `lib/bin.js` with `node`
+/// rather than a `dsh` shim on `PATH`. That is what pins a profile to a
+/// specific installation: DeepSeek Harness resolves its own bundles from the
+/// installation that booted it.
+///
+/// `DSH_*` variables are written into the child's environment rather than into
+/// a `.env` file, because upstream refuses to read `DSH_`-prefixed names from
+/// `.env` files.
+@NotNullByDefault
+public final class DshLauncher {
+    private DshLauncher() {
+    }
+
+    /// The complete plan for one launch.
+    ///
+    /// @param instance         the instance being launched
+    /// @param version          the pinned version
+    /// @param surface          the surface derived from the instance's profile
+    /// @param command          the program and its arguments, in order
+    /// @param workingDirectory the directory sessions are scoped to
+    /// @param environment      the child environment
+    /// @param homeDirectory    the `DSH_HOME` the child is given
+    public record LaunchPlan(
+            DshInstance instance,
+            DshVersion version,
+            DshSurface surface,
+            @Unmodifiable List<String> command,
+            Path workingDirectory,
+            @Unmodifiable Map<String, String> environment,
+            Path homeDirectory) {
+
+        /// Renders the plan as a single shell-ready line, for logs and bug reports.
+        ///
+        /// @return the command line
+        public String commandLine() {
+            StringBuilder builder = new StringBuilder();
+            builder.append("DSH_HOME=").append(homeDirectory).append(' ');
+            for (String part : command) {
+                if (!builder.isEmpty()) {
+                    builder.append(' ');
+                }
+                builder.append(part.indexOf(' ') >= 0 ? '"' + part + '"' : part);
+            }
+            return builder.toString();
+        }
+    }
+
+    /// Builds the launch plan for an instance.
+    ///
+    /// @param instance the instance to launch
+    /// @param runtime  the Node runtime to run the CLI with
+    /// @return the launch plan
+    /// @throws DshException when the pinned version is missing, its entry script
+    ///                       is absent, or the workspace cannot be created
+    public static LaunchPlan plan(DshInstance instance, DshNodeRuntime runtime) throws DshException {
+        DshVersion version = DshVersionManager.findInstalled(instance.version());
+        if (version == null) {
+            throw new DshException("DeepSeek Harness " + instance.version()
+                    + " is not installed; install it on the Versions page");
+        }
+        Path script = version.binScript();
+        if (!Files.isRegularFile(script)) {
+            throw new DshException("The installed version is incomplete: " + script + " is missing");
+        }
+
+        Path workspace = instance.workspacePath();
+        try {
+            Files.createDirectories(workspace);
+        } catch (java.io.IOException e) {
+            throw new DshException("The working directory " + workspace + " cannot be created", e);
+        }
+
+        Path home = instance.homeDirectory();
+        if (instance.homeMode() == DshHomeMode.ISOLATED) {
+            try {
+                Files.createDirectories(home);
+            } catch (java.io.IOException e) {
+                throw new DshException("The instance home " + home + " cannot be created", e);
+            }
+        }
+
+        DshSurface surface = DshSurface.ofProfile(instance.profile());
+
+        List<String> command = new ArrayList<>();
+        command.add(runtime.node().toString());
+        command.add(script.toString());
+        command.add("--profile");
+        command.add(instance.profile());
+        command.addAll(surface.arguments());
+        command.addAll(instance.extraArguments());
+
+        Map<String, String> environment = new LinkedHashMap<>();
+        environment.put("DSH_HOME", home.toString());
+        environment.putAll(instance.environment());
+
+        return new LaunchPlan(instance, version, surface, List.copyOf(command), workspace,
+                Map.copyOf(environment), home);
+    }
+}
