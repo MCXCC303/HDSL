@@ -32,6 +32,7 @@ import javafx.scene.control.SkinBase;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshPreset;
+import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.SVGContainer;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
@@ -195,6 +196,11 @@ public final class PluginCard extends Control {
             wrapper.getChildren().add(new RipplerContainer(pane));
 
             getChildren().setAll(wrapper);
+
+            // The original ties a card's height to its width, so cards in a row
+            // keep one shape whatever their text does.
+            FXUtils.onWeakChangeAndOperate(control.widthProperty(), width ->
+                    FXUtils.setLimitHeight(pane, width.doubleValue() * 0.7));
         }
 
         /// Chooses an icon for a catalogue entry.

@@ -181,6 +181,27 @@ im = Image.open('/tmp/shot.png')
 im.crop((x0, y0, x1, y1)).resize(((x1-x0)*2, (y1-y0)*2), Image.NEAREST).save('/tmp/zoom.png')
 ```
 
+### 定期 diff 样式表，不要只看截图
+
+`root.css` 是从原版整份移植的，所以**任何差异都是我引入的**：
+
+```bash
+diff /home/thf/Programme/Git/HMCL/HMCL/src/main/resources/assets/css/root.css \
+     src/main/resources/assets/css/root.css
+```
+
+原版有而我缺失的规则（`diff` 输出里 `^<` 的行）**一律是 bug**。
+我就是这样才发现自己早先把原版的一条规则**改名**了：
+
+```css
+/* 原版 */
+.installer-item-wrapper .installer-item:list-item > .installer-item-status { -fx-max-width: infinity; }
+/* 被我改成了自造的 arrow 规则，原规则丢失，只剩一条范围过宽的全局规则 */
+```
+
+截图看不出来 —— 受影响的只是特定作用域下的一个属性。
+**每次改 CSS 后跑一次这个 diff，比对着截图找差异快得多。**
+
 ### 文本替换要确认改的是哪一处
 
 用脚本批量替换时，**同一个字符串在文件里往往出现多次**。

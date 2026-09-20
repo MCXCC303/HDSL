@@ -268,17 +268,15 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         /// @param page the page the row's install action belongs to
         ReleaseCell(DownloadPage page) {
             this.page = page;
-            BorderPane root = new BorderPane();
+            // The original's row: a stack carrying the separator, an HBox inside
+            // it, and the whole thing inside a rippler. The margin is the part
+            // that shows — ten above and below against the eight this had, which
+            // is the four pixels by which its rows were shorter.
+            StackPane root = new StackPane();
             root.getStyleClass().add("md-list-cell");
-            root.setPadding(new Insets(8));
-
-            StackPane left = new StackPane(icon);
-            left.setPadding(new Insets(0, 8, 0, 0));
-            root.setLeft(left);
 
             content.setMouseTransparent(true);
             HBox.setHgrow(content, Priority.ALWAYS);
-            root.setCenter(content);
 
             HBox right = new HBox(8);
             right.setAlignment(Pos.CENTER_RIGHT);
@@ -297,7 +295,11 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
                 }
             });
             right.getChildren().setAll(link, install);
-            root.setRight(right);
+
+            HBox row = new HBox(icon, content, right);
+            row.setAlignment(Pos.CENTER_LEFT);
+            StackPane.setMargin(row, new Insets(10, 16, 10, 16));
+            root.getChildren().setAll(row);
 
             this.graphic = new RipplerContainer(root);
             setGraphic(graphic);

@@ -412,12 +412,7 @@
     -fx-pref-width: 100px;
 }
 
-.installer-item-wrapper .installer-item:list-item > .installer-item-arrow {
-    -fx-font-size: 14px;
-    -fx-opacity: 0.7;
-}
-
-.installer-item-status {
+.installer-item-wrapper .installer-item:list-item > .installer-item-status {
     -fx-max-width: infinity;
 }
 
@@ -2026,7 +2021,6 @@
 /* HMCL-DSH: plugin cards in the install wizard. */
 .installer-item-card {
     -fx-pref-width: 180px;
-    -fx-pref-height: 130px;
 }
 
 .installer-item-card:selected > .installer-item-wrapper {
