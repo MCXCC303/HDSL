@@ -17,7 +17,11 @@ plugins {
 }
 
 group = "org.jackhuang.hmcl"
-version = "0.1.0"
+// The version is the release tag's when one is given, `-PreleaseVersion=1.2.3`; a
+// plain build falls back to the number checked in here. The property is not called
+// `version`, because Gradle already answers that name with the project's own
+// version — reading it would turn every build into "unspecified".
+version = (findProperty("releaseVersion") as String?) ?: "0.1.0"
 
 application {
     // HMCL-DSH application entry point.
@@ -249,10 +253,17 @@ val makeDeb by tasks.registering(CreateDeb::class) {
     dependsOn(makeExecutable)
 
     version.set(project.version.toString())
-    releaseType.set(ReleaseType.NIGHTLY)
+    // A build from this repository is a release build: the stable channel is the
+    // package a tag publishes, and the nightly channel is for builds that are not
+    // one. Both can be installed side by side, which is what the channel names are
+    // for.
+    releaseType.set(ReleaseType.STABLE)
     launcherClassName.set("org.jackhuang.hmcl.Main")
     appShFile.set(layout.buildDirectory.file("libs/$artifactName.sh"))
-    iconFile.set(layout.projectDirectory.file("src/main/resources/assets/img/icon.png"))
+    // The eight-times icon rather than the thirty-two pixel one: it is what the
+    // desktops that scale an icon up for a launcher grid will use.
+    iconFile.set(layout.projectDirectory.file("src/main/resources/assets/img/icon@8x.png"))
+    homepage.set("https://github.com/MCXCC303/HDSL")
     outputFile.set(layout.buildDirectory.file("libs/${artifactName}.deb"))
 }
 

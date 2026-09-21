@@ -74,6 +74,10 @@ public abstract class CreateDeb extends DefaultTask {
     @InputFile
     public abstract RegularFileProperty getAppShFile();
 
+    /// Project homepage written into the `control` file.
+    @Input
+    public abstract Property<String> getHomepage();
+
     /// Desktop icon installed into the hicolor icon theme.
     @InputFile
     public abstract RegularFileProperty getIconFile();
@@ -287,8 +291,9 @@ public abstract class CreateDeb extends DefaultTask {
                 Description: DeepSeek Harness launcher
                  HMCL-DSH installs, isolates and launches DeepSeek Harness versions
                  and profiles. It keeps the look of Hello Minecraft! Launcher.
-                Homepage: https://github.com/
-                """.formatted(currentType().getPackageName(), getVersion().get(), Math.max(installedSize, 1)) + "\n";
+                Homepage: %s
+                """.formatted(currentType().getPackageName(), getVersion().get(), Math.max(installedSize, 1),
+                getHomepage().get()) + "\n";
     }
 
     /// Returns the generic command path shared by the channel packages.
