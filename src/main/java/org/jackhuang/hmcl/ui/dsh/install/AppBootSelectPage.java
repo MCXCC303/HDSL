@@ -112,7 +112,7 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
         // what this page is for and what changing it costs, which is worth
         // reading before deciding, not after.
         Controllers.dialog(
-                i18n("dsh.install.app_boot.warning", String.valueOf(launcherVersion)),
+                i18n("dsh.install.app_boot.warning"),
                 i18n("dsh.install.app_boot"), MessageType.WARNING, null);
 
         load();

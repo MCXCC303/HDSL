@@ -52,7 +52,7 @@ public final class DshDoctor {
                 + "  (display: " + org.jackhuang.hmcl.util.i18n.I18n.getLocale().getDisplayLocale() + ")");
         out.println("  supported:       " + org.jackhuang.hmcl.util.i18n.SupportedLocale.getSupportedLocales().size()
                 + " locale(s)");
-        out.println("  sample string:   " + org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.versions.title"));
+        out.println("  sample string:   " + org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.instance.create"));
         out.println();
 
         out.println("Appearance");
