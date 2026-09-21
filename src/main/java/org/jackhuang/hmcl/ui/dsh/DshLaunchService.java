@@ -213,9 +213,15 @@ public final class DshLaunchService {
         // label reads a meaningless "0 B/s". The launch becomes a task so the
         // pane has something to show, and the pane closes itself when the task
         // stops.
+        // Held rather than looked up again when the launch ends: an instance that
+        // dies before it is ready is no longer a process the manager reports, so
+        // asking it for one is how a failed launch came to say nothing at all —
+        // no log window, no dialog, nothing to look at.
+        DshProcess[] started = new DshProcess[1];
         Task<DshProcess> launch = Task.supplyAsync(() -> {
             try {
                 DshProcess process = DshProcessManager.launch(instance);
+                started[0] = process;
                 awaitReady(process);
                 return process;
             } catch (DshException e) {
@@ -231,7 +237,7 @@ public final class DshLaunchService {
         executor.addTaskListener(new TaskListener() {
             @Override
             public void onStop(boolean success, TaskExecutor stopped) {
-                runInFX(() -> settle(instance, success, stopped.getException(), showOutput, onDone));
+                runInFX(() -> settle(instance, success, stopped.getException(), showOutput, onDone, started[0]));
             }
         });
 
@@ -258,11 +264,13 @@ public final class DshLaunchService {
     /// @param failure    the task's exception, or `null`
     /// @param showOutput whether to open the process's log window
     /// @param onDone     run with the process, or `null`
+    /// @param process    the process the launch started, or `null` when it never
+    ///                   got that far
     private static void settle(DshInstance instance, boolean success, @Nullable Exception failure,
-                               boolean showOutput, @Nullable Consumer<DshProcess> onDone) {
+                               boolean showOutput, @Nullable Consumer<DshProcess> onDone,
+                               @Nullable DshProcess process) {
         LAUNCHING.remove(instance.id());
         boolean cancelled = CANCELLED.remove(instance.id());
-        DshProcess process = DshProcessManager.find(instance.id()).orElse(null);
 
         if (!success) {
             if (cancelled) {
