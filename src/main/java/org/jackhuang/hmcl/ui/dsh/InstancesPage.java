@@ -179,6 +179,11 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 (ListChangeListener<GameDirectory>) change -> loadDirectories());
         GameDirectoryManager.selectedGameDirectoryProperty().addListener(
                 (observable, was, now) -> loadDirectories());
+        // The chosen instance belongs to the folder, so the row that shows the
+        // choice is redrawn when it moves — including when it is moved from
+        // somewhere else, which the home page's menu can do.
+        GameDirectoryManager.selectedInstanceProperty().addListener(
+                (observable, was, now) -> instanceList.refresh());
         GameDirectoryManager.registerVersionsListener(this::loadInstances);
 
         // The state of an instance changes without anyone here asking: a launch

@@ -98,6 +98,26 @@ class DshInstanceRepositoryTest {
     }
 
     @Test
+    void aFolderReadAgainIsPublishedAgain() throws Exception {
+        write(root, "alpha", 1L);
+
+        DshInstanceRepository repository = repository(root);
+        List<Long> published = new java.util.ArrayList<>();
+        repository.snapshotProperty().addListener(
+                (observable, was, now) -> published.add(now.revision()));
+
+        repository.refresh();
+        repository.refresh();
+
+        // Reading a folder twice without it changing produces two equal reads,
+        // and a page that is only told about changes would never hear the
+        // second one — which is how the list went on showing the folder that had
+        // been selected before.
+        assertEquals(2, published.size(),
+                "every read has to reach the pages, even when the folder holds exactly what it held");
+    }
+
+    @Test
     void aFolderWithNothingChosenChoosesItsFirstInstance() throws Exception {
         write(root, "alpha", 1L);
         write(root, "beta", 2L);

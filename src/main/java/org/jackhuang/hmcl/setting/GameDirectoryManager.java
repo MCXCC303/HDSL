@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// The folders the launcher looks for instances in.
 ///
@@ -97,7 +98,14 @@ public final class GameDirectoryManager {
     private static final javafx.beans.value.ChangeListener<DshInstanceRepository.Snapshot> snapshotListener =
             (observable, was, now) -> {
                 for (Consumer<DshInstanceRepository> listener : List.copyOf(versionsListeners)) {
-                    listener.accept(selectedRepository);
+                    // Caught one by one: a page that fails to redraw must not
+                    // leave the pages registered after it showing what was there
+                    // before, which is what letting the exception out would do.
+                    try {
+                        listener.accept(selectedRepository);
+                    } catch (RuntimeException e) {
+                        LOG.warning("A listener failed to handle a new snapshot", e);
+                    }
                 }
             };
 

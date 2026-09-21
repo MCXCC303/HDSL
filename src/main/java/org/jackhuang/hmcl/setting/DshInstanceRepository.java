@@ -47,9 +47,21 @@ import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 public final class DshInstanceRepository {
     /// One read of a folder: the instances it held at that moment.
     ///
+    /// The revision is what makes one read different from the next. It is not
+    /// decoration: a record compares structurally, so reading a folder again and
+    /// finding exactly what was there before would produce a value equal to the
+    /// one already published, and a property — and every binding and listener
+    /// hanging off it — treats an equal value as no change at all. The pages
+    /// would then be showing the folder that was selected before, which is
+    /// precisely the state this class exists to keep them out of. The original's
+    /// snapshot is an object with no equality of its own, so every read counts as
+    /// a change there; carrying a revision is how the same guarantee is kept with
+    /// a record.
+    ///
     /// @param directory the folder the snapshot describes
     /// @param instances the instances inside it, newest first
-    public record Snapshot(GameDirectory directory, List<DshInstance> instances) {
+    /// @param revision  which read this is
+    public record Snapshot(GameDirectory directory, List<DshInstance> instances, long revision) {
         /// Finds an instance by id.
         ///
         /// @param id the instance id
@@ -88,12 +100,15 @@ public final class DshInstanceRepository {
     /// Whether the folder has been read at least once.
     private boolean loaded;
 
+    /// Counts the reads, so that two reads are two snapshots.
+    private final java.util.concurrent.atomic.AtomicLong revisions = new java.util.concurrent.atomic.AtomicLong();
+
     /// Creates a repository for a folder.
     ///
     /// @param directory the folder to describe
     DshInstanceRepository(GameDirectory directory) {
         this.directory = directory;
-        this.snapshot.set(new Snapshot(directory, List.of()));
+        this.snapshot.set(new Snapshot(directory, List.of(), 0));
         this.selectedInstanceId = Bindings.valueAt(settings().getSelectedInstance(), directory.id());
         this.selectedInstance.bind(Bindings.createObjectBinding(
                 this::resolveSelectedInstance, selectedInstanceId, snapshot));
@@ -192,7 +207,7 @@ public final class DshInstanceRepository {
     /// is what interface bindings hang off.
     public void refresh() {
         List<DshInstance> instances = DshInstanceManager.listIn(directory.directory());
-        publish(new Snapshot(directory, instances));
+        publish(new Snapshot(directory, instances, revisions.incrementAndGet()));
     }
 
     /// Publishes a snapshot and re-resolves the selection against it.
