@@ -91,41 +91,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     private final ReadOnlyObjectWrapper<State> state =
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("download")));
 
-    /// The name typed into the filter.
-    private final JFXTextField searchField = new JFXTextField();
+    /// The name box and type filter, shared with the other version lists.
+    private final VersionFilterBar filterBar = new VersionFilterBar(this::applyFilter, this::refresh);
 
-    /// The release types the list can be narrowed to.
-    private final JFXComboBox<TypeFilter> typeFilter = new JFXComboBox<>();
-
-    /// What the type filter can be set to.
-    ///
-    /// Its own type rather than [DshRelease.Type], as in the original: "all" is a
-    /// filter, not a kind of release, and it has to be a real selection. Shown as
-    /// a prompt instead it renders through a different node with different
-    /// padding, which puts the text a few pixels from where the original's sits.
-    private enum TypeFilter {
-        ALL,
-        STABLE,
-        RC,
-        BETA,
-        ALPHA,
-        OTHER;
-
-        /// Reports whether a release matches this filter.
-        ///
-        /// @param release the release
-        /// @return whether it is shown
-        boolean accepts(DshRelease release) {
-            return this == ALL || release.type().name().equals(name());
-        }
-
-        /// Returns the translation key for this filter.
-        ///
-        /// @return the key suffix
-        String id() {
-            return name().toLowerCase(java.util.Locale.ROOT);
-        }
-    }
 
     /// The list of versions.
     private final JFXListView<DshRelease> releaseList = new JFXListView<>();
@@ -212,20 +180,11 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
     /// Rebuilds the list from the loaded releases and the current filters.
     private void applyFilter() {
-        String needle = searchField.getText() == null ? "" : searchField.getText().trim().toLowerCase(Locale.ROOT);
-        // The filter opens on "all": DeepSeek Harness has published no stable
-        // release, so a list that started on "stable" would open empty.
-        TypeFilter type = typeFilter.getValue();
-
         List<DshRelease> shown = new ArrayList<>();
         for (DshRelease release : loaded) {
-            if (type != null && !type.accepts(release)) {
-                continue;
+            if (filterBar.accepts(release.version())) {
+                shown.add(release);
             }
-            if (!needle.isEmpty() && !release.version().toLowerCase(Locale.ROOT).contains(needle)) {
-                continue;
-            }
-            shown.add(release);
         }
 
         releaseList.getItems().setAll(shown);
@@ -235,55 +194,11 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// Builds the toolbar above the list.
     ///
     /// @return the toolbar
-    private GridPane buildToolbar() {
+    private VersionFilterBar buildToolbar() {
         Label nameLabel = new Label(i18n("download.name"));
-        searchField.setPromptText(i18n("download.name.prompt"));
-        searchField.textProperty().addListener((observable, was, value) -> applyFilter());
-
-        Label typeLabel = new Label(i18n("download.type"));
-        typeFilter.getItems().setAll(TypeFilter.values());
-        // A selection, not a prompt: the original selects its "all" entry.
-        typeFilter.getSelectionModel().select(TypeFilter.ALL);
-        typeFilter.setConverter(new javafx.util.StringConverter<>() {
-            @Override
-            public String toString(@Nullable TypeFilter type) {
-                return type == null ? i18n("download.type.all") : i18n("download.type." + type.id());
-            }
-
-            @Override
-            public TypeFilter fromString(String string) {
-                return TypeFilter.ALL;
-            }
-        });
-        typeFilter.valueProperty().addListener((observable, was, value) -> applyFilter());
-
-        // The original's refresh is a raised button, not the flat toolbar button
-        // its other pages use, and it follows the filter rather than being pushed
-        // to the far edge. A raised button is taller than a flat one, and the
-        // difference was the whole of this row's missing height.
-        JFXButton refresh = FXUtils.newRaisedButton(i18n("button.refresh"));
-        refresh.setOnAction(event -> refresh());
-
-        // The original lays this row out as a grid rather than a box, and the
-        // columns are the point: the labels take their own width, the name field
-        // takes everything left over, and the type filter is capped. A box with
-        // fixed widths gives a field that is narrower than the original's and a
-        // filter that is wider.
-        ColumnConstraints labelColumn = new ColumnConstraints();
-        labelColumn.setMinWidth(Region.USE_PREF_SIZE);
-        ColumnConstraints fieldColumn = new ColumnConstraints();
-        fieldColumn.setHgrow(Priority.ALWAYS);
-        ColumnConstraints filterColumn = new ColumnConstraints();
-        filterColumn.setMaxWidth(150);
-        ColumnConstraints actionColumn = new ColumnConstraints();
-
-        GridPane toolbar = new GridPane();
-        toolbar.getColumnConstraints().setAll(labelColumn, fieldColumn, labelColumn, filterColumn, actionColumn);
-        toolbar.setHgap(16);
-        toolbar.setVgap(10);
-        toolbar.addRow(0, nameLabel, searchField, typeLabel, typeFilter, refresh);
-        // The card class supplies the padding and the surface.
-        return toolbar;
+        // The bar brings its own card and padding, as the page it came from did.
+        BorderPane.setMargin(filterBar, new Insets(10, 10, 0, 10));
+        return filterBar;
     }
 
     /// Starts installing a version into a new instance.
