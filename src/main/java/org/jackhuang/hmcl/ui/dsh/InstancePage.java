@@ -391,9 +391,23 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         FXUtils.showFileInExplorer(directory);
     }
 
-    /// Opens the launcher log directory.
+    /// Opens the folder DeepSeek Harness writes its diagnostics to.
+    ///
+    /// Not the launcher's own log folder, which is where this used to point: the
+    /// launcher writes its log to the terminal it was started from, so that
+    /// folder does not exist and the entry only ever reported that it could not
+    /// be opened. The harness writes a report under its own home when a start-up
+    /// audit fails, which is the thing worth reading when an instance will not
+    /// run — so that is what this opens, and it says so when there is nothing
+    /// there yet rather than opening somewhere else.
     private void openLogs() {
-        revealQuietly(org.jackhuang.hmcl.Metadata.HMCL_USER_HOME.resolve("logs"));
+        Path logs = homeChild("logs");
+        if (logs == null || !java.nio.file.Files.isDirectory(logs)) {
+            Controllers.dialog(i18n("dsh.instance.logs.none"),
+                    i18n("dsh.instance.open_logs"), MessageType.WARNING);
+            return;
+        }
+        FXUtils.showFileInExplorer(logs);
     }
 
     /// Renames this instance.
