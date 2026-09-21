@@ -164,18 +164,26 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
                 int imported = 0;
                 int present = 0;
                 int refused = 0;
+                // Including the sessions the instance already had, so importing
+                // again repairs the grouping of an earlier import.
+                java.util.Set<String> knownIds = new java.util.LinkedHashSet<>();
                 for (DshSession session : sessions) {
                     try {
                         DshSessions.importFrom(source, session, instance);
+                        knownIds.add(session.id());
                         imported++;
                     } catch (DshException e) {
                         if (e.getMessage() != null && e.getMessage().contains("already has a session")) {
+                            knownIds.add(session.id());
                             present++;
                         } else {
                             refused++;
                         }
                     }
                 }
+                // The workspaces the imported sessions belonged to, so the
+                // interface groups them by project instead of by nothing.
+                DshSessions.adoptWorkspaces(source, instance, knownIds);
                 return new int[]{imported, present, refused, sessions.size()};
             } catch (DshException e) {
                 throw new CompletionException(e);

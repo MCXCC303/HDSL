@@ -17,9 +17,11 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -36,6 +38,7 @@ import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -448,6 +451,265 @@ public final class DshSessions {
         } catch (IOException e) {
             throw new DshException("Failed to delete the session: " + e.getMessage(), e);
         }
+    }
+
+    /// Brings the source home's workspace entries over for the sessions that came
+    /// from it.
+    ///
+    /// The harness groups its history by workspace, and that grouping does not
+    /// live with the sessions: a session directory says where its log is, while
+    /// `storages/workspace.json` says which project the session belonged to, what
+    /// the project is called and in which order the projects are shown. Copying
+    /// the sessions without it leaves every imported session in the interface's
+    /// ungrouped bucket — the conversations are all there, but nothing says which
+    /// project each of them was about.
+    ///
+    /// Only the sessions that were actually brought over are recorded, and the
+    /// entries are merged rather than replaced: a workspace that the target
+    /// already knows keeps what it had, and one it does not is added where the
+    /// source had it.
+    ///
+    /// @param sourceHome the home the sessions came from
+    /// @param target     the instance that received them
+    /// @param sessionIds the sessions that were brought over
+    /// @throws DshException when a registry cannot be read or written
+    public static void adoptWorkspaces(Path sourceHome, DshInstance target, Set<String> sessionIds)
+            throws DshException {
+        if (sessionIds.isEmpty()) {
+            return;
+        }
+        Path sourceRegistry = workspaceFile(sourceHome);
+        if (!Files.isRegularFile(sourceRegistry)) {
+            return;
+        }
+
+        JsonObject source;
+        try {
+            source = JsonUtils.fromJsonFile(sourceRegistry, JsonObject.class);
+        } catch (Exception e) {
+            throw new DshException("Failed to read the workspace list of " + sourceHome, e);
+        }
+        if (source == null) {
+            return;
+        }
+
+        JsonObject targetRegistry = readWorkspaceRegistry(target.homeDirectory());
+        if (targetRegistry == null) {
+            targetRegistry = new JsonObject();
+            // The schema marker belongs to whichever side wrote a registry last;
+            // the source is the only one that has one here.
+            if (source.has("unit")) {
+                targetRegistry.add("unit", source.get("unit").deepCopy());
+            }
+        }
+
+        JsonObject targetGlobal = childObject(targetRegistry, "global");
+        JsonObject targetWorkspaces = childObject(childObject(targetRegistry, "tables"), "workspaces");
+        JsonArray targetOrder = childArray(targetGlobal, "workspaceIds");
+
+        boolean changed = false;
+        for (Map.Entry<String, JsonObject> entry : workspaceRecordsInOrder(source)) {
+            String id = entry.getKey();
+            JsonObject record = entry.getValue();
+            List<String> kept = new ArrayList<>();
+            for (JsonElement sessionId : arrayOf(record.get("sessionIds"))) {
+                if (sessionIds.contains(sessionId.getAsString())) {
+                    kept.add(sessionId.getAsString());
+                }
+            }
+            if (kept.isEmpty()) {
+                continue;
+            }
+
+            JsonObject existing = targetWorkspaces.has(id) && targetWorkspaces.get(id).isJsonObject()
+                    ? targetWorkspaces.getAsJsonObject(id)
+                    : null;
+            if (existing == null) {
+                JsonObject copy = record.deepCopy();
+                copy.add("sessionIds", toArray(kept));
+                targetWorkspaces.add(id, copy);
+                addOnce(targetOrder, id);
+            } else {
+                List<String> merged = new ArrayList<>();
+                for (JsonElement sessionId : arrayOf(existing.get("sessionIds"))) {
+                    merged.add(sessionId.getAsString());
+                }
+                for (String sessionId : kept) {
+                    if (!merged.contains(sessionId)) {
+                        merged.add(sessionId);
+                    }
+                }
+                existing.add("sessionIds", toArray(merged));
+            }
+            changed = true;
+        }
+
+        // A session that was archived in the source is archived here too, or the
+        // interface would offer to resume a conversation the user had put away.
+        JsonArray archived = childArray(targetGlobal, "archivedSessionIds");
+        for (JsonElement sessionId : arrayOf(member(member(source, "global"), "archivedSessionIds"))) {
+            String id = sessionId.getAsString();
+            if (sessionIds.contains(id) && !contains(archived, id)) {
+                archived.add(id);
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            return;
+        }
+        Path targetRegistryFile = workspaceFile(target.homeDirectory());
+        try {
+            // An instance that has never run has no `storages` yet, and the write
+            // does not make one.
+            Files.createDirectories(targetRegistryFile.getParent());
+            JsonUtils.writeToJsonFile(targetRegistryFile, targetRegistry);
+        } catch (IOException e) {
+            throw new DshException("Failed to record the workspace list of " + target.id(), e);
+        }
+        LOG.info("Recorded the workspaces of " + sessionIds.size() + " imported session(s) in " + target.id());
+    }
+
+    /// Returns the workspace registry of a home, or `null` when it has none.
+    ///
+    /// @param home the `DSH_HOME`
+    /// @return the parsed registry, or `null`
+    /// @throws DshException when the file exists but cannot be read
+    private static @Nullable JsonObject readWorkspaceRegistry(Path home) throws DshException {
+        Path path = workspaceFile(home);
+        if (!Files.isRegularFile(path)) {
+            return null;
+        }
+        try {
+            return JsonUtils.fromJsonFile(path, JsonObject.class);
+        } catch (Exception e) {
+            throw new DshException("Failed to read the workspace list of " + home, e);
+        }
+    }
+
+    /// Returns every workspace record of a registry, in the order it lists them.
+    ///
+    /// The order is what the sidebar shows, so each record is wrapped with its id
+    /// and returned the way `global.workspaceIds` names it, with anything the
+    /// list forgot appended.
+    ///
+    /// @param registry the registry
+    /// @return the records, keyed by the id they are filed under
+    private static List<Map.Entry<String, JsonObject>> workspaceRecordsInOrder(JsonObject registry) {
+        JsonElement tablesElement = member(registry, "tables");
+        JsonObject tables = tablesElement != null && tablesElement.isJsonObject()
+                ? tablesElement.getAsJsonObject()
+                : new JsonObject();
+        JsonElement workspacesElement = member(tables, "workspaces");
+        JsonObject workspaces = workspacesElement != null && workspacesElement.isJsonObject()
+                ? workspacesElement.getAsJsonObject()
+                : new JsonObject();
+
+        List<Map.Entry<String, JsonObject>> ordered = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (JsonElement listed : arrayOf(member(member(registry, "global"), "workspaceIds"))) {
+            String id = listed.getAsString();
+            if (workspaces.has(id) && workspaces.get(id).isJsonObject() && seen.add(id)) {
+                ordered.add(Map.entry(id, workspaces.getAsJsonObject(id)));
+            }
+        }
+        for (Map.Entry<String, JsonElement> entry : workspaces.entrySet()) {
+            if (entry.getValue().isJsonObject() && seen.add(entry.getKey())) {
+                ordered.add(Map.entry(entry.getKey(), entry.getValue().getAsJsonObject()));
+            }
+        }
+        return ordered;
+    }
+
+    /// Returns a child object, creating it when it is absent.
+    ///
+    /// @param parent the object to look in
+    /// @param name   the child's name
+    /// @return the child
+    private static JsonObject childObject(JsonObject parent, String name) {
+        if (parent.has(name) && parent.get(name).isJsonObject()) {
+            return parent.getAsJsonObject(name);
+        }
+        JsonObject created = new JsonObject();
+        parent.add(name, created);
+        return created;
+    }
+
+    /// Returns a child array, creating it when it is absent.
+    ///
+    /// @param parent the object to look in
+    /// @param name   the child's name
+    /// @return the child
+    private static JsonArray childArray(JsonObject parent, String name) {
+        if (parent.has(name) && parent.get(name).isJsonArray()) {
+            return parent.getAsJsonArray(name);
+        }
+        JsonArray created = new JsonArray();
+        parent.add(name, created);
+        return created;
+    }
+
+    /// Returns a member of an object, or `null` when it has none.
+    ///
+    /// @param object the object, or `null`
+    /// @param name   the member's name
+    /// @return the member, or `null`
+    private static @Nullable JsonElement member(@Nullable JsonElement object, String name) {
+        if (object == null || !object.isJsonObject()) {
+            return null;
+        }
+        JsonObject holder = object.getAsJsonObject();
+        return holder.has(name) ? holder.get(name) : null;
+    }
+
+    /// Returns an element as a list, treating anything else as empty.
+    ///
+    /// @param element the element, or `null`
+    /// @return its elements
+    private static List<JsonElement> arrayOf(@Nullable JsonElement element) {
+        return element != null && element.isJsonArray() ? List.copyOf(element.getAsJsonArray().asList()) : List.of();
+    }
+
+    /// Builds an array of strings.
+    ///
+    /// @param values the values
+    /// @return the array
+    private static JsonArray toArray(List<String> values) {
+        JsonArray array = new JsonArray();
+        values.forEach(array::add);
+        return array;
+    }
+
+    /// Reports whether an array holds a string.
+    ///
+    /// @param array the array
+    /// @param value the value
+    /// @return whether it is present
+    private static boolean contains(JsonArray array, String value) {
+        for (JsonElement element : array) {
+            if (element.isJsonPrimitive() && element.getAsString().equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Appends a string to an array unless it is already there.
+    ///
+    /// @param array the array
+    /// @param value the value
+    private static void addOnce(JsonArray array, String value) {
+        if (!contains(array, value)) {
+            array.add(value);
+        }
+    }
+
+    /// Returns the workspace registry file of a home.
+    ///
+    /// @param home the `DSH_HOME`
+    /// @return the file path
+    private static Path workspaceFile(Path home) {
+        return home.resolve("storages").resolve("workspace.json");
     }
 
     /// Returns the projection-cache file for a session.

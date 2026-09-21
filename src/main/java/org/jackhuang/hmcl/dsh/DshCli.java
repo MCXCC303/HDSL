@@ -526,13 +526,20 @@ public final class DshCli {
             int imported = 0;
             int skipped = 0;
             int refused = 0;
+            // Every session the target now has from this source: the ones just
+            // imported and the ones it already had. Grouping the second group as
+            // well is what lets an import run again to repair the projects of an
+            // earlier one that could not record them.
+            java.util.Set<String> knownIds = new java.util.LinkedHashSet<>();
             for (DshSession session : sessions) {
                 try {
                     DshSessions.importFrom(sourceHome, session, target);
+                    knownIds.add(session.id());
                     imported++;
                     out.println("  imported " + session.id() + "  " + session.label());
                 } catch (DshException e) {
                     if (e.getMessage() != null && e.getMessage().contains("already has a session")) {
+                        knownIds.add(session.id());
                         skipped++;
                     } else {
                         refused++;
@@ -540,6 +547,7 @@ public final class DshCli {
                     }
                 }
             }
+            DshSessions.adoptWorkspaces(sourceHome, target, knownIds);
             out.println("Imported " + imported + ", already present " + skipped
                     + ", refused " + refused + " of " + sessions.size()
                     + " session(s) from " + sourceHome + " into " + target.id());
@@ -654,6 +662,7 @@ public final class DshCli {
                 return 1;
             }
             DshSessions.migrate(source, session, target, true);
+            DshSessions.adoptWorkspaces(source.homeDirectory(), target, java.util.Set.of(sessionId));
             out.println("Migrated " + sessionId + " from " + source.id() + " to " + target.id());
             return 0;
         } catch (DshException e) {
