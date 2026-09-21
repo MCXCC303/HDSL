@@ -63,6 +63,7 @@ public abstract class TaskExecutorDialogWizardDisplayer extends AbstractWizardDi
                 pane.titleProperty().bind(titleProperty);
             else if (title instanceof String titleMessage)
                 pane.setTitle(titleMessage);
+
         }
 
         runInFX(() -> {

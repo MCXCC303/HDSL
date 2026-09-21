@@ -428,6 +428,16 @@ public final class TaskListPane extends StackPane {
         private ProgressListNode(Task<?> task) {
             this.title = task.getName();
             progress.bind(task.progressProperty());
+
+            // A task may carry a line of its own to show beneath its name, the
+            // way it may carry a `total` for the stage it belongs to. A download
+            // reports what it has fetched as it goes, and this is where it goes.
+            // Read-only: the task publishes the line, the dialog only shows it.
+            if (task.getProperties().get("message")
+                    instanceof javafx.beans.property.ReadOnlyStringProperty line) {
+                message.bind(line);
+
+            }
         }
 
         public void unbind() {

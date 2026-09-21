@@ -220,7 +220,10 @@ public final class DshVersionManager {
                 "--prefix", target.toString(),
                 "--no-audit",
                 "--no-fund",
-                "--loglevel=error");
+                // `http` is what makes npm print a line per package it asks for,
+                // which is the only progress it offers; at `error` it prints
+                // nothing until something goes wrong.
+                "--loglevel=http");
 
         LOG.info("Holding " + version + " to boot library " + appBoot);
         int exitCode;
@@ -288,7 +291,10 @@ public final class DshVersionManager {
                 "--prefix", staging.toString(),
                 "--no-audit",
                 "--no-fund",
-                "--loglevel=error");
+                // `http` is what makes npm print a line per package it asks for,
+                // which is the only progress it offers; at `error` it prints
+                // nothing until something goes wrong.
+                "--loglevel=http");
 
         LOG.info("Installing DSH " + version + ": " + String.join(" ", command));
 

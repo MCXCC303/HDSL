@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh.install;
 
 import javafx.scene.Node;
+import org.jackhuang.hmcl.dsh.DshInstallProgress;
 import org.jackhuang.hmcl.dsh.DshCommand;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
@@ -144,93 +145,124 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
     @Override
     public Object finish(SettingsMap settings) {
-        // Two stages, as the install has two: the runtime is fetched and the
-        // instance made from it, then the chosen plugins are installed into it.
-        // The dialog lists them, which is the shape the original's install has —
-        // a list of the steps it is taking rather than one line saying it is
-        // busy.
-        String runtimeStage = i18n("dsh.install.stage.runtime");
-        String pluginStage = i18n("dsh.install.stage.plugins");
+        InstallTask task = new InstallTask(settings);
 
-        return Task.runAsync(runtimeStage, Schedulers.io(), () -> {
-            String version = settings.get(VERSION);
-            installingVersion = version;
-            versionWasPresent = version != null && DshVersionManager.findInstalled(version) != null;
-            try {
+        // The line the package managers report goes in the dialog's heading. A
+        // task's own row would be the natural place and is not usable: the label
+        // it would go in is laid out once, when the row appears, and its
+        // preferred width is zero from then on, so nothing written to it is
+        // drawn. The heading is bound, and it renders.
+        settings.put("title", task.progress.messageProperty());
+
+        return task;
+    }
+
+    /// Installs the runtime, makes the instance, and adds the chosen plugins.
+    ///
+    /// A task of its own rather than a lambda, because the package managers'
+    /// output is read as it arrives and turned into the line and the bar the
+    /// dialog shows, and a task is what the dialog watches.
+    private final class InstallTask extends Task<Void> {
+        /// The wizard's answers.
+        private final SettingsMap settings;
+
+        /// What the package managers say they are doing.
+        private final DshInstallProgress progress = new DshInstallProgress();
+
+        /// The version being installed.
+        private @Nullable String version;
+
+        /// Whether that version was already on disk when this began.
+        private boolean versionWasPresent;
+
+        /// Creates the task.
+        ///
+        /// @param settings the wizard's answers
+        private InstallTask(SettingsMap settings) {
+            this.settings = settings;
+            setName(i18n("dsh.install.working"));
+            // The dialog shows a line beneath a task's name only for a task that
+            // belongs to no stage: a staged task becomes a stage row instead,
+            // which carries a counter and nothing else. The phases are named in
+            // the line rather than listed as stages, so that the counts the
+            // package managers report have somewhere to appear.
+
+        }
+
+        @Override
+        public void execute() throws Exception {
+            version = settings.get(VERSION);
             String name = settings.get(NAME);
-            Map<String, String> choices = settings.getOrDefault(PRESET_CHOICES, Map.of());
-            List<String> specs = specsOf(choices);
-
+            List<String> specs = specsOf(settings.getOrDefault(PRESET_CHOICES, Map.of()));
             if (version == null || name == null) {
                 throw new DshException("The install wizard finished without a complete configuration");
             }
+            versionWasPresent = DshVersionManager.findInstalled(version) != null;
 
-            // The environment comes from the launcher's settings rather than
-            // from the page: a runtime and a home policy are the launcher's
-            // business, and an instance that wants its own says so afterwards.
-            // The workspace is the user's home, which is what a session scoped
-            // to nothing in particular should be.
-            String nodeRuntime = org.jackhuang.hmcl.setting.SettingsManager.settings()
-                    .defaultNodeRuntimeProperty().get();
-            DshHomeMode homeMode = org.jackhuang.hmcl.setting.SettingsManager.settings()
-                    .defaultHomeModeProperty().get();
-            Path workspace = Path.of(System.getProperty("user.home"));
+            try {
+                if (versionWasPresent) {
+                    LOG.info("DeepSeek Harness " + version + " is already installed");
+                } else {
+                    LOG.info("Wizard is downloading DeepSeek Harness " + version + " first");
+                    DshVersionManager.install(version, line -> {
+                        LOG.info("[dsh] " + line);
+                        progress.accept(line);
+                        // The bar follows pnpm's tally where there is one; npm
+                        // never states a total, so the bar stays indeterminate.
+                        double fraction = progress.fractionProperty().get();
+                        if (fraction >= 0) {
+                            updateProgress(fraction);
+                        }
+                    });
+                }
+                updateProgress(1.0);
 
-            // A version chosen from the published list is not on disk yet, so it
-            // is downloaded before anything is installed into a profile — there
-            // is no profile to install into until the version exists.
-            if (DshVersionManager.findInstalled(version) == null) {
-                LOG.info("Wizard is downloading DeepSeek Harness " + version + " first");
-                DshVersionManager.install(version, line -> LOG.info("[dsh] " + line));
-            }
+                String appBoot = settings.get(APP_BOOT);
+                if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(version)) {
+                    LOG.info("Instance " + name + " was asked for boot library " + appBoot
+                            + " instead of the launcher's own " + version);
+                    DshVersionManager.overrideAppBoot(version, appBoot);
+                }
 
-            String appBoot = settings.get(APP_BOOT);
-            if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(version)) {
-                LOG.info("Instance " + name + " was asked for boot library " + appBoot
-                        + " instead of the launcher's own " + version);
-                DshVersionManager.overrideAppBoot(version, appBoot);
-            }
+                String nodeRuntime = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                        .defaultNodeRuntimeProperty().get();
+                DshHomeMode homeMode = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                        .defaultHomeModeProperty().get();
+                Path workspace = Path.of(System.getProperty("user.home"));
 
-            DshInstance instance = DshInstanceManager.create(
-                    name.trim(), version, DshInstance.DEFAULT_PROFILE,
-                    workspace, nodeRuntime, homeMode, null, List.of(), Map.of());
+                DshInstance instance = DshInstanceManager.create(
+                        name.trim(), version, DshInstance.DEFAULT_PROFILE,
+                        workspace, nodeRuntime, homeMode, null, List.of(), Map.of());
+                LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
 
-            LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
+                if (!specs.isEmpty()) {
+                    DshPluginInstaller.installSpecs(instance, specs, line -> {
+                        LOG.info("[install] " + line);
+                        progress.accept(line);
+                        double fraction = progress.fractionProperty().get();
+                        if (fraction >= 0) {
+                            updateProgress(fraction);
+                        }
+                    });
+                }
+                updateProgress(1.0);
             } catch (RuntimeException | DshException stopped) {
                 // Whether this was a cancellation is asked of the thread rather
                 // than of the exception: the commands wrap an interrupt in a
                 // DshException of their own, so the type does not say.
                 if (Thread.currentThread().isInterrupted()) {
-                // Cancelled from the dialog. The thread waiting on npm is
-                // interrupted, which stops the wait and not the program: npm
-                // carries on writing into a directory nothing is watching. Stop
-                // it, then take the half-written version away, because a version
-                // that is half-written cannot run.
                     LOG.info("Install of " + version + " was cancelled");
                     DshCommand.stopRunning();
-                    if (version != null && !versionWasPresent) {
+                    if (!versionWasPresent) {
                         // The half-written copy, not the installed version:
-                        // uninstall looks up an installed version and there is
+                        // uninstall looks up an installed version, and there is
                         // none, so it would find nothing to remove.
                         DshVersionManager.discardPartial(version);
                     }
                 }
                 throw stopped;
             }
-        })
-                .withStage(runtimeStage)
-                .withRunAsync(pluginStage, Schedulers.io(), () -> {
-                    String version2 = settings.get(VERSION);
-                    String name2 = settings.get(NAME);
-                    DshInstance instance = DshInstanceManager.find(name2);
-                    List<String> specs2 = specsOf(settings.getOrDefault(PRESET_CHOICES, Map.of()));
-                    if (instance != null && !specs2.isEmpty()) {
-                        DshPluginInstaller.installSpecs(instance, specs2, line -> LOG.info("[install] " + line));
-                    }
-                })
-                .withStage(pluginStage)
-                .withStagesHints(runtimeStage, pluginStage)
-                .setName(i18n("dsh.install.working"));
+        }
     }
 
     /// The version this wizard is installing, while it is running.
