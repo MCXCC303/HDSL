@@ -175,16 +175,34 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
             return;
         }
 
+        GameDirectory added;
         try {
-            GameDirectory added = GameDirectoryManager.add(
+            added = GameDirectoryManager.add(
                     relativePath.isSelected() ? portable(chosen) : chosen, nameField.getText());
             GameDirectoryManager.select(added.id());
         } catch (IllegalArgumentException e) {
             Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
             return;
         }
-        // The navigator listens for this and takes the page away, which is how
-        // the original returns to the list it was opened from.
+
+        // A folder that holds no instances looks the same as one that was added
+        // wrongly, and the common mistake is a launcher's own directory, which
+        // holds the instances one level further down. Saying so here is cheaper
+        // than leaving someone to work out why the list is empty.
+        if (GameDirectoryManager.countInstances(added) == 0) {
+            Path nested = chosen.toAbsolutePath().normalize().resolve("instances");
+            Controllers.dialog(
+                    Files.isDirectory(nested)
+                            ? i18n("dsh.directory.empty.with_instances", nested.toString())
+                            : i18n("dsh.directory.empty"),
+                    i18n("dsh.directory.add"), MessageType.WARNING, () -> {
+                        // The navigator listens for this and takes the page away,
+                        // which is how the original returns to the list.
+                        fireEvent(new PageCloseEvent());
+                    });
+            return;
+        }
+
         fireEvent(new PageCloseEvent());
     }
 }
