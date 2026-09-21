@@ -2040,3 +2040,11 @@
     -fx-border-width: 2px;
     -fx-border-radius: 4;
 }
+
+/* HMCL-DSH: the auto-install list's name column. The original sizes it for its
+   own component names ("Fabric", "NeoForge"); the runtime this launcher lists is
+   called DeepSeek Harness, and a truncated product name is worse than a column a
+   few pixels wider. */
+.installer-item-wrapper .installer-item:list-item > .installer-item-name.wide {
+    -fx-pref-width: 140px;
+}

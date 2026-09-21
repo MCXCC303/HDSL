@@ -94,9 +94,6 @@ public final class InstanceSettingsPage extends ScrollPane {
         ComponentList iconList = new ComponentList();
         iconList.getContent().add(buildIconRow());
 
-        ComponentList versionList = new ComponentList();
-        versionList.getContent().add(buildVersionRow());
-
         ComponentList environmentList = new ComponentList();
         environmentList.getContent().add(buildNodeRuntimeRow());
         environmentList.getContent().add(buildHomeModeRow());
@@ -108,9 +105,12 @@ public final class InstanceSettingsPage extends ScrollPane {
         // The original's card list: the padding and the spacing between sections
         // come from the class rather than from numbers chosen here, so a page
         // built from the same parts sits the same way.
+        // What version of DeepSeek Harness the instance runs is not here: choosing
+        // it installs a runtime, and the auto-install page is where the original
+        // offers that — beside the boot library and the plugins, which are the
+        // same kind of thing.
         VBox root = new VBox(
                 ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
-                ComponentList.createComponentListTitle(i18n("dsh.instance.version")), versionList,
                 ComponentList.createComponentListTitle(i18n("dsh.settings.environment")), environmentList,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList);
         root.getStyleClass().add("card-list");
@@ -119,25 +119,6 @@ public final class InstanceSettingsPage extends ScrollPane {
         // Must run after the content is installed: smooth scrolling binds to the
         // content node and throws on a null content.
         FXUtils.smoothScrolling(this);
-    }
-
-    /// Builds the row that says which DeepSeek Harness the instance runs.
-    ///
-    /// A button rather than a dropdown: what it opens is a page, because the
-    /// versions are a list with a name box over them, and choosing one is not a
-    /// setting being changed but a runtime being replaced.
-    ///
-    /// @return the row
-    private LineButton buildVersionRow() {
-        LineButton row = new LineButton();
-        // The section says which setting this is; the row says which runtime,
-        // rather than both saying the same words.
-        row.setTitle(i18n("dsh.install.version.name"));
-        row.setSubtitle(instance.version());
-        row.setLeading(SVG.UPDATE, 20);
-        FXUtils.installFastTooltip(row, i18n("dsh.instance.upgrade.hint"));
-        row.setOnAction(event -> Controllers.navigate(new VersionPickerPage(instance)));
-        return row;
     }
 
     /// Builds the Node runtime row.

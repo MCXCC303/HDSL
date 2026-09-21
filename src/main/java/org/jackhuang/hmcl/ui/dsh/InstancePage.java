@@ -92,6 +92,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The settings tab.
     private final TabHeader.Tab<InstanceSettingsPage> settingsTab = new TabHeader.Tab<>("dshInstanceSettings");
 
+    /// The components tab: what this instance runs, and what can be installed into it.
+    private final TabHeader.Tab<InstanceInstallersPage> installersTab = new TabHeader.Tab<>("dshInstanceInstallers");
+
     /// The sessions tab.
     private final TabHeader.Tab<SessionListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
 
@@ -130,8 +133,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// Creates the page for an instance.
     ///
     /// @param instance   the instance to show
-    /// @param initialTab the tab to open: `settings`, `plugins`, `sessions`, `browse` or
-    ///                   `details`, or `null` for the first
+    /// @param initialTab the tab to open: `settings`, `installers`, `plugins`,
+    ///                   `sessions` or `details`, or `null` for the first
     public InstancePage(DshInstance instance, @Nullable String initialTab) {
         this.instance = instance;
         // The original titles this page with the page's name and the instance's,
@@ -142,11 +145,13 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
+        installersTab.setNodeSupplier(() -> new InstanceInstallersPage(instance));
         sessionsTab.setNodeSupplier(() -> new SessionListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
         tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, detailsTab);
         TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
+            case "installers" -> installersTab;
             case "plugins" -> pluginsTab;
             case "sessions" -> sessionsTab;
             case "details" -> detailsTab;
@@ -157,12 +162,16 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         AdvancedListBox sideBar = new AdvancedListBox()
                 // Each entry carries the mark of the tab it opens and the solid
                 // version of it for when that tab is the one being shown, which is
-                // how the original's sidebar says where the page is. An entry given
-                // only one mark keeps that mark either way, so it needs the icon set
-                // to have a solid version — the folder copy has none, and the
-                // original leaves such entries alone for the same reason.
+                // how the original's sidebar says where the page is. An entry
+                // given only one mark keeps that mark either way, so the icon set
+                // has to have a solid version — the folder copy and the tune have
+                // none, and the original leaves those alone for the same reason.
                 .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"),
                         SVG.SETTINGS, SVG.SETTINGS_FILL)
+                // The original puts what can be installed straight after the
+                // instance's own settings, and everything installed after that.
+                .addNavigationDrawerTab(tab, installersTab, i18n("settings.tabs.installers"),
+                        SVG.DEPLOYED_CODE, SVG.DEPLOYED_CODE_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"),
                         SVG.EXTENSION, SVG.EXTENSION_FILL)
                 .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)

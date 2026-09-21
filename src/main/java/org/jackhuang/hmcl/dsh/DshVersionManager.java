@@ -191,6 +191,17 @@ public final class DshVersionManager {
     /// @param appBoot  the boot library version to hold it to
     /// @throws DshException when the manifest cannot be written or pnpm fails
     public static void overrideAppBoot(DshInstance instance, String appBoot) throws DshException {
+        overrideAppBoot(instance, appBoot, null);
+    }
+
+    /// Holds an instance's copy to a boot library version, reporting the install.
+    ///
+    /// @param instance the instance to change
+    /// @param appBoot  the boot library version to hold it to
+    /// @param onLine   receives the package manager's output, or `null`
+    /// @throws DshException when the manifest cannot be written or pnpm fails
+    public static void overrideAppBoot(DshInstance instance, String appBoot,
+                                       @Nullable Consumer<String> onLine) throws DshException {
         Path target = instance.dshDirectory();
         if (!Files.isDirectory(target)) {
             throw new DshException("Instance " + instance.id() + " has no DeepSeek Harness to change");
@@ -208,7 +219,7 @@ public final class DshVersionManager {
         LOG.info("Holding " + instance.id() + " to boot library " + appBoot);
         int exitCode;
         try {
-            exitCode = DshCommand.run(command, null, null).exitCode();
+            exitCode = DshCommand.run(command, null, onLine).exitCode();
         } catch (IOException e) {
             throw new DshException("Failed to run pnpm", e);
         } catch (InterruptedException e) {
@@ -218,6 +229,58 @@ public final class DshVersionManager {
         if (exitCode != 0) {
             throw new DshException("pnpm exited with code " + exitCode
                     + " while changing the boot library of " + instance.id());
+        }
+    }
+
+    /// Returns the boot library version an instance is held to.
+    ///
+    /// The pin is read back from where it was written, because that is the
+    /// instance's own record of the choice: asking pnpm which copy it linked
+    /// would mean reproducing its store layout, and the version that matters to
+    /// the page is the one the instance asks for.
+    ///
+    /// @param instance the instance
+    /// @return the version, or `null` when the instance has no pin to read
+    public static @Nullable String readAppBoot(DshInstance instance) {
+        Path prefix;
+        try {
+            prefix = instance.dshDirectory();
+        } catch (DshException e) {
+            return null;
+        }
+
+        Path workspace = prefix.resolve("pnpm-workspace.yaml");
+        if (Files.isRegularFile(workspace)) {
+            try {
+                for (String line : Files.readAllLines(workspace)) {
+                    if (line.contains(APP_BOOT_PACKAGE)) {
+                        String version = line.substring(line.indexOf(APP_BOOT_PACKAGE) + APP_BOOT_PACKAGE.length());
+                        version = version.replaceFirst("^['\"]?\\s*:\\s*", "").trim().replaceAll("^['\"]|['\"]$", "");
+                        if (!version.isEmpty()) {
+                            return version;
+                        }
+                    }
+                }
+            } catch (IOException e) {
+                LOG.warning("Failed to read the boot library pin of " + instance.id(), e);
+            }
+        }
+
+        Path manifest = prefix.resolve("package.json");
+        if (!Files.isRegularFile(manifest)) {
+            return null;
+        }
+        try {
+            JsonObject root = JsonParser.parseString(Files.readString(manifest)).getAsJsonObject();
+            JsonElement overrides = root.get("overrides");
+            if (overrides == null || !overrides.isJsonObject()) {
+                return null;
+            }
+            JsonElement version = overrides.getAsJsonObject().get(APP_BOOT_PACKAGE);
+            return version == null || !version.isJsonPrimitive() ? null : version.getAsString();
+        } catch (IOException | RuntimeException e) {
+            LOG.warning("Failed to read the boot library pin of " + instance.id(), e);
+            return null;
         }
     }
 
