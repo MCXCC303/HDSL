@@ -85,10 +85,10 @@ public final class FontManager {
     private static void apply() {
         @Nullable String family = settings().launcherFontFamilyProperty().get();
         if (family == null) {
-            family = System.getProperty("hmcldsh.font.override");
+            family = System.getProperty("hdsl.font.override");
         }
         if (family == null) {
-            family = System.getenv("HMCLDSH_FONT");
+            family = System.getenv("HDSL_FONT");
         }
 
         font.set(family);

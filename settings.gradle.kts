@@ -1,1 +1,1 @@
-rootProject.name = "HMCL-DSH"
+rootProject.name = "HDSL"

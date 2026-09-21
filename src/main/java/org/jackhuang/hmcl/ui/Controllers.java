@@ -60,7 +60,7 @@ public final class Controllers {
     /// Trimming is opt-out for machines where a stop-the-world collection after
     /// each task is more noticeable than the retained heap.
     public static final boolean AUTO_TRIM_HEAP =
-            !"false".equalsIgnoreCase(System.getenv("HMCLDSH_AUTO_TRIM_HEAP"));
+            !"false".equalsIgnoreCase(System.getenv("HDSL_AUTO_TRIM_HEAP"));
 
     /// Installs the main page into a decorator attached to the primary stage.
     ///

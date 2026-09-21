@@ -1,4 +1,4 @@
-# HMCL-DSH
+# HDSL
 
 用 [HMCL](https://github.com/HMCL-dev/HMCL) 的 JavaFX 外观层构建的
 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）启动器与版本管理器。
@@ -56,7 +56,7 @@ src/main/java/org/jackhuang/hmcl/
 ├── task/ event/ util/{io,gson,logging,platform,javafx,i18n,function,tree}/
 │                                                      移植层：异步任务 DAG、通用工具
 ├── dsh/                                               【待建】DSH 领域层（版本/实例/进程/预设）
-├── setting/                                           【待建】HMCL-DSH 设置模型
+├── setting/                                           【待建】HDSL 设置模型
 └── ui/dsh/                                            【待建】页面
 ```
 
@@ -71,8 +71,8 @@ GPLv3 §7(b) 要求保留原始版权声明，保留包名可让移植保持零�
 
 依据 HMCL 在 `docs/README.md` 中附加的 GPLv3 §7 条款：
 
-- 本作品已**更名**为 HMCL-DSH 以区别于原作品（§7(c)）；
+- 本作品已**更名**为 **Hello DeepSeek Launcher（HDSL）** 以区别于原作品（§7(c)）；
 - 原始版权声明与版权头**完整保留**（§7(b)），见 `NOTICE`；
 - 发行二进制时须一并提供完整对应源码。
 
-界面层的说法与实现来自 HMCL 及其贡献者；DSH 领域层为 HMCL-DSH 原创。
+界面层的说法与实现来自 HMCL 及其贡献者；DSH 领域层为 HDSL 原创。

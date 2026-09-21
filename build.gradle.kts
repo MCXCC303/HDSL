@@ -173,7 +173,7 @@ tasks.withType<JavaCompile> {
 
 tasks.named<JavaExec>("run") {
     jvmArgs(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
-    systemProperty("hmcldsh.version.override", project.version.toString())
+    systemProperty("hdsl.version.override", project.version.toString())
 }
 
 // The application plugin is used for its `run` task only. Its distribution
@@ -211,7 +211,7 @@ tasks.named<ShadowJar>("shadowJar") {
 // Produce the same two Linux artifacts HMCL ships: a self-executing `.sh`
 // (shell stub with the jar appended) and a `.deb` carrying it.
 val artifactName: String
-    get() = "hmcl-dsh-${project.version}"
+    get() = "hdsl-${project.version}"
 
 val makeExecutable by tasks.registering {
     group = "distribution"

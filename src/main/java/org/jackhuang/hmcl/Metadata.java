@@ -23,9 +23,10 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.file.Path;
 
-/// Stores metadata about the HMCL-DSH application and the directories it owns.
+/// Stores metadata about the Hello DeepSeek Launcher application and the
+/// directories it owns.
 ///
-/// All launcher-owned data lives under a single user home so that HMCL-DSH can
+/// All launcher-owned data lives under a single user home so that HDSL can
 /// be installed next to a real HMCL without either application seeing the
 /// other's settings.
 @NotNullByDefault
@@ -34,10 +35,10 @@ public final class Metadata {
     }
 
     /// The short product name.
-    public static final String NAME = "HMCL-DSH";
+    public static final String NAME = "HDSL";
 
     /// The full product name shown in window titles.
-    public static final String FULL_NAME = "HMCL-DSH";
+    public static final String FULL_NAME = "Hello DeepSeek Launcher";
 
     /// The running version.
     ///
@@ -54,7 +55,7 @@ public final class Metadata {
     ///
     /// @return the version string
     private static String resolveVersion() {
-        String override = System.getProperty("hmcldsh.version.override");
+        String override = System.getProperty("hdsl.version.override");
         if (StringUtils.isNotBlank(override)) {
             return override;
         }
@@ -72,47 +73,47 @@ public final class Metadata {
     public static final String CONTACT_URL = "https://github.com/";
 
     /// The identifier used for Linux desktop integration and window grouping.
-    public static final String APPLICATION_ID = "org.jackhuang.hmcl.dsh";
+    public static final String APPLICATION_ID = "run.hdsl.HDSL";
 
     /// The identifier used for Windows taskbar grouping.
     ///
-    /// Retained only so the transplanted window code keeps compiling; HMCL-DSH
+    /// Retained only so the transplanted window code keeps compiling; HDSL
     /// does not target Windows.
     public static final String WINDOWS_APP_USER_MODEL_ID = APPLICATION_ID;
 
     /// The directory the launcher was started from.
     public static final Path CURRENT_DIRECTORY = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
 
-    /// The per-user directory holding shared HMCL-DSH data.
+    /// The per-user directory holding shared HDSL data.
     public static final Path HMCL_USER_HOME;
 
-    /// The per-workspace directory holding HMCL-DSH configuration and state.
+    /// The per-workspace directory holding HDSL configuration and state.
     public static final Path HMCL_LOCAL_HOME;
 
     /// The directory holding runtime dependencies downloaded by the launcher.
     public static final Path DEPENDENCIES_DIRECTORY;
 
     static {
-        String userHome = System.getProperty("hmcldsh.home", System.getenv("HMCLDSH_USER_HOME"));
+        String userHome = System.getProperty("hdsl.home", System.getenv("HDSL_USER_HOME"));
         if (StringUtils.isBlank(userHome)) {
             if (OperatingSystem.CURRENT_OS.isLinuxOrBSD()) {
                 String xdgData = System.getenv("XDG_DATA_HOME");
                 HMCL_USER_HOME = StringUtils.isNotBlank(xdgData)
-                        ? Path.of(xdgData, "hmcl-dsh").toAbsolutePath().normalize()
-                        : Path.of(System.getProperty("user.home"), ".local", "share", "hmcl-dsh").toAbsolutePath().normalize();
+                        ? Path.of(xdgData, "hdsl").toAbsolutePath().normalize()
+                        : Path.of(System.getProperty("user.home"), ".local", "share", "hdsl").toAbsolutePath().normalize();
             } else {
-                HMCL_USER_HOME = OperatingSystem.getWorkingDirectory("hmcl-dsh");
+                HMCL_USER_HOME = OperatingSystem.getWorkingDirectory("hdsl");
             }
         } else {
             HMCL_USER_HOME = Path.of(userHome).toAbsolutePath().normalize();
         }
 
-        String localHome = System.getProperty("hmcldsh.dir", System.getenv("HMCLDSH_LOCAL_HOME"));
+        String localHome = System.getProperty("hdsl.dir", System.getenv("HDSL_LOCAL_HOME"));
         HMCL_LOCAL_HOME = StringUtils.isNotBlank(localHome)
                 ? Path.of(localHome).toAbsolutePath().normalize()
                 : HMCL_USER_HOME;
 
-        String dependencies = System.getProperty("hmcldsh.dependencies.dir", System.getenv("HMCLDSH_DEPENDENCIES_DIR"));
+        String dependencies = System.getProperty("hdsl.dependencies.dir", System.getenv("HDSL_DEPENDENCIES_DIR"));
         DEPENDENCIES_DIRECTORY = StringUtils.isNotBlank(dependencies)
                 ? Path.of(dependencies).toAbsolutePath().normalize()
                 : HMCL_USER_HOME.resolve("dependencies");

@@ -417,7 +417,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     }
 
     /// Key under which a menu row remembers the popup that owns it.
-    private static final String POPUP_KEY = "hmcl-dsh-popup";
+    private static final String POPUP_KEY = "hdsl-popup";
 
     /// Hides the popup a row belongs to.
     ///

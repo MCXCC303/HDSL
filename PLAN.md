@@ -1,7 +1,7 @@
-# HMCL-DSH 开发计划
+# HDSL 开发计划
 
 > 用 HMCL 的 JavaFX 外观层，做成一个 **DeepSeek Harness (dsh) 的版本/实例管理器与启动器**。
-> 仅 Linux。产品名 **HMCL-DSH**；沿用 `org.jackhuang.hmcl.*` 包名以保留 GPLv3 要求的版权头。
+> 仅 Linux。产品名 **HDSL**；沿用 `org.jackhuang.hmcl.*` 包名以保留 GPLv3 要求的版权头。
 
 ---
 
@@ -46,7 +46,7 @@
 - **新建 profile 的 `allowBuilds` 是占位符**。profile 模板写入的是
   `allowBuilds: { node-pty: set this to true or false }`，在用户解析它之前，
   pnpm 会拒绝运行 `node-pty` 的构建脚本并**以非零码退出**（但包其实已经装进去了）。
-  这是上游行为（直接跑 `dsh plugin` 同样失败），HMCL-DSH **不会代替用户批准** ——
+  这是上游行为（直接跑 `dsh plugin` 同样失败），HDSL **不会代替用户批准** ——
   `allowBuilds` 决定是否允许执行任意 postinstall 脚本，属于用户的安全决策。
   启动器做的是把 pnpm 那一堆进度输出翻译成一条可执行的提示
   （给出 `pnpm approve-builds` 与该 profile 的路径）。
@@ -58,7 +58,7 @@
 | 开发路线 | **路线 B**：抽取 HMCL 的 UI 工具箱，新建独立工程 | 不背 10 万行 Minecraft 死代码；移植层零改写风险 |
 | 工程位置 | `/home/thf/Programme/Git/harness-launcher` | 与 `HMCL`、`deepseek-harness` 平级，独立 git 仓库 |
 | 包名 | 保留 `org.jackhuang.hmcl.*` | 375 个文件零改写；GPLv3 §7(b) 要求保留版权声明 |
-| 产品名 | HMCL-DSH | 社区认知延续 |
+| 产品名 | **Hello DeepSeek Launcher（HDSL）** | 社区取名；见 README 的更名条款 |
 | 目标平台 | Linux only（x86_64 / aarch64） | 用户指定；砍掉 `.exe`、macOS、Terracotta |
 | 目标 JDK | **21 + JavaFX 21.0.8**（CLASSIC 线） | 系统 `archlinux-java` 默认已是 21；**无需切换** |
 | DSH_HOME 策略 | **默认每实例独立**；提供"共享 DSH_HOME"高级选项 | 见 §3.2，多版本共享是危险行为 |
@@ -189,7 +189,7 @@
 
 ---
 
-## 2. HMCL-DSH 架构
+## 2. HDSL 架构
 
 ```
 harness-launcher/
@@ -216,7 +216,7 @@ harness-launcher/
 │   │   ├── DshWebSession.java            web URL 行解析 + 就绪状态
 │   │   └── DshNodeRuntime.java           node / pnpm 探测与最低版本校验
 │   │
-│   ├── setting/                   ← 【新增】HMCL-DSH 自己的设置模型
+│   ├── setting/                   ← 【新增】HDSL 自己的设置模型
 │   │   ├── DshSettings.java              全局设置（主题、语言、代理、并发…）
 │   │   ├── DshSettingsManager.java       基于移植的 JsonSettingFile
 │   │   └── ThemeSettings.java            移植层 theme/ 需要的设置接口
@@ -242,13 +242,13 @@ harness-launcher/
 ### 3.1 磁盘布局
 
 ```
-~/.local/share/hmcl-dsh/            (XDG_DATA_HOME)
+~/.local/share/hdsl/            (XDG_DATA_HOME)
 ├── settings.json                    全局设置
 ├── versions/
 │   └── 0.1.6-alpha.2/               一个私有 npm prefix（version = manifest 的版本）
 │       ├── package.json             { "dependencies": { "@deepseek-ai/dsh": "0.1.6-alpha.2" } }
 │       ├── node_modules/@deepseek-ai/dsh/...
-│       └── .hmcl-dsh.json           安装元数据（安装时间、来源 registry、校验）
+│       └── .hdsl.json           安装元数据（安装时间、来源 registry、校验）
 ├── instances/
 │   └── <instance-id>/
 │       ├── instance.json            实例定义（version、profile、workspace、homeMode、args、env）
@@ -324,11 +324,11 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 ### 3.4 版本管理
 
 - 版本列表：`npm view @deepseek-ai/dsh versions --json` + `dist-tags --json`（`latest` / `alpha` 等）。
-- 安装：`npm install --prefix versions/<ver> @deepseek-ai/dsh@<ver>`（或 pnpm），完成后写 `.hmcl-dsh.json`。
+- 安装：`npm install --prefix versions/<ver> @deepseek-ai/dsh@<ver>`（或 pnpm），完成后写 `.hdsl.json`。
 - 运行前置：**Node `^22.19.0 || >=24.0.0`**、**pnpm 11.7.0**（`dsh plugin` 需要 pnpm 在 PATH 上，否则退出码 127）。
   `DshNodeRuntime` 负责探测并在 `NodeSetupPage` 给出指引。
 - 上游**没有版本管理器、没有自更新**（只有 Electron Desktop 有 updater）。
-  所以版本管理完全由 HMCL-DSH 自己实现，这也是本项目的核心价值之一。
+  所以版本管理完全由 HDSL 自己实现，这也是本项目的核心价值之一。
 - 原生依赖均为预编译产物（`node-addon-system`、`node-pty`、`sharp`、`ripgrep`、`node-addon-require-builtin`），
   **不需要编译工具链**。
 
@@ -336,7 +336,7 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 
 ## 4. 快速安装预设目录（对标 Forge/Fabric/NeoForge/OptiFine）
 
-上游仓库里**没有内置插件市场**，发现机制就是 pnpm。所以预设目录由 HMCL-DSH 自己维护：
+上游仓库里**没有内置插件市场**，发现机制就是 pnpm。所以预设目录由 HDSL 自己维护：
 `resources/assets/dsh/presets.json`（内置）+ 可选的远程刷新（缓存到 `catalog/`）。
 
 预设分三类，UI 上视觉区分（对应 HMCL 的"安装器列表"）：
@@ -347,7 +347,7 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 |---|---|---|
 | **Web 界面（默认）** | `dsh-base`, `dsh-web-app` | 浏览器 UI，最常用 |
 | **Headless 一次性任务** | `dsh-base`, `dsh-headless` | 跑一条任务就退出，`--json` NDJSON 输出 |
-| **ACP 协议服务** | `dsh-base`, `dsh-acp-app` | 给 HMCL-DSH 自己做原生会话面板用 |
+| **ACP 协议服务** | `dsh-base`, `dsh-acp-app` | 给 HDSL 自己做原生会话面板用 |
 | **SDK** | `dsh-base`, `dsh-sdk-app` | 编程接口 |
 | **SDK 精简** | `dsh-sdk-minimal` | 独立，不依赖 base |
 
@@ -364,7 +364,7 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 | 技能管理 | `@michengai/dsh-skills-manager` | 技能包管理 |
 | 远程 Web UI | `@linxin666/dsh-remote-web-ui` | 手机/局域网访问 |
 | Git 图谱 | `@linxin666/dsh-client-ui-git-graph` | 会话内 git 可视化 |
-| 皮肤中心 | `@linxin666/dsh-client-ui-skin-center` | 主题/皮肤（HMCL-DSH 也可对接） |
+| 皮肤中心 | `@linxin666/dsh-client-ui-skin-center` | 主题/皮肤（HDSL 也可对接） |
 | 鲸鱼挂件 | `dsh-whale-widget` | 装饰 |
 | Codex 子代理 | `@deepseek-ai/dsh-subagent-codex` | 上游内置 bundle，装完即用 |
 | Claude Code 子代理 | `@deepseek-ai/dsh-subagent-claude-code` | 同上 |
@@ -439,7 +439,7 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 
 ### Phase 1 — 领域模型与版本管理（M1，约 5–8 人日）
 
-- `DshVersion` / `DshVersionManager`：npm 版本列表、安装到私有 prefix、卸载、`.hmcl-dsh.json` 元数据。
+- `DshVersion` / `DshVersionManager`：npm 版本列表、安装到私有 prefix、卸载、`.hdsl.json` 元数据。
 - `DshNodeRuntime`：探测 node/pnpm 版本，不满足时给出明确指引。
 - `DshHome` + 三种策略；`DshInstance` / `DshInstanceManager` + 持久化。
 - `setting/DshSettings` + `DshSettingsManager`（复用移植的 `JsonSettingFile`）。
@@ -479,13 +479,13 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 
 - Java 实现 ACP v1 客户端（stdio，`@agentclientprotocol/sdk@1.4.0` 的协议线格式）。
 - `session/new` / `list` / `resume` / `prompt` / `cancel` / `update` 渲染成 JavaFX 面板。
-- 这一步做完，HMCL-DSH 就不只是"启动器"，而是 DSH 的原生 GUI。
+- 这一步做完，HDSL 就不只是"启动器"，而是 DSH 的原生 GUI。
 
 **M5 验收**：不开浏览器即可新建/继续会话并与 agent 对话。
 
 ### Phase 6 — 打包与发布（M6，约 3–5 人日）
 
-- 移植 `CreateDeb` 思路，产出 `hmcl-dsh_<ver>_amd64.deb` + 自解压 `.sh`（纯 Java 实现，无需 `dpkg`）。
+- 移植 `CreateDeb` 思路，产出 `hdsl_<ver>_amd64.deb` + 自解压 `.sh`（纯 Java 实现，无需 `dpkg`）。
 - 品牌替换：产品名、图标、URL、User-Agent、数据目录（**避免与真实 HMCL 冲突**）。
 - **删除/重定向自更新链路**：HMCL 的公钥会验证并安装官方 HMCL，必须整体移除。
 - 首次运行引导（Node 检查 → 安装 dsh → 创建实例）。
@@ -502,7 +502,7 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 | 端口冲突（无自动回退，EADDRINUSE 直接退出） | 启动失败 | 一律 `--port 0`，解析 URL 行取实际端口 |
 | pnpm 不在 PATH | `dsh plugin` 退出 127 | `DshNodeRuntime` 前置校验 + 安装指引页 |
 | JavaFX 泄漏进核心（`Task.updateProgressImmediately` 里裸调 `Platform.runLater`） | headless 场景崩溃 | 若做 CLI 需加 toolkit 保护；GUI 场景无影响 |
-| GPLv3 §7 附加条款 | 合规风险 | 改名 HMCL-DSH、保留版权头、开源完整对应源码、保留第三方声明 |
+| GPLv3 §7 附加条款 | 合规风险 | 改名 HDSL、保留版权头、开源完整对应源码、保留第三方声明 |
 | 上游 HMCL 无法再 merge | 永久分叉 | 已接受（路线 B 本来就是独立仓库） |
 
 ---
@@ -555,7 +555,7 @@ DshProcess p = DshProcess.start(cmd, cwd, env);
 
 # 第二阶段：向 HMCL 的形态收敛
 
-第一阶段的结论是「能跑」；这一阶段的目标是**让 HMCL-DSH 的组织方式与 HMCL 一致**，
+第一阶段的结论是「能跑」；这一阶段的目标是**让 HDSL 的组织方式与 HMCL 一致**，
 而不只是长得像。六组任务按依赖顺序排列，每组都能独立验证和提交。
 
 ## 任务 1：导入系统会话（`~/.dsh` → 实例）
@@ -654,7 +654,7 @@ dsh 自身没有 session 导入/导出接口；ACP 只有 `session/list|resume|c
 
 ---
 
-## 任务 4：游戏目录（`hmcl-dsh/` ≙ `.minecraft/`）
+## 任务 4：游戏目录（`hdsl/` ≙ `.minecraft/`）
 
 - 引入「游戏目录」概念：当前只有一个隐含目录，需要显式化并支持多个
 - 实例列表提供「添加实例文件夹」，自动扫描该目录下已有实例
@@ -710,7 +710,7 @@ dsh 自身没有 session 导入/导出接口；ACP 只有 `session/list|resume|c
 
 ### 决定
 
-- **不迁移、不复制任何现有实例。** 现有 `~/.local/share/hmcl-dsh/instances/*` 原地视为
+- **不迁移、不复制任何现有实例。** 现有 `~/.local/share/hdsl/instances/*` 原地视为
   **默认游戏目录下的实例**，零改动。这与 HMCL 引入游戏目录时的动作一致：只扫描，不动数据。
 - **全局设置只影响新实例与「跟随全局」的实例**，不回溯修改已有实例的自有值。
 

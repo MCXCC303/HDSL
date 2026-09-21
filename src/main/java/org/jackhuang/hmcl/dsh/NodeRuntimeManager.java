@@ -448,7 +448,7 @@ public final class NodeRuntimeManager {
     /// @param target  the directory to unpack into
     /// @throws IOException when decompression or extraction fails
     private static void extractTarXz(Path archive, Path target) throws IOException {
-        Path tarFile = Files.createTempFile("hmcldsh-node", ".tar");
+        Path tarFile = Files.createTempFile("hdsl-node", ".tar");
         try {
             try (InputStream in = Files.newInputStream(archive);
                  XZInputStream xz = new XZInputStream(in)) {

@@ -1,6 +1,6 @@
-# HMCL-DSH 开发规约
+# HDSL 开发规约
 
-本文件记录本项目的复刻方法、验证流程与提交约定。它总结自 HMCL-DSH 的实际开发过程，
+本文件记录本项目的复刻方法、验证流程与提交约定。它总结自 HDSL 的实际开发过程，
 不是愿景文档：每条都是从踩过的坑里得出的。
 
 ---
@@ -117,7 +117,7 @@ JAVA_HOME=/usr/lib/jvm/java-21-openjdk nohup ./gradlew run --no-daemon --console
 # 轮询等窗口出现，不要用固定 sleep
 for i in $(seq 1 40); do
   sleep 0.5
-  WID=$(xdotool search --name "HMCL-DSH" 2>/dev/null | head -1)
+  WID=$(xdotool search --name "HDSL" 2>/dev/null | head -1)
   [ -n "$WID" ] && break
 done
 sleep 2                      # 让首帧画完

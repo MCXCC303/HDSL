@@ -817,7 +817,7 @@ public final class DshCli {
         out.println("""
                 HMCL-DSH command line
 
-                usage: hmcl-dsh <command> [options]
+                usage: hdsl <command> [options]
 
                 versions:
                   --list-installed                 list installed DeepSeek Harness versions
