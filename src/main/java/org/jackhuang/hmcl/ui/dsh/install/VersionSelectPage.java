@@ -145,10 +145,17 @@ public final class VersionSelectPage extends VBox implements WizardPage {
         installedNames = names;
 
         // Titles sit between the cards rather than inside them, which is how
-        // HMCL lays a titled list out.
-        VBox body = new VBox(10,
-                ComponentList.createComponentListTitle(i18n("dsh.install.version.installed")),
-                installedList,
+        // HMCL lays a titled list out. The installed one is left out entirely
+        // when there is nothing in it: a heading and a card saying that the
+        // section is empty is two ways of saying nothing, on a page whose whole
+        // purpose is the list below it.
+        VBox body = new VBox(10);
+        if (!installed.isEmpty()) {
+            body.getChildren().addAll(
+                    ComponentList.createComponentListTitle(i18n("dsh.install.version.installed")),
+                    installedList);
+        }
+        body.getChildren().addAll(
                 ComponentList.createComponentListTitle(i18n("dsh.install.version.remote")),
                 remoteList);
 
@@ -309,9 +316,13 @@ public final class VersionSelectPage extends VBox implements WizardPage {
     private LineButton buildReleaseRow(DshRelease release) {
         LineButton row = new LineButton();
         row.setTitle(release.version());
-        row.setSubtitle(release.isPrerelease()
-                ? i18n("dsh.versions.prerelease")
-                : i18n("dsh.versions.will_download"));
+        // The release's channel, read off its version string, which is the same
+        // thing the type filter above it classifies by. It used to say whether
+        // the release carried the `latest` tag, which is not a channel — a
+        // release candidate is `latest` when it is the newest — and the other
+        // wording, "will be downloaded", said nothing at all here, because every
+        // row in this list is downloaded when it is chosen.
+        row.setSubtitle(i18n("download.type." + release.type().id()));
         row.setLeading(SVG.DOWNLOAD, 16);
         row.setOnAction(event -> {
             choose(release.version());
