@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.dsh;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -107,8 +108,20 @@ class DshPluginCatalogTest {
         assertEquals(4, catalog.inCategory("").size(), "the empty category is every category");
 
         DshPluginCatalog.Plugin plugin = plugin("dsh-j-space");
-        assertEquals("一个空间", plugin.localizedDescription());
         assertEquals(0, plugin.installSpec().indexOf('@'), "the package name keeps its scope");
+
+        // Which description is shown depends on the machine's language, so the rule
+        // is pinned rather than whatever this machine happens to be set to.
+        Locale previous = Locale.getDefault();
+        try {
+            Locale.setDefault(Locale.SIMPLIFIED_CHINESE);
+            assertEquals("一个空间", plugin.localizedDescription());
+            Locale.setDefault(Locale.ENGLISH);
+            assertEquals("A space", plugin.localizedDescription(),
+                    "an entry's English description is what a machine that is not Chinese shows");
+        } finally {
+            Locale.setDefault(previous);
+        }
     }
 
     @Test

@@ -1,38 +1,34 @@
-/*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
 package org.jackhuang.hmcl.ui.dsh;
 
-import org.jackhuang.hmcl.util.i18n.I18n;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies that the pages added here only ask the bundle for strings it has.
+/// Verifies that the pages added here only ask the bundles for strings they have.
 ///
-/// A key the bundle does not hold is not an error anywhere: the interface draws
-/// the key itself, so `dsh.download.plugins` shows up as `dsh.download.plu…` on a
-/// sidebar entry and `addon.sort` on a form label, and neither says anything is
-/// wrong. Both of those happened while this page was written, and a screenshot
-/// caught them; this catches them without one.
+/// A key a bundle does not hold is not an error anywhere: the interface draws the key
+/// itself, so `dsh.download.plugins` shows up as `dsh.download.plu…` on a sidebar entry
+/// and `addon.sort` on a form label, and neither says anything is wrong. Both of those
+/// happened while these pages were written, and a screenshot caught them.
+///
+/// The two bundles this launcher maintains are both checked rather than whichever one
+/// the machine's language happens to select: the same list read through one language
+/// passes on a machine set to it and fails in a build that is not, which is exactly how
+/// this test first failed — in CI, on the English bundle, for a string that had only
+/// ever been added to the Chinese one.
 class PageStringsTest {
-    /// Every key the plugin page asks the bundle for.
+    /// The bundles this launcher keeps complete.
+    private static final List<String> BUNDLES = List.of("I18N.properties", "I18N_zh_Hans.properties");
+
+    /// Every key the pages added here ask a bundle for.
     private static final List<String> KEYS = List.of(
             "search.hint.chinese",
             "mods.name",
@@ -55,9 +51,9 @@ class PageStringsTest {
             "dsh.versions.load_failed",
             "dsh.market.no_instance",
             "dsh.market.not_installable",
-            // The instance list's own new entries and the pack that the two of
-            // them read and write: the original's own labels, so that a pack is
-            // called what the original calls one.
+            // The instance list's own new entries and the pack that the two of them
+            // read and write: the original's own labels, so that a pack is called what
+            // the original calls one.
             "install.modpack",
             "modpack.export",
             "dsh.modpack.filter",
@@ -69,6 +65,9 @@ class PageStringsTest {
             "dsh.session.pack.export.empty",
             "dsh.session.pack.import",
             "dsh.session.pack.filter",
+            // The plugin list's own entries.
+            "dsh.instance.plugins.add",
+            "dsh.instance.plugins.add.filter",
             // The batch toolbar on the plugin list.
             "button.remove",
             "button.remove.confirm",
@@ -76,9 +75,27 @@ class PageStringsTest {
             "button.cancel");
 
     @Test
-    void everyLabelThesePagesUseIsInTheBundle() {
-        for (String key : KEYS) {
-            assertTrue(I18n.hasKey(key), "the bundle has no string for " + key);
+    void everyLabelThesePagesUseIsInEveryBundle() throws IOException {
+        for (String bundle : BUNDLES) {
+            Properties strings = load(bundle);
+            for (String key : KEYS) {
+                assertTrue(strings.containsKey(key), bundle + " has no string for " + key);
+            }
         }
+    }
+
+    /// Reads one bundle from the resources.
+    ///
+    /// @param name the bundle's file name
+    /// @return its strings
+    private static Properties load(String name) throws IOException {
+        Properties strings = new Properties();
+        try (InputStream input = PageStringsTest.class.getResourceAsStream("/assets/lang/" + name)) {
+            if (input == null) {
+                throw new IOException("no bundle named " + name);
+            }
+            strings.load(new InputStreamReader(input, StandardCharsets.UTF_8));
+        }
+        return strings;
     }
 }
