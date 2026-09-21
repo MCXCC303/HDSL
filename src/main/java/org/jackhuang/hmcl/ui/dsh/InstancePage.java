@@ -149,7 +149,13 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         sessionsTab.setNodeSupplier(() -> new SessionListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
-        tab = new TabHeader(transitionPane, settingsTab, pluginsTab, sessionsTab, detailsTab);
+        // Every tab the sidebar offers has to be in this list. A tab that is not
+        // is one the selection model cannot find: selecting it falls back to
+        // setting the selected *item* alone, which leaves the selected index and
+        // the tabs' own selected flags behind — and the next request for the tab
+        // whose index that was is then refused as a selection of what is already
+        // selected, while the page it asked for is shown anyway.
+        tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, sessionsTab, detailsTab);
         TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
             case "installers" -> installersTab;
             case "plugins" -> pluginsTab;
