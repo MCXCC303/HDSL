@@ -74,8 +74,17 @@ public final class DshSessions {
     private DshSessions() {
     }
 
-    /// Matches `session.v<number>.<anything>`, capturing the format version.
-    private static final Pattern LOG_FILE = Pattern.compile("^session\\.v(\\d+)\\..+$");
+    /// Matches the harness's own log names, capturing the generation.
+    ///
+    /// The names the harness reads are `session.jsonl`, `session.jsonl.zstd`,
+    /// `session.v<N>.jsonl` and `session.v<N>.jsonl.zstd`, and nothing else: a
+    /// file that merely starts with one of them belongs to something that is not
+    /// the session. `dsh-cost-meter`, for instance, leaves
+    /// `session.v3.jsonl.zstd.cost-meter-backup-<stamp>-<uuid>` copies in the
+    /// directory, and a pattern that accepted any suffix would report one of
+    /// those as the session — or, in a directory holding two generations, report
+    /// the older one, which is what the migration refusal is decided on.
+    private static final Pattern LOG_FILE = Pattern.compile("^session(?:\\.v([1-9][0-9]*))?\\.jsonl(?:\\.zstd)?$");
 
     /// Returns the sessions stored in a home, newest first.
     ///
@@ -124,9 +133,10 @@ public final class DshSessions {
             return null;
         }
 
+        // An unversioned name is the first generation the harness wrote.
         int formatVersion;
         try {
-            formatVersion = Integer.parseInt(matcher.group(1));
+            formatVersion = matcher.group(1) == null ? 0 : Integer.parseInt(matcher.group(1));
         } catch (NumberFormatException e) {
             return null;
         }
@@ -184,16 +194,39 @@ public final class DshSessions {
 
     /// Finds the session log inside a session directory.
     ///
+    /// A continued session can leave more than one generation behind, because a
+    /// write publishes the current one beside the one it read; the harness reads
+    /// the highest, so this does too. Between two spellings of one generation the
+    /// compressed one is taken, which is the one a home is normally configured
+    /// for.
+    ///
     /// @param sessionDirectory the session directory
     /// @return the log file, or `null` when there is none
     private static @Nullable Path findLog(Path sessionDirectory) {
         try (Stream<Path> files = Files.list(sessionDirectory)) {
             return files.filter(Files::isRegularFile)
                     .filter(path -> LOG_FILE.matcher(path.getFileName().toString()).matches())
-                    .findFirst()
+                    .max(Comparator.comparingInt(DshSessions::generationOf)
+                            .thenComparing(path -> path.getFileName().toString().endsWith(".zstd")))
                     .orElse(null);
         } catch (IOException e) {
             return null;
+        }
+    }
+
+    /// Returns the generation a log file's name carries.
+    ///
+    /// @param log the log file
+    /// @return the generation, zero for an unversioned name
+    private static int generationOf(Path log) {
+        Matcher matcher = LOG_FILE.matcher(log.getFileName().toString());
+        if (!matcher.matches() || matcher.group(1) == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(matcher.group(1));
+        } catch (NumberFormatException e) {
+            return 0;
         }
     }
 

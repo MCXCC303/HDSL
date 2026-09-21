@@ -140,6 +140,38 @@ class DshSessionsWorkspaceTest {
     }
 
     @Test
+    void aPluginBackupIsNotMistakenForTheSession() throws Exception {
+        DshInstance instance = makeInstance();
+        Path slug = instance.homeDirectory().resolve("sessions").resolve("--tmp-project--");
+        Path session = slug.resolve("11111111-2222-3333-4444-555555555555");
+        Files.createDirectories(session);
+
+        // The names a session directory can hold: the log itself, a copy a plugin
+        // left behind, and a stale uncompressed spelling of an older generation.
+        Files.writeString(session.resolve("session.v3.jsonl.zstd"), "log");
+        Files.writeString(session.resolve("session.v3.jsonl.zstd.cost-meter-backup-1789322395742-1fd8c443"), "backup");
+        Files.writeString(session.resolve("session.v2.jsonl"), "older");
+
+        List<DshSession> sessions = DshSessions.list(instance.homeDirectory());
+
+        assertEquals(1, sessions.size(), "one directory holds one session");
+        assertEquals(3, sessions.get(0).formatVersion(),
+                "the highest generation is the one the harness reads, not the backup and not the older one");
+    }
+
+    @Test
+    void aDirectoryHoldingOnlyAPluginBackupIsNotASession() throws Exception {
+        DshInstance instance = makeInstance();
+        Path session = instance.homeDirectory().resolve("sessions")
+                .resolve("--tmp-project--").resolve("11111111-2222-3333-4444-555555555555");
+        Files.createDirectories(session);
+        Files.writeString(session.resolve("session.v3.jsonl.zstd.cost-meter-backup-1789322395742-1fd8c443"), "backup");
+
+        assertTrue(DshSessions.list(instance.homeDirectory()).isEmpty(),
+                "a directory with nothing but a plugin's copy has no log to list");
+    }
+
+    @Test
     void aRegistryThatIsAlreadyUninitializedIsLeftAlone() throws Exception {
         DshInstance instance = makeInstance();
         Path registry = instance.homeDirectory().resolve("storages").resolve("workspace.json");
