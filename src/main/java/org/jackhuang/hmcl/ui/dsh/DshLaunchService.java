@@ -280,6 +280,10 @@ public final class DshLaunchService {
             }
             Optional<java.net.URI> url = process.webUrl();
             if (url.isPresent()) {
+                // Said out loud as well as opened: the browser may be another
+                // window, another workspace, or turned off in the settings, and
+                // the launcher is the only thing that knows the instance is up.
+                Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
                 if (settings().openBrowserOnLaunchProperty().get()) {
                     FXUtils.openLink(url.get().toString());
                 }

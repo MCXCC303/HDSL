@@ -30,6 +30,8 @@ import org.jackhuang.hmcl.dsh.DshPresetCatalog;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Task;
+import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardProvider;
@@ -239,6 +241,11 @@ public final class DshInstallWizardProvider implements WizardProvider {
                     DshPluginInstaller.installSpecs(instance, specs, report);
                 }
                 updateProgress(1.0);
+
+                // The instance is in the list by now and selected, but the user
+                // is still looking at the dialog that made it: naming what was
+                // created is what connects the two.
+                FXUtils.runInFX(() -> Controllers.showToast(i18n("dsh.instance.created", instance.id())));
             } catch (RuntimeException | DshException stopped) {
                 // Whether this was a cancellation is asked of the thread rather
                 // than of the exception: the commands wrap an interrupt in a

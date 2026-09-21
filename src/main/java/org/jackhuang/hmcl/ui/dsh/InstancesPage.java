@@ -28,6 +28,10 @@ import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import com.jfoenix.controls.JFXListView;
+import javafx.beans.binding.Bindings;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
+import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
@@ -80,6 +84,12 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private final ReadOnlyObjectWrapper<State> state =
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.instance.list")));
 
+    /// Whether the search field is the reason the list is showing what it shows.
+    ///
+    /// Declared before the list and the toolbar, because both are built from it
+    /// while the page is being constructed.
+    private final BooleanProperty searching = new SimpleBooleanProperty(false);
+
     /// The card listing the instances.
     private final JFXListView<DshInstance> instanceList = buildInstanceList();
 
@@ -87,7 +97,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private final VBox directoryBox = new VBox();
 
     /// The page's toolbar, which swaps itself for a search field.
-    private final ListSearchBar toolbar = new ListSearchBar(this::filterInstances);
+    private final ListSearchBar toolbar = new ListSearchBar(this::filterInstances, searching::set);
 
     /// The instances the selected folder last published.
     private List<DshInstance> instances = List.of();
@@ -323,6 +333,18 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // from its content and its padding.
         list.getStyleClass().add("no-padding");
         FXUtils.setLimitHeight(list, Region.USE_COMPUTED_SIZE);
+
+        // What the list says when it holds nothing, which is what the original's
+        // game list says in the same case: the reason there is nothing to show,
+        // and nothing about search results unless a search is what emptied it.
+        StackPane placeholder = new StackPane();
+        placeholder.getStyleClass().add("notice-pane");
+        Label placeholderLabel = new Label();
+        placeholderLabel.textProperty().bind(Bindings.when(searching)
+                .then(i18n("search.no_results_found"))
+                .otherwise(i18n("dsh.instance.empty") + "\n" + i18n("dsh.instance.empty.hint")));
+        placeholder.getChildren().add(placeholderLabel);
+        list.setPlaceholder(placeholder);
         return list;
     }
 

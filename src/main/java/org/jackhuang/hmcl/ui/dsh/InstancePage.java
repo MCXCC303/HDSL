@@ -197,10 +197,24 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         refreshLaunchItem();
     }
 
+    /// Names the action this page offers on the instance.
+    ///
+    /// A stopped instance is started from here as a test, which is what the
+    /// original's own instance page calls it; a running one is stopped, and that
+    /// is the only thing the entry may be called then.
+    ///
+    /// @param state the instance's state
+    /// @return the label
+    private static String actionLabel(LaunchState state) {
+        return state == LaunchState.STOPPED
+                ? i18n("dsh.instance.test_launch")
+                : DshLaunchService.actionLabel(state);
+    }
+
     /// Draws the sidebar entry from the instance's state.
     private void refreshLaunchItem() {
         LaunchState state = DshLaunchService.state(instance.id());
-        launchItem.setTitle(DshLaunchService.actionLabel(state));
+        launchItem.setTitle(actionLabel(state));
         launchItem.setLeftIcon(state == LaunchState.STOPPED ? SVG.ROCKET_LAUNCH : SVG.CANCEL);
         FXUtils.installFastTooltip(launchItem, DshLaunchService.actionHint(state));
     }
@@ -326,7 +340,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         LaunchState state = DshLaunchService.state(instance.id());
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 state == LaunchState.STOPPED ? SVG.ROCKET_LAUNCH : SVG.CANCEL,
-                DshLaunchService.actionLabel(state), this::testLaunch, popup));
+                actionLabel(state), this::testLaunch, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.MenuSeparator());

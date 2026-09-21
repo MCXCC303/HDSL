@@ -322,8 +322,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     public void refresh() {
         DshInstance current = currentInstance.get();
 
+        // With nothing chosen the entry stops naming an instance and says what
+        // there is instead, which is what the original's own home entry does:
+        // the title names the state and the subtitle names the way out of it.
+        currentInstanceItem.setTitle(current == null
+                ? i18n("dsh.instance.empty")
+                : i18n("dsh.instance.manage"));
         currentInstanceItem.setSubtitle(current == null
-                ? i18n("dsh.launch.no_instance.hint")
+                ? i18n("dsh.instance.install")
                 : current.id());
         currentInstanceIcon.setImage(current == null
                 ? DshInstanceIcon.DEFAULT.load()

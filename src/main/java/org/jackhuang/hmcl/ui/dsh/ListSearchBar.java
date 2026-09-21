@@ -13,6 +13,7 @@ import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 
@@ -44,11 +45,27 @@ public final class ListSearchBar extends StackPane {
     /// search is closed with the filter cleared.
     private final Runnable onFilterChanged;
 
-    /// Creates the bar.
+    /// Called when the search field opens or closes.
+    ///
+    /// A page that says "nothing here" has to know which of the two it means: an
+    /// empty folder and a search that matched nothing read very differently.
+    private final java.util.function.@Nullable Consumer<Boolean> onSearchStateChanged;
+
+    /// Creates a bar whose search state nobody watches.
     ///
     /// @param onFilterChanged run whenever the filter changes
     public ListSearchBar(Runnable onFilterChanged) {
+        this(onFilterChanged, null);
+    }
+
+    /// Creates the bar.
+    ///
+    /// @param onFilterChanged      run whenever the filter changes
+    /// @param onSearchStateChanged run when the search field opens or closes, or `null`
+    public ListSearchBar(Runnable onFilterChanged,
+                         java.util.function.@Nullable Consumer<Boolean> onSearchStateChanged) {
         this.onFilterChanged = onFilterChanged;
+        this.onSearchStateChanged = onSearchStateChanged;
 
         setAlignment(Pos.CENTER_LEFT);
 
@@ -108,15 +125,26 @@ public final class ListSearchBar extends StackPane {
         return name.toLowerCase(Locale.ROOT).contains(filter.trim().toLowerCase(Locale.ROOT));
     }
 
+    /// Reports that the search field opened or closed.
+    ///
+    /// @param open whether the search field is now the one being shown
+    private void reportSearchState(boolean open) {
+        if (onSearchStateChanged != null) {
+            onSearchStateChanged.accept(open);
+        }
+    }
+
     /// Replaces the buttons with the search field.
     private void showSearch() {
         getChildren().setAll(searchBar);
         searchField.requestFocus();
+        reportSearchState(true);
     }
 
     /// Restores the buttons and clears the filter.
     private void hideSearch() {
         searchField.clear();
         getChildren().setAll(normalBar);
+        reportSearchState(false);
     }
 }
