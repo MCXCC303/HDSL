@@ -99,6 +99,20 @@ public final class GameDirectoryManager {
     /// @return the directory entry, existing or new
     /// @throws IllegalArgumentException when the path is not a directory
     public static GameDirectory add(Path path) {
+        return add(path, null);
+    }
+
+    /// Adds a folder, under a name of its own if one is given.
+    ///
+    /// The path is recorded as given: a folder chosen relative to the launcher
+    /// stays relative, and one chosen by its absolute path stays absolute. Both
+    /// are resolved the same way when the folder is read back.
+    ///
+    /// @param path       the folder to add
+    /// @param customName the name to show, or `null` to derive one from the path
+    /// @return the directory entry, existing or new
+    /// @throws IllegalArgumentException when the path is not a directory
+    public static GameDirectory add(Path path, @Nullable String customName) {
         Path normalized = path.toAbsolutePath().normalize();
         if (!Files.isDirectory(normalized)) {
             throw new IllegalArgumentException(normalized + " is not a directory");
@@ -109,7 +123,7 @@ public final class GameDirectoryManager {
             }
         }
 
-        GameDirectory added = GameDirectory.of(normalized);
+        GameDirectory added = GameDirectory.of(path, customName);
         List<GameDirectory> updated = new ArrayList<>(directories());
         updated.add(added);
         settings().gameDirectoriesProperty().set(List.copyOf(updated));

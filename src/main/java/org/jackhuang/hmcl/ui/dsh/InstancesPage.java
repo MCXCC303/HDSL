@@ -246,19 +246,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// Nothing is copied into it: adding a folder makes the launcher look
     /// inside, and the instances it finds are the ones already there.
     private void addDirectory() {
-        DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle(i18n("dsh.directory.add"));
-        Path chosen = Controllers.showDialog(chooser);
-        if (chosen == null) {
-            return;
-        }
-        try {
-            GameDirectory added = GameDirectoryManager.add(chosen);
-            GameDirectoryManager.select(added.id());
-            refresh();
-        } catch (IllegalArgumentException e) {
-            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-        }
+        // The original opens a page rather than a folder chooser: a folder is
+        // only one of the three things a directory is, and a chooser has nowhere
+        // to ask for its name or whether to record it relative to the launcher.
+        Controllers.navigate(new DirectoryPage());
     }
 
     /// Builds the instance list.

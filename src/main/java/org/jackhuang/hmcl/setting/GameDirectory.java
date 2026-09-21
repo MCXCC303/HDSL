@@ -89,7 +89,20 @@ public record GameDirectory(
     /// @param path the folder
     /// @return the entry
     public static GameDirectory of(Path path) {
-        return new GameDirectory(UUID.randomUUID().toString(),
-                path.toAbsolutePath().normalize().toString(), null);
+        return of(path, null);
+    }
+
+    /// Creates an entry for a folder, recorded as given.
+    ///
+    /// The path is kept as the caller wrote it rather than made absolute, so that
+    /// a folder recorded relative to the launcher stays relative — which is the
+    /// point of recording it that way.
+    ///
+    /// @param path       the folder
+    /// @param customName the name to show, or `null` to derive one from the path
+    /// @return the entry
+    public static GameDirectory of(Path path, @Nullable String customName) {
+        return new GameDirectory(UUID.randomUUID().toString(), path.toString(),
+                customName == null || customName.isBlank() ? null : customName);
     }
 }
