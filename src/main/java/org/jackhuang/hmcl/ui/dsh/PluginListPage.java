@@ -25,6 +25,7 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Skin;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -51,7 +52,9 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import javafx.collections.ListChangeListener;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -131,35 +134,79 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
         }));
     }
 
-    /// Removes a plugin after confirmation.
+    /// Removes the given plugins after confirmation.
     ///
-    /// @param name the package name
-    private void remove(String name) {
-        Controllers.confirm(i18n("dsh.instance.plugins.remove.confirm", name),
-                i18n("dsh.instance.plugins.remove"),
-                () -> {
-                    setLoading(true);
-                    CompletableFuture.runAsync(() -> {
-                        try {
-                            DshPluginInstaller.remove(instance, name, null);
-                        } catch (DshException e) {
-                            throw new CompletionException(e);
-                        }
-                    }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-                        setLoading(false);
-                        if (throwable != null) {
-                            Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-                                    ? throwable.getCause() : throwable;
-                            LOG.warning("Failed to remove " + name, cause);
-                            Controllers.dialog(cause.getMessage(),
-                                    i18n("dsh.instance.plugins.remove_failed"), MessageType.ERROR);
-                        } else {
-                            Controllers.showToast(i18n("dsh.instance.plugins.removed", name));
-                        }
-                        refresh();
-                    }));
-                },
-                null);
+    /// Both the row's own button and the toolbar's go through here, so a batch
+    /// and a single removal differ only in how many names are passed: the
+    /// original's confirm dialog, one `dsh plugin remove a b c` run, and the list
+    /// read again afterwards.
+    ///
+    /// @param rows the rows to remove
+    private void removeSelected(Collection<PluginRow> rows) {
+        List<String> names = rows.stream().map(PluginRow::name).toList();
+        if (names.isEmpty()) {
+            return;
+        }
+
+        String message = names.size() == 1
+                ? i18n("dsh.instance.plugins.remove.confirm", names.get(0))
+                : i18n("button.remove.confirm");
+        Controllers.confirm(message, i18n("button.remove"), () ->
+                InstallProgressDialog.run(i18n("dsh.instance.plugins.remove"),
+                        progress -> DshPluginInstaller.removeSpecs(instance, names, progress::accept),
+                        this::refresh), null);
+    }
+
+    /// Holds the list the page is drawn in, and gives the page the toolbar that
+    /// acts on a selection.
+    ///
+    /// The skin owns the list view, and the toolbar has to be built after it
+    /// exists — the base skin builds its toolbars before it creates the list —
+    /// so the skin hands the list over once it has one, rather than the page
+    /// reaching for a list that does not exist yet.
+    ///
+    /// @param listView the page's list
+    private void attachList(JFXListView<PluginRow> listView) {
+        toolbar.setButtons(
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
+                        this::revealProfile));
+
+        // The original's selection toolbar, minus the two entries it has and this
+        // launcher cannot offer: enabling and disabling a plugin means rewriting
+        // the profile's bundle list by hand, which the harness has no command for.
+        JFXButton selectAll = ToolbarListPageSkin.createToolbarButton2(
+                i18n("button.select_all"), SVG.SELECT_ALL,
+                () -> listView.getSelectionModel().selectRange(0, listView.getItems().size()));
+        selectingToolbar.getChildren().setAll(
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.remove"), SVG.DELETE_FOREVER,
+                        () -> removeSelected(listView.getSelectionModel().getSelectedItems())),
+                selectAll,
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.cancel"), SVG.CANCEL,
+                        () -> listView.getSelectionModel().clearSelection()));
+
+        listView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+        FXUtils.onChangeAndOperate(listView.getSelectionModel().selectedItemProperty(),
+                selected -> showSelectingToolbar(selected != null));
+
+        // Selecting everything through the button rather than `selectAll()`, which
+        // clears first and makes the whole list flicker; and disabling the button
+        // once there is nothing left to select, as the original does.
+        ListChangeListener<Object> listener = change -> selectAll.setDisable(!listView.getItems().isEmpty()
+                && listView.getSelectionModel().getSelectedItems().size() == listView.getItems().size());
+        listView.getSelectionModel().getSelectedItems().addListener(listener);
+        listView.getItems().addListener(listener);
+    }
+
+    /// Shows the toolbar that acts on a selection, or the ordinary one.
+    ///
+    /// @param selecting whether anything is selected
+    private void showSelectingToolbar(boolean selecting) {
+        selectingToolbar.setVisible(selecting);
+        selectingToolbar.setManaged(selecting);
+        toolbar.setVisible(!selecting);
+        toolbar.setManaged(!selecting);
     }
 
     /// Opens the profile directory.
@@ -190,6 +237,12 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
     /// The page's toolbar, which swaps itself for a search field.
     private final ListSearchBar toolbar = new ListSearchBar(this::refresh);
 
+    /// The toolbar shown while plugins are selected.
+    private final HBox selectingToolbar = new HBox(8);
+
+    /// The box the two toolbars swap in.
+    private final StackPane toolbarPane = new StackPane(toolbar, selectingToolbar);
+
     /// The page's skin: a toolbar above the plugin list.
     private static final class PluginListPageSkin extends ToolbarListPageSkin<PluginRow, PluginListPage> {
         /// Creates the skin.
@@ -198,15 +251,16 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
         PluginListPageSkin(PluginListPage control) {
             super(control);
             setPlaceholder(i18n("dsh.plugins.empty"));
+            // After the base skin has made the list: the selection toolbar acts on
+            // it, and it does not exist while the toolbars are being built.
+            control.attachList(listView);
         }
 
         @Override
         protected List<Node> initializeToolbar(PluginListPage page) {
-            page.toolbar.setButtons(
-                    createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh),
-                    createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
-                            page::revealProfile));
-            return List.of(page.toolbar);
+            page.showSelectingToolbar(false);
+            page.selectingToolbar.setAlignment(Pos.CENTER_LEFT);
+            return List.of(page.toolbarPane);
         }
 
         @Override
@@ -282,7 +336,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
             content.addTag(row.version());
 
             info.setOnAction(event -> FXUtils.openLink("https://www.npmjs.com/package/" + row.name()));
-            remove.setOnAction(event -> page.remove(row.name()));
+            remove.setOnAction(event -> page.removeSelected(List.of(row)));
         }
     }
 }

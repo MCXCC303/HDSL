@@ -103,11 +103,40 @@ public final class DshPluginInstaller {
     /// @throws DshException when the removal fails
     public static void remove(DshInstance instance, String spec, @Nullable Consumer<String> onLine)
             throws DshException {
+        removeSpecs(instance, List.of(spec), onLine);
+    }
+
+    /// Removes several packages from an instance's profile in one run.
+    ///
+    /// One command rather than one per package, which is what the interface's
+    /// multiple selection asks for: `dsh plugin` forwards its arguments to pnpm
+    /// verbatim, so `remove a b c` is a single pnpm run and a single pass of
+    /// bundle reconciliation. Installing deliberately does not work this way —
+    /// see [DshPluginInstaller#installSpecs] — but removal has no order to lose:
+    /// the packages are leaving, and pnpm removes them together or reports which
+    /// one stopped it.
+    ///
+    /// @param instance the instance whose profile is modified
+    /// @param specs    the package specs to remove
+    /// @param onLine   receives every output line, or `null`
+    /// @throws DshException when the removal fails
+    public static void removeSpecs(DshInstance instance, List<String> specs,
+                                   @Nullable Consumer<String> onLine) throws DshException {
+        if (specs.isEmpty()) {
+            return;
+        }
+
         DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
         if (!runtime.canManagePlugins()) {
             throw new DshException("pnpm was not found on PATH; removing plugins requires it");
         }
-        runPluginCommand(instance, runtime, instance.homeDirectory(), List.of("remove", spec), onLine);
+
+        report(onLine, "Removing " + String.join(", ", specs) + " ...");
+        List<String> command = new ArrayList<>();
+        command.add("remove");
+        command.addAll(specs);
+        runPluginCommand(instance, runtime, instance.homeDirectory(), command, onLine);
+        report(onLine, "Removed " + specs.size() + " package(s)");
     }
 
     /// Reads the packages a profile declares as dependencies.

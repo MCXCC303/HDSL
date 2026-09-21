@@ -76,6 +76,9 @@ public final class DshCli {
         UNINSTALL_NODE(false),
         /// Installs a plugin into an instance's profile.
         INSTALL_PLUGIN(false),
+
+        /// Removes one or more plugins from an instance's profile.
+        REMOVE_PLUGIN(false),
         /// Sends one prompt over the Agent Client Protocol and prints the reply.
         ACP_PROMPT(false),
         /// Prints the sessions of an instance.
@@ -152,6 +155,7 @@ public final class DshCli {
                 && !args.contains("--install-node")
                 && !args.contains("--uninstall-node")
                 && !args.contains("--install-plugin")
+                && !args.contains("--remove-plugin")
                 && !args.contains("--acp-prompt")
                 && !args.contains("--list-sessions")
                 && !args.contains("--migrate-session")
@@ -243,6 +247,14 @@ public final class DshCli {
                     command = Command.INSTALL_PLUGIN;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--remove-plugin" -> {
+                    command = Command.REMOVE_PLUGIN;
+                    // The instance, then every specification up to the next option.
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    while (i + 1 < args.size() && !args.get(i + 1).startsWith("--")) {
+                        positional.add(args.get(++i));
+                    }
                 }
                 case "--stop" -> {
                     command = Command.STOP;
@@ -432,6 +444,25 @@ public final class DshCli {
                             List.of(new DshPreset(spec, spec, spec, "", false, true)),
                             out::println);
                     out.println("Installed " + spec);
+                    for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
+                        out.println("  bundle: " + bundle);
+                    }
+                    return 0;
+                }
+                case REMOVE_PLUGIN -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --remove-plugin needs an instance and at least one package spec");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    List<String> specs = List.copyOf(invocation.arguments().subList(1, invocation.arguments().size()));
+                    out.println("Removing " + String.join(", ", specs) + " from " + instance.id() + " ...");
+                    DshPluginInstaller.removeSpecs(instance, specs, out::println);
+                    out.println("Removed " + specs.size() + " package(s)");
                     for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
                         out.println("  bundle: " + bundle);
                     }
@@ -854,6 +885,7 @@ public final class DshCli {
 
                 plugins:
                   --install-plugin <id> <spec>     install a plugin into an instance profile
+                  --remove-plugin <id> <spec>...   remove one or more plugins from an instance profile
 
                 node runtimes:
                   --list-runtimes                  list installed Node runtimes
