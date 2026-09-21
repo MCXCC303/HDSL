@@ -85,13 +85,17 @@ public final class InstallerCard extends StackPane {
         this(icon == null ? null : new SVGContainer(icon, 32), name, status, onOpen);
     }
 
-    /// Creates a card.
+    /// Creates a card whose icon is a node.
+    ///
+    /// For a picture that has to change: the boot library's mark is white or
+    /// black depending on what the card's surface is, and the surface follows the
+    /// theme, so the card is given the node rather than the picture it holds.
     ///
     /// @param icon   the icon node, already sized, or `null` for none
     /// @param name   the card's name
     /// @param status the line beneath it
     /// @param onOpen run when the card is opened, or `null` when it only states
-    private InstallerCard(@Nullable Node icon, String name, String status, @Nullable Runnable onOpen) {
+    public InstallerCard(@Nullable Node icon, String name, String status, @Nullable Runnable onOpen) {
         VBox pane = new VBox();
         pane.getStyleClass().add("installer-item");
         pane.pseudoClassStateChanged(CARD, true);

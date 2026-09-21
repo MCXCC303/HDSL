@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh.install;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXTextField;
+import javafx.beans.binding.Bindings;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.beans.property.SimpleStringProperty;
@@ -27,6 +28,8 @@ import org.jetbrains.annotations.Nullable;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
@@ -34,6 +37,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
+import org.jackhuang.hmcl.theme.Themes;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
@@ -203,11 +207,27 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
     /// @return the card
     private Node buildAppBootCard() {
         appBootStatus.set(i18n("dsh.install.app_boot.matched", currentAppBoot()));
-        InstallerCard card = new InstallerCard(DshInstanceIcon.DSH_WHITE.load(), i18n("dsh.install.app_boot"),
+
+        // The mark is white or black and the card's surface follows the theme, so
+        // the picture follows it too: the white one on a light card is a mark
+        // nobody can see, which is what the light theme showed. Bound rather than
+        // chosen once, because the theme can be changed while the page is open.
+        ImageView mark = new ImageView();
+        mark.imageProperty().bind(Bindings.createObjectBinding(
+                QuickInstallPage::appBootMark, Themes.darkModeProperty()));
+
+        InstallerCard card = new InstallerCard(mark, i18n("dsh.install.app_boot"),
                 appBootStatus.get(), () -> chooseAppBoot());
         card.statusProperty().bind(appBootStatus);
         FXUtils.installFastTooltip(card, i18n("dsh.install.app_boot.hint"));
         return card;
+    }
+
+    /// Returns the boot library's mark for the current theme.
+    ///
+    /// @return the mark, white on a dark surface and black on a light one
+    private static Image appBootMark() {
+        return (Themes.darkModeProperty().get() ? DshInstanceIcon.DSH_WHITE : DshInstanceIcon.DSH_BLACK).load();
     }
 
     /// Returns the boot library version that pairs with the chosen launcher.
