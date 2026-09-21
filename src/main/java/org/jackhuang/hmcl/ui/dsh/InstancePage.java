@@ -357,6 +357,29 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 com.jfoenix.controls.JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
     }
 
+    /// Writes this instance's configuration into a pack the user chooses.
+    ///
+    /// What goes into it is what reproduces the instance: the harness version, the
+    /// boot library it is paired with, the profile's plugins at their versions and
+    /// in their load order, and the profile's patch layer. What is installed does
+    /// not, because an installed tree belongs to one machine's platform and one
+    /// machine's package-manager store.
+    private void exportModpack() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("modpack.export"));
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.modpack.filter"), "*.zip"));
+        chooser.setInitialFileName("hdsl-" + instance.id() + "-" + instance.version() + ".zip");
+        java.io.File chosen = chooser.showSaveDialog(Controllers.getStage());
+        if (chosen == null) {
+            return;
+        }
+
+        java.nio.file.Path target = chosen.toPath();
+        ProgressDialog.run(i18n("modpack.export"),
+                progress -> org.jackhuang.hmcl.dsh.DshModpacks.export(instance, target, progress::accept), null);
+    }
+
     /// Shows the operations available on this instance.
     ///
     /// @param anchor the sidebar item the popup is anchored to
@@ -372,6 +395,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.MenuSeparator());
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.PACKAGE2, i18n("modpack.export"), this::exportModpack, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.EDIT, i18n("instance.manage.rename"), this::renameInstance, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(

@@ -138,11 +138,15 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
         AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.instance.install"), SVG.ADD, this::createInstance)
+                // The original puts both of these at the foot of its game list, and
+                // this is the same pair: build an instance, or build one from a pack
+                // somebody made.
+                .addNavigationDrawerItem(i18n("install.modpack"), SVG.PACKAGE2, this::installModpack)
                 .addNavigationDrawerItem(i18n("dsh.settings.global"), SVG.SETTINGS_FILL,
                         () -> Controllers.navigate(new SettingsPage()));
 
         FXUtils.setLimitWidth(directoryPane, 200);
-        FXUtils.setLimitHeight(actions, 40 * 2 + 12 * 2);
+        FXUtils.setLimitHeight(actions, 40 * 3 + 12 * 2);
 
         // The page itself already paints the translucent plate, so the sidebar
         // must not paint it again: two layers of a half-transparent colour is
@@ -443,6 +447,43 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// wizard, which has nothing left to ask about the version.
     private void createInstance() {
         Controllers.navigate(Controllers.getDownloadPage());
+    }
+
+    /// Builds an instance from a pack the user chooses.
+    ///
+    /// The pack carries the harness version it pins, the boot library it was paired
+    /// with and the profile's plugins; nothing installed travels with it, so the
+    /// instance is built by installing the version and resolving the plugin list.
+    /// An instance with the pack's own id has to be dealt with first: writing over
+    /// one would be replacing somebody's instance with somebody else's.
+    private void installModpack() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("install.modpack"));
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.modpack.filter"), "*.zip"));
+        java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
+        if (chosen == null) {
+            return;
+        }
+
+        java.nio.file.Path pack = chosen.toPath();
+        org.jackhuang.hmcl.dsh.DshModpacks.Manifest manifest;
+        try {
+            manifest = org.jackhuang.hmcl.dsh.DshModpacks.readManifest(pack);
+        } catch (org.jackhuang.hmcl.dsh.DshException e) {
+            Controllers.dialog(e.getMessage(), i18n("install.modpack"), MessageType.ERROR);
+            return;
+        }
+
+        String id = manifest.instanceId();
+        if (org.jackhuang.hmcl.dsh.DshInstanceManager.find(id) != null) {
+            Controllers.dialog(i18n("dsh.modpack.exists", id), i18n("install.modpack"), MessageType.ERROR);
+            return;
+        }
+
+        ProgressDialog.run(i18n("install.modpack"), progress -> org.jackhuang.hmcl.dsh.DshModpacks.install(
+                pack, id, java.nio.file.Path.of(System.getProperty("user.home")), progress::accept),
+                this::refresh);
     }
 
     /// Removes an instance after confirmation.

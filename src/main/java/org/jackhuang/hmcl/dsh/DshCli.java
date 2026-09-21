@@ -85,6 +85,15 @@ public final class DshCli {
 
         /// Reads a pack of sessions into an instance.
         IMPORT_PACK(false),
+
+        /// Writes an instance's configuration into a pack.
+        EXPORT_MODPACK(false),
+
+        /// Builds an instance from a pack.
+        INSTALL_MODPACK(false),
+
+        /// Puts a pack's profile into an instance that exists.
+        RESTORE_PROFILE(false),
         /// Sends one prompt over the Agent Client Protocol and prints the reply.
         ACP_PROMPT(false),
         /// Prints the sessions of an instance.
@@ -163,6 +172,9 @@ public final class DshCli {
                 && !args.contains("--install-plugin")
                 && !args.contains("--remove-plugin")
                 && !args.contains("--export-sessions")
+                && !args.contains("--export-modpack")
+                && !args.contains("--install-modpack")
+                && !args.contains("--restore-profile")
                 && !args.contains("--import-pack")
                 && !args.contains("--acp-prompt")
                 && !args.contains("--list-sessions")
@@ -253,6 +265,21 @@ public final class DshCli {
                 }
                 case "--install-plugin" -> {
                     command = Command.INSTALL_PLUGIN;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--export-modpack" -> {
+                    command = Command.EXPORT_MODPACK;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--install-modpack" -> {
+                    command = Command.INSTALL_MODPACK;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--restore-profile" -> {
+                    command = Command.RESTORE_PROFILE;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
@@ -462,6 +489,57 @@ public final class DshCli {
                             List.of(new DshPreset(spec, spec, spec, "", false, true)),
                             out::println);
                     out.println("Installed " + spec);
+                    for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
+                        out.println("  bundle: " + bundle);
+                    }
+                    return 0;
+                }
+                case EXPORT_MODPACK -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --export-modpack needs an instance and a file to write");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    java.nio.file.Path target = java.nio.file.Path.of(invocation.arguments().get(1));
+                    DshModpacks.ExportResult exported = DshModpacks.export(instance, target, out::println);
+                    out.println("Wrote " + exported.plugins() + " plugin(s), " + exported.bytes() + " byte(s)");
+                    return 0;
+                }
+                case INSTALL_MODPACK -> {
+                    if (invocation.arguments().isEmpty()) {
+                        err.println("error: --install-modpack needs a pack to read and an instance id");
+                        return 1;
+                    }
+                    java.nio.file.Path pack = java.nio.file.Path.of(invocation.arguments().get(0));
+                    String id = invocation.arguments().size() > 1
+                            ? invocation.arguments().get(1)
+                            : DshModpacks.readManifest(pack).instanceId();
+                    DshModpacks.InstallResult result = DshModpacks.install(pack, id,
+                            java.nio.file.Path.of(System.getProperty("user.home")), out::println);
+                    out.println("Instance " + result.instance().id() + " is ready: "
+                            + (result.installed() ? "harness installed, " : "harness already present, ")
+                            + result.plugins() + " plugin(s), " + result.bundles() + " bundle(s)");
+                    return 0;
+                }
+                case RESTORE_PROFILE -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --restore-profile needs an instance and a pack");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    java.nio.file.Path pack = java.nio.file.Path.of(invocation.arguments().get(1));
+                    DshModpacks.Manifest manifest = DshModpacks.readManifest(pack);
+                    int plugins = DshModpacks.restoreProfile(instance, manifest, pack, out::println);
+                    out.println("Restored " + plugins + " plugin(s) and " + manifest.bundles().size()
+                            + " bundle(s) into " + instance.id());
                     for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
                         out.println("  bundle: " + bundle);
                     }
@@ -945,6 +1023,9 @@ public final class DshCli {
                   --remove-plugin <id> <spec>...   remove one or more plugins from an instance profile
                   --export-sessions <id> <file>    write the instance's sessions into a pack
                   --import-pack <id> <file>        read a pack of sessions into an instance
+                  --export-modpack <id> <file>     write an instance's configuration into a pack
+                  --install-modpack <file> [<id>]  build an instance from a pack
+                  --restore-profile <id> <file>    put a pack's profile into an existing instance
 
                 node runtimes:
                   --list-runtimes                  list installed Node runtimes

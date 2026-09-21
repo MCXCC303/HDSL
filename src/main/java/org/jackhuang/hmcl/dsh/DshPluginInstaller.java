@@ -95,6 +95,26 @@ public final class DshPluginInstaller {
         }
     }
 
+    /// Resolves a profile from the manifest it holds.
+    ///
+    /// `install` forwarded to pnpm inside the profile directory, which is what both
+    /// creates a profile that does not exist yet — the harness writes its manifest,
+    /// patch template and package-manager settings first — and installs whatever
+    /// that manifest then lists. Restoring a pack's plugin list means writing the
+    /// list and running this once: reconciliation keeps the entries a manifest
+    /// already has and only appends what is missing, so the order survives.
+    ///
+    /// @param instance the instance whose profile is resolved
+    /// @param onLine   receives every output line, or `null`
+    /// @throws DshException when pnpm is missing or the resolve fails
+    public static void resolve(DshInstance instance, @Nullable Consumer<String> onLine) throws DshException {
+        DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
+        if (!runtime.canManagePlugins()) {
+            throw new DshException("pnpm was not found on PATH; installing plugins requires it");
+        }
+        runPluginCommand(instance, runtime, instance.homeDirectory(), List.of("install"), onLine);
+    }
+
     /// Removes a package from an instance's profile.
     ///
     /// @param instance the instance whose profile is modified

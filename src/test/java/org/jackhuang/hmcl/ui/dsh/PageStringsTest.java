@@ -24,14 +24,14 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies that the plugin page's labels are strings the interface has.
+/// Verifies that the pages added here only ask the bundle for strings it has.
 ///
 /// A key the bundle does not hold is not an error anywhere: the interface draws
 /// the key itself, so `dsh.download.plugins` shows up as `dsh.download.plu…` on a
 /// sidebar entry and `addon.sort` on a form label, and neither says anything is
 /// wrong. Both of those happened while this page was written, and a screenshot
 /// caught them; this catches them without one.
-class PluginMarketPageStringsTest {
+class PageStringsTest {
     /// Every key the plugin page asks the bundle for.
     private static final List<String> KEYS = List.of(
             "search.hint.chinese",
@@ -54,10 +54,29 @@ class PluginMarketPageStringsTest {
             "download.release_page",
             "dsh.versions.load_failed",
             "dsh.market.no_instance",
-            "dsh.market.not_installable");
+            "dsh.market.not_installable",
+            // The instance list's own new entries and the pack that the two of
+            // them read and write: the original's own labels, so that a pack is
+            // called what the original calls one.
+            "install.modpack",
+            "modpack.export",
+            "dsh.modpack.filter",
+            "dsh.modpack.exists",
+            // The session pack's entries.
+            "dsh.session.pack.export",
+            "dsh.session.pack.export.all",
+            "dsh.session.pack.export.project",
+            "dsh.session.pack.export.empty",
+            "dsh.session.pack.import",
+            "dsh.session.pack.filter",
+            // The batch toolbar on the plugin list.
+            "button.remove",
+            "button.remove.confirm",
+            "button.select_all",
+            "button.cancel");
 
     @Test
-    void everyLabelThePluginPageUsesIsInTheBundle() {
+    void everyLabelThesePagesUseIsInTheBundle() {
         for (String key : KEYS) {
             assertTrue(I18n.hasKey(key), "the bundle has no string for " + key);
         }
