@@ -101,8 +101,8 @@ public final class InstanceListCell extends ListCell<DshInstance> {
     private BiConsumer<DshInstance, JFXButton> onMenu = (instance, anchor) -> {
     };
 
-    /// Supplies the id the radio buttons treat as selected.
-    private Supplier<@Nullable String> selectedId = () -> null;
+    /// Supplies the instance the radio buttons treat as selected.
+    private Supplier<@Nullable DshInstance> selectedInstance = () -> null;
 
     /// Reports whether an instance is running, which swaps the launch icon.
     private Predicate<DshInstance> runningCheck = instance -> false;
@@ -183,11 +183,12 @@ public final class InstanceListCell extends ListCell<DshInstance> {
     /// Sets how the cell learns which instance is selected.
     ///
     /// A supplier is used rather than a value because the virtual flow recycles
-    /// cells: the selected instance can change while a cell is in place.
+    /// cells: the selected instance can change while a cell is in place, and the
+    /// answer belongs to the folder rather than to the cell.
     ///
-    /// @param supplier supplies the selected instance's id, or `null`
-    public void setSelectedIdSupplier(Supplier<@Nullable String> supplier) {
-        this.selectedId = supplier;
+    /// @param supplier supplies the selected instance, or `null`
+    public void setSelectedInstanceSupplier(Supplier<@Nullable DshInstance> supplier) {
+        this.selectedInstance = supplier;
     }
 
     /// Sets how the cell learns whether an instance is running.
@@ -208,7 +209,8 @@ public final class InstanceListCell extends ListCell<DshInstance> {
 
         setGraphic(graphic);
 
-        selector.setSelected(instance.id().equals(selectedId.get()));
+        DshInstance selected = selectedInstance.get();
+        selector.setSelected(selected != null && instance.id().equals(selected.id()));
         icon.setImage(DshInstanceIcons.load(instance));
         content.setTitle(instance.id());
         content.setSubtitle(i18n("dsh.instance.summary",

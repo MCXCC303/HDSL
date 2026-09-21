@@ -21,51 +21,39 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXPopup;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
-import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Label;
 import com.jfoenix.controls.JFXListView;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
-import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
-import org.jackhuang.hmcl.dsh.DshVersion;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
-import org.jackhuang.hmcl.dsh.DshVersionManager;
-import org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider;
+import org.jackhuang.hmcl.setting.DshInstanceRepository;
+import org.jackhuang.hmcl.setting.GameDirectory;
+import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
-import javafx.stage.DirectoryChooser;
-import com.jfoenix.controls.JFXTextField;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import org.jackhuang.hmcl.setting.GameDirectory;
-import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
-import org.jetbrains.annotations.Nullable;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
-import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
-import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /// Lists the DeepSeek Harness instances managed by HMCL-DSH.
@@ -74,6 +62,12 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 /// working directory and `DSH_HOME` it runs against. Creating one is
 /// intentionally cheap: the default is a private, isolated home, which is the
 /// only shape that stays safe while upstream churns through releases.
+///
+/// The page does not go looking for instances: it is handed the selected
+/// folder's [DshInstanceRepository] and redraws whenever that folder publishes a
+/// snapshot, which happens on every write and on every switch of folder. That is
+/// how an instance created by the wizard appears here without anyone refreshing
+/// anything.
 @NotNullByDefault
 public final class InstancesPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
     /// The page state published to the window decorator.
@@ -86,21 +80,14 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// Holds one row per folder the launcher knows about.
     private final VBox directoryBox = new VBox();
 
-    /// The field the search toolbar carries.
-
-
-    /// The toolbar of buttons, shown when not searching.
     /// The page's toolbar, which swaps itself for a search field.
-    private final ListSearchBar toolbar = new ListSearchBar(this::refresh);
+    private final ListSearchBar toolbar = new ListSearchBar(this::filterInstances);
 
-    /// The search toolbar, shown in place of the buttons.
-
-
-
+    /// The instances the selected folder last published.
+    private List<DshInstance> instances = List.of();
 
     /// Creates the instance list page.
     public InstancesPage() {
-
         // The original lists every folder as a row rather than one row that
         // opens a menu, and puts the whole list in a scroll pane so a collection
         // of them stays reachable. The add item sits under the list, inside the
@@ -159,7 +146,16 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
         setCenter(pane);
 
-        refresh();
+        // The folders and the instances are both observed rather than fetched:
+        // adding a folder rebuilds the sidebar, and any change to the selected
+        // folder's instances redraws the list.
+        GameDirectoryManager.getGameDirectories().addListener(
+                (ListChangeListener<GameDirectory>) change -> loadDirectories());
+        GameDirectoryManager.selectedGameDirectoryProperty().addListener(
+                (observable, was, now) -> loadDirectories());
+        GameDirectoryManager.registerVersionsListener(this::loadInstances);
+
+        loadDirectories();
     }
 
     @Override
@@ -167,11 +163,21 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         return state.getReadOnlyProperty();
     }
 
+    /// Re-reads the selected folder.
+    ///
+    /// The instances themselves arrive through the repository, so this only has
+    /// to ask for a fresh read; what comes back is published to this page the
+    /// same way a write made anywhere else is.
     @Override
     public void refresh() {
+        GameDirectoryManager.getSelectedRepository().refresh();
+    }
+
+    /// Redraws the sidebar from the folders the launcher knows about.
+    private void loadDirectories() {
         GameDirectory directory = GameDirectoryManager.selected();
 
-        directoryBox.getChildren().setAll(GameDirectoryManager.directories().stream()
+        directoryBox.getChildren().setAll(GameDirectoryManager.getGameDirectories().stream()
                 .map(candidate -> {
                     // The remove button is on every row, as the original has it.
                     // The folder the launcher owns refuses rather than
@@ -179,30 +185,32 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                     // when nowhere else is chosen, and a row that silently has no
                     // button reads as a different kind of row.
                     DirectoryListItem item = new DirectoryListItem(candidate,
-                            chosen -> {
-                                GameDirectoryManager.select(chosen.id());
-                                refresh();
-                            },
+                            chosen -> GameDirectoryManager.select(chosen.id()),
                             this::removeDirectory);
                     item.setSelected(candidate.id().equals(directory.id()));
                     return (Node) item;
                 })
                 .toList());
+    }
 
-        List<DshInstance> instances = new ArrayList<>(DshInstanceManager.listIn(directory.directory()));
-        instances.removeIf(instance -> !toolbar.accepts(instance.id()));
+    /// Shows the instances of the folder that just published them.
+    ///
+    /// @param repository the selected folder's repository
+    private void loadInstances(DshInstanceRepository repository) {
+        instances = repository.getInstances();
+        filterInstances();
+    }
 
-        instanceList.getItems().setAll(instances);
+    /// Redraws the list from the last published instances and the search text.
+    ///
+    /// A selection is not touched here: it belongs to the folder, and it is the
+    /// folder that decides what it points at.
+    private void filterInstances() {
+        List<DshInstance> shown = new ArrayList<>(instances);
+        shown.removeIf(instance -> !toolbar.accepts(instance.id()));
+
+        instanceList.getItems().setAll(shown);
         instanceList.refresh();
-
-        // A selection pointing at an instance that is gone is no selection: the
-        // launcher would otherwise offer to start something that is not there,
-        // while the sidebar says there is nothing at all.
-        String selected = settings().selectedInstanceIdProperty().get();
-        if (selected != null && instances.stream().noneMatch(instance -> instance.id().equals(selected))) {
-            settings().selectedInstanceIdProperty().set(
-                    instances.isEmpty() ? null : instances.get(0).id());
-        }
     }
 
     /// Builds the toolbar above the list.
@@ -216,8 +224,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private Node buildToolbar() {
         // No padding: the buttons are 37 pixels tall by their own stylesheet and
         // the original's toolbar is exactly that, so anything added here is a
-        // height the original does not have. Mine was eight pixels taller for
-        // the four added on each side.
+        // height the original does not have.
         // The page's own buttons; the shared bar adds the search button and the
         // field it opens, so every list page opens its search the same way.
         toolbar.setButtons(
@@ -238,7 +245,6 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
             return;
         }
         GameDirectoryManager.remove(directory.id());
-        refresh();
     }
 
     /// Asks for a folder to look for instances in.
@@ -265,7 +271,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         list.setCellFactory(view -> {
             InstanceListCell cell = new InstanceListCell();
             cell.setHandlers(this::select, this::open, this::toggleLaunch, this::showMenu);
-            cell.setSelectedIdSupplier(() -> settings().selectedInstanceIdProperty().get());
+            cell.setSelectedInstanceSupplier(GameDirectoryManager::getSelectedInstance);
             cell.setRunningCheck(instance -> DshProcessManager.find(instance.id()).isPresent());
             return cell;
         });
@@ -283,8 +289,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private void select(DshInstance instance) {
         // The radio button's job, and only that: which instance the launcher
         // starts. Opening one is the row's job.
-        settings().selectedInstanceIdProperty().set(instance.id());
-        refresh();
+        GameDirectoryManager.setSelectedInstance(instance);
     }
 
     /// Opens an instance's page, choosing it on the way.
@@ -292,15 +297,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// @param instance the instance to open
     private void open(DshInstance instance) {
         select(instance);
-        Controllers.navigate(getInstancePage(instance));
-    }
-
-    /// Returns the page for an instance, creating it on first use.
-    ///
-    /// @param instance the instance
-    /// @return the page
-    private static InstancePage getInstancePage(DshInstance instance) {
-        return new InstancePage(instance);
+        Controllers.navigate(new InstancePage(instance));
     }
 
     /// Starts or stops an instance.
@@ -376,7 +373,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         // wizard downloads the version the new instance will use as the first
         // thing it does, so a launcher with nothing installed can still make an
         // instance — which is the only way it ever gets anything installed.
-        Controllers.getDecorator().startWizard(new DshInstallWizardProvider(), i18n("dsh.instance.create"));
+        Controllers.getDecorator().startWizard(new org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider(),
+                i18n("dsh.instance.create"));
     }
 
     /// Removes an instance after confirmation.
@@ -388,37 +386,11 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 () -> {
                     try {
                         DshInstanceManager.delete(instance.id());
-                        refresh();
                         Controllers.showToast(i18n("dsh.instance.removed", instance.id()));
                     } catch (DshException e) {
                         Controllers.dialog(e.getMessage(), i18n("dsh.instance.remove_failed"), MessageType.ERROR);
                     }
                 },
                 null);
-    }
-
-    /// Builds a bold section heading rendered as the first row of a card.
-    ///
-    /// @param text the heading text
-    /// @return the heading row
-    /// Builds a section title.
-    ///
-    /// HMCL's helper rather than a styled row: the original puts the title
-    /// between card groups, outside their background.
-    ///
-    /// @param text the title
-    /// @return the title node
-    private static Node buildSectionHeader(String text) {
-        return ComponentList.createComponentListTitle(text);
-    }
-
-    /// Builds a non-interactive note row.
-    ///
-    /// @param text the text to show
-    /// @return the row
-    private Node buildNote(String text) {
-        LineTextPane note = new LineTextPane();
-        note.setText(text);
-        return note;
     }
 }

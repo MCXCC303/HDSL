@@ -33,7 +33,6 @@ import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.theme.Themes;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
@@ -45,6 +44,8 @@ import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
+import org.jackhuang.hmcl.setting.DshInstanceRepository;
+import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
@@ -52,8 +53,6 @@ import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.LineButton;
-import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
@@ -107,9 +106,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     private final ImageContainer currentInstanceIcon = new ImageContainer(AdvancedListItem.LEFT_GRAPHIC_SIZE);
 
     /// Lazily created destination pages.
-    private @Nullable InstancesPage instancesPage;
-
-    /// The download page, created on first use.
     private @Nullable DownloadPage downloadPage;
     private @Nullable SettingsPage settingsPage;
 
@@ -145,10 +141,25 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         // StackPane because a Control's children belong to its skin.
         setCenter(new StackPane(buildLaunchPane()));
 
+        // The instance the page acts on is the selected folder's selection, and
+        // the folder's contents can change under it — an icon edit, a rename, a
+        // new instance made by the wizard. Both are observed rather than asked
+        // for, so nothing here has to be refreshed by whoever changed them.
+        currentInstance.bind(GameDirectoryManager.selectedInstanceProperty());
+        currentInstance.addListener((observable, was, now) -> refresh());
+        GameDirectoryManager.registerVersionsListener(this::onRepositoryChanged);
+
         ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshActionState()));
         ticker.setCycleCount(Animation.INDEFINITE);
         ticker.play();
 
+        refresh();
+    }
+
+    /// Redraws the page for the folder that just published its instances.
+    ///
+    /// @param repository the selected folder's repository
+    private void onRepositoryChanged(DshInstanceRepository repository) {
         refresh();
     }
 
@@ -272,14 +283,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         return downloadPage;
     }
 
-    /// Returns the instance list page, creating it on first use.
+    /// Returns the instance list page.
+    ///
+    /// The page belongs to [Controllers], because more than one place opens it
+    /// and only one page may exist: two of them would show two different lists.
     ///
     /// @return the instance list page
     public InstancesPage getInstancesPage() {
-        if (instancesPage == null) {
-            instancesPage = new InstancesPage();
-        }
-        return instancesPage;
+        return Controllers.getInstancesPage();
     }
 
     /// Returns the settings page, creating it on first use.
@@ -297,25 +308,13 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         return state.getReadOnlyProperty();
     }
 
+    /// Redraws the page for the instance it currently acts on.
+    ///
+    /// The instance is not chosen here: it is the selected folder's selection,
+    /// which the folder corrects on its own when what it points at is gone.
     @Override
     public void refresh() {
-        List<DshInstance> instances = DshInstanceManager.list();
-
-        String selectedId = settings().selectedInstanceIdProperty().get();
-        DshInstance current = null;
-        for (DshInstance instance : instances) {
-            if (instance.id().equals(selectedId)) {
-                current = instance;
-                break;
-            }
-        }
-        if (current == null && !instances.isEmpty()) {
-            current = instances.get(0);
-        }
-        currentInstance.set(current);
-        if (current != null && !current.id().equals(selectedId)) {
-            settings().selectedInstanceIdProperty().set(current.id());
-        }
+        DshInstance current = currentInstance.get();
 
         currentInstanceItem.setSubtitle(current == null
                 ? i18n("dsh.launch.no_instance.hint")
@@ -389,17 +388,13 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     ///
     /// @param anchor the button the popup is anchored to
     private void showInstanceMenu(Node anchor) {
-        List<DshInstance> instances = DshInstanceManager.list();
+        List<DshInstance> instances = GameDirectoryManager.getSelectedRepository().getInstances();
         if (instances.isEmpty()) {
             Controllers.navigate(getInstancesPage());
             return;
         }
 
-        InstancePickerMenu.show(anchor, instances, instance -> {
-            settings().selectedInstanceIdProperty().set(instance.id());
-            currentInstance.set(instance);
-            refreshActionState();
-        });
+        InstancePickerMenu.show(anchor, instances, GameDirectoryManager::setSelectedInstance);
     }
 
     /// Key under which a menu row remembers the popup that owns it.

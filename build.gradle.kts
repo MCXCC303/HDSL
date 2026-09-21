@@ -100,6 +100,11 @@ tasks.test {
         events("passed", "failed", "skipped")
         showStandardStreams = true
     }
+    // The launcher keeps its state in one per-user home, and a test that writes
+    // settings must not write into the one the user is running. Tests get a home
+    // of their own inside the build tree, which is also what makes them able to
+    // assert on what was persisted.
+    systemProperty("hdsl.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
 }
 
 // --------------------------------------------------------------- resources ---

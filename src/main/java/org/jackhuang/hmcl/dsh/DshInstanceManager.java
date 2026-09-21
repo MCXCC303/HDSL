@@ -46,6 +46,39 @@ public final class DshInstanceManager {
     /// The manifest file inside an instance directory.
     public static final String MANIFEST_NAME = "instance.json";
 
+    /// Listeners notified after an instance is created, changed or removed.
+    ///
+    /// The manager is the only writer of instance manifests, so announcing
+    /// writes here is what lets the interface observe the folder instead of
+    /// polling it. Callers are notified on the thread that made the change.
+    private static final java.util.List<Runnable> CHANGE_LISTENERS =
+            new java.util.concurrent.CopyOnWriteArrayList<>();
+
+    /// Registers a listener notified after every write.
+    ///
+    /// @param listener the listener
+    public static void addChangeListener(Runnable listener) {
+        CHANGE_LISTENERS.add(listener);
+    }
+
+    /// Removes a listener registered by [#addChangeListener].
+    ///
+    /// @param listener the listener
+    public static void removeChangeListener(Runnable listener) {
+        CHANGE_LISTENERS.remove(listener);
+    }
+
+    /// Tells every listener that the instances on disk have changed.
+    private static void fireChanged() {
+        for (Runnable listener : CHANGE_LISTENERS) {
+            try {
+                listener.run();
+            } catch (RuntimeException e) {
+                LOG.warning("Instance change listener failed", e);
+            }
+        }
+    }
+
     /// Lists every readable instance, newest first.
     ///
     /// Directories without a manifest, or with an unreadable one, are skipped
@@ -184,6 +217,7 @@ public final class DshInstanceManager {
 
         write(instance);
         LOG.info("Created instance " + id + " (dsh " + version + ", home " + instance.homeMode() + ")");
+        fireChanged();
         return instance;
     }
 
@@ -196,6 +230,7 @@ public final class DshInstanceManager {
             throw new DshException("Instance " + instance.id() + " does not exist");
         }
         write(instance);
+        fireChanged();
     }
 
     /// Removes an instance and, in isolated mode, everything it owns.
@@ -220,6 +255,7 @@ public final class DshInstanceManager {
             throw new DshException("Failed to remove " + directory, e);
         }
         LOG.info("Removed instance " + id);
+        fireChanged();
     }
 
     /// Reports whether an instance id is already taken.
@@ -293,6 +329,7 @@ public final class DshInstanceManager {
         if (moved) {
             deleteQuietly(newDirectory.resolve(MANIFEST_NAME));
         }
+        fireChanged();
         return renamed;
     }
 
@@ -320,11 +357,17 @@ public final class DshInstanceManager {
             throw new DshException("Instance " + normalized + " already exists");
         }
 
-        return create(normalized, source.version(), source.profile(),
+        // The copy carries the original's icon, and only its icon: a copy that
+        // is indistinguishable from what it was copied from is a copy nobody can
+        // find in the list. The port is deliberately not copied — two instances
+        // may not be given the same one — and the write is what makes the icon
+        // survive, because a copy built by `withIcon` alone is never persisted.
+        DshInstance copy = create(normalized, source.version(), source.profile(),
                 source.workspacePath(), source.nodeRuntime(), DshHomeMode.ISOLATED, null,
                 source.extraArguments(), source.environment())
-                .withIcon(source.iconOrDefault())
-                .withPortPolicy(source.portMode(), source.port());
+                .withIcon(source.iconOrDefault());
+        update(copy);
+        return copy;
     }
 
     /// Returns the next free id derived from a base name.

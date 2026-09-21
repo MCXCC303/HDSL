@@ -52,6 +52,11 @@ public final class Launcher extends Application {
         LOG.info("JavaFX version: " + System.getProperty("javafx.runtime.version"));
         LOG.info("User home: " + Metadata.HMCL_USER_HOME);
 
+        // The folders, the selected one and the instances inside it are observed
+        // by the interface rather than looked up by it, so the manager that owns
+        // them is brought up before the first page that shows them.
+        org.jackhuang.hmcl.setting.GameDirectoryManager.init();
+
         mainPage = new MainPage();
 
         Scene mainScene = Controllers.initialize(primaryStage, mainPage);

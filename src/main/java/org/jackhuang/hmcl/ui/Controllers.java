@@ -55,6 +55,9 @@ public final class Controllers {
     /// The primary application stage, or `null` before [#initialize] or after [#shutdown].
     private static @Nullable Stage stage;
 
+    /// The instance list page, created on first use.
+    private static @Nullable org.jackhuang.hmcl.ui.dsh.InstancesPage instancesPage;
+
     /// Whether idle heap trimming is enabled.
     ///
     /// Trimming is opt-out for machines where a stop-the-world collection after
@@ -196,6 +199,24 @@ public final class Controllers {
         Decorator current = decorator;
         if (current != null)
             current.navigate(node, ContainerAnimations.FORWARD, Motion.SHORT4, Motion.EASE);
+    }
+
+    /// Returns the instance list page, creating it on first use.
+    ///
+    /// The page is kept here rather than by whichever page opens it, because more
+    /// than one does: the home page's sidebar, an instance page that has just
+    /// renamed or removed its instance, and the home page's own empty state.
+    /// Handing out one page is what keeps them from drifting apart, and it is
+    /// where the original keeps its game list too.
+    ///
+    /// @return the instance list page
+    public static org.jackhuang.hmcl.ui.dsh.InstancesPage getInstancesPage() {
+        org.jackhuang.hmcl.ui.dsh.InstancesPage page = instancesPage;
+        if (page == null) {
+            page = new org.jackhuang.hmcl.ui.dsh.InstancesPage();
+            instancesPage = page;
+        }
+        return page;
     }
 
     /// Shows a transient snackbar message over the main window.

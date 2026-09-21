@@ -349,7 +349,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                     try {
                         DshInstanceManager.rename(instance.id(), newId);
                         handler.resolve();
-                        Controllers.navigate(new InstancesPage());
+                        Controllers.navigate(Controllers.getInstancesPage());
                     } catch (DshException e) {
                         handler.reject(e.getMessage());
                     }
@@ -385,7 +385,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 () -> {
                     try {
                         DshInstanceManager.delete(instance.id());
-                        Controllers.navigate(new InstancesPage());
+                        Controllers.navigate(Controllers.getInstancesPage());
                     } catch (DshException e) {
                         Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
                     }

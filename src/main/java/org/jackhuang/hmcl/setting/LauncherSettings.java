@@ -26,6 +26,7 @@ import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableMap;
 import javafx.collections.ObservableSet;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
@@ -165,6 +166,9 @@ public final class LauncherSettings {
     /// The key for the folder whose instances are shown.
     public static final String SELECTED_GAME_DIRECTORY = "selectedGameDirectoryId";
 
+    /// The key for the instance each game directory has chosen.
+    public static final String SELECTED_INSTANCE = "selectedInstance";
+
     /// The font family used by the interface, or `null` for the platform default.
     public static final String LAUNCHER_FONT_FAMILY = "launcherFontFamily";
 
@@ -180,8 +184,12 @@ public final class LauncherSettings {
     /// Whether animations are disabled; `null` follows the platform setting.
     private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
 
-    /// The instance the launch button targets, or `null` before one is chosen.
-    private final ObjectProperty<@Nullable String> selectedInstanceId = new SimpleObjectProperty<>();
+    /// The instance the launch button targets, keyed by game directory id.
+    ///
+    /// The original keeps one selection per game directory rather than one for
+    /// the whole launcher: switching folders is switching collections of
+    /// instances, and a collection remembers what was chosen in it.
+    private final ObservableMap<String, String> selectedInstance = FXCollections.observableHashMap();
 
     /// Whether the browser is opened automatically once an instance is ready.
     private final BooleanProperty openBrowserOnLaunch = new SimpleBooleanProperty(true);
@@ -392,11 +400,39 @@ public final class LauncherSettings {
         return animationDisabled;
     }
 
-    /// Returns the property holding the instance the launch button targets.
+    /// Returns the selected instance of every game directory.
     ///
-    /// @return the selected-instance-id property
-    public ObjectProperty<@Nullable String> selectedInstanceIdProperty() {
-        return selectedInstanceId;
+    /// Owned by [GameDirectoryManager]; code outside it should not write here.
+    ///
+    /// @return the observable map from game directory id to instance id
+    public ObservableMap<String, String> getSelectedInstance() {
+        return selectedInstance;
+    }
+
+    /// Returns the instance selected in a game directory.
+    ///
+    /// @param gameDirectoryId the game directory id, or `null`
+    /// @return the instance id, or `null` when nothing is chosen there
+    public @Nullable String getSelectedInstance(@Nullable String gameDirectoryId) {
+        return gameDirectoryId == null ? null : selectedInstance.get(gameDirectoryId);
+    }
+
+    /// Records the instance selected in a game directory.
+    ///
+    /// A `null` instance clears the entry, which is what an empty directory
+    /// leaves behind.
+    ///
+    /// @param gameDirectoryId the game directory id, or `null` to do nothing
+    /// @param instanceId      the instance id, or `null` to clear
+    public void setSelectedInstance(@Nullable String gameDirectoryId, @Nullable String instanceId) {
+        if (gameDirectoryId == null) {
+            return;
+        }
+        if (instanceId != null) {
+            selectedInstance.put(gameDirectoryId, instanceId);
+        } else {
+            selectedInstance.remove(gameDirectoryId);
+        }
     }
 
     /// Returns whether the browser should be opened when an instance becomes ready.

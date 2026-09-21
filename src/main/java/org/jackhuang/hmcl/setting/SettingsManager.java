@@ -197,6 +197,21 @@ public final class SettingsManager {
         }
     }
 
+    /// Applies the selection written before selections were kept per folder.
+    ///
+    /// A launcher that kept one selection for the whole program was showing one
+    /// folder, so the value belongs to the folder it owns. A value already chosen
+    /// since is left alone: it is the newer answer.
+    ///
+    /// @param settings the settings to update
+    /// @param legacyId the instance id an older launcher stored, or `null`
+    static void applyLegacySelection(LauncherSettings settings, @Nullable String legacyId) {
+        if (legacyId == null || settings.getSelectedInstance(GameDirectory.DEFAULT_ID) != null) {
+            return;
+        }
+        settings.setSelectedInstance(GameDirectory.DEFAULT_ID, legacyId);
+    }
+
     /// The serialisable view of [LauncherSettings].
     ///
     /// Every field is nullable so that a partially written or older file still
@@ -281,8 +296,16 @@ public final class SettingsManager {
         @SerializedName("animationDisabled")
         private @Nullable Boolean animationDisabled;
 
+        @SerializedName("selectedInstance")
+        private @Nullable java.util.Map<String, String> selectedInstance;
+
+        /// The single selection written by launchers that kept one for the whole
+        /// launcher rather than one per folder.
+        ///
+        /// Only ever read, and only while nothing per folder has been stored: it
+        /// belonged to the folder the launcher owns.
         @SerializedName("selectedInstanceId")
-        private @Nullable String selectedInstanceId;
+        private @Nullable String legacySelectedInstanceId;
 
         @SerializedName("openBrowserOnLaunch")
         private @Nullable Boolean openBrowserOnLaunch;
@@ -321,7 +344,7 @@ public final class SettingsManager {
             snapshot.logFontSize = settings.logFontSizeProperty().get();
             snapshot.logLines = settings.logLinesProperty().get();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
-            snapshot.selectedInstanceId = settings.selectedInstanceIdProperty().get();
+            snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
             snapshot.openBrowserOnLaunch = settings.openBrowserOnLaunchProperty().get();
             return snapshot;
         }
@@ -412,8 +435,11 @@ public final class SettingsManager {
             if (animationDisabled != null) {
                 settings.animationDisabledProperty().set(animationDisabled);
             }
-            if (selectedInstanceId != null) {
-                settings.selectedInstanceIdProperty().set(selectedInstanceId);
+            if (selectedInstance != null) {
+                settings.getSelectedInstance().clear();
+                settings.getSelectedInstance().putAll(selectedInstance);
+            } else {
+                applyLegacySelection(settings, legacySelectedInstanceId);
             }
             if (openBrowserOnLaunch != null) {
                 settings.openBrowserOnLaunchProperty().set(openBrowserOnLaunch);
