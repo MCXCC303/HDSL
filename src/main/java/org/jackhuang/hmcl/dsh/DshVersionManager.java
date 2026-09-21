@@ -128,12 +128,22 @@ public final class DshVersionManager {
         JsonObject manifest = new JsonObject();
         manifest.addProperty("private", true);
         manifest.add("dependencies", dependencies);
-        manifest.add("overrides", overrides);
+
+        // The override goes in a file of its own, not in this one. npm reads an
+        // `overrides` field here and pnpm does not: since pnpm 10 the settings it
+        // used to take from `package.json` live in `pnpm-workspace.yaml`, and a
+        // `pnpm` field here is ignored with a warning. Writing only npm's spelling
+        // left the pinning silently not applied, and a runtime came out with the
+        // launcher at one version and its boot library at another — a pairing that
+        // fails at import rather than degrading. The tests cover the pair.
+        String workspace = "overrides:\n"
+                + "  '" + APP_BOOT_PACKAGE + "': " + appBoot + "\n";
 
         try {
             Files.createDirectories(prefix);
-            Files.writeString(prefix.resolve("package.json"),
-                    new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(manifest));
+            var gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
+            Files.writeString(prefix.resolve("package.json"), gson.toJson(manifest));
+            Files.writeString(prefix.resolve("pnpm-workspace.yaml"), workspace);
         } catch (IOException e) {
             throw new DshException("Failed to write the manifest for " + version, e);
         }
@@ -244,16 +254,28 @@ public final class DshVersionManager {
 
     /// Installs the DeepSeek Harness an instance runs, into that instance.
     ///
-    /// The version is the instance's own field: what is installed is what the
-    /// instance says it runs, and it goes where the instance can find it. The
-    /// install is staged inside the instance and moved into place on success, so
-    /// an interrupted install can never look like a usable runtime.
+    /// The install is staged inside the instance and moved into place on success,
+    /// so an interrupted install can never look like a usable runtime.
     ///
     /// @param instance the instance to install for
     /// @param onLine   a consumer notified of pnpm output lines, or `null`
     /// @throws DshException when the runtime is missing or pnpm fails
     public static void install(DshInstance instance, @Nullable Consumer<String> onLine) throws DshException {
-        String version = instance.version();
+        install(instance, instance.version(), onLine);
+    }
+
+    /// Installs a version into an instance, which need not be the version it
+    /// currently records.
+    ///
+    /// The two differ while an instance is being moved to another version: the
+    /// new runtime has to be in place before the record can name it.
+    ///
+    /// @param instance the instance to install into
+    /// @param version  the version to install
+    /// @param onLine   a consumer notified of pnpm output lines, or `null`
+    /// @throws DshException when the runtime is missing or pnpm fails
+    public static void install(DshInstance instance, String version,
+                               @Nullable Consumer<String> onLine) throws DshException {
         Path target = instance.dshDirectory();
         Path staging = stagingDirectory(instance);
 
