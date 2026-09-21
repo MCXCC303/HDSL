@@ -98,94 +98,62 @@ class DshSessionsWorkspaceTest {
     }
 
     @Test
-    void importedSessionsKeepTheProjectsTheyCameFrom() throws Exception {
-        writeRegistry(sourceHome, """
+    void anImportAsksForTheGroupingToBeWorkedOutAgain() throws Exception {
+        DshInstance instance = makeInstance();
+        Path registry = instance.homeDirectory().resolve("storages").resolve("workspace.json");
+        Files.createDirectories(registry.getParent());
+        Files.writeString(registry, """
                 {
                   "unit": {"name": "workspace", "version": 2},
-                  "global": {
-                    "initialized": true,
-                    "workspaceIds": ["project-one", "project-two", "project-empty"],
-                    "archivedSessionIds": ["session-b"]
-                  },
+                  "global": {"initialized": true, "workspaceIds": ["project-one"], "archivedSessionIds": ["session-b"]},
                   "tables": {"workspaces": {
-                    "project-one": {"path": "/tmp/one", "title": "One",
-                                    "sessionIds": ["session-a", "session-b"], "createdAt": "2026-01-01T00:00:00.000Z"},
-                    "project-two": {"path": "/tmp/two", "title": "Two",
-                                    "sessionIds": ["session-c"], "createdAt": "2026-01-02T00:00:00.000Z"},
-                    "project-empty": {"path": "/tmp/three", "title": "Three",
-                                      "sessionIds": ["session-never-imported"], "createdAt": "2026-01-03T00:00:00.000Z"}
+                    "project-one": {"path": "/tmp/one", "title": "One", "sessionIds": ["session-a"],
+                                    "createdAt": "2026-01-01T00:00:00.000Z"}
                   }}
                 }
                 """);
 
-        DshInstance instance = makeInstance();
-        DshSessions.adoptWorkspaces(sourceHome, instance, Set.of("session-a", "session-b", "session-c"));
+        DshSessions.regroup(instance.homeDirectory());
 
-        JsonObject merged = readRegistry(instance.homeDirectory());
-
-        // Both projects that the imported sessions belonged to are recorded, in
-        // the order the source showed them, with only what was actually imported.
-        assertEquals(List.of("project-one", "project-two"),
-                merged.getAsJsonObject("global").getAsJsonArray("workspaceIds").asList().stream()
-                        .map(element -> element.getAsString()).toList(),
-                "the sidebar order is the source's, minus the projects nothing came from");
-        assertEquals(List.of("session-a", "session-b"), sessionsOf(merged, "project-one"));
-        assertEquals(List.of("session-c"), sessionsOf(merged, "project-two"));
-        assertFalse(merged.getAsJsonObject("tables").getAsJsonObject("workspaces").has("project-empty"),
-                "a project none of the imported sessions belonged to must not appear");
-
-        // The record is carried over whole: a project keeps its name and its time.
-        assertEquals("One", merged.getAsJsonObject("tables").getAsJsonObject("workspaces")
+        JsonObject written = JsonUtils.fromJsonFile(registry, JsonObject.class);
+        assertFalse(written.getAsJsonObject("global").get("initialized").getAsBoolean(),
+                "the marker is what makes the harness derive the grouping from the sessions");
+        // Everything else is left as it was: the file is the harness's, and its
+        // schema is not ours to reproduce — a registry missing one required field
+        // refuses the whole plugin tree, and the instance then cannot start.
+        assertEquals("workspace", written.getAsJsonObject("unit").get("name").getAsString());
+        assertEquals(1, written.getAsJsonObject("global").getAsJsonArray("workspaceIds").size());
+        assertEquals("session-b", written.getAsJsonObject("global")
+                .getAsJsonArray("archivedSessionIds").get(0).getAsString());
+        assertEquals("One", written.getAsJsonObject("tables").getAsJsonObject("workspaces")
                 .getAsJsonObject("project-one").get("title").getAsString());
-        assertEquals("2026-01-01T00:00:00.000Z", merged.getAsJsonObject("tables").getAsJsonObject("workspaces")
-                .getAsJsonObject("project-one").get("createdAt").getAsString());
-        assertEquals("workspace", merged.getAsJsonObject("unit").get("name").getAsString(),
-                "the schema marker the harness reads has to be there");
-
-        // An imported session that was archived stays archived.
-        assertTrue(merged.getAsJsonObject("global").getAsJsonArray("archivedSessionIds").asList().stream()
-                        .anyMatch(element -> element.getAsString().equals("session-b")),
-                "an archived conversation must not come back as one to resume");
     }
 
     @Test
-    void aProjectTheInstanceAlreadyKnowsKeepsWhatItHad() throws Exception {
-        writeRegistry(sourceHome, """
-                {
-                  "global": {"workspaceIds": ["shared"], "archivedSessionIds": []},
-                  "tables": {"workspaces": {
-                    "shared": {"path": "/tmp/shared", "title": "Shared", "sessionIds": ["session-new"]}
-                  }}
-                }
-                """);
-
-        DshInstance instance = makeInstance();
-        writeRegistry(instance.homeDirectory(), """
-                {
-                  "unit": {"name": "workspace", "version": 2},
-                  "global": {"initialized": true, "workspaceIds": ["shared"], "archivedSessionIds": []},
-                  "tables": {"workspaces": {
-                    "shared": {"path": "/tmp/shared", "title": "Shared", "sessionIds": ["session-mine"]}
-                  }}
-                }
-                """);
-
-        DshSessions.adoptWorkspaces(sourceHome, instance, Set.of("session-new"));
-
-        JsonObject merged = readRegistry(instance.homeDirectory());
-        assertEquals(List.of("session-mine", "session-new"), sessionsOf(merged, "shared"),
-                "the instance's own session stays where it was and the imported one joins it");
-        assertEquals(1, merged.getAsJsonObject("global").getAsJsonArray("workspaceIds").size(),
-                "a project that was already listed must not be listed twice");
-    }
-
-    @Test
-    void aSourceWithoutARegistryChangesNothing() throws Exception {
+    void aHomeThatHasNeverGroupedAnythingIsLeftAlone() throws Exception {
         DshInstance instance = makeInstance();
 
-        DshSessions.adoptWorkspaces(sourceHome, instance, Set.of("session-a"));
+        DshSessions.regroup(instance.homeDirectory());
 
         assertFalse(Files.exists(instance.homeDirectory().resolve("storages").resolve("workspace.json")),
-                "a home that never grouped its sessions must not be given an empty grouping");
+                "a home with no registry needs none: the harness writes one on its first run");
+    }
+
+    @Test
+    void aRegistryThatIsAlreadyUninitializedIsLeftAlone() throws Exception {
+        DshInstance instance = makeInstance();
+        Path registry = instance.homeDirectory().resolve("storages").resolve("workspace.json");
+        Files.createDirectories(registry.getParent());
+        Files.writeString(registry, """
+                {"global": {"initialized": false, "workspaceIds": [], "archivedSessionIds": []},
+                 "tables": {"workspaces": {}}}
+                """);
+        java.nio.file.attribute.FileTime before =
+                Files.getLastModifiedTime(registry);
+
+        DshSessions.regroup(instance.homeDirectory());
+
+        assertEquals(before, Files.getLastModifiedTime(registry),
+                "nothing to ask for when the grouping is already due to be worked out");
     }
 }
