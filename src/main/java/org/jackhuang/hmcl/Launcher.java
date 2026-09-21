@@ -23,7 +23,12 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.setting.FontManager;
 import org.jackhuang.hmcl.setting.StyleSheets;
@@ -31,6 +36,9 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.dsh.MainPage;
+import org.jackhuang.hmcl.util.StringUtils;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
+import org.jackhuang.hmcl.util.platform.SystemUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
@@ -118,6 +126,108 @@ public final class Launcher extends Application {
     ///
     /// @param args command-line arguments, currently unused
     public static void main(String[] args) {
+        setupUiScale();
         launch(Launcher.class, args);
+    }
+
+    /// Sets the interface scale the toolkit starts with.
+    ///
+    /// Read here, before the toolkit starts, because the property it sets is one
+    /// the GTK backend reads while it initialises: from the application it would
+    /// be set too late, which is why the original reads it in its own `main` too.
+    ///
+    /// The value is `HMCL_UI_SCALE`, or `-Dhmcl.uiScale` for a launch that would
+    /// rather not use the environment. A factor (`1.5`), a percentage (`150%`)
+    /// and a resolution (`144dpi`) all say the same thing to the backend, which
+    /// is the original's own vocabulary for it.
+    ///
+    /// Where the environment names no scale, a Wayland session running KDE is
+    /// asked instead: that desktop keeps its scale in the X resources, and the
+    /// toolkit does not read it on its own — the original asks for the same
+    /// reason and in the same place.
+    private static void setupUiScale() {
+        float lowerBound;
+        float upperBound;
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+            // JavaFX misbehaves when the scaling factor is too high.
+            lowerBound = 0.25f;
+            upperBound = 4f;
+        } else {
+            lowerBound = 0.01f;
+            upperBound = 10f;
+        }
+
+        String requested = System.getProperty("hmcl.uiScale", System.getenv("HMCL_UI_SCALE"));
+        float scale = Float.NaN;
+
+        if (requested != null && !(requested = requested.trim()).isEmpty()) {
+            // Logged where the original logs it. Nothing comes of it as things
+            // stand — this launcher never starts its logger, so no level of it
+            // reaches the console or a file — but the value belongs on the
+            // record for when it does, and the message is the original's.
+            LOG.info("HMCL_UI_SCALE: " + requested);
+
+            try {
+                if (requested.endsWith("%")) {
+                    scale = Integer.parseInt(requested.substring(0, requested.length() - 1)) / 100.0f;
+                } else if (requested.endsWith("dpi") || requested.endsWith("DPI")) {
+                    scale = Integer.parseInt(requested.substring(0, requested.length() - 3)) / 96.0f;
+                } else {
+                    scale = Float.parseFloat(requested);
+                }
+            } catch (Throwable e) {
+                LOG.warning("Invalid UI scale: " + requested);
+            }
+        } else if (OperatingSystem.CURRENT_OS.isLinuxOrBSD()) {
+            String sessionType = Objects.requireNonNullElse(System.getenv("XDG_SESSION_TYPE"), "");
+            String desktop = Objects.requireNonNullElse(System.getenv("XDG_CURRENT_DESKTOP"), "");
+
+            if ("wayland".equals(sessionType) && StringUtils.startsWithIgnoreCase(desktop, "KDE")) {
+                try {
+                    Path xrdb = SystemUtils.which("xrdb");
+                    String dpiLine = xrdb == null ? null : SystemUtils.run(
+                            List.of(xrdb.toString(), "-query"),
+                            input -> {
+                                try (BufferedReader reader = new BufferedReader(
+                                        new InputStreamReader(input, OperatingSystem.NATIVE_CHARSET))) {
+                                    return reader.lines()
+                                            .map(String::trim)
+                                            .filter(line -> line.startsWith("Xft.dpi:"))
+                                            .findFirst()
+                                            .orElse(null);
+                                }
+                            },
+                            Duration.ofSeconds(1));
+
+                    if (dpiLine != null) {
+                        float dpi = Float.parseFloat(dpiLine.substring("Xft.dpi:".length()).trim());
+                        float detected = dpi / 96f;
+                        if (detected > 1 && detected <= 10) {
+                            LOG.info("Detected Xft.dpi: " + dpi + " (" + detected + "x)");
+                            scale = detected;
+                            requested = Float.toString(detected);
+                        }
+                    }
+                } catch (Exception e) {
+                    LOG.warning("Failed to read Xft.dpi from xrdb", e);
+                }
+            }
+        }
+
+        if (!Float.isFinite(scale)) {
+            return;
+        }
+        if (scale < lowerBound || scale > upperBound) {
+            LOG.warning("UI scale out of range: " + requested);
+            return;
+        }
+
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+            System.getProperties().putIfAbsent("glass.win.uiScale", requested);
+        } else if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
+            LOG.warning("macOS does not support setting UI scale, so it will be ignored");
+        } else {
+            System.getProperties().putIfAbsent("glass.gtk.uiScale", requested);
+        }
     }
 }
