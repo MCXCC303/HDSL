@@ -89,9 +89,12 @@ public final class DshModpacks {
     /// One plugin the pack names.
     ///
     /// @param name    the package name
-    /// @param version the declared version
+    /// @param version the declared version, or the path a locally installed plugin
+    ///                was installed from
     /// @param active  whether the package is in the profile's bundle list
-    public record Plugin(String name, String version, boolean active) {
+    /// @param local   whether the plugin was installed from a file this instance
+    ///                keeps, and so cannot be fetched by anyone else
+    public record Plugin(String name, String version, boolean active, boolean local) {
     }
 
     /// What a pack describes.
@@ -123,10 +126,25 @@ public final class DshModpacks {
         public List<String> installSpecs() {
             List<String> specs = new ArrayList<>();
             for (Plugin plugin : plugins) {
+                if (plugin.local()) {
+                    continue;
+                }
                 specs.add(plugin.version() == null || plugin.version().isBlank()
                         ? plugin.name() : plugin.name() + "@" + plugin.version());
             }
             return specs;
+        }
+
+        /// Returns the plugins that were installed from a file rather than fetched.
+        ///
+        /// A profile records the path it installed a local plugin from, which is a
+        /// path inside the instance that had it; another instance cannot install
+        /// from it, and a pack that pretended otherwise would describe an
+        /// installation that cannot be made.
+        ///
+        /// @return the local plugins
+        public List<Plugin> localPlugins() {
+            return plugins.stream().filter(Plugin::local).toList();
         }
     }
 
@@ -162,7 +180,8 @@ public final class DshModpacks {
 
         List<Plugin> plugins = new ArrayList<>();
         for (Map.Entry<String, String> entry : dependencies.entrySet()) {
-            plugins.add(new Plugin(entry.getKey(), entry.getValue(), bundles.contains(entry.getKey())));
+            plugins.add(new Plugin(entry.getKey(), entry.getValue(), bundles.contains(entry.getKey()),
+                    isLocalSpec(entry.getValue())));
         }
 
         Path patch = profileDirectory.resolve("cordis.patch.yml");
@@ -314,7 +333,13 @@ public final class DshModpacks {
         if (!manifest.plugins().isEmpty() || !manifest.bundles().isEmpty()) {
             report(onStage, "Writing the pack's plugin list");
             writeProfileManifest(manifestFile, manifest);
-            report(onStage, "Resolving " + manifest.plugins().size() + " plugin(s)");
+            if (!manifest.localPlugins().isEmpty()) {
+                report(onStage, "Note: " + manifest.localPlugins().size()
+                        + " plugin(s) were installed from a file on the instance this pack came from, and"
+                        + " cannot be fetched here: " + String.join(", ",
+                                manifest.localPlugins().stream().map(Plugin::name).toList()));
+            }
+            report(onStage, "Resolving " + manifest.installSpecs().size() + " plugin(s)");
             DshPluginInstaller.resolve(instance, onStage);
         }
 
@@ -413,7 +438,8 @@ public final class DshModpacks {
                 if (name == null) {
                     continue;
                 }
-                plugins.add(new Plugin(name, string(object, "version"), bool(object, "active")));
+                plugins.add(new Plugin(name, string(object, "version"), bool(object, "active"),
+                        bool(object, "local")));
             }
         }
 
@@ -436,6 +462,25 @@ public final class DshModpacks {
                 string(root, "appBoot"),
                 string(root, "profile") == null ? DshInstance.DEFAULT_PROFILE : string(root, "profile"),
                 List.copyOf(plugins), List.copyOf(bundles), bool(root, "hasPatch"));
+    }
+
+    /// Reports whether a declared version is really the path of a local file.
+    ///
+    /// A package manager records a local installation by the specification it was
+    /// given, in the field a version would otherwise hold, so a profile that
+    /// installed a packed plugin says `file:/…/plugins/x.tgz` where a version
+    /// belongs. Reading that as a version would have a pack ask for a package
+    /// called `x@file:/…`, which resolves to nothing.
+    ///
+    /// @param version the declared version
+    /// @return whether it is a local installation's path
+    static boolean isLocalSpec(@Nullable String version) {
+        if (version == null || version.isBlank()) {
+            return false;
+        }
+        String value = version.trim().toLowerCase(java.util.Locale.ROOT);
+        return value.startsWith("file:") || value.startsWith("link:") || value.startsWith("/")
+                || value.startsWith("./") || value.startsWith("../");
     }
 
     /// Refuses a pack this launcher cannot read.

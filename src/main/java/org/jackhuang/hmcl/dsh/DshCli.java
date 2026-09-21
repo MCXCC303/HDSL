@@ -86,6 +86,9 @@ public final class DshCli {
         /// Reads a pack of sessions into an instance.
         IMPORT_PACK(false),
 
+        /// Installs a plugin from a file the user has.
+        INSTALL_PLUGIN_FILE(false),
+
         /// Writes an instance's configuration into a pack.
         EXPORT_MODPACK(false),
 
@@ -173,6 +176,7 @@ public final class DshCli {
                 && !args.contains("--remove-plugin")
                 && !args.contains("--export-sessions")
                 && !args.contains("--export-modpack")
+                && !args.contains("--install-plugin-file")
                 && !args.contains("--install-modpack")
                 && !args.contains("--restore-profile")
                 && !args.contains("--import-pack")
@@ -265,6 +269,11 @@ public final class DshCli {
                 }
                 case "--install-plugin" -> {
                     command = Command.INSTALL_PLUGIN;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--install-plugin-file" -> {
+                    command = Command.INSTALL_PLUGIN_FILE;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
@@ -489,6 +498,26 @@ public final class DshCli {
                             List.of(new DshPreset(spec, spec, spec, "", false, true)),
                             out::println);
                     out.println("Installed " + spec);
+                    for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
+                        out.println("  bundle: " + bundle);
+                    }
+                    return 0;
+                }
+                case INSTALL_PLUGIN_FILE -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --install-plugin-file needs an instance and a plugin file");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    java.nio.file.Path file = java.nio.file.Path.of(invocation.arguments().get(1));
+                    DshLocalPlugins.Result result = DshLocalPlugins.install(instance, file, out::println);
+                    out.println("Installed " + result.pkg().name() + " " + result.pkg().version()
+                            + " from the instance's own copy at " + result.installed());
+                    out.println("  bundle patch: " + (result.pkg().isBundle() ? result.pkg().bundlePatch() : "(none)"));
                     for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
                         out.println("  bundle: " + bundle);
                     }
@@ -1023,6 +1052,7 @@ public final class DshCli {
                   --remove-plugin <id> <spec>...   remove one or more plugins from an instance profile
                   --export-sessions <id> <file>    write the instance's sessions into a pack
                   --import-pack <id> <file>        read a pack of sessions into an instance
+                  --install-plugin-file <id> <file>  install a plugin from a packed file
                   --export-modpack <id> <file>     write an instance's configuration into a pack
                   --install-modpack <file> [<id>]  build an instance from a pack
                   --restore-profile <id> <file>    put a pack's profile into an existing instance

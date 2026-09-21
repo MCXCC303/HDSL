@@ -104,6 +104,7 @@ class DshModpacksTest {
                 "the dependencies keep the manifest's own order");
         assertEquals(List.of("dshmarket@1.52.0", "dsh-context@0.54.2"), manifest.installSpecs(),
                 "versions are pinned to what the instance had");
+        assertEquals(0, manifest.localPlugins().size());
 
         try (ZipFile zip = new ZipFile(pack.toFile())) {
             assertTrue(zip.getEntry("cordis.patch.yml") != null, "the patch layer is in the archive");
@@ -155,6 +156,37 @@ class DshModpacksTest {
         assertEquals("dsh-profile-web", written.get("name").getAsString());
         assertTrue(written.has("somethingUpstreamAdded"),
                 "a field this launcher does not know about is left where it was");
+        Files.deleteIfExists(pack);
+    }
+
+    @Test
+    void aPluginInstalledFromAFileIsRecordedAsLocalRatherThanAsAVersion() throws Exception {
+        // The profile stores the specification a local install was made from,
+        // which is a path inside the instance that made it. Read as a version, a
+        // pack would ask for a package called `x@file:/…`, which resolves to
+        // nothing at all.
+        DshInstance instance = makeInstance(SOURCE_ID);
+        writeProfile(instance, """
+                {
+                  "name": "dsh-profile-web",
+                  "private": true,
+                  "dependencies": {
+                    "dshmarket": "1.52.0",
+                    "dsh-hello-local": "file:/tmp/instance/plugins/dsh-hello-local-1.0.0.tgz"
+                  },
+                  "dsh": {"profile": {"bundles": ["dsh-hello-local", "dshmarket"]}}
+                }
+                """);
+
+        Path pack = Files.createTempFile("modpack", ".zip");
+        DshModpacks.export(instance, pack, null);
+        DshModpacks.Manifest manifest = DshModpacks.readManifest(pack);
+
+        assertEquals(List.of("dshmarket@1.52.0"), manifest.installSpecs(),
+                "only what can be fetched is asked for");
+        assertEquals(List.of("dsh-hello-local"),
+                manifest.localPlugins().stream().map(DshModpacks.Plugin::name).toList(),
+                "the local plugin is recorded, so the loader can say it cannot be restored");
         Files.deleteIfExists(pack);
     }
 

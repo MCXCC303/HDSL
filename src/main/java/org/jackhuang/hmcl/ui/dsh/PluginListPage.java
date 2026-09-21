@@ -31,6 +31,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshLocalPlugins;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -51,6 +52,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -157,6 +159,29 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                         this::refresh), null);
     }
 
+    /// Installs a plugin from a packed file the user chooses.
+    ///
+    /// The file is copied into the instance before it is installed, because the
+    /// profile records the path it installed from and resolves it again on every
+    /// later operation: a plugin installed from wherever the file happened to be
+    /// stops the whole profile from resolving the day that file moves. That is also
+    /// why the copy is the thing worth saying out loud — the plugin is part of the
+    /// instance now, and the file the user picked can go.
+    private void installFromFile() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("dsh.instance.plugins.add"));
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.instance.plugins.add.filter"), "*.tgz"));
+        java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
+        if (chosen == null) {
+            return;
+        }
+
+        Path file = chosen.toPath();
+        ProgressDialog.run(i18n("dsh.instance.plugins.add"), progress ->
+                DshLocalPlugins.install(instance, file, progress::accept), this::refresh);
+    }
+
     /// Holds the list the page is drawn in, and gives the page the toolbar that
     /// acts on a selection.
     ///
@@ -169,6 +194,10 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
     private void attachList(JFXListView<PluginRow> listView) {
         toolbar.setButtons(
                 ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
+                // The original's mod list adds a mod from a file the same way; a
+                // plugin is a package, so the file is a packed one.
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add"), SVG.ADD,
+                        this::installFromFile),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
                         this::revealProfile));
 
