@@ -1,8 +1,8 @@
 <div align="center">
-    <img src="src/main/resources/assets/img/icon@8x.png" alt="HDSL Logo" width="64"/>
+    <img src="src/main/resources/assets/img/icon@8x.png" alt="HDSL Logo" width="128"/>
 </div>
 
-<h1 align="center">Hello DeepSeek Launcher</h1>
+<h1 align="center">Hello DeepSeek! Launcher</h1>
 
 <div align="center">
 
@@ -10,6 +10,9 @@
 [![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
 [![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk&logoColor=ffffff)](https://openjdk.org/projects/jdk/21)
 
+</div>
+<div align="center">
+最原汁原味的体验！
 </div>
 
 ---
@@ -20,7 +23,7 @@ HDSL 是一款 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harnes
 
 DeepSeek Harness 通过 npm 发布、以 `dsh web` 启动。HDSL 把这些步骤收进一个图形界面：下载并安装任意已发布的 `dsh` 版本、为每个实例保留独立的运行环境与 `DSH_HOME`、管理插件、查看会话与运行日志，并在同一个窗口里启动和停止它们。
 
-HDSL 的界面、控件与交互取自 HMCL，因此两者观感一致；领域层（`org.jackhuang.hmcl.dsh.*`）为 HDSL 原创。与 Minecraft 相关的功能已全部移除。
+<img width="816" height="506" alt="屏幕截图_20260921_171858" src="https://github.com/user-attachments/assets/164b22a1-f177-4fb1-beba-62165b45f8ad" />
 
 ## 功能
 
@@ -30,6 +33,8 @@ HDSL 的界面、控件与交互取自 HMCL，因此两者观感一致；领域�
 - **会话与日志**：查看实例的会话列表与启动输出
 - **多实例运行**：同时运行多个实例，各自占用独立端口
 - **多实例文件夹**：可以把任意文件夹加入实例列表，原有数据无需搬迁
+
+<img width="816" height="506" alt="屏幕截图_20260921_171918" src="https://github.com/user-attachments/assets/11f9fae0-39f4-4f93-9160-52d0136ce6e4" />
 
 ## 环境要求
 
@@ -95,3 +100,6 @@ HDSL 是 HMCL 的衍生作品，欢迎提交问题与改进。
    原始版权声明与源码文件头的版权信息完整保留，见 [`NOTICE`](NOTICE)。
 
 界面层的说法与实现来自 HMCL 及其贡献者；DeepSeek Harness 领域层为 HDSL 原创。
+
+## 致谢
+DeepSeek V4.1 Flash
