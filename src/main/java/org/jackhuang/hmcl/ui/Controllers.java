@@ -58,6 +58,9 @@ public final class Controllers {
     /// The instance list page, created on first use.
     private static @Nullable org.jackhuang.hmcl.ui.dsh.InstancesPage instancesPage;
 
+    /// The download page, created on first use.
+    private static @Nullable org.jackhuang.hmcl.ui.dsh.DownloadPage downloadPage;
+
     /// Whether idle heap trimming is enabled.
     ///
     /// Trimming is opt-out for machines where a stop-the-world collection after
@@ -199,6 +202,23 @@ public final class Controllers {
         Decorator current = decorator;
         if (current != null)
             current.navigate(node, ContainerAnimations.FORWARD, Motion.SHORT4, Motion.EASE);
+    }
+
+    /// Returns the download page, creating it on first use.
+    ///
+    /// Kept here for the same reason the instance list is: more than one place
+    /// opens it — the home page's own entry, and creating an instance, which the
+    /// original routes through the version list rather than through a wizard
+    /// step of its own.
+    ///
+    /// @return the download page
+    public static org.jackhuang.hmcl.ui.dsh.DownloadPage getDownloadPage() {
+        org.jackhuang.hmcl.ui.dsh.DownloadPage page = downloadPage;
+        if (page == null) {
+            page = new org.jackhuang.hmcl.ui.dsh.DownloadPage();
+            downloadPage = page;
+        }
+        return page;
     }
 
     /// Returns the instance list page, creating it on first use.

@@ -18,26 +18,24 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
-import com.jfoenix.controls.JFXComboBox;
 import com.jfoenix.controls.JFXListView;
-import com.jfoenix.controls.JFXTextField;
+import com.jfoenix.controls.JFXSpinner;
+import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.event.Event;
-import javafx.scene.input.MouseEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.Cursor;
+import javafx.scene.input.MouseEvent;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
@@ -47,10 +45,11 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.animation.ContainerAnimations;
+import org.jackhuang.hmcl.ui.animation.TransitionPane;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
-import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
@@ -98,11 +97,37 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// The list of versions.
     private final JFXListView<DshRelease> releaseList = new JFXListView<>();
 
+    /// What the page shows: the spinner, the list, or a notice.
+    ///
+    /// The original's version list is built this way, and the reason is that a
+    /// list which is loading, empty and full are three different things to say —
+    /// swapping them with a fade is how it says which one it means.
+    private final TransitionPane contentPane = new TransitionPane();
+
+    /// The spinner shown while the registry is being read.
+    ///
+    /// The original's own spinner control, because the rotation and its timing
+    /// are the interface's: a hand-drawn busy indicator would spin differently.
+    private final JFXSpinner spinner = new JFXSpinner();
+
+    /// What the page is doing.
+    private final ObjectProperty<Status> status = new SimpleObjectProperty<>(Status.LOADING);
+
     /// Everything the last load returned, before filtering.
     private List<DshRelease> loaded = List.of();
 
     /// Whether a load is running.
     private boolean busy;
+
+    /// What a load is doing, and therefore what the page shows.
+    private enum Status {
+        /// The registry is being read.
+        LOADING,
+        /// The registry answered.
+        SUCCESS,
+        /// The registry could not be read.
+        FAILED
+    }
 
     /// Creates the download page.
     public DownloadPage() {
@@ -131,13 +156,39 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         ComponentList.setVgrow(releaseList, Priority.ALWAYS);
         pane.getChildren().setAll(root);
 
+        // Nothing published at all reads differently from nothing matching what
+        // was typed, so the first is a notice and the second is the list saying
+        // so itself, as every other searchable list in the interface does.
+        StackPane placeholder = new StackPane();
+        placeholder.getStyleClass().add("notice-pane");
+        placeholder.getChildren().add(new Label(i18n("search.no_results_found")));
+        releaseList.setPlaceholder(placeholder);
+
+        StackPane emptyPane = new StackPane();
+        emptyPane.getStyleClass().add("notice-pane");
+        emptyPane.getChildren().add(new Label(i18n("dsh.versions.available.empty")));
+
+        // A failed read is worth retrying, and the original says so on the page
+        // rather than in a dialog that has to be dismissed first.
+        StackPane failedPane = new StackPane();
+        failedPane.getStyleClass().add("notice-pane");
+        Label retry = new Label(i18n("download.failed.refresh"));
+        FXUtils.onClicked(retry, this::refresh);
+        failedPane.getChildren().add(retry);
+
+        FXUtils.onChangeAndOperate(status, now -> contentPane.setContent(switch (now) {
+            case LOADING -> spinner;
+            case SUCCESS -> loaded.isEmpty() ? emptyPane : pane;
+            case FAILED -> failedPane;
+        }, ContainerAnimations.FADE));
+
         Node toolbar = buildToolbar();
         toolbar.getStyleClass().add("card");
         BorderPane.setMargin(toolbar, new Insets(10, 10, 0, 10));
 
         BorderPane layout = new BorderPane();
         layout.setTop(toolbar);
-        layout.setCenter(pane);
+        layout.setCenter(contentPane);
 
         setCenter(layout);
 
@@ -157,6 +208,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
             return;
         }
         busy = true;
+        status.set(Status.LOADING);
 
         CompletableFuture.supplyAsync(() -> {
             try {
@@ -170,11 +222,12 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
                 Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
                         ? throwable.getCause() : throwable;
                 LOG.warning("Failed to fetch releases", cause);
-                Controllers.dialog(cause.getMessage(), i18n("dsh.versions.load_failed"), MessageType.ERROR);
+                status.set(Status.FAILED);
                 return;
             }
             loaded = releases;
             applyFilter();
+            status.set(Status.SUCCESS);
         }));
     }
 

@@ -244,12 +244,10 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             case "download" -> Controllers.navigate(getDownloadPage());
             // Deep links used when verifying the wizards; they are how a page
             // inside the decorator can be reached without clicking.
-            case "create" -> {
-                Controllers.getDecorator().startWizard(
-                        new org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider(),
-                        i18n("dsh.instance.create"));
-                return true;
-            }
+            // Creating an instance starts at the version list, which is what the
+            // original does: the version is chosen there, and the wizard that
+            // follows only fills in what that choice left open.
+            case "create" -> Controllers.navigate(getDownloadPage());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
@@ -279,14 +277,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         return node;
     }
 
-    /// Returns the download page, creating it on first use.
+    /// Returns the download page.
+    ///
+    /// The page belongs to [Controllers] for the same reason the instance list
+    /// does: creating an instance opens it too.
     ///
     /// @return the download page
     public DownloadPage getDownloadPage() {
-        if (downloadPage == null) {
-            downloadPage = new DownloadPage();
-        }
-        return downloadPage;
+        return Controllers.getDownloadPage();
     }
 
     /// Returns the instance list page.

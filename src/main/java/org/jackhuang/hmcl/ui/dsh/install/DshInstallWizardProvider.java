@@ -134,16 +134,19 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
     @Override
     public @Nullable Node createPage(WizardController controller, int step, SettingsMap settings) {
-        // The version comes first and the create page follows, which is the
-        // original's order: the version is the thing being installed, and the
-        // page after it states that choice rather than asking for it again.
-        // A preselected version skips the first step.
-        boolean askVersion = preselectedVersion == null;
-        int createStep = askVersion ? 1 : 0;
-        if (step == createStep) {
-            return new QuickInstallPage(controller);
+        // One step, because the version was chosen before the wizard opened: the
+        // original picks the version on its version list and the wizard then
+        // states that choice rather than asking for it again. A wizard opened
+        // without one cannot say what it is installing, so it refuses rather than
+        // offering a list of its own — which is what the page that used to sit
+        // here was, and why it is gone.
+        if (step != 0) {
+            return null;
         }
-        return step == 0 ? new VersionSelectPage(controller) : null;
+        if (preselectedVersion == null) {
+            throw new IllegalStateException("The install wizard needs the version it was opened for");
+        }
+        return new QuickInstallPage(controller);
     }
 
     @Override

@@ -430,17 +430,15 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         return row;
     }
 
-    /// Opens the create-an-instance wizard.
+    /// Opens the version list an instance is created from.
     ///
-    /// The wizard mirrors HMCL's install flow: choose a version, then fill in
-    /// the quick-install page and pick the plugins to add.
+    /// The original routes this through its download page rather than through a
+    /// step of its own: the version list is where a version is chosen, and it is
+    /// the same list whether the user came here to create an instance or simply
+    /// to look at what has been published. Choosing a row there starts the
+    /// wizard, which has nothing left to ask about the version.
     private void createInstance() {
-        // No check for an installed version: there does not have to be one. The
-        // wizard downloads the version the new instance will use as the first
-        // thing it does, so a launcher with nothing installed can still make an
-        // instance — which is the only way it ever gets anything installed.
-        Controllers.getDecorator().startWizard(new org.jackhuang.hmcl.ui.dsh.install.DshInstallWizardProvider(),
-                i18n("dsh.instance.create"));
+        Controllers.navigate(Controllers.getDownloadPage());
     }
 
     /// Removes an instance after confirmation.
