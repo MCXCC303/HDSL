@@ -209,12 +209,10 @@ public final class DshInstallWizardProvider implements WizardProvider {
                     LOG.info("Install of " + version + " was cancelled");
                     DshCommand.stopRunning();
                     if (version != null && !versionWasPresent) {
-                        try {
-                            DshVersionManager.uninstall(version);
-                            LOG.info("Removed the partial install of " + version);
-                        } catch (DshException e) {
-                            LOG.warning("Could not remove the partial install of " + version, e);
-                        }
+                        // The half-written copy, not the installed version:
+                        // uninstall looks up an installed version and there is
+                        // none, so it would find nothing to remove.
+                        DshVersionManager.discardPartial(version);
                     }
                 }
                 throw stopped;
@@ -250,12 +248,7 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
         String version = installingVersion;
         if (version != null && !versionWasPresent) {
-            try {
-                DshVersionManager.uninstall(version);
-                LOG.info("Removed the partial install of " + version);
-            } catch (DshException e) {
-                LOG.warning("Could not remove the partial install of " + version, e);
-            }
+            DshVersionManager.discardPartial(version);
         }
         return true;
     }

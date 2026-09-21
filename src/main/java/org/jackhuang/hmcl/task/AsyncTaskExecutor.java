@@ -24,6 +24,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.*;
 
+import org.jackhuang.hmcl.util.function.ExceptionalRunnable;
+
 import static org.jackhuang.hmcl.util.Lang.*;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -32,6 +34,14 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  * @author huangyuhui
  */
 public final class AsyncTaskExecutor extends TaskExecutor {
+
+    /// The thread running the task in hand, while it runs.
+    ///
+    /// Cancelling has to reach it: a task waiting on a subprocess is stopped by
+    /// interrupting the wait, and nothing else gets its attention until it has
+    /// finished — which for a download is the whole download.
+    private final java.util.concurrent.atomic.AtomicReference<Thread> running =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     private CompletableFuture<Boolean> future;
 
@@ -96,7 +106,34 @@ public final class AsyncTaskExecutor extends TaskExecutor {
         }
 
         cancelled = true;
+
+        // The flag is only read between tasks, so on its own it takes effect
+        // when the task in hand has finished — and a task waiting on a download
+        // finishes when the download does. Interrupting the thread that is
+        // running it stops the wait now; the task that follows sees the flag.
+        Thread thread = running.get();
+        if (thread != null) {
+            thread.interrupt();
+        }
     }
+
+    /// Runs a task body, noting the thread it is on for as long as it runs.
+    ///
+    /// @param body the task body
+    /// @return a runnable that runs it
+    private Runnable tracked(ExceptionalRunnable<?> body) {
+        return () -> {
+            running.set(Thread.currentThread());
+            try {
+                body.run();
+            } catch (Exception e) {
+                rethrow(e);
+            } finally {
+                running.set(null);
+            }
+        };
+    }
+
 
     private CompletableFuture<?> executeTasksExceptionally(Task<?> parentTask, Collection<? extends Task<?>> tasks) {
         if (tasks == null || tasks.isEmpty())
@@ -240,7 +277,7 @@ public final class AsyncTaskExecutor extends TaskExecutor {
                         }
                     }
 
-                    return CompletableFuture.runAsync(wrap(() -> {
+                    return CompletableFuture.runAsync(tracked(() -> {
                         task.setState(Task.TaskState.RUNNING);
                         taskListeners.forEach(it -> it.onRunning(task));
                         task.execute();

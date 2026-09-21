@@ -138,10 +138,42 @@ public final class DshCommand {
             int exitCode = running.waitFor();
             process.destroyRelatedThreads();
             return new Result(exitCode, List.copyOf(output));
+        } catch (InterruptedException e) {
+            // The wait was cut short, which is what cancelling an install does.
+            // Stopping the wait does not stop the program: it carries on writing
+            // into a directory whose owner has gone. It is stopped here, where it
+            // was started — the caller cannot do it, because by the time it sees
+            // the interrupt this block has already removed the process from the
+            // registry.
+            stopTree(running);
+            Thread.currentThread().interrupt();
+            throw e;
         } finally {
             RUNNING.remove(running);
         }
     }
+
+    /// Stops a program and everything it started.
+    ///
+    /// npm is a launcher that runs node, so stopping the launcher leaves the
+    /// work running. What is being stopped is the work.
+    ///
+    /// @param process the program to stop
+    private static void stopTree(Process process) {
+        process.descendants().forEach(ProcessHandle::destroy);
+        process.destroy();
+        try {
+            if (!process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+            }
+        } catch (InterruptedException e) {
+            process.descendants().forEach(ProcessHandle::destroyForcibly);
+            process.destroyForcibly();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 
     /// Stops every command this launcher is running, and waits for them to stop.
     ///
@@ -150,17 +182,7 @@ public final class DshCommand {
     /// still writing until it has.
     public static void stopRunning() {
         for (Process process : RUNNING) {
-            process.destroy();
-        }
-        for (Process process : RUNNING) {
-            try {
-                if (!process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) {
-                    process.destroyForcibly();
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+            stopTree(process);
         }
         RUNNING.clear();
     }

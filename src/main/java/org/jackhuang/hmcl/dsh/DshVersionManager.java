@@ -169,6 +169,25 @@ public final class DshVersionManager {
         }
     }
 
+    /// Removes a version that was being installed and did not finish.
+    ///
+    /// The half-written copy lives beside the version it was going to become, so
+    /// `uninstall` cannot reach it: that looks up an installed version and finds
+    /// none. This removes what is there, finished or not.
+    ///
+    /// @param version the version whose partial install to remove
+    public static void discardPartial(String version) {
+        Path staging = DshPaths.VERSIONS.resolve(version + ".installing");
+        try {
+            if (Files.exists(staging)) {
+                FileUtils.deleteDirectory(staging);
+                LOG.info("Removed the partial install of " + version);
+            }
+        } catch (IOException e) {
+            LOG.warning("Could not remove the partial install of " + version, e);
+        }
+    }
+
     /// Holds a version's boot library to a different release.
     ///
     /// The pairing is not a preference — the two are published together, and a
