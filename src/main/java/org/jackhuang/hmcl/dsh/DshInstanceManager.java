@@ -197,13 +197,19 @@ public final class DshInstanceManager {
             throw new DshException("A custom DSH_HOME must be chosen for this instance");
         }
 
+        // The port is reserved here, once, for the whole life of the instance:
+        // the browser interface keys its state by origin, so an instance that
+        // reached the same history through two ports would have two writers. A
+        // surface that serves nothing needs none.
+        int port = DshSurface.ofProfile(profile).isWeb() ? DshPorts.reserve(id) : 0;
+
         DshInstance instance = new DshInstance(id, version, profile,
                 workspace.toAbsolutePath().normalize().toString(),
                 nodeRuntime,
                 homeMode,
                 customHome == null ? null : customHome.toAbsolutePath().normalize().toString(),
                 List.copyOf(arguments), Map.copyOf(environment),
-                DshInstanceIcon.DEFAULT.id(), null, DshPortMode.AUTO, 0, System.currentTimeMillis());
+                DshInstanceIcon.DEFAULT.id(), null, DshPortMode.AUTO, port, System.currentTimeMillis());
 
         Path directory = instance.instanceDirectory();
         try {

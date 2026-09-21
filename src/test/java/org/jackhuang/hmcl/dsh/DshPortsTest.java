@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies the port policy that keeps an instance on one origin.
@@ -62,12 +63,47 @@ class DshPortsTest {
     }
 
     @Test
-    void anAutomaticInstanceMovesOffATakenPort() throws Exception {
+    void aTakenPortRefusesTheLaunchRatherThanMovingTheInstance() throws Exception {
         try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
             int port = taken.getLocalPort();
-            int resolved = DshPorts.resolve(instance(DshPortMode.AUTO, port));
-            assertNotEquals(port, resolved,
-                    "a port held by something else would make DeepSeek Harness exit with status 1");
+            DshPorts.PortUnavailableException refused = assertThrows(
+                    DshPorts.PortUnavailableException.class,
+                    () -> DshPorts.resolve(instance(DshPortMode.AUTO, port)),
+                    "the browser interface keys its state by origin, so an instance must not be moved");
+            assertEquals(port, refused.port(), "the message has to name the port to free");
+            assertEquals("test", refused.instanceId());
+        }
+    }
+
+    @Test
+    void aTakenFixedPortIsRefusedTheSameWay() throws Exception {
+        try (ServerSocket taken = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            int port = taken.getLocalPort();
+            assertThrows(DshPorts.PortUnavailableException.class,
+                    () -> DshPorts.resolve(instance(DshPortMode.FIXED, port)));
+        }
+    }
+
+    @Test
+    void aReservedPortIsFreeAndInTheLaunchersOwnRange() throws Exception {
+        int port = DshPorts.reserve("a-new-instance");
+        assertTrue(port >= 3081 && port <= 4081, "reserved ports stay in the launcher's band, got " + port);
+        assertTrue(DshPorts.isFree(port));
+    }
+
+    @Test
+    void aReservationAvoidsThePortsOtherInstancesHold() throws Exception {
+        // Another instance already holds a port; a new one must not be given it,
+        // or the second instance to start would find its own port taken.
+        DshInstance existing = DshInstanceManager.create("holds-a-port", "1.0.0",
+                DshInstance.DEFAULT_PROFILE, java.nio.file.Path.of("/tmp"),
+                DshHomeMode.ISOLATED, null, List.of(), Map.of());
+        try {
+            assertTrue(existing.portOrDefault() > 0, "creating an instance settles its port");
+            assertNotEquals(existing.portOrDefault(), DshPorts.reserve("another-instance"),
+                    "two instances must not be promised the same port");
+        } finally {
+            DshInstanceManager.delete(existing.id());
         }
     }
 

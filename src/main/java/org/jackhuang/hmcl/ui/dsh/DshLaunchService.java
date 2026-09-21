@@ -269,8 +269,10 @@ public final class DshLaunchService {
                 LOG.info("Launch of " + instance.id() + " was stopped before it was ready");
             } else {
                 LOG.warning("Failed to launch instance " + instance.id(), failure);
-                Controllers.dialog(failure == null ? i18n("dsh.launch.failed") : failure.getMessage(),
-                        i18n("dsh.launch.failed"), MessageType.ERROR);
+                boolean portTaken = portOf(failure) > 0;
+                Controllers.dialog(failureMessage(instance, failure),
+                        i18n("dsh.launch.failed"),
+                        portTaken ? MessageType.WARNING : MessageType.ERROR);
             }
         } else if (process != null) {
             if (showOutput) {
@@ -312,6 +314,40 @@ public final class DshLaunchService {
                         onDone.run();
                     }
                 }));
+    }
+
+    /// Describes a launch failure in the user's terms.
+    ///
+    /// A port that is already taken is the one failure the user can do something
+    /// about, and the only one whose message is written here rather than by the
+    /// domain layer: the port and the instance belong in the sentence, and the
+    /// sentence belongs in the language the interface is running in.
+    ///
+    /// @param instance the instance that could not start
+    /// @param failure  the failure the launch ended with, or `null`
+    /// @return the message to show
+    private static String failureMessage(DshInstance instance, @Nullable Exception failure) {
+        int port = portOf(failure);
+        if (port > 0) {
+            return i18n("dsh.launch.port_taken", port, instance.id());
+        }
+        return failure == null ? i18n("dsh.launch.failed") : failure.getMessage();
+    }
+
+    /// Finds the port a failure is about, if it is about one.
+    ///
+    /// The exception is unwrapped because a launch fails inside a task, which
+    /// wraps what went wrong in one or two layers of its own.
+    ///
+    /// @param failure the failure, or `null`
+    /// @return the port, or `0` when the failure is about something else
+    private static int portOf(@Nullable Throwable failure) {
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof DshPorts.PortUnavailableException unavailable) {
+                return unavailable.port();
+            }
+        }
+        return 0;
     }
 
     /// Opens HMCL's log window on a process.

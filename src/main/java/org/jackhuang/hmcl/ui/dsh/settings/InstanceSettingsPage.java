@@ -71,6 +71,12 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// The icon row, kept so its image can follow a change.
     private final ImagePickerItem iconRow = new ImagePickerItem();
 
+    /// The port row, kept so its hint can follow the mode.
+    private final LineTextPane portRow = new LineTextPane();
+
+    /// The port number field, kept so it can be offered or taken away with the mode.
+    private final com.jfoenix.controls.JFXTextField portField = new com.jfoenix.controls.JFXTextField();
+
     /// Called after a change is written back.
     private final Runnable onChanged;
 
@@ -263,38 +269,72 @@ public final class InstanceSettingsPage extends ScrollPane {
         row.setNullSafeConverter(mode -> i18n("dsh.instance.port.mode." + mode.id()));
         row.valueProperty().addListener((observable, was, mode) -> {
             if (mode != null && mode != was) {
-                write(instance.withPortPolicy(mode, instance.port()));
+                write(withPortMode(mode));
             }
         });
         return row;
     }
 
+    /// Returns the instance under a new port policy.
+    ///
+    /// An instance that has no port yet is given one here, so that choosing to
+    /// name the port offers a number the instance can actually use instead of a
+    /// zero. That is what makes the reserved port the starting point of the
+    /// choice rather than something to look up elsewhere.
+    ///
+    /// @param mode the policy to record
+    /// @return the instance to store
+    private DshInstance withPortMode(DshPortMode mode) {
+        if (instance.portOrDefault() > 0) {
+            return instance.withPortPolicy(mode, instance.port());
+        }
+        try {
+            return instance.withPortPolicy(mode, DshPorts.reserve(instance.id()));
+        } catch (DshException e) {
+            LOG.warning("Could not reserve a port for " + instance.id(), e);
+            return instance.withPortPolicy(mode, instance.port());
+        }
+    }
+
     /// Builds the fixed-port entry.
+    ///
+    /// The field and the hint are drawn from the stored instance rather than
+    /// decided once here, because the control is built before the user has
+    /// chosen a mode and is never built again: deciding here is what left the
+    /// field disabled after the mode had already been switched to a fixed port,
+    /// with nothing to type the port into.
     ///
     /// @return the row
     private LineTextPane buildPortRow() {
-        boolean fixed = instance.portModeOrDefault() == DshPortMode.FIXED;
+        portRow.setTitle(i18n("dsh.instance.port.fixed"));
 
-        LineTextPane row = new LineTextPane();
-        row.setTitle(i18n("dsh.instance.port.fixed"));
-        row.setSubtitle(fixed
+        portField.setPrefWidth(80);
+        portField.setValidators(new NumberValidator(i18n("dsh.instance.port.invalid"), false));
+        portField.setOnAction(event -> applyPort(portField.getText()));
+        portField.focusedProperty().addListener((observable, was, focused) -> {
+            if (!focused) {
+                applyPort(portField.getText());
+            }
+        });
+        portRow.setRowTrailing(portField);
+
+        syncPortRow();
+        return portRow;
+    }
+
+    /// Draws the port row from the stored instance.
+    ///
+    /// Called after every write, so that switching the mode and naming a port
+    /// take effect on the control the user is looking at.
+    private void syncPortRow() {
+        boolean fixed = instance.portModeOrDefault() == DshPortMode.FIXED;
+        portRow.setSubtitle(fixed
                 ? i18n("dsh.instance.port.fixed.hint")
                 : i18n("dsh.instance.port.auto.current", portDescription()));
 
         // Only editable in fixed mode; in automatic mode the launcher decides.
-        var field = new com.jfoenix.controls.JFXTextField();
-        field.setPrefWidth(80);
-        field.setDisable(!fixed);
-        field.setText(fixed ? Integer.toString(instance.portOrDefault()) : "");
-        field.setValidators(new NumberValidator(i18n("dsh.instance.port.invalid"), false));
-        field.setOnAction(event -> applyPort(field.getText()));
-        field.focusedProperty().addListener((observable, was, focused) -> {
-            if (!focused) {
-                applyPort(field.getText());
-            }
-        });
-        row.setRowTrailing(field);
-        return row;
+        portField.setDisable(!fixed);
+        portField.setText(fixed ? Integer.toString(instance.portOrDefault()) : "");
     }
 
     /// Describes the port an automatic instance is currently bound to.
@@ -342,6 +382,7 @@ public final class InstanceSettingsPage extends ScrollPane {
                 instance = stored;
             }
             iconRow.setImage(DshInstanceIcons.load(instance));
+            syncPortRow();
             if (onChanged != null) {
                 onChanged.run();
             }
