@@ -29,6 +29,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -158,13 +159,14 @@ public final class DshAcpClient implements AutoCloseable {
     /// @throws DshException when the runtime or version is unavailable
     private static List<String> commandFor(DshInstance instance) throws DshException {
         DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
-        DshVersion version = DshVersionManager.findInstalled(instance.version());
-        if (version == null) {
-            throw new DshException("DeepSeek Harness " + instance.version() + " is not installed");
+        Path script = instance.dshEntryPoint();
+        if (!Files.isRegularFile(script)) {
+            throw new DshException("Instance " + instance.id()
+                    + " has no DeepSeek Harness of its own; " + script + " is missing");
         }
         return List.of(
                 runtime.node().toString(),
-                version.binScript().toString(),
+                script.toString(),
                 "--profile", "acp");
     }
 

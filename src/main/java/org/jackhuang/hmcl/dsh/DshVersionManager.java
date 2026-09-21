@@ -61,46 +61,16 @@ public final class DshVersionManager {
     /// rather than a degradation.
     public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
 
-    /// Returns every DeepSeek Harness version installed under [DshPaths#VERSIONS].
+    /// Reports whether an instance's own DeepSeek Harness is in place.
     ///
-    /// Directories that do not contain a usable package are skipped, so a
-    /// partially removed or failed install never appears in the list.
-    ///
-    /// @return the installed versions, newest first
-    public static List<DshVersion> listInstalled() {
-        List<DshVersion> versions = new ArrayList<>();
-        Path root = DshPaths.VERSIONS;
-        if (!Files.isDirectory(root)) {
-            return versions;
+    /// @param instance the instance
+    /// @return whether its entry script is there
+    public static boolean isInstalled(DshInstance instance) {
+        try {
+            return Files.isRegularFile(instance.dshEntryPoint());
+        } catch (DshException e) {
+            return false;
         }
-
-        try (Stream<Path> entries = Files.list(root)) {
-            for (Path directory : entries.filter(Files::isDirectory).toList()) {
-                Path bin = directory.resolve(DshVersion.PACKAGE_PATH).resolve("lib/bin.js");
-                if (!Files.isRegularFile(bin)) {
-                    continue;
-                }
-                versions.add(new DshVersion(directory.getFileName().toString(), directory));
-            }
-        } catch (IOException e) {
-            LOG.warning("Failed to enumerate installed DSH versions in " + root, e);
-        }
-
-        versions.sort(Comparator.comparing(DshVersion::version, DshVersionManager::compareVersions).reversed());
-        return versions;
-    }
-
-    /// Finds a specific installed version.
-    ///
-    /// @param version the version string
-    /// @return the installed version, or `null` when it is not installed
-    public static @Nullable DshVersion findInstalled(String version) {
-        for (DshVersion candidate : listInstalled()) {
-            if (candidate.version().equals(version)) {
-                return candidate;
-            }
-        }
-        return null;
     }
 
     /// Queries the npm registry for every published DeepSeek Harness version.
@@ -169,42 +139,51 @@ public final class DshVersionManager {
         }
     }
 
-    /// Removes a version that was being installed and did not finish.
+    /// The directory an instance's copy is staged in while it is installed.
     ///
-    /// The half-written copy lives beside the version it was going to become, so
-    /// `uninstall` cannot reach it: that looks up an installed version and finds
-    /// none. This removes what is there, finished or not.
+    /// Inside the instance, so that moving it into place is a rename within one
+    /// filesystem rather than a copy across two.
     ///
-    /// @param version the version whose partial install to remove
-    public static void discardPartial(String version) {
-        Path staging = DshPaths.VERSIONS.resolve(version + ".installing");
+    /// @param instance the instance
+    /// @return the staging directory
+    /// @throws DshException when the identifier is not usable as a path segment
+    private static Path stagingDirectory(DshInstance instance) throws DshException {
+        return instance.instanceDirectory().resolve("dsh.installing");
+    }
+
+    /// Removes a copy that was being installed and did not finish.
+    ///
+    /// @param instance the instance whose partial install to remove
+    public static void discardPartial(DshInstance instance) {
         try {
+            Path staging = stagingDirectory(instance);
             if (Files.exists(staging)) {
                 FileUtils.deleteDirectory(staging);
-                LOG.info("Removed the partial install of " + version);
+                LOG.info("Removed the partial install for " + instance.id());
             }
-        } catch (IOException e) {
-            LOG.warning("Could not remove the partial install of " + version, e);
+        } catch (IOException | DshException e) {
+            LOG.warning("Could not remove the partial install for " + instance.id(), e);
         }
     }
 
-    /// Holds a version's boot library to a different release.
+    /// Holds an instance's boot library to a different release.
     ///
     /// The pairing is not a preference — the two are published together, and a
     /// release whose libraries disagree with it fails at import rather than
     /// degrading — so this is written only when someone asked for it, and the
     /// caller warns first.
     ///
-    /// The choice belongs to the installed version, not to an instance: every
-    /// instance running this version shares the tree, and therefore shares this.
+    /// The choice belongs to the instance, because the runtime it changes belongs
+    /// to the instance: it is installed into the instance's own copy and reaches
+    /// nothing else.
     ///
-    /// @param version the DeepSeek Harness version to change
-    /// @param appBoot the boot library version to hold it to
-    /// @throws DshException when the manifest cannot be written or npm fails
-    public static void overrideAppBoot(String version, String appBoot) throws DshException {
-        Path target = DshPaths.versionDirectory(version);
+    /// @param instance the instance to change
+    /// @param appBoot  the boot library version to hold it to
+    /// @throws DshException when the manifest cannot be written or pnpm fails
+    public static void overrideAppBoot(DshInstance instance, String appBoot) throws DshException {
+        Path target = instance.dshDirectory();
         if (!Files.isDirectory(target)) {
-            throw new DshException("Version " + version + " is not installed");
+            throw new DshException("Instance " + instance.id() + " has no DeepSeek Harness to change");
         }
 
         DshNodeRuntime runtime = requireRuntime();
@@ -212,17 +191,11 @@ public final class DshVersionManager {
             throw new DshException("pnpm was not found on PATH; changing the boot library requires it");
         }
 
-        writeManifest(target, version, appBoot);
+        writeManifest(target, instance.version(), appBoot);
 
-        // pnpm rather than npm, for one reason: pnpm links a package into a
-        // project from a store it keeps, so a second project using the same
-        // package costs a fraction of the first. Measured on this launcher's own
-        // runtime, a second copy of the same version adds 51 MB against the
-        // 402 MB it appears to occupy — which is what makes giving every instance
-        // its own copy affordable.
         List<String> command = buildInstallCommand(runtime, target);
 
-        LOG.info("Holding " + version + " to boot library " + appBoot);
+        LOG.info("Holding " + instance.id() + " to boot library " + appBoot);
         int exitCode;
         try {
             exitCode = DshCommand.run(command, null, null).exitCode();
@@ -234,7 +207,7 @@ public final class DshVersionManager {
         }
         if (exitCode != 0) {
             throw new DshException("pnpm exited with code " + exitCode
-                    + " while changing the boot library of " + version);
+                    + " while changing the boot library of " + instance.id());
         }
     }
 
@@ -269,27 +242,26 @@ public final class DshVersionManager {
                 "--config.dangerously-allow-all-builds=true");
     }
 
-    /// Installs one DeepSeek Harness version into its own prefix.
+    /// Installs the DeepSeek Harness an instance runs, into that instance.
     ///
-    /// The install is staged into a sibling directory and moved into place on
-    /// success, so an interrupted install can never look like a usable version.
+    /// The version is the instance's own field: what is installed is what the
+    /// instance says it runs, and it goes where the instance can find it. The
+    /// install is staged inside the instance and moved into place on success, so
+    /// an interrupted install can never look like a usable runtime.
     ///
-    /// @param version the version to install
-    /// @param onLine  a consumer notified of npm output lines, or `null`
-    /// @return the installed version
-    /// @throws DshException when the runtime is missing or npm fails
-    public static DshVersion install(String version, @Nullable Consumer<String> onLine) throws DshException {
-        Path target = DshPaths.versionDirectory(version);
-        if (Files.isDirectory(target) && findInstalled(version) != null) {
-            throw new DshException("Version " + version + " is already installed");
-        }
+    /// @param instance the instance to install for
+    /// @param onLine   a consumer notified of pnpm output lines, or `null`
+    /// @throws DshException when the runtime is missing or pnpm fails
+    public static void install(DshInstance instance, @Nullable Consumer<String> onLine) throws DshException {
+        String version = instance.version();
+        Path target = instance.dshDirectory();
+        Path staging = stagingDirectory(instance);
 
         DshNodeRuntime runtime = requireRuntime();
         if (!runtime.canManagePlugins()) {
-            throw new DshException("pnpm was not found on PATH; installing versions requires it");
+            throw new DshException("pnpm was not found on PATH; installing DeepSeek Harness requires it");
         }
 
-        Path staging = target.resolveSibling(target.getFileName() + ".installing");
         try {
             if (Files.exists(staging)) {
                 FileUtils.deleteDirectory(staging);
@@ -299,7 +271,7 @@ public final class DshVersionManager {
             throw new DshException("Failed to prepare " + staging, e);
         }
 
-        // The manifest is written before npm runs, because npm would otherwise
+        // The manifest is written before pnpm runs, because pnpm would otherwise
         // choose the versions itself. Installing by name records a caret range,
         // and a caret cannot express what these packages actually promise: the
         // whole family is published in lockstep, one version for all of it. So
@@ -313,14 +285,9 @@ public final class DshVersionManager {
         // the value the create page offers, and it defaults to the matching one.
         writeManifest(staging, version, version);
 
-        // pnpm rather than npm, for one reason: pnpm links packages into a
-        // project from a store it keeps, so a second project using the same
-        // packages costs a fraction of the first. Measured here, a second copy of
-        // the same version adds 51 MB against the 402 MB it appears to occupy —
-        // which is what makes giving every instance its own copy affordable.
         List<String> command = buildInstallCommand(runtime, staging);
 
-        LOG.info("Installing DSH " + version + ": " + String.join(" ", command));
+        LOG.info("Installing DSH " + version + " for " + instance.id() + ": " + String.join(" ", command));
 
         int exitCode;
         try {
@@ -334,7 +301,8 @@ public final class DshVersionManager {
 
         if (exitCode != 0) {
             deleteQuietly(staging);
-            throw new DshException("pnpm exited with code " + exitCode + " while installing " + version);
+            throw new DshException("pnpm exited with code " + exitCode
+                    + " while installing " + version + " for " + instance.id());
         }
 
         Path bin = staging.resolve(DshVersion.PACKAGE_PATH).resolve("lib/bin.js");
@@ -354,25 +322,7 @@ public final class DshVersionManager {
             throw new DshException("Failed to move the staged install into " + target, e);
         }
 
-        LOG.info("Installed DSH " + version + " into " + target);
-        return new DshVersion(version, target);
-    }
-
-    /// Removes an installed version and everything under its prefix.
-    ///
-    /// @param version the version to remove
-    /// @throws DshException when the version is not installed or cannot be removed
-    public static void uninstall(String version) throws DshException {
-        DshVersion installed = findInstalled(version);
-        if (installed == null) {
-            throw new DshException("Version " + version + " is not installed");
-        }
-        try {
-            FileUtils.deleteDirectory(installed.directory());
-        } catch (IOException e) {
-            throw new DshException("Failed to remove " + installed.directory(), e);
-        }
-        LOG.info("Removed DSH " + version);
+        LOG.info("Installed DSH " + version + " for " + instance.id() + " into " + target);
     }
 
     /// Requires a usable Node runtime.

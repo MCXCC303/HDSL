@@ -248,6 +248,19 @@ ComponentList.add(child)
 界面里所有颜色都会随窗口背后是什么而变化 —— 这种问题在截图上不明显，
 要把两个窗口的同一区域**采样成数值**才看得出来。
 
+### 不要用 pkill -f 匹配宽泛的模式
+
+**开发会话本身跑在 `dsh web` 里**（见环境说明）。`pkill -f "dsh web"` 会**匹配到承载你自己的进程**，
+把自己杀掉、命令中断。
+
+同类危险模式：`pkill -f "npm"`、`pkill -f "gradlew run"`、`pgrep -f "3199"`（命令行里含端口号时，
+grep 自身也会被匹配）。
+
+**规则**：
+- 停测试进程**只用 pid**：先 `pgrep -f "<足够具体的路径>"` 看清结果，再 `kill <pid>`
+- 模式必须包含**只属于目标**的路径（如 `instances/instance-1/dsh`），不能是产品名
+- 拿不准时**先打印再杀**，不要一步到位
+
 ### 没有侧栏的页面会留下 200px 空列
 
 `DecoratorAnimatedPage` 的皮肤**无条件**执行 `FXUtils.setLimitWidth(control.left, 200)`，

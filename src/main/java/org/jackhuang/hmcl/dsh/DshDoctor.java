@@ -74,7 +74,6 @@ public final class DshDoctor {
 
         out.println("Directories");
         out.println("  user home: " + Metadata.HMCL_USER_HOME);
-        out.println("  versions:  " + DshPaths.VERSIONS);
         out.println("  instances: " + DshPaths.INSTANCES);
         out.println();
 
@@ -97,14 +96,21 @@ public final class DshDoctor {
         }
         out.println();
 
-        out.println("Installed DSH versions");
-        List<DshVersion> installed = DshVersionManager.listInstalled();
+        out.println("Instances and the DeepSeek Harness each carries");
+        List<DshInstance> installed = DshInstanceManager.list();
         if (installed.isEmpty()) {
             out.println("  (none)");
         } else {
-            for (DshVersion version : installed) {
-                out.println("  " + version.version() + "  ->  " + version.directory()
-                        + (version.isUsable() ? "" : "  [INCOMPLETE]"));
+            for (DshInstance instance : installed) {
+                String location;
+                try {
+                    location = instance.dshDirectory().toString();
+                } catch (DshException e) {
+                    location = "(unusable identifier)";
+                }
+                out.println("  " + instance.id() + "  dsh " + instance.version()
+                        + "  ->  " + location
+                        + (DshVersionManager.isInstalled(instance) ? "" : "  [INCOMPLETE]"));
             }
         }
         out.println();

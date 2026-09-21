@@ -288,11 +288,17 @@ public final class DshCli {
                     return DshDoctor.report(out);
                 }
                 case LIST_INSTALLED -> {
-                    List<DshVersion> installed = DshVersionManager.listInstalled();
-                    if (installed.isEmpty()) {
-                        out.println("(no installed versions)");
+                    // A runtime belongs to the instance that runs it, so what
+                    // there is to list is the instances and their runtimes.
+                    List<DshInstance> instances = DshInstanceManager.list();
+                    if (instances.isEmpty()) {
+                        out.println("(no instances)");
                     }
-                    installed.forEach(version -> out.println(version.version() + "\t" + version.directory()));
+                    for (DshInstance instance : instances) {
+                        out.println(instance.id() + "\t" + instance.version()
+                                + "\t" + instance.dshDirectory()
+                                + (DshVersionManager.isInstalled(instance) ? "" : "\t[INCOMPLETE]"));
+                    }
                     return 0;
                 }
                 case LIST_REMOTE -> {
@@ -305,16 +311,13 @@ public final class DshCli {
                     }
                     return 0;
                 }
-                case INSTALL -> {
-                    out.println("Installing DeepSeek Harness " + invocation.subject() + " ...");
-                    DshVersion version = DshVersionManager.install(invocation.subject(), out::println);
-                    out.println("Installed " + version.version() + " into " + version.directory());
-                    return 0;
-                }
-                case UNINSTALL -> {
-                    DshVersionManager.uninstall(invocation.subject());
-                    out.println("Removed " + invocation.subject());
-                    return 0;
+                case INSTALL, UNINSTALL -> {
+                    // A runtime is not installed on its own any more: it is
+                    // installed into the instance that runs it, when that
+                    // instance is made.
+                    err.println("error: DeepSeek Harness is installed into an instance; "
+                            + "use --create-instance with --dsh-version");
+                    return 2;
                 }
                 case LIST_INSTANCES -> {
                     List<DshInstance> instances = DshInstanceManager.list();
@@ -776,12 +779,12 @@ public final class DshCli {
         String id = invocation.subject();
         String version = invocation.option("dsh-version");
         if (version == null) {
-            List<DshVersion> installed = DshVersionManager.listInstalled();
-            if (installed.isEmpty()) {
-                err.println("error: no DeepSeek Harness version is installed; pass --version or install one first");
-                return 1;
-            }
-            version = installed.get(0).version();
+            // There is nothing installed to fall back on: the runtime is fetched
+            // when the instance that runs it is made, so the version has to be
+            // named here.
+            err.println("error: --dsh-version is required; "
+                    + "a DeepSeek Harness version belongs to the instance that runs it");
+            return 1;
         }
 
         String profile = invocation.option("profile");
@@ -820,15 +823,13 @@ public final class DshCli {
                 usage: hdsl <command> [options]
 
                 versions:
-                  --list-installed                 list installed DeepSeek Harness versions
+                  --list-installed                 list instances and the runtime each carries
                   --list-versions                  list versions published to the npm registry
-                  --install <version>              install a version into its own npm prefix
-                  --uninstall <version>            remove an installed version
 
                 instances:
                   --list-instances                 list launcher instances
                   --create-instance <id>           create an instance
-                      --dsh-version <version>        version to pin (defaults to the newest installed)
+                      --dsh-version <version>        version to pin (required)
                       --profile <name>               profile to boot (default: web)
                       --workspace <path>             session working directory (default: $HOME)
                       --home-mode <mode>             isolated | version_shared | custom

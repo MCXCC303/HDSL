@@ -42,10 +42,11 @@ public final class DshPaths {
     public static final Path ROOT = Metadata.HMCL_USER_HOME;
 
     /// One directory per installed DeepSeek Harness version, each an npm prefix.
-    public static final Path VERSIONS = ROOT.resolve("versions");
-
     /// One directory per launcher instance.
     public static final Path INSTANCES = ROOT.resolve("instances");
+
+    /// Holds the homes that are shared between instances of one version.
+    public static final Path HOMES = ROOT.resolve("homes");
 
     /// One directory per Node.js runtime the launcher installed.
     ///
@@ -64,8 +65,34 @@ public final class DshPaths {
     /// @param version the version string, which must be a safe path segment
     /// @return the version's prefix directory
     /// @throws DshException when the version string cannot be used as a directory name
-    public static Path versionDirectory(String version) throws DshException {
-        return VERSIONS.resolve(requireSafeSegment(version, "version"));
+    /// The home shared between every instance running one version.
+    ///
+    /// Outside the version's own files: each instance has its own copy of the
+    /// runtime now, and a home that two instances share cannot live inside one
+    /// of them.
+    ///
+    /// @param version the version
+    /// @return the home directory
+    /// @throws DshException when the version is not usable as a path segment
+    public static Path versionHomeDirectory(String version) throws DshException {
+        return HOMES.resolve(requireSafeSegment(version, "version"));
+    }
+
+    /// The directory holding an instance's own copy of DeepSeek Harness.
+    ///
+    /// Its own rather than shared between every instance that runs the same
+    /// version. Sharing is cheaper on paper and worse in practice: the boot
+    /// library is installed into the copy, so changing it for one instance
+    /// changed it for all of them, and an instance that carries its own copy is
+    /// an instance that can be moved, exported or thrown away whole. pnpm links
+    /// a second copy of the same packages from a store it keeps, so the second
+    /// one costs a fraction of the first.
+    ///
+    /// @param instanceId the instance
+    /// @return the directory
+    /// @throws DshException when the identifier is not usable as a path segment
+    public static Path instanceVersionDirectory(String instanceId) throws DshException {
+        return instanceDirectory(instanceId).resolve("dsh");
     }
 
     /// Returns the directory for a launcher-managed Node runtime.

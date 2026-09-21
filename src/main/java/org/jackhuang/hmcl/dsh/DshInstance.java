@@ -197,7 +197,7 @@ public record DshInstance(
         return switch (homeMode) {
             case GLOBAL -> throw new AssertionError("handled above");
             case ISOLATED -> DshPaths.instanceDirectory(id).resolve("home").toAbsolutePath().normalize();
-            case VERSION_SHARED -> DshPaths.versionDirectory(version).resolve(".dsh-home").toAbsolutePath().normalize();
+            case VERSION_SHARED -> DshPaths.versionHomeDirectory(version).toAbsolutePath().normalize();
             case CUSTOM -> {
                 Path home = customHomePath();
                 if (home == null) {
@@ -215,6 +215,22 @@ public record DshInstance(
     /// @throws DshException when the id cannot be used as a directory name
     public Path instanceDirectory() throws DshException {
         return DshPaths.instanceDirectory(id);
+    }
+
+    /// Returns the directory holding this instance's own DeepSeek Harness.
+    ///
+    /// @return the directory
+    /// @throws DshException when the identifier is not usable as a path segment
+    public Path dshDirectory() throws DshException {
+        return DshPaths.instanceVersionDirectory(id);
+    }
+
+    /// Returns the entry script of this instance's own DeepSeek Harness.
+    ///
+    /// @return the script's path
+    /// @throws DshException when the identifier is not usable as a path segment
+    public Path dshEntryPoint() throws DshException {
+        return dshDirectory().resolve(DshVersion.PACKAGE_PATH).resolve("lib/bin.js");
     }
 
     /// Reports whether this instance shares its home with other instances.

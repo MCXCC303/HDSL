@@ -199,11 +199,11 @@ public final class DshPluginInstaller {
                                          Path home,
                                          List<String> args,
                                          @Nullable Consumer<String> onLine) throws DshException {
-        DshVersion version = DshVersionManager.findInstalled(instance.version());
-        if (version == null) {
-            throw new DshException("DeepSeek Harness " + instance.version() + " is not installed");
+        Path script = instance.dshEntryPoint();
+        if (!Files.isRegularFile(script)) {
+            throw new DshException("Instance " + instance.id()
+                    + " has no DeepSeek Harness of its own; " + script + " is missing");
         }
-        Path script = version.binScript();
         if (!Files.isRegularFile(script)) {
             throw new DshException("The installed version is incomplete: " + script + " is missing");
         }

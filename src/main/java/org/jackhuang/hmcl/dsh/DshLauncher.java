@@ -53,7 +53,6 @@ public final class DshLauncher {
     /// @param homeDirectory    the `DSH_HOME` the child is given
     public record LaunchPlan(
             DshInstance instance,
-            DshVersion version,
             DshSurface surface,
             @Unmodifiable List<String> command,
             Path workingDirectory,
@@ -123,14 +122,12 @@ public final class DshLauncher {
     ///                       entry script is absent, or the workspace cannot be created
     public static LaunchPlan plan(DshInstance instance) throws DshException {
         DshNodeRuntime runtime = resolveRuntime(instance);
-        DshVersion version = DshVersionManager.findInstalled(instance.version());
-        if (version == null) {
-            throw new DshException("DeepSeek Harness " + instance.version()
-                    + " is not installed; install it on the Versions page");
-        }
-        Path script = version.binScript();
+        // The instance runs its own copy, so there is nothing to look up: either
+        // its copy is there or the instance is not ready to run.
+        Path script = instance.dshEntryPoint();
         if (!Files.isRegularFile(script)) {
-            throw new DshException("The installed version is incomplete: " + script + " is missing");
+            throw new DshException("Instance " + instance.id()
+                    + " has no DeepSeek Harness of its own; " + script + " is missing");
         }
 
         Path workspace = instance.workspacePath();
@@ -168,7 +165,7 @@ public final class DshLauncher {
         environment.putAll(runtime.pathEnvironment());
         environment.putAll(instance.environment());
 
-        return new LaunchPlan(instance, version, surface, List.copyOf(command), workspace,
+        return new LaunchPlan(instance, surface, List.copyOf(command), workspace,
                 Map.copyOf(environment), home, port);
     }
 }

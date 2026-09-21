@@ -111,7 +111,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
     /// The download page, created on first use.
     private @Nullable DownloadPage downloadPage;
-    private @Nullable VersionsPage versionsPage;
     private @Nullable SettingsPage settingsPage;
 
     /// Creates the home page.
@@ -137,9 +136,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                         () -> Controllers.navigate(getDownloadPage()))
                 .startCategory(i18n("settings.launcher.general").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
-                        () -> Controllers.navigate(getSettingsPage()))
-                .addNavigationDrawerItem(i18n("dsh.versions.title"), SVG.UPDATE,
-                        () -> Controllers.navigate(getVersionsPage()));
+                        () -> Controllers.navigate(getSettingsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
         getLeft().getStyleClass().add("gray-background");
         setLeft(sideBar);
@@ -236,7 +233,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                         i18n("dsh.instance.create"));
                 return true;
             }
-            case "versions" -> Controllers.navigate(getVersionsPage());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
@@ -284,16 +280,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             instancesPage = new InstancesPage();
         }
         return instancesPage;
-    }
-
-    /// Returns the version list page, creating it on first use.
-    ///
-    /// @return the versions page
-    public VersionsPage getVersionsPage() {
-        if (versionsPage == null) {
-            versionsPage = new VersionsPage();
-        }
-        return versionsPage;
     }
 
     /// Returns the settings page, creating it on first use.

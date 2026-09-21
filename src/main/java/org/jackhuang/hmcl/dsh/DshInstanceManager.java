@@ -160,9 +160,6 @@ public final class DshInstanceManager {
         if (find(id) != null) {
             throw new DshException("An instance named \"" + id + "\" already exists");
         }
-        if (DshVersionManager.findInstalled(version) == null) {
-            throw new DshException("DeepSeek Harness " + version + " is not installed");
-        }
         if (homeMode == DshHomeMode.CUSTOM && customHome == null) {
             throw new DshException("A custom DSH_HOME must be chosen for this instance");
         }

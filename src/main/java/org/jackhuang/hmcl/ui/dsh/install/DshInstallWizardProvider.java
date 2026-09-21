@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -191,59 +192,51 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
         @Override
         public void execute() throws Exception {
-            version = settings.get(VERSION);
+            String version = settings.get(VERSION);
             String name = settings.get(NAME);
             List<String> specs = specsOf(settings.getOrDefault(PRESET_CHOICES, Map.of()));
             if (version == null || name == null) {
                 throw new DshException("The install wizard finished without a complete configuration");
             }
-            versionWasPresent = DshVersionManager.findInstalled(version) != null;
+
+            Consumer<String> report = line -> {
+                LOG.info("[install] " + line);
+                progress.accept(line);
+                double fraction = progress.fractionProperty().get();
+                if (fraction >= 0) {
+                    updateProgress(fraction);
+                }
+            };
+
+            String nodeRuntime = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .defaultNodeRuntimeProperty().get();
+            DshHomeMode homeMode = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .defaultHomeModeProperty().get();
+            Path workspace = Path.of(System.getProperty("user.home"));
+
+            // The instance comes first, because the runtime it runs goes inside
+            // it: there is nowhere to install DeepSeek Harness until the instance
+            // that will hold it exists. What the instance is named and where it
+            // lives are settled here, and the rest fills it in.
+            DshInstance instance = DshInstanceManager.create(
+                    name.trim(), version, DshInstance.DEFAULT_PROFILE,
+                    workspace, nodeRuntime, homeMode, null, List.of(), Map.of());
+            LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
 
             try {
-                if (versionWasPresent) {
-                    LOG.info("DeepSeek Harness " + version + " is already installed");
-                } else {
-                    LOG.info("Wizard is downloading DeepSeek Harness " + version + " first");
-                    DshVersionManager.install(version, line -> {
-                        LOG.info("[dsh] " + line);
-                        progress.accept(line);
-                        // The bar follows pnpm's tally where there is one; npm
-                        // never states a total, so the bar stays indeterminate.
-                        double fraction = progress.fractionProperty().get();
-                        if (fraction >= 0) {
-                            updateProgress(fraction);
-                        }
-                    });
-                }
+                report.accept(i18n("dsh.install.progress.fetching", version));
+                DshVersionManager.install(instance, report);
                 updateProgress(1.0);
 
                 String appBoot = settings.get(APP_BOOT);
                 if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(version)) {
-                    LOG.info("Instance " + name + " was asked for boot library " + appBoot
+                    LOG.info("Instance " + instance.id() + " was asked for boot library " + appBoot
                             + " instead of the launcher's own " + version);
-                    DshVersionManager.overrideAppBoot(version, appBoot);
+                    DshVersionManager.overrideAppBoot(instance, appBoot);
                 }
 
-                String nodeRuntime = org.jackhuang.hmcl.setting.SettingsManager.settings()
-                        .defaultNodeRuntimeProperty().get();
-                DshHomeMode homeMode = org.jackhuang.hmcl.setting.SettingsManager.settings()
-                        .defaultHomeModeProperty().get();
-                Path workspace = Path.of(System.getProperty("user.home"));
-
-                DshInstance instance = DshInstanceManager.create(
-                        name.trim(), version, DshInstance.DEFAULT_PROFILE,
-                        workspace, nodeRuntime, homeMode, null, List.of(), Map.of());
-                LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
-
                 if (!specs.isEmpty()) {
-                    DshPluginInstaller.installSpecs(instance, specs, line -> {
-                        LOG.info("[install] " + line);
-                        progress.accept(line);
-                        double fraction = progress.fractionProperty().get();
-                        if (fraction >= 0) {
-                            updateProgress(fraction);
-                        }
-                    });
+                    DshPluginInstaller.installSpecs(instance, specs, report);
                 }
                 updateProgress(1.0);
             } catch (RuntimeException | DshException stopped) {
@@ -251,37 +244,28 @@ public final class DshInstallWizardProvider implements WizardProvider {
                 // than of the exception: the commands wrap an interrupt in a
                 // DshException of their own, so the type does not say.
                 if (Thread.currentThread().isInterrupted()) {
-                    LOG.info("Install of " + version + " was cancelled");
+                    LOG.info("Install of " + instance.id() + " was cancelled");
                     DshCommand.stopRunning();
-                    if (!versionWasPresent) {
-                        // The half-written copy, not the installed version:
-                        // uninstall looks up an installed version, and there is
-                        // none, so it would find nothing to remove.
-                        DshVersionManager.discardPartial(version);
-                    }
+                }
+                // An instance whose runtime never arrived is not an instance; it
+                // would appear in the list and fail to start.
+                DshVersionManager.discardPartial(instance);
+                try {
+                    DshInstanceManager.delete(instance.id());
+                } catch (RuntimeException | DshException cleanupFailure) {
+                    LOG.warning("Could not remove the half-made instance " + instance.id(), cleanupFailure);
                 }
                 throw stopped;
             }
         }
     }
 
-    /// The version this wizard is installing, while it is running.
-    private volatile @Nullable String installingVersion;
-
-    /// Whether that version was already on disk when the install began.
-    private volatile boolean versionWasPresent;
-
     @Override
     public boolean cancel() {
-        // Stop what was started, then take away what it wrote. A cancelled
-        // install used to leave npm running and a half-written version behind:
-        // the dialog closed and the download carried on.
+        // Stopping is all this does now. What was written is taken away where
+        // the failure is handled, because a cancellation arrives as an
+        // interruption of the task rather than as a call to this method.
         DshCommand.stopRunning();
-
-        String version = installingVersion;
-        if (version != null && !versionWasPresent) {
-            DshVersionManager.discardPartial(version);
-        }
         return true;
     }
 }
