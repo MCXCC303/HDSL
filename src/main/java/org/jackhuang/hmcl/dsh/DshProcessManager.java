@@ -39,8 +39,35 @@ public final class DshProcessManager {
     private DshProcessManager() {
     }
 
+    /// What an instance is doing, as far as starting and stopping it goes.
+    ///
+    /// One answer for every place that offers to start or stop something: the
+    /// home page's launch button, the instance list's rocket, an instance's own
+    /// page and the instance picker all show what this says, so no two of them
+    /// can disagree about whether an instance is running — which is what decides
+    /// whether pressing them starts a server or stops the one already there.
+    public enum LaunchState {
+        /// Nothing is running and nothing is on its way up.
+        STOPPED,
+        /// Started, still coming up: the browser surface has not reported yet.
+        STARTING,
+        /// Up and serving.
+        RUNNING,
+        /// Asked to stop, still draining.
+        STOPPING
+    }
+
     /// Running processes, keyed by instance id.
     private static final Map<String, DshProcess> RUNNING = new ConcurrentHashMap<>();
+
+    /// The instances the launcher has asked to stop and which have not finished
+    /// stopping.
+    ///
+    /// An instance is not startable again until it is out of this set: DeepSeek
+    /// Harness holds its port and its home until it has exited, so starting a
+    /// second one in the meantime is what let a stopped instance come back on a
+    /// different port, and let two servers race one home.
+    private static final java.util.Set<String> STOPPING = ConcurrentHashMap.newKeySet();
 
     /// Serialises the check-then-start sequence in [#launch].
     ///
@@ -61,12 +88,25 @@ public final class DshProcessManager {
     ///
     /// @param instance the instance to launch
     /// @return the running handle
-    /// @throws DshException when the runtime is missing or the process cannot start
+    /// @throws DshException when the instance is still stopping, the runtime is
+    ///                       missing, or the process cannot start
     public static DshProcess launch(DshInstance instance) throws DshException {
         synchronized (LAUNCH_LOCK) {
             DshProcess existing = RUNNING.get(instance.id());
-            if (existing != null && existing.isRunning()) {
-                return existing;
+            if (existing != null) {
+                // An instance that is still draining must not be started again:
+                // it holds its port and its home until it is gone, so a second
+                // server would come up on another port, or race the first one
+                // through the profile files.
+                if (STOPPING.contains(instance.id())) {
+                    throw new DshException("Instance " + instance.id()
+                            + " is still stopping; wait for it to exit before starting it again");
+                }
+                if (existing.isRunning()) {
+                    return existing;
+                }
+                // It exited without the registry having noticed yet.
+                RUNNING.remove(instance.id(), existing);
             }
 
             // The runtime is resolved inside the launcher, so an instance pinned
@@ -80,6 +120,21 @@ public final class DshProcessManager {
             });
             return process;
         }
+    }
+
+    /// Reports what an instance is doing.
+    ///
+    /// @param instanceId the instance id
+    /// @return the state, never `null`
+    public static LaunchState stateOf(String instanceId) {
+        if (STOPPING.contains(instanceId)) {
+            return LaunchState.STOPPING;
+        }
+        DshProcess process = RUNNING.get(instanceId);
+        if (process == null || !process.isRunning()) {
+            return LaunchState.STOPPED;
+        }
+        return process.state() == DshProcess.State.STARTING ? LaunchState.STARTING : LaunchState.RUNNING;
     }
 
     /// Returns the running process for an instance.
@@ -107,15 +162,35 @@ public final class DshProcessManager {
 
     /// Stops the process for an instance, if any.
     ///
+    /// The instance stays in the registry for as long as it takes the child to
+    /// exit, and is only then forgotten. Dropping it first would leave a window
+    /// in which the launcher believed nothing was running while a server was
+    /// still holding its port and its home — which is exactly the window a quick
+    /// stop-then-start used to slip through.
+    ///
     /// @param instanceId the instance id
     /// @return whether a running process was stopped
     public static boolean stop(String instanceId) {
-        DshProcess process = RUNNING.remove(instanceId);
+        DshProcess process = RUNNING.get(instanceId);
         if (process == null) {
             return false;
         }
-        process.stop();
+        STOPPING.add(instanceId);
+        try {
+            process.stop();
+        } finally {
+            STOPPING.remove(instanceId);
+            RUNNING.remove(instanceId, process);
+        }
         return true;
+    }
+
+    /// Reports whether an instance has been asked to stop and has not finished.
+    ///
+    /// @param instanceId the instance id
+    /// @return whether it is stopping
+    public static boolean isStopping(String instanceId) {
+        return STOPPING.contains(instanceId);
     }
 
     /// Stops every running process.

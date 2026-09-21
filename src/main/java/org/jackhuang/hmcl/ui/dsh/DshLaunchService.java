@@ -22,6 +22,7 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
+import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
@@ -69,12 +70,111 @@ public final class DshLaunchService {
     /// Instances whose launch is in flight, so repeat activations are ignored.
     private static final java.util.Set<String> LAUNCHING = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /// Instances whose launch was stopped before it became ready.
+    ///
+    /// Stopping a launch in progress is a request that was answered, not a
+    /// failure: without this the task would still end unsuccessfully and the
+    /// user would be told the launch failed at the moment they cancelled it.
+    private static final java.util.Set<String> CANCELLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /// Reports whether an instance is currently being launched.
     ///
     /// @param instanceId the instance id
     /// @return whether a launch is in flight
     public static boolean isLaunching(String instanceId) {
         return LAUNCHING.contains(instanceId);
+    }
+
+    /// Reports what an instance is doing.
+    ///
+    /// The one answer every control that starts or stops an instance is drawn
+    /// from: the request is in flight from the moment it is made until the
+    /// surface reports ready, and the process answers for itself after that.
+    ///
+    /// @param instanceId the instance id
+    /// @return the state, never `null`
+    public static LaunchState state(String instanceId) {
+        LaunchState process = DshProcessManager.stateOf(instanceId);
+        if (process == LaunchState.STOPPING) {
+            return LaunchState.STOPPING;
+        }
+        if (LAUNCHING.contains(instanceId)) {
+            return LaunchState.STARTING;
+        }
+        return process;
+    }
+
+    /// Starts an instance, or stops the one that is up or on its way up.
+    ///
+    /// The one action every control that offers to start or stop an instance
+    /// performs, so that no two of them can disagree: with an instance up, all
+    /// of them stop it; while it is coming up, all of them cancel it; while it
+    /// is going down, none of them do anything, because there is nothing left to
+    /// ask for.
+    ///
+    /// @param instance the instance
+    /// @param onDone   run on the JavaFX thread once the action settles, or `null`
+    public static void toggle(DshInstance instance, @Nullable Runnable onDone) {
+        toggle(instance, onDone, false);
+    }
+
+    /// Starts or stops an instance, optionally showing a launch's output.
+    ///
+    /// @param instance   the instance
+    /// @param onDone     run once the action settles, or `null`
+    /// @param showOutput whether a launch should open the process's log window
+    public static void toggle(DshInstance instance, @Nullable Runnable onDone, boolean showOutput) {
+        switch (state(instance.id())) {
+            case STOPPED -> launch(instance, ignored -> {
+                if (onDone != null) {
+                    onDone.run();
+                }
+            }, showOutput);
+            case STARTING, RUNNING -> stop(instance.id(), onDone);
+            case STOPPING -> LOG.info("Instance " + instance.id() + " is already stopping");
+        }
+    }
+
+    /// Returns the label of a control that starts or stops an instance.
+    ///
+    /// @param state the instance's state
+    /// @return the label
+    public static String actionLabel(LaunchState state) {
+        return switch (state) {
+            case STARTING -> i18n("dsh.launch.launching");
+            case RUNNING -> i18n("dsh.stop");
+            case STOPPING -> i18n("dsh.stopping");
+            case STOPPED -> i18n("dsh.launch");
+        };
+    }
+
+    /// Returns the hint of a control that starts or stops an instance.
+    ///
+    /// While an instance is coming up the control cancels the launch, and it
+    /// says so: an instance that says Launching and then stops when pressed
+    /// would be a control nobody could predict.
+    ///
+    /// @param state the instance's state
+    /// @return the hint
+    public static String actionHint(LaunchState state) {
+        return switch (state) {
+            case STARTING -> i18n("button.cancel");
+            case STOPPING -> i18n("dsh.stopping");
+            default -> actionLabel(state);
+        };
+    }
+
+    /// Returns the tag an instance's row wears while it is not simply idle.
+    ///
+    /// @param state the instance's state
+    /// @return the tag, or `null` for a stopped instance
+    public static @Nullable String stateTag(LaunchState state) {
+        return switch (state) {
+            case STARTING -> i18n("dsh.launch.launching");
+            case RUNNING -> i18n("dsh.instance.running");
+            case STOPPING -> i18n("dsh.stopping");
+            case STOPPED -> null;
+        };
     }
 
     /// Launches an instance in the background.
@@ -95,6 +195,14 @@ public final class DshLaunchService {
     /// @param onDone     run after the launch settles, or `null`
     /// @param showOutput whether to open the process's log window
     public static void launch(DshInstance instance, @Nullable Consumer<DshProcess> onDone, boolean showOutput) {
+        // An instance that is still going down cannot come back up yet: it holds
+        // its port and its home until it has exited. Saying so is better than
+        // starting a second server that would have to take a different port.
+        if (DshProcessManager.isStopping(instance.id())) {
+            Controllers.dialog(i18n("dsh.launch.stopping", instance.id()),
+                    i18n("dsh.stop"), MessageType.WARNING);
+            return;
+        }
         if (!LAUNCHING.add(instance.id())) {
             return;
         }
@@ -128,7 +236,9 @@ public final class DshLaunchService {
         });
 
         TaskExecutorDialogPane progress = new TaskExecutorDialogPane(new TaskCancellationAction(it -> {
-            DshProcessManager.find(instance.id()).ifPresent(running -> DshProcessManager.stop(instance.id()));
+            // Stopping waits for the child to drain, which is seconds the
+            // interface must not spend frozen on the launch dialog's behalf.
+            stop(instance.id(), null);
             it.fireEvent(new DialogCloseEvent());
         }));
         progress.titleProperty().set(i18n("dsh.launch.launching", instance.id()));
@@ -151,12 +261,17 @@ public final class DshLaunchService {
     private static void settle(DshInstance instance, boolean success, @Nullable Exception failure,
                                boolean showOutput, @Nullable Consumer<DshProcess> onDone) {
         LAUNCHING.remove(instance.id());
+        boolean cancelled = CANCELLED.remove(instance.id());
         DshProcess process = DshProcessManager.find(instance.id()).orElse(null);
 
         if (!success) {
-            LOG.warning("Failed to launch instance " + instance.id(), failure);
-            Controllers.dialog(failure == null ? i18n("dsh.launch.failed") : failure.getMessage(),
-                    i18n("dsh.launch.failed"), MessageType.ERROR);
+            if (cancelled) {
+                LOG.info("Launch of " + instance.id() + " was stopped before it was ready");
+            } else {
+                LOG.warning("Failed to launch instance " + instance.id(), failure);
+                Controllers.dialog(failure == null ? i18n("dsh.launch.failed") : failure.getMessage(),
+                        i18n("dsh.launch.failed"), MessageType.ERROR);
+            }
         } else if (process != null) {
             if (showOutput) {
                 openLogWindow(process);
@@ -166,7 +281,9 @@ public final class DshLaunchService {
                 if (settings().openBrowserOnLaunchProperty().get()) {
                     FXUtils.openLink(url.get().toString());
                 }
-            } else if (!process.isRunning()) {
+            } else if (!process.isRunning() && !process.isStopRequested()) {
+                // Stopped by the user while it was still coming up: that is what
+                // was asked for, and not a failure to report.
                 Controllers.dialog(
                         i18n("dsh.launch.exited", process.exitCode().orElse(-1)),
                         i18n("dsh.launch.failed"), MessageType.ERROR);
@@ -183,6 +300,9 @@ public final class DshLaunchService {
     /// @param instanceId the instance id
     /// @param onDone     invoked on the JavaFX thread once the stop returns, or `null`
     public static void stop(String instanceId, @Nullable Runnable onDone) {
+        if (LAUNCHING.contains(instanceId)) {
+            CANCELLED.add(instanceId);
+        }
         CompletableFuture.runAsync(() -> DshProcessManager.stop(instanceId), Schedulers.io())
                 .whenComplete((ignored, throwable) -> runInFX(() -> {
                     if (throwable != null) {

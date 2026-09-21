@@ -103,6 +103,14 @@ public final class DshProcess {
     private volatile @Nullable Consumer<String> logSink;
     private volatile @Nullable Consumer<State> stateListener;
 
+    /// Whether the launcher asked this process to stop.
+    ///
+    /// An instance that is stopped while it is still coming up exits before it
+    /// has reported ready, which is indistinguishable from a failure by the exit
+    /// alone. This is what tells the two apart, so stopping a launch in progress
+    /// is not reported as one that failed.
+    private volatile boolean stopRequested;
+
     /// Starts a child process for a plan.
     ///
     /// @param plan the launch plan
@@ -240,6 +248,7 @@ public final class DshProcess {
     ///
     /// Safe to call from any thread and repeatedly.
     public void stop() {
+        stopRequested = true;
         if (!isRunning()) {
             return;
         }
@@ -263,6 +272,13 @@ public final class DshProcess {
                 descendant.destroy();
             }
         }
+    }
+
+    /// Reports whether the launcher asked this process to stop.
+    ///
+    /// @return whether a stop was requested
+    public boolean isStopRequested() {
+        return stopRequested;
     }
 
     /// Records a log line, notifying the sink.

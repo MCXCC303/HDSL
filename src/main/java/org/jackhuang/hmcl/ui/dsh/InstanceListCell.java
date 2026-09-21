@@ -19,6 +19,8 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXRadioButton;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
 import javafx.event.ActionEvent;
 import javafx.scene.Cursor;
 import javafx.scene.input.MouseButton;
@@ -30,6 +32,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
+import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
@@ -41,7 +44,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Locale;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
@@ -76,6 +79,9 @@ public final class InstanceListCell extends ListCell<DshInstance> {
     /// The instance name, summary and tag.
     private final TwoLineListItem content = new TwoLineListItem();
 
+    /// The tag saying what the instance is doing, empty while it is doing nothing.
+    private final StringProperty stateTag = new SimpleStringProperty();
+
     /// The launch or stop button.
     private final JFXButton launch = FXUtils.newToggleButton4(SVG.ROCKET_LAUNCH);
 
@@ -104,8 +110,8 @@ public final class InstanceListCell extends ListCell<DshInstance> {
     /// Supplies the instance the radio buttons treat as selected.
     private Supplier<@Nullable DshInstance> selectedInstance = () -> null;
 
-    /// Reports whether an instance is running, which swaps the launch icon.
-    private Predicate<DshInstance> runningCheck = instance -> false;
+    /// Reports what an instance is doing, which is what the button and the tag show.
+    private Function<DshInstance, LaunchState> stateCheck = instance -> LaunchState.STOPPED;
 
     /// Creates the cell.
     public InstanceListCell() {
@@ -127,6 +133,15 @@ public final class InstanceListCell extends ListCell<DshInstance> {
         BorderPane.setAlignment(content, Pos.CENTER);
         center.getChildren().setAll(icon, content);
         root.setCenter(center);
+
+        // The tag is the row's own line about what the instance is doing, drawn
+        // beside the name as the original draws the tags it keeps on a game.
+        FXUtils.onChangeAndOperate(stateTag, tag -> {
+            content.getTags().clear();
+            if (tag != null && !tag.isBlank()) {
+                content.addTag(tag);
+            }
+        });
 
         HBox right = new HBox();
         right.setAlignment(Pos.CENTER_RIGHT);
@@ -191,11 +206,11 @@ public final class InstanceListCell extends ListCell<DshInstance> {
         this.selectedInstance = supplier;
     }
 
-    /// Sets how the cell learns whether an instance is running.
+    /// Sets how the cell learns what an instance is doing.
     ///
-    /// @param check reports whether the given instance is running
-    public void setRunningCheck(Predicate<DshInstance> check) {
-        this.runningCheck = check;
+    /// @param check reports the state of the given instance
+    public void setStateCheck(Function<DshInstance, LaunchState> check) {
+        this.stateCheck = check;
     }
 
     @Override
@@ -218,12 +233,16 @@ public final class InstanceListCell extends ListCell<DshInstance> {
                 instance.profile(),
                 i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
 
-        boolean running = runningCheck.test(instance);
-        SVG action = running ? SVG.CANCEL : SVG.ROCKET_LAUNCH;
+        LaunchState state = stateCheck.apply(instance);
+        // Anything but a stopped instance is stopped by this button, so it wears
+        // the mark for stopping from the moment the instance is asked for: a
+        // rocket that cancelled a launch would be a button that lied.
+        SVG action = state == LaunchState.STOPPED ? SVG.ROCKET_LAUNCH : SVG.CANCEL;
         // No size: the stylesheet sizes a toggle-icon4 button's graphic, which is
         // what the original leaves it to.
         launch.setGraphic(action.createIcon());
-        FXUtils.installFastTooltip(launch, running ? i18n("dsh.stop") : i18n("dsh.launch"));
+        FXUtils.installFastTooltip(launch, DshLaunchService.actionHint(state));
         FXUtils.installFastTooltip(menu, i18n("dsh.instance.menu"));
+        stateTag.set(DshLaunchService.stateTag(state));
     }
 }

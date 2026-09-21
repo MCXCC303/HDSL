@@ -42,7 +42,6 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
-import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
@@ -95,6 +94,13 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 
     /// Keeps the button in step with the process while one is running.
     private final Timeline ticker;
+
+    /// The state the launch button was last drawn for.
+    ///
+    /// The button is redrawn once a second while an instance is starting or
+    /// stopping, and a tooltip installed again every second would be a new
+    /// tooltip every second for no gain.
+    private DshProcessManager.@Nullable LaunchState shownActionState;
 
     /// The sidebar entry that opens the selected instance's management page.
     ///
@@ -327,6 +333,10 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     }
 
     /// Recomputes the button's label and tooltip.
+    ///
+    /// The label is the instance's state and nothing else, so the button offers
+    /// Stop whenever anything is up or on its way up — which is what keeps a
+    /// second server from being started from here.
     private void refreshActionState() {
         DshInstance current = currentInstance.get();
         if (current == null) {
@@ -335,18 +345,13 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             return;
         }
 
-        boolean launching = DshLaunchService.isLaunching(current.id());
-        DshProcess running = DshProcessManager.find(current.id()).orElse(null);
-
-        if (launching) {
-            actionLabel.setText(i18n("dsh.launch.launching"));
-        } else if (running != null) {
-            actionLabel.setText(i18n("dsh.stop"));
-        } else {
-            actionLabel.setText(i18n("dsh.launch"));
-        }
+        DshProcessManager.LaunchState state = DshLaunchService.state(current.id());
+        actionLabel.setText(DshLaunchService.actionLabel(state));
         actionTarget.setText(current.id());
-
+        if (state != shownActionState) {
+            shownActionState = state;
+            FXUtils.installFastTooltip(actionButton, DshLaunchService.actionHint(state));
+        }
     }
 
     /// Opens the management page of the instance the launch button targets.
@@ -369,16 +374,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             Controllers.navigate(getInstancesPage());
             return;
         }
-        if (DshLaunchService.isLaunching(instance.id())) {
-            return;
-        }
-
-        DshProcess running = DshProcessManager.find(instance.id()).orElse(null);
-        if (running != null) {
-            DshLaunchService.stop(instance.id(), this::refresh);
-            return;
-        }
-        DshLaunchService.launch(instance, ignored -> refresh());
+        DshLaunchService.toggle(instance, this::refresh);
     }
 
     /// Shows the instance picker next to the launch button.

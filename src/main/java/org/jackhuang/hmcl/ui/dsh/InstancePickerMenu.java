@@ -33,6 +33,7 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
+import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
@@ -177,13 +178,16 @@ public final class InstancePickerMenu extends JFXListView<DshInstance> {
             setGraphic(graphic);
             icon.setImage(DshInstanceIcons.load(instance));
 
+            // What the row says is the instance's state, taken from the one place
+            // that decides it, so a picker row and a list row cannot disagree.
+            LaunchState state = DshLaunchService.state(instance.id());
             DshProcess running = DshProcessManager.find(instance.id()).orElse(null);
             content.setTitle(instance.id());
-            content.setSubtitle(running != null
+            content.setSubtitle(state == LaunchState.RUNNING && running != null
                     ? i18n("dsh.instance.running.since", running.uptime().toSeconds())
                     : i18n("dsh.instance.summary", instance.version(), instance.profile(),
                             i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-            tag.set(running != null ? i18n("dsh.instance.running") : null);
+            tag.set(DshLaunchService.stateTag(state));
         }
     }
 }

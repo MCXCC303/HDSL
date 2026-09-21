@@ -18,6 +18,9 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.scene.Node;
@@ -31,6 +34,7 @@ import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
+import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -38,6 +42,7 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.animation.TransitionPane;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import org.jackhuang.hmcl.ui.construct.AdvancedListItem;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -59,6 +64,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+
+import javafx.util.Duration;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
@@ -96,6 +103,16 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
     /// The animated content pane shared by the tabs.
     private final TransitionPane transitionPane = new TransitionPane();
+
+    /// The sidebar entry that starts or stops this instance.
+    ///
+    /// It is kept rather than built in place because its label is the
+    /// instance's state: an instance that is up is stopped from here, and an
+    /// entry that still offered to start one would be offering a second server.
+    private final AdvancedListItem launchItem = new AdvancedListItem();
+
+    /// Watches the instance's state while it is not simply idle.
+    private final Timeline ticker;
 
     /// The plugin list, rebuilt on every refresh.
     private final ComponentList pluginList = new ComponentList();
@@ -146,9 +163,14 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         // The actions are a second box rather than a category inside the first.
         // HMCL splits them the same way, and the split is why there is no
         // divider: a category draws one, a separate box sits on its own.
+        // The launch entry is the box's own kind of item, so it sits where the
+        // original's test-launch entry sits; only its label and its mark are
+        // ours to change as the instance starts and stops.
+        launchItem.getStyleClass().add("navigation-drawer-item");
+        launchItem.setOnAction(event -> testLaunch());
+
         AdvancedListBox actions = new AdvancedListBox()
-                .addNavigationDrawerItem(i18n("dsh.instance.test_launch"), SVG.ROCKET_LAUNCH,
-                        this::testLaunch)
+                .add(launchItem)
                 .addNavigationDrawerItem(i18n("settings.game.exploration"), SVG.FOLDER_OPEN, null,
                         item -> item.setOnAction(event -> showBrowsePopup(item)))
                 .addNavigationDrawerItem(i18n("settings.game.management"), SVG.MENU, null,
@@ -165,6 +187,22 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
         setLeft(sideBar, actions);
         setCenter(transitionPane);
+
+        // The instance can start, become ready and stop on its own, so what this
+        // entry offers has to follow it rather than the page being reopened.
+        ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshLaunchItem()));
+        ticker.setCycleCount(Animation.INDEFINITE);
+        ticker.play();
+
+        refreshLaunchItem();
+    }
+
+    /// Draws the sidebar entry from the instance's state.
+    private void refreshLaunchItem() {
+        LaunchState state = DshLaunchService.state(instance.id());
+        launchItem.setTitle(DshLaunchService.actionLabel(state));
+        launchItem.setLeftIcon(state == LaunchState.STOPPED ? SVG.ROCKET_LAUNCH : SVG.CANCEL);
+        FXUtils.installFastTooltip(launchItem, DshLaunchService.actionHint(state));
     }
 
     @Override
@@ -186,6 +224,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     @Override
     public void refresh() {
         refreshPlugins();
+        refreshLaunchItem();
     }
 
     /// Builds the details tab.
@@ -284,8 +323,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         com.jfoenix.controls.JFXPopup popup = new com.jfoenix.controls.JFXPopup(menu);
 
         List<javafx.scene.Node> entries = new ArrayList<>();
+        LaunchState state = DshLaunchService.state(instance.id());
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
-                SVG.ROCKET_LAUNCH, i18n("dsh.instance.test_launch"), this::testLaunch, popup));
+                state == LaunchState.STOPPED ? SVG.ROCKET_LAUNCH : SVG.CANCEL,
+                DshLaunchService.actionLabel(state), this::testLaunch, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.MenuSeparator());
@@ -368,14 +409,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
     /// Starts or stops this instance from its own page.
     private void testLaunch() {
-        if (DshProcessManager.find(instance.id()).isPresent()) {
-            DshLaunchService.stop(instance.id(), this::refresh);
-        } else {
-            // Test launch shows the output: the point of launching from here is
-            // to see what the program does, which is what the original's test
-            // game does too.
-            DshLaunchService.launch(instance, ignored -> refresh(), true);
-        }
+        // Test launch shows the output: the point of launching from here is to
+        // see what the program does, which is what the original's test game does
+        // too. Stopping it is the same action everywhere and shows nothing.
+        DshLaunchService.toggle(instance, this::refresh, true);
     }
 
     /// Deletes this instance after confirmation, leaving the page afterwards.

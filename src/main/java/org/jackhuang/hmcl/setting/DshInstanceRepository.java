@@ -68,7 +68,11 @@ public final class DshInstanceRepository {
     private final GameDirectory directory;
 
     /// The last read of the folder.
-    private final ReadOnlyObjectWrapper<Snapshot> snapshot = new ReadOnlyObjectWrapper<>(this, "snapshot");
+    ///
+    /// It starts empty rather than unset: a page may bind to the selection
+    /// before the first read has finished, and an unread folder holds nothing.
+    private final ReadOnlyObjectWrapper<Snapshot> snapshot =
+            new ReadOnlyObjectWrapper<>(this, "snapshot");
 
     /// The instance selected in this folder, as the settings remember it.
     ///
@@ -89,6 +93,7 @@ public final class DshInstanceRepository {
     /// @param directory the folder to describe
     DshInstanceRepository(GameDirectory directory) {
         this.directory = directory;
+        this.snapshot.set(new Snapshot(directory, List.of()));
         this.selectedInstanceId = Bindings.valueAt(settings().getSelectedInstance(), directory.id());
         this.selectedInstance.bind(Bindings.createObjectBinding(
                 this::resolveSelectedInstance, selectedInstanceId, snapshot));

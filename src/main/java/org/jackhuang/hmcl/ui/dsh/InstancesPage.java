@@ -19,6 +19,9 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXPopup;
+import javafx.animation.Animation;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.ListChangeListener;
@@ -30,10 +33,11 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
+import javafx.util.Duration;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
-import org.jackhuang.hmcl.dsh.DshProcessManager;
+import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
 import org.jackhuang.hmcl.setting.GameDirectory;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
@@ -52,7 +56,9 @@ import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
@@ -85,6 +91,16 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// The instances the selected folder last published.
     private List<DshInstance> instances = List.of();
+
+    /// What each row was last drawn for.
+    ///
+    /// A row says whether its instance is starting, up or stopping, and that
+    /// changes on its own; the ticker below watches for the change rather than
+    /// redrawing the list every second for nothing.
+    private Map<String, LaunchState> shownStates = Map.of();
+
+    /// Watches the instances' states while any of them is not simply idle.
+    private final Timeline ticker;
 
     /// Creates the instance list page.
     public InstancesPage() {
@@ -155,7 +171,32 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 (observable, was, now) -> loadDirectories());
         GameDirectoryManager.registerVersionsListener(this::loadInstances);
 
+        // The state of an instance changes without anyone here asking: a launch
+        // becomes ready, a stop finishes. Watching for that is what keeps the
+        // rows honest about which of them can be started and which can only be
+        // stopped — the same reason the home page's button has a ticker.
+        ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshLaunchStates()));
+        ticker.setCycleCount(Animation.INDEFINITE);
+        ticker.play();
+
         loadDirectories();
+    }
+
+    /// Redraws the rows whose instance changed what it is doing.
+    private void refreshLaunchStates() {
+        Map<String, LaunchState> states = new HashMap<>();
+        boolean changed = false;
+        for (DshInstance instance : instanceList.getItems()) {
+            LaunchState state = DshLaunchService.state(instance.id());
+            states.put(instance.id(), state);
+            if (shownStates.get(instance.id()) != state) {
+                changed = true;
+            }
+        }
+        shownStates = states;
+        if (changed) {
+            instanceList.refresh();
+        }
     }
 
     @Override
@@ -211,6 +252,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
         instanceList.getItems().setAll(shown);
         instanceList.refresh();
+        shownStates = new HashMap<>();
+        refreshLaunchStates();
     }
 
     /// Builds the toolbar above the list.
@@ -272,7 +315,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
             InstanceListCell cell = new InstanceListCell();
             cell.setHandlers(this::select, this::open, this::toggleLaunch, this::showMenu);
             cell.setSelectedInstanceSupplier(GameDirectoryManager::getSelectedInstance);
-            cell.setRunningCheck(instance -> DshProcessManager.find(instance.id()).isPresent());
+            cell.setStateCheck(instance -> DshLaunchService.state(instance.id()));
             return cell;
         });
         // No fixed cell size: the original does not set one here, and a height
@@ -304,11 +347,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @param instance the instance
     private void toggleLaunch(DshInstance instance) {
-        if (DshProcessManager.find(instance.id()).isPresent()) {
-            DshLaunchService.stop(instance.id(), this::refresh);
-        } else {
-            DshLaunchService.launch(instance, ignored -> refresh());
-        }
+        DshLaunchService.toggle(instance, this::refresh);
     }
 
     /// Shows the per-instance menu.
