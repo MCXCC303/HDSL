@@ -348,7 +348,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
             return;
         }
 
-        InstallProgressDialog.run(i18n("download.install"),
+        ProgressDialog.run(i18n("download.install"),
                 progress -> DshPluginInstaller.installSpecs(instance, List.of(spec), progress::accept),
                 null);
     }

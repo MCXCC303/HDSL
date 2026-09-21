@@ -152,7 +152,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 ? i18n("dsh.instance.plugins.remove.confirm", names.get(0))
                 : i18n("button.remove.confirm");
         Controllers.confirm(message, i18n("button.remove"), () ->
-                InstallProgressDialog.run(i18n("dsh.instance.plugins.remove"),
+                ProgressDialog.run(i18n("dsh.instance.plugins.remove"),
                         progress -> DshPluginInstaller.removeSpecs(instance, names, progress::accept),
                         this::refresh), null);
     }

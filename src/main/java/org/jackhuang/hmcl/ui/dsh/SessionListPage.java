@@ -33,6 +33,7 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshSession;
+import org.jackhuang.hmcl.dsh.DshSessionPacks;
 import org.jackhuang.hmcl.dsh.DshSessions;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -200,6 +201,48 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         }));
     }
 
+    /// Writes a set of sessions into a pack the user chooses.
+    ///
+    /// @param sessions the sessions to write
+    private void exportPack(List<DshSession> sessions) {
+        if (sessions.isEmpty()) {
+            Controllers.dialog(i18n("dsh.session.pack.export.empty"), i18n("dsh.session.pack.export"),
+                    MessageType.ERROR);
+            return;
+        }
+
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("dsh.session.pack.export"));
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.session.pack.filter"), "*.zip"));
+        chooser.setInitialFileName("hdsl-sessions-" + instance.id() + "-" + java.time.LocalDate.now() + ".zip");
+        java.io.File chosen = chooser.showSaveDialog(Controllers.getStage());
+        if (chosen == null) {
+            return;
+        }
+
+        Path target = chosen.toPath();
+        ProgressDialog.run(i18n("dsh.session.pack.export"), progress ->
+                DshSessionPacks.export(instance, sessions, target, progress::accept), null);
+    }
+
+    /// Reads a pack the user chooses.
+    private void importPack() {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("dsh.session.pack.import"));
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.session.pack.filter"), "*.zip"));
+        java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
+        if (chosen == null) {
+            return;
+        }
+
+        Path pack = chosen.toPath();
+        ProgressDialog.run(i18n("dsh.session.pack.import"), progress ->
+                DshSessionPacks.importFrom(instance.homeDirectory(), pack, progress::accept),
+                this::refresh);
+    }
+
     /// Deletes a session after confirmation.
     ///
     /// @param session the session to delete
@@ -327,6 +370,10 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
             List<Node> toolbar = new ArrayList<>();
             toolbar.add(createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh));
             toolbar.add(createToolbarButton2(i18n("dsh.session.import"), SVG.DOWNLOAD, page::importFromSystem));
+            toolbar.add(createToolbarButton2(i18n("dsh.session.pack.export.all"), SVG.ARCHIVE,
+                    () -> page.exportPack(page.getItems())));
+            toolbar.add(createToolbarButton2(i18n("dsh.session.pack.import"), SVG.FILE_OPEN,
+                    page::importPack));
             return toolbar;
         }
 
@@ -408,6 +455,11 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         private void showRowMenu(DshSession session, Node anchor) {
             AdvancedListBox menu = new AdvancedListBox();
 
+            LineButton pack = new LineButton();
+            pack.setTitle(i18n("dsh.session.pack.export.project"));
+            pack.setLeading(SVG.ARCHIVE, 16);
+            menu.add(pack);
+
             LineButton reveal = new LineButton();
             reveal.setTitle(i18n("dsh.session.reveal"));
             reveal.setLeading(SVG.FOLDER_OPEN, 16);
@@ -419,6 +471,16 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
             menu.add(delete);
 
             JFXPopup popup = new JFXPopup(menu);
+            pack.setOnAction(event -> {
+                popup.hide();
+                // A subagent's conversation lives in its own session directory and
+                // is reached through its parent, so the unit worth moving is the
+                // project the sessions were recorded in — which is exactly the
+                // directory they share.
+                page.exportPack(page.getItems().stream()
+                        .filter(other -> other.workspaceSlug().equals(session.workspaceSlug()))
+                        .toList());
+            });
             reveal.setOnAction(event -> {
                 popup.hide();
                 page.reveal(session);

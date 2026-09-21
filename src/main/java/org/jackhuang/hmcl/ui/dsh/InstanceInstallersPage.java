@@ -195,7 +195,7 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
             // The chooser reports the launcher's own version as `null`, because
             // a wizard that runs inside another one has no instance to pin it to.
             String appBoot = chosen == null ? instance.version() : chosen;
-            InstallProgressDialog.run(i18n("dsh.install.app_boot"), progress ->
+            ProgressDialog.run(i18n("dsh.install.app_boot"), progress ->
                     DshVersionManager.overrideAppBoot(instance, appBoot, progress::accept), null);
         }), i18n("dsh.install.app_boot"));
     }
@@ -204,7 +204,7 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
     ///
     /// @param market the preset to install
     private void installMarket(DshPreset market) {
-        InstallProgressDialog.run(i18n("download.install"), progress ->
+        ProgressDialog.run(i18n("download.install"), progress ->
                 DshPluginInstaller.install(instance, List.of(market), progress::accept), this::refresh);
     }
 
@@ -214,7 +214,7 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
     private void removeMarket(DshPreset market) {
         Controllers.confirm(i18n("dsh.instance.plugins.remove.confirm", market.spec()),
                 i18n("dsh.instance.plugins.remove"),
-                () -> InstallProgressDialog.run(i18n("dsh.instance.plugins.remove"), progress ->
+                () -> ProgressDialog.run(i18n("dsh.instance.plugins.remove"), progress ->
                         DshPluginInstaller.remove(instance, market.spec(), progress::accept), this::refresh),
                 null);
     }

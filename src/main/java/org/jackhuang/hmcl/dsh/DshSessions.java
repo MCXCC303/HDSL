@@ -74,6 +74,18 @@ public final class DshSessions {
     private DshSessions() {
     }
 
+    /// Reports whether a file name is one of the harness's own log names.
+    ///
+    /// Package-visible so that the session-pack code copies exactly the files the
+    /// harness would read, and nothing else that happens to sit in a session
+    /// directory.
+    ///
+    /// @param fileName the file name
+    /// @return whether the harness reads a file with that name
+    static boolean isLogName(String fileName) {
+        return LOG_FILE.matcher(fileName).matches();
+    }
+
     /// Matches the harness's own log names, capturing the generation.
     ///
     /// The names the harness reads are `session.jsonl`, `session.jsonl.zstd`,

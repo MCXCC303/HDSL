@@ -36,21 +36,22 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Runs a package-manager change behind the original's progress dialog.
+/// Runs a task that takes time behind the original's progress dialog.
 ///
 /// Installing a plugin, changing a boot library and removing a package all run
-/// pnpm, which takes as long as it takes and says why when it fails. Doing that
+/// pnpm, which takes as long as it takes and says why when it fails; packing or
+/// unpacking a set of conversations copies hundreds of megabytes. Doing that
 /// quietly leaves the page that asked for it unchanged, with no way to tell
-/// whether anything happened; the original shows a dialog carrying the package
-/// manager's own output, and so does this.
+/// whether anything happened, so the original's dialog is shown with whatever the
+/// work reports as it goes.
 @NotNullByDefault
-public final class InstallProgressDialog {
-    private InstallProgressDialog() {
+public final class ProgressDialog {
+    private ProgressDialog() {
     }
 
-    /// Work that changes what an instance holds.
+    /// Work that takes time and can fail.
     @FunctionalInterface
-    public interface Installation {
+    public interface Work {
         /// Runs the installation.
         ///
         /// @param report receives the package manager's output
@@ -64,7 +65,7 @@ public final class InstallProgressDialog {
     /// @param work   the work, given a sink for the package manager's output
     /// @param onDone run on the interface thread when the work ends, whether it
     ///               succeeded or not, or `null`
-    public static void run(String title, Installation work, @Nullable Runnable onDone) {
+    public static void run(String title, Work work, @Nullable Runnable onDone) {
         DshInstallProgress progress = new DshInstallProgress();
 
         Task<Void> task = Task.runAsync(title, () -> work.run(progress::accept));

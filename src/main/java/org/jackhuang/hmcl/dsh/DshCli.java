@@ -79,6 +79,12 @@ public final class DshCli {
 
         /// Removes one or more plugins from an instance's profile.
         REMOVE_PLUGIN(false),
+
+        /// Writes an instance's sessions into a pack.
+        EXPORT_SESSIONS(false),
+
+        /// Reads a pack of sessions into an instance.
+        IMPORT_PACK(false),
         /// Sends one prompt over the Agent Client Protocol and prints the reply.
         ACP_PROMPT(false),
         /// Prints the sessions of an instance.
@@ -156,6 +162,8 @@ public final class DshCli {
                 && !args.contains("--uninstall-node")
                 && !args.contains("--install-plugin")
                 && !args.contains("--remove-plugin")
+                && !args.contains("--export-sessions")
+                && !args.contains("--import-pack")
                 && !args.contains("--acp-prompt")
                 && !args.contains("--list-sessions")
                 && !args.contains("--migrate-session")
@@ -245,6 +253,16 @@ public final class DshCli {
                 }
                 case "--install-plugin" -> {
                     command = Command.INSTALL_PLUGIN;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--export-sessions" -> {
+                    command = Command.EXPORT_SESSIONS;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--import-pack" -> {
+                    command = Command.IMPORT_PACK;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
@@ -446,6 +464,45 @@ public final class DshCli {
                     out.println("Installed " + spec);
                     for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
                         out.println("  bundle: " + bundle);
+                    }
+                    return 0;
+                }
+                case EXPORT_SESSIONS -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --export-sessions needs an instance and a file to write");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    java.nio.file.Path target = java.nio.file.Path.of(invocation.arguments().get(1));
+                    List<DshSession> sessions = DshSessions.list(instance.homeDirectory());
+                    out.println("Writing " + sessions.size() + " session(s) to " + target + " ...");
+                    DshSessionPacks.ExportResult exported = DshSessionPacks.export(instance, sessions, target, out::println);
+                    out.println("Wrote " + exported.sessions() + " session(s), "
+                            + exported.attachments() + " attachment(s), " + exported.bytes() + " byte(s)");
+                    return 0;
+                }
+                case IMPORT_PACK -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --import-pack needs an instance and a pack to read");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    java.nio.file.Path pack = java.nio.file.Path.of(invocation.arguments().get(1));
+                    DshSessionPacks.ImportResult imported =
+                            DshSessionPacks.importFrom(instance.homeDirectory(), pack, out::println);
+                    out.println("Imported " + imported.imported() + ", skipped " + imported.skipped()
+                            + ", attachments " + imported.attachments());
+                    for (DshSession session : DshSessions.list(instance.homeDirectory())) {
+                        out.println("  " + session.id() + "  " + session.workspaceSlug()
+                                + "  " + (session.title() == null ? "(no title)" : session.title()));
                     }
                     return 0;
                 }
@@ -886,6 +943,8 @@ public final class DshCli {
                 plugins:
                   --install-plugin <id> <spec>     install a plugin into an instance profile
                   --remove-plugin <id> <spec>...   remove one or more plugins from an instance profile
+                  --export-sessions <id> <file>    write the instance's sessions into a pack
+                  --import-pack <id> <file>        read a pack of sessions into an instance
 
                 node runtimes:
                   --list-runtimes                  list installed Node runtimes
