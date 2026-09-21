@@ -362,11 +362,15 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         GameDirectoryManager.setSelectedInstance(instance);
     }
 
-    /// Opens an instance's page, choosing it on the way.
+    /// Opens an instance's page.
+    ///
+    /// Opening one is not choosing it: the radio button chooses, and the row
+    /// opens. The original keeps the two apart for the same reason — the pages
+    /// that act on an instance are reached by looking at it, not by making it the
+    /// one the launch button starts.
     ///
     /// @param instance the instance to open
     private void open(DshInstance instance) {
-        select(instance);
         Controllers.navigate(new InstancePage(instance));
     }
 

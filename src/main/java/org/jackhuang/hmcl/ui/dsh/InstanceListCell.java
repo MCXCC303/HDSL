@@ -163,18 +163,14 @@ public final class InstanceListCell extends ListCell<DshInstance> {
         this.graphic = new RipplerContainer(root);
         setGraphic(graphic);
 
-        // The whole row chooses the instance, which is what the original does.
-        // A row that only responds on its radio button is a row most of whose
-        // surface does nothing, and the pointer says so before it is clicked.
+        // The whole row opens the instance, and only the radio button beside it
+        // chooses which one the launcher starts — which is what the original
+        // does: its rows open the settings and leave the choice alone. Choosing
+        // as a side effect of looking at an instance is a choice nobody made.
         root.setCursor(Cursor.HAND);
         graphic.setOnMouseClicked(event -> {
             DshInstance instance = getItem();
             if (instance != null && event.getButton() == MouseButton.PRIMARY) {
-                // The row opens the instance; the radio button beside it only
-                // chooses which one the launcher starts. Pressing the row went
-                // through the same path as the button, so the button opened a
-                // page it was not meant to.
-                onSelect.accept(instance);
                 onOpen.accept(instance);
             }
         });
