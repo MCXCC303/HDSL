@@ -37,6 +37,7 @@ import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
+import org.jackhuang.hmcl.dsh.DshPaths;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.dsh.DshPresetCatalog;
@@ -80,6 +81,14 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
 
     /// The instance name field.
     private final JFXTextField nameField = new JFXTextField();
+
+    /// Whether the name was typed by hand.
+    ///
+    /// The suggested name follows the choices until someone writes their own,
+    /// and stops following them afterwards. Recomputing it on every change would
+    /// take away a name that was chosen deliberately, which is worse than a name
+    /// that no longer describes the instance.
+    private boolean nameWrittenByHand;
 
     /// The workspace chooser.
 
@@ -145,10 +154,29 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
     /// @return the assembled component list
     private ComponentList buildInstanceList() {
         nameField.setPromptText(i18n("dsh.instance.name"));
+        nameField.textProperty().addListener((observable, was, now) -> nameWrittenByHand = true);
+
+        // Clear and reset, as the original puts beside its name field.
+        JFXButton clear = new JFXButton();
+        clear.setGraphic(SVG.CLOSE.createIcon(20));
+        clear.getStyleClass().add("toggle-icon4");
+        clear.setOnAction(event -> nameField.setText(""));
+
+        JFXButton reset = new JFXButton();
+        reset.setGraphic(SVG.REFRESH.createIcon(20));
+        reset.getStyleClass().add("toggle-icon4");
+        reset.setOnAction(event -> {
+            nameWrittenByHand = false;
+            refreshSuggestedName();
+        });
+
+        HBox trailing = new HBox(8, nameField, clear, reset);
+        trailing.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(nameField, Priority.ALWAYS);
 
         LineTextPane nameRow = new LineTextPane();
         nameRow.setTitle(i18n("dsh.instance.name"));
-        nameRow.setTitleTrailing(nameField);
+        nameRow.setTitleTrailing(trailing);
 
         ComponentList list = new ComponentList();
         list.getContent().add(nameRow);
@@ -215,6 +243,7 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
                         controller.getSettings().put(DshInstallWizardProvider.APP_BOOT, chosen);
                         appBootStatus.set(i18n("dsh.install.app_boot.chosen", chosen));
                     }
+                    refreshSuggestedName();
                 }),
                 // The wizard's category names the task, its page names the step,
                 // as the original's "安装新游戏 - 选择 Fabric API 版本" does.
@@ -344,21 +373,43 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
 
     /// Applies sensible starting values.
     private void applyDefaults() {
-        nameField.setText(suggestName());
         seedDefaultChoices();
+        nameWrittenByHand = false;
+        refreshSuggestedName();
     }
 
-    /// Suggests an unused instance name.
+    /// Suggests a name for the instance about to be made.
+    ///
+    /// The version, with anything chosen away from its default appended: the
+    /// original names an instance after the game version and appends the loaders
+    /// that were selected, and the DeepSeek Harness version with the boot library
+    /// beside it is the same idea. A duplicate is left to the validator rather
+    /// than numbered here, which is also what the original does.
     ///
     /// @return the suggested name
     private String suggestName() {
-        for (int i = 1; i < 1000; i++) {
-            String candidate = "instance-" + i;
-            if (!org.jackhuang.hmcl.dsh.DshInstanceManager.exists(candidate)) {
-                return candidate;
-            }
+        StringBuilder name = new StringBuilder(currentVersion());
+
+        String appBoot = controller.getSettings().get(DshInstallWizardProvider.APP_BOOT);
+        if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(currentVersion())) {
+            name.append("-boot").append(appBoot);
         }
-        return "instance";
+
+        return name.toString();
+    }
+
+    /// Puts the suggested name back, if the choices have moved on from it.
+    ///
+    /// The flag is cleared after the text is set, not before: writing the field
+    /// fires the listener that raises it, so clearing it first would have the
+    /// suggestion count as something the user typed and it would never follow the
+    /// choices again. The original clears its flag in the same order.
+    private void refreshSuggestedName() {
+        if (nameWrittenByHand) {
+            return;
+        }
+        nameField.setText(suggestName());
+        nameWrittenByHand = false;
     }
 
     /// Returns the presets the user ticked.
@@ -372,6 +423,14 @@ public final class QuickInstallPage extends BorderPane implements WizardPage {
         String name = settings.get(DshInstallWizardProvider.NAME);
         if (name == null || name.isBlank()) {
             org.jackhuang.hmcl.ui.Controllers.dialog(i18n("dsh.instance.name.empty"),
+                    i18n("dsh.install.step.quick"),
+                    org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+            return false;
+        }
+        // The name becomes a directory name, so the original's "malformed" check
+        // has a counterpart here: what a path cannot hold cannot be an instance.
+        if (!DshPaths.isUsableSegment(name)) {
+            org.jackhuang.hmcl.ui.Controllers.dialog(i18n("dsh.instance.name.malformed", name.trim()),
                     i18n("dsh.install.step.quick"),
                     org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
             return false;

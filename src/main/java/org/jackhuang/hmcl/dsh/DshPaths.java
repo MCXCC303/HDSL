@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.dsh;
 
 import org.jackhuang.hmcl.Metadata;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
@@ -121,6 +122,23 @@ public final class DshPaths {
     /// @param what  a human-readable name for the value, used in the error message
     /// @return the trimmed segment
     /// @throws DshException when the value is empty or contains path separators
+    /// Reports whether a value can be used as one segment of a path.
+    ///
+    /// The same rule [requireSafeSegment] enforces, asked in advance so that a
+    /// page can refuse a name before it is used to make a directory.
+    ///
+    /// @param value the value to test
+    /// @return whether it is usable
+    public static boolean isUsableSegment(@Nullable String value) {
+        String trimmed = value == null ? "" : value.trim();
+        return !trimmed.isEmpty()
+                && !trimmed.equals(".")
+                && !trimmed.equals("..")
+                && !trimmed.contains("/")
+                && !trimmed.contains("\\")
+                && trimmed.indexOf('\0') < 0;
+    }
+
     private static String requireSafeSegment(String value, String what) throws DshException {
         String trimmed = value == null ? "" : value.trim();
         if (trimmed.isEmpty()
