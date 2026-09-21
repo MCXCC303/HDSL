@@ -155,10 +155,19 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         tab.select(initial, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
-                .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"), SVG.SETTINGS_FILL)
-                .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"), SVG.EXTENSION)
+                // Each entry carries the mark of the tab it opens and the solid
+                // version of it for when that tab is the one being shown, which is
+                // how the original's sidebar says where the page is. An entry given
+                // only one mark keeps that mark either way, so it needs the icon set
+                // to have a solid version — the folder copy has none, and the
+                // original leaves such entries alone for the same reason.
+                .addNavigationDrawerTab(tab, settingsTab, i18n("instance.manage.manage"),
+                        SVG.SETTINGS, SVG.SETTINGS_FILL)
+                .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"),
+                        SVG.EXTENSION, SVG.EXTENSION_FILL)
                 .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
-                .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO);
+                .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"),
+                        SVG.INFO, SVG.INFO_FILL);
 
         // The actions are a second box rather than a category inside the first.
         // HMCL splits them the same way, and the split is why there is no
