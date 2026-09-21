@@ -375,7 +375,8 @@ public final class DshCli {
                     return 0;
                 }
                 case LIST_NODE_VERSIONS -> {
-                    for (NodeRelease release : NodeRuntimeManager.fetchReleases()) {
+                    for (NodeRelease release : NodeRuntimeManager.fetchReleases(
+                            NodeSource.of(invocation.options().get("node-source")))) {
                         out.println(release.version()
                                 + (release.isLts() ? "\t" + release.label() : "")
                                 + (release.isSupported() ? "" : "\tunsupported"));
@@ -384,7 +385,8 @@ public final class DshCli {
                 }
                 case INSTALL_NODE -> {
                     out.println("Installing Node.js " + invocation.subject() + " ...");
-                    NodeRuntime runtime = NodeRuntimeManager.install(invocation.subject(), out::println);
+                    NodeRuntime runtime = NodeRuntimeManager.install(invocation.subject(),
+                            NodeSource.of(invocation.options().get("node-source")), out::println);
                     out.println("Installed Node.js " + runtime.version() + " into " + runtime.directory());
                     return 0;
                 }

@@ -31,6 +31,7 @@ import javafx.collections.ObservableSet;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import org.glavo.monetfx.ColorStyle;
+import org.jackhuang.hmcl.dsh.NodeSource;
 import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
 import org.jackhuang.hmcl.theme.BuiltinBackground;
 import org.jackhuang.hmcl.theme.NetworkBackgroundImageCachePolicy;
@@ -183,6 +184,15 @@ public final class LauncherSettings {
 
     /// Whether animations are disabled; `null` follows the platform setting.
     private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
+
+    /// Where Node.js distributions are fetched from.
+    ///
+    /// The one download this launcher makes that does not come from npm, and
+    /// therefore the one that cannot be redirected by the user's `.npmrc`: a
+    /// network that reaches a mirror of npm but not `nodejs.org` can run
+    /// DeepSeek Harness and install plugins, and still be unable to install a
+    /// runtime to run it with.
+    private final ObjectProperty<NodeSource> nodeSource = new SimpleObjectProperty<>(NodeSource.OFFICIAL);
 
     /// The instance the launch button targets, keyed by game directory id.
     ///
@@ -398,6 +408,13 @@ public final class LauncherSettings {
     /// @return the animation-disabled property
     public ObjectProperty<@Nullable Boolean> animationDisabledProperty() {
         return animationDisabled;
+    }
+
+    /// Returns the property holding the Node.js download source.
+    ///
+    /// @return the source property
+    public ObjectProperty<NodeSource> nodeSourceProperty() {
+        return nodeSource;
     }
 
     /// Returns the selected instance of every game directory.

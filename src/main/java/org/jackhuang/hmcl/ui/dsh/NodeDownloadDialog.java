@@ -42,6 +42,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import static org.jackhuang.hmcl.ui.FXUtils.onEscPressed;
+import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -95,7 +96,7 @@ public final class NodeDownloadDialog extends JFXDialogLayout {
         spinner.setLoading(true);
         CompletableFuture.supplyAsync(() -> {
             try {
-                return NodeRuntimeManager.fetchReleases();
+                return NodeRuntimeManager.fetchReleases(settings().nodeSourceProperty().get());
             } catch (DshException e) {
                 throw new CompletionException(e);
             }
@@ -108,6 +109,13 @@ public final class NodeDownloadDialog extends JFXDialogLayout {
                 LineTextPane failure = new LineTextPane();
                 failure.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
                 releases.getContent().add(failure);
+
+                // The one failure here that has something to do about it is the
+                // route to the publisher: the message names the host that could
+                // not be reached, and where to fetch from instead is a setting.
+                LineTextPane hint = new LineTextPane();
+                hint.setText(i18n("dsh.versions.load_failed.source"));
+                releases.getContent().add(hint);
                 return;
             }
             for (NodeRelease release : result) {
@@ -138,7 +146,8 @@ public final class NodeDownloadDialog extends JFXDialogLayout {
         spinner.setLoading(true);
         CompletableFuture.runAsync(() -> {
             try {
-                NodeRuntimeManager.install(version, line -> LOG.info("[node] " + line));
+                NodeRuntimeManager.install(version, settings().nodeSourceProperty().get(),
+                        line -> LOG.info("[node] " + line));
             } catch (DshException e) {
                 throw new CompletionException(e);
             }

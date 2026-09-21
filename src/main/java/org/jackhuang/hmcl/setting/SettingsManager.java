@@ -296,6 +296,9 @@ public final class SettingsManager {
         @SerializedName("animationDisabled")
         private @Nullable Boolean animationDisabled;
 
+        @SerializedName("nodeSource")
+        private @Nullable String nodeSource;
+
         @SerializedName("selectedInstance")
         private @Nullable java.util.Map<String, String> selectedInstance;
 
@@ -344,6 +347,7 @@ public final class SettingsManager {
             snapshot.logFontSize = settings.logFontSizeProperty().get();
             snapshot.logLines = settings.logLinesProperty().get();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
+            snapshot.nodeSource = settings.nodeSourceProperty().get().id();
             snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
             snapshot.openBrowserOnLaunch = settings.openBrowserOnLaunchProperty().get();
             return snapshot;
@@ -434,6 +438,9 @@ public final class SettingsManager {
             }
             if (animationDisabled != null) {
                 settings.animationDisabledProperty().set(animationDisabled);
+            }
+            if (nodeSource != null) {
+                settings.nodeSourceProperty().set(org.jackhuang.hmcl.dsh.NodeSource.of(nodeSource));
             }
             if (selectedInstance != null) {
                 settings.getSelectedInstance().clear();

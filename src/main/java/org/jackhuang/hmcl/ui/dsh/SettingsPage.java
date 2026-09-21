@@ -29,6 +29,7 @@ import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.dsh.settings.AboutPage;
 import org.jackhuang.hmcl.ui.dsh.settings.AppearanceSettingsPage;
+import org.jackhuang.hmcl.ui.dsh.settings.DownloadSettingsPage;
 import org.jackhuang.hmcl.ui.dsh.settings.GeneralSettingsPage;
 import org.jackhuang.hmcl.ui.dsh.settings.InstanceDefaultsPage;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -65,6 +66,9 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
     /// The appearance settings tab.
     private final TabHeader.Tab<AppearanceSettingsPage> appearanceTab = new TabHeader.Tab<>("dshAppearanceSettings");
 
+    /// The download settings tab, mirroring where HMCL keeps its download sources.
+    private final TabHeader.Tab<DownloadSettingsPage> downloadTab = new TabHeader.Tab<>("dshDownloadSettings");
+
     /// The about tab.
     private final TabHeader.Tab<AboutPage> aboutTab = new TabHeader.Tab<>("dshAbout");
 
@@ -78,8 +82,9 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
         generalTab.setNodeSupplier(GeneralSettingsPage::new);
         nodeTab.setNodeSupplier(NodeRuntimesPage::new);
         appearanceTab.setNodeSupplier(AppearanceSettingsPage::new);
+        downloadTab.setNodeSupplier(DownloadSettingsPage::new);
         aboutTab.setNodeSupplier(AboutPage::new);
-        tab = new TabHeader(transitionPane, defaultsTab, generalTab, nodeTab, appearanceTab, aboutTab);
+        tab = new TabHeader(transitionPane, defaultsTab, generalTab, nodeTab, appearanceTab, downloadTab, aboutTab);
         tab.select(defaultsTab, false);
 
         AdvancedListBox sideBar = new AdvancedListBox()
@@ -95,6 +100,9 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
                 .addNavigationDrawerTab(tab, generalTab, i18n("settings.launcher.general"), SVG.TUNE)
                 .addNavigationDrawerTab(tab, appearanceTab, i18n("settings.launcher.appearance"),
                         SVG.STYLE, SVG.STYLE_FILL)
+                // Same mark as the original's download entry, and the same reason
+                // it has no solid version: the icon set has none for a download.
+                .addNavigationDrawerTab(tab, downloadTab, i18n("settings.launcher.download_source"), SVG.DOWNLOAD)
                 .startCategory(i18n("help").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
 
@@ -105,7 +113,8 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 
     /// Selects a tab by name.
     ///
-    /// @param name the tab name: `general`, `appearance` or `about`
+    /// @param name the tab name: `defaults`, `node`, `general`, `appearance`,
+    ///             `download` or `about`
     /// @return whether a tab was selected
     public boolean openTab(String name) {
         switch (name == null ? "" : name.trim().toLowerCase(java.util.Locale.ROOT)) {
@@ -113,6 +122,7 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
             case "general" -> tab.select(generalTab, false);
             case "node" -> tab.select(nodeTab, false);
             case "appearance" -> tab.select(appearanceTab, false);
+            case "download" -> tab.select(downloadTab, false);
             case "about" -> tab.select(aboutTab, false);
             default -> {
                 return false;

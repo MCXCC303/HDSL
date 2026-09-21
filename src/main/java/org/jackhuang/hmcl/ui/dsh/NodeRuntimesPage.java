@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
+import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -120,7 +121,8 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
         setLoading(true);
         CompletableFuture.runAsync(() -> {
             try {
-                NodeRuntimeManager.install(version, line -> LOG.info("[node] " + line));
+                NodeRuntimeManager.install(version, settings().nodeSourceProperty().get(),
+                        line -> LOG.info("[node] " + line));
             } catch (DshException e) {
                 throw new java.util.concurrent.CompletionException(e);
             }

@@ -64,11 +64,7 @@ public final class NodeRuntimeManager {
     }
 
     /// The Node distribution index listing every published release.
-    private static final String DIST_INDEX = "https://nodejs.org/dist/index.json";
-
     /// The download base for a specific release.
-    private static final String DIST_BASE = "https://nodejs.org/dist/";
-
     /// Returns the platform tag used in Node distribution file names.
     ///
     /// @return `linux-x64` or `linux-arm64`
@@ -120,16 +116,23 @@ public final class NodeRuntimeManager {
 
     /// Fetches the published Node releases that have a build for this platform.
     ///
+    /// @param source where to read the index from
     /// @return the available releases, newest first
     /// @throws DshException when the index cannot be read
-    public static List<NodeRelease> fetchReleases() throws DshException {
+    public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
         String platform = platformTag();
+        String url = source.indexUrl();
 
         JsonElement parsed;
         try {
-            parsed = JsonParser.parseString(NetworkUtils.doGet(URI.create(DIST_INDEX)));
+            parsed = JsonParser.parseString(NetworkUtils.doGet(URI.create(url)));
         } catch (IOException | RuntimeException e) {
-            throw new DshException("Failed to read the Node.js release index", e);
+            // The URL is in the message because the failure is almost always the
+            // route to that host rather than anything about the index: a network
+            // that reaches npm through a mirror may not reach this at all, and
+            // "which host" is the one thing that says so.
+            throw new DshException("Failed to read the Node.js release index from " + url
+                    + " (" + source.host() + " could not be reached: " + e.getMessage() + ")", e);
         }
         if (!parsed.isJsonArray()) {
             throw new DshException("The Node.js release index had an unexpected shape");
@@ -167,10 +170,12 @@ public final class NodeRuntimeManager {
     /// an interrupted install can never be mistaken for a usable runtime.
     ///
     /// @param version the version to install, with or without a leading `v`
+    /// @param source  where to fetch the archive from
     /// @param onStage receives a short progress description, or `null`
     /// @return the installed runtime
     /// @throws DshException when the download or extraction fails
-    public static NodeRuntime install(String version, @Nullable Consumer<String> onStage) throws DshException {
+    public static NodeRuntime install(String version, NodeSource source,
+                                      @Nullable Consumer<String> onStage) throws DshException {
         String normalized = version.trim();
         if (normalized.startsWith("v") || normalized.startsWith("V")) {
             normalized = normalized.substring(1);
@@ -193,7 +198,7 @@ public final class NodeRuntimeManager {
         }
 
         String fileName = "node-v" + normalized + "-" + platform + ".tar.xz";
-        String url = DIST_BASE + "v" + normalized + "/" + fileName;
+        String url = source.archiveUrl(normalized, fileName);
 
         try {
             stage(onStage, "Downloading " + fileName);
