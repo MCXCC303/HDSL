@@ -174,7 +174,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                         SVG.DEPLOYED_CODE, SVG.DEPLOYED_CODE_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"),
                         SVG.EXTENSION, SVG.EXTENSION_FILL)
-                .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"), SVG.FOLDER_COPY)
+                // The folder-with-a-copy mark has no solid version in the icon set,
+                // so this entry would keep one mark either way. The pair the
+                // original uses for a pack of things is the one to take instead.
+                .addNavigationDrawerTab(tab, sessionsTab, i18n("dsh.instance.sessions"),
+                        SVG.PACKAGE2, SVG.PACKAGE2_FILL)
                 .addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"),
                         SVG.INFO, SVG.INFO_FILL);
 
