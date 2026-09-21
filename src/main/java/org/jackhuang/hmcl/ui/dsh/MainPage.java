@@ -228,6 +228,11 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         }
 
         String value = raw.toLowerCase(Locale.ROOT);
+        if (value.startsWith("download/")) {
+            DownloadPage page = getDownloadPage();
+            Controllers.navigate(page);
+            return page.openTab(value.substring("download/".length()));
+        }
         if (value.startsWith("settings/")) {
             SettingsPage page = getSettingsPage();
             Controllers.navigate(page);

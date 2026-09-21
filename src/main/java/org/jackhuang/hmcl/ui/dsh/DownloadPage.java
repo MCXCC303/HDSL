@@ -51,6 +51,7 @@ import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
+import org.jackhuang.hmcl.ui.construct.TabHeader;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
@@ -93,6 +94,18 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// The name box and type filter, shared with the other version lists.
     private final VersionFilterBar filterBar = new VersionFilterBar(this::applyFilter, this::refresh);
 
+    /// The tab showing the published versions.
+    private final TabHeader.Tab<Node> versionsTab = new TabHeader.Tab<>("dshDownloadVersions");
+
+    /// The tab showing the community's plugins.
+    private final TabHeader.Tab<PluginMarketPage> marketTab = new TabHeader.Tab<>("dshDownloadPlugins");
+
+    /// The pane the two tabs are shown in.
+    private final TransitionPane tabs = new TransitionPane();
+
+    /// The tab strip.
+    private final TabHeader tab;
+
 
     /// The list of versions.
     private final JFXListView<DshRelease> releaseList = new JFXListView<>();
@@ -131,9 +144,18 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
     /// Creates the download page.
     public DownloadPage() {
+        tab = new TabHeader(tabs);
+
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("download.new_game").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerItem(i18n("dsh.download.instance"), SVG.STADIA_CONTROLLER, this::refresh);
+                .addNavigationDrawerTab(tab, versionsTab, i18n("dsh.download.instance"),
+                        SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
+                // The community's plugins are content, not a game: the original
+                // files its mods under the same second category, above the packs
+                // and texture packs this launcher has no counterpart of.
+                .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
+                .addNavigationDrawerTab(tab, marketTab, i18n("dsh.download.plugins"),
+                        SVG.EXTENSION, SVG.EXTENSION_FILL);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
@@ -190,11 +212,31 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         layout.setTop(toolbar);
         layout.setCenter(contentPane);
 
-        setCenter(layout);
+        versionsTab.setNodeSupplier(() -> layout);
+        marketTab.setNodeSupplier(PluginMarketPage::new);
+        tab.getTabs().setAll(versionsTab, marketTab);
+        tab.select(versionsTab, false);
+
+        setCenter(tabs);
 
         releaseList.setCellFactory(view -> new ReleaseCell(this));
 
         refresh();
+    }
+
+    /// Selects one of the page's tabs by name.
+    ///
+    /// @param name the tab name: `versions` or `plugins`
+    /// @return whether a tab was selected
+    public boolean openTab(String name) {
+        switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
+            case "versions" -> tab.select(versionsTab, false);
+            case "plugins" -> tab.select(marketTab, false);
+            default -> {
+                return false;
+            }
+        }
+        return true;
     }
 
     @Override
