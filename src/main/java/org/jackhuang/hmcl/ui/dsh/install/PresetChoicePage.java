@@ -73,9 +73,6 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
     /// Covers the list while versions load.
     private final SpinnerPane spinner = new SpinnerPane();
 
-    /// How many versions are offered.
-    private static final int VERSION_LIMIT = 20;
-
     /// Creates the page.
     ///
     /// @param controller the wizard controller
@@ -134,15 +131,14 @@ public final class PresetChoicePage extends ScrollPane implements WizardPage {
     private void render() {
         choices.getContent().clear();
 
-        int shown = 0;
+        // Every version the registry lists. A cap of twenty was here, and the
+        // marketplace publishes a hundred and twenty: the one list a user wants
+        // a particular old version from was the one that stopped at the newest
+        // twenty. The name box above it is what makes a long list usable.
         for (String version : versions) {
-            if (!filterBar.accepts(version)) {
-                continue;
+            if (filterBar.accepts(version)) {
+                choices.getContent().add(buildVersion(version));
             }
-            if (shown++ >= VERSION_LIMIT) {
-                break;
-            }
-            choices.getContent().add(buildVersion(version));
         }
     }
 

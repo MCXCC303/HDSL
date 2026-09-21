@@ -71,8 +71,6 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
     ///
     /// Upstream publishes a fast-moving pre-release stream; showing the whole
     /// history would swamp the page. Installed versions are always listed.
-    private static final int REMOTE_DISPLAY_LIMIT = 25;
-
     /// The page state published to the window decorator.
     private final ReadOnlyObjectWrapper<State> state =
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.versions.title")));
@@ -275,9 +273,7 @@ public final class VersionsPage extends DecoratorAnimatedPage implements Decorat
             if (!needle.isEmpty() && !release.version().toLowerCase(java.util.Locale.ROOT).contains(needle)) {
                 continue;
             }
-            if (shown++ >= REMOTE_DISPLAY_LIMIT) {
-                break;
-            }
+            shown++;
             remoteList.getContent().add(buildRemoteRow(release));
         }
         if (shown == 0) {
