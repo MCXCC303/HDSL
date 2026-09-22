@@ -131,6 +131,13 @@ public final class DshLauncher {
     /// release accepts is what its own help says, and a list of version numbers that
     /// once needed the flag is a list that goes stale.
     ///
+    /// The help that has to be read is the **profile's**, not the launcher's:
+    /// `dsh --help` lists the profile selection and the launcher's own flags, and says nothing about
+    /// what the booted app accepts. Reading that one always answers "no", which is why every launch
+    /// passed no `--no-open` and the harness opened a tab of its own on top of the launcher's —
+    /// two tabs for one instance. `dsh --profile <name> --help` is the request the tool documents
+    /// for this ("`dsh --profile web -h` prints the web app's help, not this one's").
+    ///
     /// @param instance the instance
     /// @return whether the flag may be passed
     private static boolean acceptsNoOpen(DshInstance instance) {
@@ -146,7 +153,8 @@ public final class DshLauncher {
             DshNodeRuntime runtime = resolveRuntime(instance);
             Path script = instance.dshEntryPoint();
             ProcessBuilder builder = new ProcessBuilder(
-                    runtime.node().toString(), script.toString(), "--help");
+                    runtime.node().toString(), script.toString(),
+                    "--profile", instance.profile(), "--help");
             builder.redirectErrorStream(true);
             builder.environment().put("DSH_HOME", instance.homeDirectory().toString());
             if (instance.workspacePath() != null) {

@@ -53,6 +53,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// has settled and the required entries have been audited:
 /// `dsh web: http://127.0.0.1:<port>/?token=<token>`. That line is the only
 /// stdout contract the launcher relies on.
+///
+/// The token arrived with the browser-trust fence; the earliest releases print the same line
+/// without it (`dsh web: http://127.0.0.1:<port>`). Both are the same announcement, so both are
+/// accepted — a launcher that insisted on the token showed those versions as starting for ever,
+/// because the line it was waiting for is one they never learned to print.
 @NotNullByDefault
 public final class DshProcess {
     /// How long the child is given to drain before it is killed.
@@ -65,8 +70,12 @@ public final class DshProcess {
     private static final Duration FORCE_GRACE = Duration.ofSeconds(2);
 
     /// The readiness line for the browser surface, including its optional LAN suffix.
+    ///
+    /// Both the token query and the trailing slash are optional. Releases before the browser-trust
+    /// fence print the address on its own and without a slash — `dsh web: http://127.0.0.1:4061` —
+    /// and that address is just as good a sign that the server is up as the later spelling is.
     private static final Pattern WEB_READY = Pattern.compile(
-            "^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+/\\?token=[A-Za-z0-9_-]+)\\s*(?:\\(LAN:.*\\))?$");
+            "^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+)/?(?:\\?token=[A-Za-z0-9_-]+)?\\s*(?:\\(LAN:.*\\))?$");
 
     /// How many log lines are retained for the log window.
     private static final int MAX_LOG_LINES = 2000;

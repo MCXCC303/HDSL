@@ -889,6 +889,13 @@ public final class DshCli {
             return 1;
         }
         try {
+            // What is about to run, before it runs: the argument list is assembled from the
+            // version's own help, the instance's settings and the launcher's defaults, and when a
+            // launch goes wrong the first question is which of those decided the flags. Reading it
+            // off the process table afterwards is not always possible — the child exits, or the
+            // tooling cannot see another process's arguments.
+            out.println("command: " + DshLauncher.plan(instance).commandLine());
+
             DshProcess process = DshProcessManager.launch(instance);
             for (int i = 0; i < 120 && process.state() == DshProcess.State.STARTING; i++) {
                 Thread.sleep(500);
@@ -1054,6 +1061,12 @@ public final class DshCli {
             err.println("error: instance " + invocation.subject() + " does not exist");
             return 1;
         }
+
+        // What is about to run, before it runs: the argument list is assembled from the version's
+        // own help, the instance's settings and the launcher's defaults, and when a launch goes
+        // wrong the first question is which of those decided the flags. Reading it off the process
+        // table afterwards is not always possible.
+        out.println("command: " + DshLauncher.plan(instance).commandLine());
 
         DshProcess process = DshProcessManager.launch(instance);
         process.setLogSink(line -> System.out.println("[" + instance.id() + "] " + line));
