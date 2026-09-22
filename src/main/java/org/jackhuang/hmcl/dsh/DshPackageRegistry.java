@@ -123,6 +123,54 @@ public final class DshPackageRegistry {
     ///
     /// @param spec the spec, for example `dshmarket` or `dshmarket@1.48.0`
     /// @return the package name
+    /// Reads what a published package depends on.
+    ///
+    /// @param packageName the package
+    /// @param version     the version, or `null` for the latest
+    /// @return the dependencies, empty when there are none or they cannot be read
+    public static JsonObject dependencies(String packageName, @Nullable String version) {
+        String spec = version == null || version.isBlank() ? packageName : packageName + "@" + version;
+        JsonObject cached = DEPENDENCIES.get(spec);
+        if (cached != null) {
+            return cached;
+        }
+        JsonObject dependencies = viewJson(spec, "dependencies");
+        DEPENDENCIES.put(spec, dependencies);
+        return dependencies;
+    }
+
+    /// The dependencies read so far, by specification.
+    private static final Map<String, JsonObject> DEPENDENCIES = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// Reads one object field of a published package.
+    ///
+    /// @param spec  the package specification
+    /// @param field the field
+    /// @return the object, or an empty one when it is absent or cannot be read
+    private static JsonObject viewJson(String spec, String field) {
+        try {
+            DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
+            if (runtime == null || runtime.npm() == null) {
+                return new JsonObject();
+            }
+            DshCommand.Result result = DshCommand.run(
+                    List.of(runtime.npm().toString(), "view", spec, field, "--json"), null, null);
+            String body = String.join("\n", result.output()).trim();
+            if (result.exitCode() == 0 && body.startsWith("{")) {
+                JsonElement parsed = com.google.gson.JsonParser.parseString(body);
+                if (parsed.isJsonObject()) {
+                    return parsed.getAsJsonObject();
+                }
+            }
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            LOG.warning("Could not read " + field + " of " + spec, e);
+        }
+        return new JsonObject();
+    }
+
     /// Reads the peer requirements a published package declares.
     ///
     /// Asked of the package rather than of the catalogue, because the catalogue does not

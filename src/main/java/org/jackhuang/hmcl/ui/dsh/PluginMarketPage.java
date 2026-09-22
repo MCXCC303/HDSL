@@ -112,8 +112,11 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
     /// mistaken for a smaller catalogue.
     private final Label note = new Label();
 
-    /// Whether only plugins that fit the chosen instance are shown.
-    private boolean onlyFitting;
+    /// The harness version the search is filtered by, or `null` for all of them.
+    private String chosenVersion;
+
+    /// Whether the version list has been asked for.
+    private boolean versionsAsked;
 
     /// Which plugins fit, by package name, once it has been worked out.
     private final java.util.Map<String, Boolean> fitting = new java.util.concurrent.ConcurrentHashMap<>();
@@ -208,12 +211,14 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
                 new Label(i18n("mods.name")), nameField);
         versionBox.setMaxWidth(Double.MAX_VALUE);
         versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
-        versionBox.getItems().setAll(i18n("download.type.all"), i18n("dsh.market.fitting"));
+        versionBox.getItems().setAll(i18n("download.type.all"));
         versionBox.setValue(i18n("download.type.all"));
         versionBox.valueProperty().addListener((observable, was, value) -> {
-            onlyFitting = value != null && value.equals(i18n("dsh.market.fitting"));
+            chosenVersion = value == null || value.equals(i18n("download.type.all")) ? null : value;
+            fitting.clear();
             search();
         });
+        loadVersions();
         pane.addRow(1, new Label(i18n("addon.category")), categoryBox,
                 new Label(i18n("dsh.market.dsh_version")), versionBox);
 
@@ -226,6 +231,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         sortBox.getItems().setAll("downloads", "stars", "added");
         sortBox.setValue("downloads");
         sortBox.valueProperty().addListener((observable, was, value) -> search());
+        pane.addRow(2, new Label(i18n("search.sort")), sortBox, new Label(""), new Label(""));
 
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
@@ -241,7 +247,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
         HBox buttons = new HBox(8, paging, search);
         buttons.setAlignment(Pos.CENTER_RIGHT);
-        pane.add(buttons, 0, 2, 4, 1);
+        pane.add(buttons, 0, 4, 4, 1);
 
         return pane;
     }
@@ -404,6 +410,35 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         return container;
     }
 
+    /// Fills the version picker with every published version of the harness.
+    ///
+    /// The original's picker lists every game version there is rather than only the one
+    /// the instance runs, because a search is about what exists; so does this.
+    private void loadVersions() {
+        if (versionsAsked) {
+            return;
+        }
+        versionsAsked = true;
+
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return org.jackhuang.hmcl.dsh.DshVersionManager.fetchReleases().stream().map(release -> release.version()).toList();
+            } catch (DshException e) {
+                throw new CompletionException(e);
+            }
+        }).whenComplete((versions, failure) -> runInFX(() -> {
+            if (failure != null || versions == null || versions.isEmpty()) {
+                // Without the list the picker keeps 全部, which is not a failure of
+                // the search: nothing is filtered unless somebody chooses to.
+                return;
+            }
+            String chosen = versionBox.getValue();
+            versionBox.getItems().setAll(java.util.stream.Stream.concat(
+                    java.util.stream.Stream.of(i18n("download.type.all")), versions.stream()).toList());
+            versionBox.setValue(chosen == null ? i18n("download.type.all") : chosen);
+        }));
+    }
+
     /// Reports whether a plugin fits the instance the page installs into.
     ///
     /// What fits is decided from the plugin's own peer requirements against the
@@ -426,15 +461,21 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         }
 
         fitting.put(name, Boolean.TRUE);
+        String version = chosenVersion;
         java.util.concurrent.CompletableFuture.supplyAsync(() -> {
-            org.jackhuang.hmcl.dsh.DshPluginRequirements.coreVersions(instance);
+            // Judged against what the chosen version ships: the instance's own
+            // installation when the choice is its version, and what that release
+            // declares when it is another one.
+            java.util.Map<String, String> core = version == null
+                    || version.equals(instance.version())
+                    ? org.jackhuang.hmcl.dsh.DshPluginRequirements.coreVersions(instance)
+                    : org.jackhuang.hmcl.dsh.DshPluginRequirements.coreVersionsOf(version);
             com.google.gson.JsonObject peers = org.jackhuang.hmcl.dsh.DshPackageRegistry
                     .peerDependencies(plugin.npm(), plugin.version());
-            return org.jackhuang.hmcl.dsh.DshPluginRequirements.fits(
-                    peers, org.jackhuang.hmcl.dsh.DshPluginRequirements.coreVersions(instance));
+            return org.jackhuang.hmcl.dsh.DshPluginRequirements.fits(peers, core);
         }).whenComplete((result, failure) -> FXUtils.runInFX(() -> {
             fitting.put(name, failure != null || result == null ? Boolean.TRUE : result);
-            if (onlyFitting) {
+            if (chosenVersion != null) {
                 search();
             }
         }));

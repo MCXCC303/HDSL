@@ -49,6 +49,38 @@ public final class DshPluginRequirements {
     private DshPluginRequirements() {
     }
 
+    /// Reads the versions of the harness's packages that a published version ships.
+    ///
+    /// Asked of the registry, once per version and remembered, for the case the picker
+    /// offers a version the machine does not have: what that release can run is what it
+    /// declares it depends on.
+    ///
+    /// @param version the harness version
+    /// @return the package versions, empty when they cannot be read
+    public static Map<String, String> coreVersionsOf(String version) {
+        Map<String, String> cached = PUBLISHED_CORE_VERSIONS.get(version);
+        if (cached != null) {
+            return cached;
+        }
+
+        Map<String, String> versions = new java.util.LinkedHashMap<>();
+        JsonObject dependencies = DshPackageRegistry.dependencies(
+                "@deepseek-ai/dsh", version);
+        for (Map.Entry<String, JsonElement> entry : dependencies.entrySet()) {
+            if (entry.getKey().startsWith(CORE_PREFIX) && entry.getValue().isJsonPrimitive()) {
+                versions.put(entry.getKey(), entry.getValue().getAsString());
+            }
+        }
+
+        Map<String, String> result = Map.copyOf(versions);
+        PUBLISHED_CORE_VERSIONS.put(version, result);
+        return result;
+    }
+
+    /// The packages read so far, by harness version.
+    private static final Map<String, Map<String, String>> PUBLISHED_CORE_VERSIONS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     /// Reads the versions of the harness's packages that an instance holds.
     ///
     /// Read from the instance's own installation rather than from the registry: what an
