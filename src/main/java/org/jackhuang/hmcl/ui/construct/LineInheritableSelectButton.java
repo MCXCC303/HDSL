@@ -45,6 +45,9 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
     /// The size of the globe, matching the original's.
     private static final int INHERIT_ICON_SIZE = 12;
 
+    /// The globe, which is the way in and out of following the launcher.
+    private final JFXButton inheritButton;
+
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
 
@@ -53,6 +56,10 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // The launcher's own small icon button, so the globe is drawn in the theme's
         // colour like every other icon in a row: a bare SVG button takes the default
         // fill, which on these rows is a dark shape that looks like a smudge.
+        // A class of this control's own, so the stylesheet can key on it without knowing what
+        // the classes it inherits call themselves.
+        getStyleClass().add("line-inheritable-value");
+
         JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
         // The helper's style is what colours the icon; its size is this row's, and the original's
         // globe is a small mark beside the name rather than a control as tall as the row.
@@ -67,8 +74,12 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // Following the launcher is not a choice of this row's, so the value is not editable while
         // it does — but the row itself stays enabled, because the globe on it is the way in, and a
         // disabled row disables what is on it.
+        this.inheritButton = inheritButton;
         addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
-            if (!isOverridden()) {
+            // Only the row's own press is held back while it follows. The globe is a button of its
+            // own inside this row, and a filter runs before every handler — consuming here without
+            // looking at where the press came from is what made the globe unpressable.
+            if (!isOverridden() && event.getTarget() != inheritButton) {
                 event.consume();
             }
         });

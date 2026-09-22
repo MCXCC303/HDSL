@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.ui.construct;
 
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXToggleButton;
 import javafx.beans.property.BooleanProperty;
@@ -66,6 +68,10 @@ public final class LineInheritableToggleButton extends LineButtonBase {
         // rather than the SVG's default fill.
         this.inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
         this.inheritTooltip = new Tooltip();
+        // The control knows what its globe means, so it says so unless a caller has its own words:
+        // a globe with an empty tooltip is a control nobody dares press.
+        setInheritedTooltip(i18n("dsh.settings.inherit.tooltip"));
+        setOverriddenTooltip(i18n("dsh.settings.override.tooltip"));
         FXUtils.installFastTooltip(inheritButton, inheritTooltip);
         inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
             if (!isInheritAvailable()) {

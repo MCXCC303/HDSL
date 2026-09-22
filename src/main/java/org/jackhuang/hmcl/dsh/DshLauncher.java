@@ -22,6 +22,8 @@ import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Files;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -117,6 +119,9 @@ public final class DshLauncher {
         return DshNodeRuntime.fromManaged(managed);
     }
 
+    /// How long a version is given to answer a help request.
+    private static final java.time.Duration PROBE_TIMEOUT = java.time.Duration.ofSeconds(5);
+
     /// The versions whose help has been read, and whether it mentions `--no-open`.
     private static final Map<String, Boolean> NO_OPEN_SUPPORT = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -136,22 +141,47 @@ public final class DshLauncher {
         }
 
         boolean accepted = false;
+        Process probe = null;
         try {
             DshNodeRuntime runtime = resolveRuntime(instance);
             Path script = instance.dshEntryPoint();
-            DshCommand.Result result = DshCommand.run(
-                    List.of(runtime.node().toString(), script.toString(), "--help"),
-                    instance.workspacePath(), Map.of("DSH_HOME", instance.homeDirectory().toString()),
-                    null);
-            accepted = helpMentionsNoOpen(String.join("\n", result.output()));
+            ProcessBuilder builder = new ProcessBuilder(
+                    runtime.node().toString(), script.toString(), "--help");
+            builder.redirectErrorStream(true);
+            builder.environment().put("DSH_HOME", instance.homeDirectory().toString());
+            if (instance.workspacePath() != null) {
+                builder.directory(instance.workspacePath().toFile());
+            }
+            probe = builder.start();
+
+            // Bounded, because what is being asked may not be what a program that only wants to
+            // start would answer: a help request that is ignored leaves a process running for as
+            // long as it likes, and waiting for it would be waiting for an instance to finish.
+            String output;
+            try (InputStream stream = probe.getInputStream()) {
+                if (!probe.waitFor(PROBE_TIMEOUT.toSeconds(), java.util.concurrent.TimeUnit.SECONDS)) {
+                    // Left out rather than waited for — and remembered, like every other answer:
+                    // returning here would ask the same question again on the next launch.
+                    LOG.info("DeepSeek Harness " + version + " did not answer --help within "
+                            + PROBE_TIMEOUT.toSeconds() + "s; leaving the flag out");
+                    NO_OPEN_SUPPORT.put(version, false);
+                    return false;
+                }
+                output = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            accepted = helpMentionsNoOpen(output);
         } catch (DshException | IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            // Not knowing is not permission: a flag a version does not accept stops
-            // it from starting at all, and the cost of leaving it out is a browser
-            // tab the harness opens for itself.
+            // Not knowing is not permission: a flag a version does not accept stops it from
+            // starting at all, and the cost of leaving it out is a browser tab the harness opens
+            // for itself.
             LOG.warning("Could not read the help of DeepSeek Harness " + version, e);
+        } finally {
+            if (probe != null && probe.isAlive()) {
+                probe.destroyForcibly();
+            }
         }
 
         NO_OPEN_SUPPORT.put(version, accepted);

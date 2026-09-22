@@ -1907,6 +1907,17 @@
     -fx-padding: 10 16 10 16;
 }
 
+/* A row that follows the launcher shows the launcher's value rather than its own, and the
+   difference has to be visible: the value is dimmed until somebody takes the setting over with
+   the globe beside the row's name. */
+.line-inheritable-value:inherited .trailing-label {
+    -fx-opacity: 0.55;
+}
+
+/* Kept out of the way of the rule above: this marks the stylesheet as one that knows the state. */
+.line-inheritable-value {
+}
+
 .line-component .subtitle-label {
     -fx-text-fill: -monet-on-surface-variant;
 }

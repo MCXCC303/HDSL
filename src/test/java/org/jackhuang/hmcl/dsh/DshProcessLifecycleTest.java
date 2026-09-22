@@ -77,7 +77,7 @@ class DshProcessLifecycleTest {
                 console.log('dsh web: http://127.0.0.1:' + port + '/?token=lifecycle-stub');
                 // Drain on request rather than exiting at once: the launcher has
                 // to keep treating the instance as busy while this is happening.
-                process.on('SIGTERM', () => setTimeout(() => process.exit(0), 4000));
+                process.on('SIGTERM', () => setTimeout(() => process.exit(0), 1200));
                 // Nothing may outlive the test that started it: a stub that keeps
                 // running keeps the test's own JVM from finishing, and a suite that
                 // never finishes is worse than one that fails.
@@ -103,7 +103,7 @@ class DshProcessLifecycleTest {
         }
 
         DshInstance instance = DshInstanceManager.create(INSTANCE_ID, "1.0.0", DshInstance.DEFAULT_PROFILE,
-                workspace, DshHomeMode.ISOLATED, null, List.of(), Map.of());
+                workspace, DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null, List.of(), Map.of());
         installStubSurface(instance);
         return instance;
     }
