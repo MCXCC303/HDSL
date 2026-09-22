@@ -92,7 +92,6 @@ public final class InstanceDefaultsPage extends ScrollPane {
 
         LineSelectButton<String> node = new LineSelectButton<>();
         node.setTitle(i18n("dsh.settings.default_node"));
-        node.setSubtitle(i18n("dsh.settings.default_node.hint"));
 
         List<String> runtimes = new ArrayList<>();
         runtimes.add(DshNodeRuntime.SYSTEM);
@@ -114,12 +113,10 @@ public final class InstanceDefaultsPage extends ScrollPane {
 
         LineSelectButton<DshHomeMode> home = new LineSelectButton<>();
         home.setTitle(i18n("dsh.settings.default_home"));
-        home.setSubtitle(i18n("dsh.settings.default_home.hint"));
         // The policy first, then what "not isolated" means — the original's arrangement, and the
         // one that reads correctly: the rule decides, and the mode below says what it falls back to.
         LineSelectButton<org.jackhuang.hmcl.dsh.DshIsolationPolicy> policy = new LineSelectButton<>();
         policy.setTitle(i18n("dsh.settings.isolation"));
-        policy.setSubtitle(i18n("dsh.settings.isolation.hint"));
         policy.setItems(org.jackhuang.hmcl.dsh.DshIsolationPolicy.values());
         policy.setConverter(choice -> choice == null ? ""
                 : i18n("dsh.settings.isolation." + choice.id()));
@@ -158,7 +155,6 @@ public final class InstanceDefaultsPage extends ScrollPane {
         // The rows around it say what they are for, and this one is the least obvious of
         // them: what it decides is whether somebody is asked before a plugin's install
         // script runs.
-        approve.setSubtitle(i18n("dsh.settings.build_scripts.approve.hint"));
         approve.setItems(List.of(DshBuildScriptPolicy.AUTO, DshBuildScriptPolicy.MANUAL,
                 DshBuildScriptPolicy.NEVER));
         // The control asks for a display name before a value exists, so the converter
@@ -260,31 +256,22 @@ public final class InstanceDefaultsPage extends ScrollPane {
 
     /// Builds the editor for the variables every instance runs with.
     ///
-    /// A launcher-wide set is for the things that are the same everywhere, and an
-    /// instance adds its own on top rather than replacing them — which is what an API key
-    /// per instance needs. It sits here rather than on the download page because it is
-    /// not about downloading anything: what it configures is how an instance runs. The
-    /// original keeps its own environment variables in the same place — inside a game's
-    /// own settings, beside the command line they are added to.
+    /// One line of `NAME=VALUE` pairs, which is the shape the instance's own row has: the two are
+    /// the same setting seen from either end, and reading one should not mean learning a second
+    /// shape. What an instance sets is laid over this, so a variable written here reaches every
+    /// instance that has not overridden it.
     ///
     /// @return the assembled component list
     private ComponentList buildEnvironmentVariablesList() {
-        // JFoenix's own text area, which is what the stylesheet is written for: a native
-        // `TextArea` keeps the platform's white background, because the rule that gives
-        // these controls their surface names `.jfx-text-area`.
-        com.jfoenix.controls.JFXTextArea area = new com.jfoenix.controls.JFXTextArea();
-        area.setPrefRowCount(4);
-        area.setPrefColumnCount(28);
-        area.setText(org.jackhuang.hmcl.dsh.DshEnvironment.format(settings().globalEnvironment()));
-        area.textProperty().addListener((observable, was, text) ->
-                settings().globalEnvironmentProperty().set(org.jackhuang.hmcl.dsh.DshEnvironment.parse(text)));
-
-        // The same row as everything else on the page: the name and what it is for on the
-        // left, the box beside them.
         LinePane pane = new LinePane();
         pane.setTitle(i18n("dsh.settings.env_vars"));
-        pane.setSubtitle(i18n("dsh.settings.env_vars.global.hint"));
-        pane.setRight(area);
+
+        com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
+        field.setMinWidth(420);
+        field.setText(org.jackhuang.hmcl.dsh.DshEnvironment.format(settings().globalEnvironment()));
+        field.textProperty().addListener((observable, was, text) ->
+                settings().globalEnvironmentProperty().set(org.jackhuang.hmcl.dsh.DshEnvironment.parse(text)));
+        pane.setRight(field);
 
         ComponentList list = new ComponentList();
         list.getContent().add(pane);

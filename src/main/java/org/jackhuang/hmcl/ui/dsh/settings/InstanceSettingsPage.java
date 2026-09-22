@@ -399,8 +399,9 @@ public final class InstanceSettingsPage extends ScrollPane {
 
     /// Builds the Node runtime row.
     ///
-    /// The first entry follows the launcher, which is what HMCL's game settings
-    /// offer for Java: an instance states its own only when it has a reason to.
+    /// A choice of this instance's own, with no mark beside it: the launcher's default runtime is
+    /// what a *new* instance is given, not something an existing one keeps following, so there is
+    /// nothing here to inherit. What the row shows is what the instance runs.
     ///
     /// @return the row
     private LineSelectButton<String> buildNodeRuntimeRow() {
@@ -410,33 +411,20 @@ public final class InstanceSettingsPage extends ScrollPane {
             choices.add(runtime.version());
         }
 
-        LineInheritableSelectButton<String> row = new LineInheritableSelectButton<>();
+        LineSelectButton<String> row = new LineSelectButton<>();
         row.setTitle(i18n("dsh.node.title"));
         row.setItems(choices);
-        // The resolved runtime is what the row shows, whether the instance chose it or is
-        // following the launcher: a name that changed to a sentence about following would be a
-        // second way of saying what the globe already says.
         row.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
                 ? i18n("dsh.install.node.system")
                 : selection);
-        // Following the launcher is the state the globe shows, so the value is the
-        // instance's own choice and the globe says whether there is one.
-        row.setOverridden(instance.nodeRuntime() != null && !DshNodeRuntime.GLOBAL.equals(instance.nodeRuntime()));
-        // While it follows the launcher, the row shows what the launcher uses — the value is the
-        // answer, and "follow the launcher" is what the globe beside the name says.
-        row.setValue(instance.nodeRuntime() == null
-                ? settings().defaultNodeRuntimeProperty().get() : instance.nodeRuntime());
-        row.overriddenProperty().addListener((observable, was, overridden) -> {
-            if (!overridden) {
-                // Handing it back shows what the launcher resolves to, which is what the row is
-                // now showing; `GLOBAL` is a stored state, not a runtime anything can run.
-                row.setValue(settings().defaultNodeRuntimeProperty().get());
-                write(instance.withNodeRuntime(null));
-            }
-        });
+        // A runtime that was never chosen — or that was stored as "follow the launcher" before this
+        // row lost its mark — reads as the launcher's default, which is what the instance runs.
+        String chosen = instance.nodeRuntime();
+        row.setValue(chosen == null || DshNodeRuntime.GLOBAL.equals(chosen)
+                ? settings().defaultNodeRuntimeProperty().get() : chosen);
         row.valueProperty().addListener((observable, was, value) -> {
             if (value != null && !value.equals(was)) {
-                write(instance.withNodeRuntime(DshNodeRuntime.GLOBAL.equals(value) ? null : value));
+                write(instance.withNodeRuntime(value));
             }
         });
         return row;
@@ -444,26 +432,22 @@ public final class InstanceSettingsPage extends ScrollPane {
 
     /// Builds the DSH_HOME policy row.
     ///
+    /// A choice of this instance's own, with no mark beside it, for the same reason the runtime row
+    /// has none: the launcher's default policy decides what a new instance is created with, and
+    /// after that the instance has its own answer. Where that answer points is the next row.
+    ///
     /// @return the row
     private LineSelectButton<DshHomeMode> buildHomeModeRow() {
-        LineInheritableSelectButton<DshHomeMode> row = new LineInheritableSelectButton<>();
+        LineSelectButton<DshHomeMode> row = new LineSelectButton<>();
         row.setTitle(i18n("dsh.install.home"));
         row.setItems(DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
-        // The policy in force, named the same way whether this instance chose it or is following
-        // the launcher; the globe is what says which.
         row.setNullSafeConverter(mode -> i18n("dsh.instance.home."
-                + (DshHomeMode.GLOBAL.equals(mode)
-                        ? settings().defaultHomeModeProperty().get() : mode)
-                        .name().toLowerCase(Locale.ROOT)));
-        row.setOverridden(instance.homeMode() != DshHomeMode.GLOBAL);
-        row.setValue(instance.homeMode() == DshHomeMode.GLOBAL
-                ? settings().defaultHomeModeProperty().get() : instance.homeMode());
-        row.overriddenProperty().addListener((observable, was, overridden) -> {
-            if (!overridden) {
-                row.setValue(DshHomeMode.GLOBAL);
-                write(instance.withHome(DshHomeMode.GLOBAL, null));
-            }
-        });
+                + mode.name().toLowerCase(Locale.ROOT)));
+        // A policy stored as "follow the launcher" before this row lost its mark reads as the
+        // launcher's default, which is the policy such an instance is actually running under.
+        DshHomeMode stored = instance.homeMode();
+        row.setValue(stored == DshHomeMode.GLOBAL
+                ? settings().defaultHomeModeProperty().get() : stored);
         row.valueProperty().addListener((observable, was, mode) -> {
             if (mode == null || mode == was) {
                 return;
@@ -527,19 +511,12 @@ public final class InstanceSettingsPage extends ScrollPane {
     ///
     /// @return the row
     private LineSelectButton<DshPortMode> buildPortModeRow() {
-        LineInheritableSelectButton<DshPortMode> row = new LineInheritableSelectButton<>();
+        LineSelectButton<DshPortMode> row = new LineSelectButton<>();
         row.setTitle(i18n("dsh.instance.port.mode"));
         row.setItems(DshPortMode.AUTO, DshPortMode.FIXED);
-        // What it follows is the launcher's policy, and an instance that has not
-        // chosen one shows that rather than the policy it happens to resolve to.
-        row.setValue(instance.hasOwnPortMode() ? instance.portMode() : DshPortMode.GLOBAL);
-        row.setOverridden(instance.hasOwnPortMode());
-        row.overriddenProperty().addListener((observable, was, overridden) -> {
-            if (!overridden) {
-                row.setValue(DshPortMode.GLOBAL);
-                write(withPortMode(DshPortMode.GLOBAL));
-            }
-        });
+        // A choice of this instance's own: there is no launcher-wide port policy for it to follow,
+        // and a mark offering to follow one would be offering to follow nothing.
+        row.setValue(instance.portModeOrDefault());
         // The control runs its converter the moment one is installed, before a
         // value need exist, so the null-safe form is required here.
         row.setNullSafeConverter(mode -> i18n("dsh.instance.port.mode." + mode.id()));
