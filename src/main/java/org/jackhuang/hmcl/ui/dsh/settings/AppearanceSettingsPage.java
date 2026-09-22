@@ -109,7 +109,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
         root.getChildren().addAll(
                 sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
                 sectionTitle(i18n("settings.launcher.appearance")),
-                buildThemeColorList(), buildColorStyleList(), buildBackgroundDetailList(), buildWindowList(),
+                buildBrightnessList(), buildThemeColorList(), buildColorStyleList(), buildBackgroundDetailList(), buildWindowList(),
                 sectionTitle(i18n("dsh.settings.background.load.section")), buildBackgroundLoadingList(),
                 sectionTitle(i18n("dsh.settings.animations")), buildAnimationList(),
                 sectionTitle(i18n("dsh.settings.font")), buildFontList());
@@ -356,9 +356,13 @@ public final class AppearanceSettingsPage extends ScrollPane {
         });
 
         ComponentList list = new ComponentList();
-        list.getContent().addAll(theme, brightness);
+        this.brightnessRow = brightness;
+        list.getContent().add(theme);
         return list;
     }
+
+    /// The row that chooses the launcher's brightness mode.
+    private javafx.scene.Node brightnessRow;
 
     /// The row that chooses how the theme colour becomes a palette.
     private javafx.scene.Node colorStyleRow;
@@ -435,6 +439,20 @@ public final class AppearanceSettingsPage extends ScrollPane {
         ComponentList list = new ComponentList();
         if (colorStyleRow != null) {
             list.getContent().add(colorStyleRow);
+        }
+        return list;
+    }
+
+
+    /// Builds the row that chooses the launcher's brightness mode.
+    ///
+    /// The original keeps this at the head of the appearance section, before the colours.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildBrightnessList() {
+        ComponentList list = new ComponentList();
+        if (brightnessRow != null) {
+            list.getContent().add(brightnessRow);
         }
         return list;
     }
