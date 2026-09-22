@@ -87,8 +87,9 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // disabled row disables what is on it.
         Runnable showState = () -> {
             boolean overridden = isOverridden();
-            inheritButton.setOpacity(overridden ? INHERIT_FAINT : 1.0);
-            inheritButton.setGraphic((overridden ? MANUAL_ICON : SVG.PUBLIC).createIcon(INHERIT_ICON_SIZE));
+            inheritButton.setGraphic((overridden ? SVG.TUNE : SVG.PUBLIC).createIcon(INHERIT_ICON_SIZE));
+            inheritButton.pseudoClassStateChanged(
+                    javafx.css.PseudoClass.getPseudoClass("overridden"), overridden);
             FXUtils.installFastTooltip(inheritButton,
                     i18n(overridden ? "dsh.settings.override.tooltip" : "dsh.settings.inherit.tooltip"));
         };
