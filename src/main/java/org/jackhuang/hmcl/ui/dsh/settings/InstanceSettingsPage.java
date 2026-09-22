@@ -452,9 +452,13 @@ public final class InstanceSettingsPage extends ScrollPane {
                 ? i18n("dsh.instance.port.fixed.hint")
                 : i18n("dsh.instance.port.auto.current", portDescription()));
 
-        // Only editable in fixed mode; in automatic mode the launcher decides.
+        // The row exists only for a port somebody chose: when the mode is automatic or
+        // following the launcher there is no port to name, and an empty box asking for one
+        // is a question with no answer. The mode row already says which port is in use.
         portField.setDisable(!fixed);
         portField.setText(fixed ? Integer.toString(instance.portOrDefault()) : "");
+        portRow.setVisible(fixed);
+        portRow.setManaged(fixed);
     }
 
     /// Describes the port an automatic instance is currently bound to.
