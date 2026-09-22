@@ -103,7 +103,7 @@ public final class DownloadSettingsPage extends ScrollPane {
         // reference has no such thing.
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.env_vars"),
-                i18n("dsh.settings.env_vars.global.hint"), area));
+                null, area));
         return list;
     }
 
@@ -149,6 +149,7 @@ public final class DownloadSettingsPage extends ScrollPane {
 
         // Automatic is the absence of a number, and the row says so rather than showing nothing.
         LineSelectButton<Integer> threads = new LineSelectButton<>();
+        threads.setTitle(i18n("dsh.settings.download.threads"));
         threads.setItems(java.util.List.of(0, 1, 2, 4, 8, 16));
         threads.setConverter(count -> count == null || count == 0
                 ? i18n("dsh.settings.download.threads.auto") : count.toString());
@@ -162,7 +163,7 @@ public final class DownloadSettingsPage extends ScrollPane {
 
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.download.cache"),
-                i18n("dsh.settings.download.cache.hint"), cache));
+                null, cache));
         list.getContent().add(threads);
         return list;
     }
@@ -212,15 +213,15 @@ public final class DownloadSettingsPage extends ScrollPane {
         ComponentList list = new ComponentList();
         list.getContent().add(modes);
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.host"),
-                i18n("dsh.settings.proxy.host.hint"), host));
+                null, host));
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.port"),
-                i18n("dsh.settings.proxy.port.hint"), port));
+                null, port));
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.auth"),
-                i18n("dsh.settings.proxy.auth.hint"), authenticated));
+                null, authenticated));
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.user"),
-                i18n("dsh.settings.proxy.user.hint"), user));
+                null, user));
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.password"),
-                i18n("dsh.settings.proxy.password.hint"), password));
+                null, password));
 
         // A field the chosen mode cannot use is not worth typing into.
         Runnable refresh = () -> {
@@ -265,7 +266,9 @@ public final class DownloadSettingsPage extends ScrollPane {
     private javafx.scene.Node proxyRowWithField(String title, String hint, javafx.scene.Node field) {
         LinePane pane = new LinePane();
         pane.setTitle(title);
-        pane.setSubtitle(hint);
+        if (hint != null && !hint.isBlank()) {
+            pane.setSubtitle(hint);
+        }
         pane.setRight(field);
         return pane;
     }
@@ -277,7 +280,7 @@ public final class DownloadSettingsPage extends ScrollPane {
 
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.catalog.url"),
-                i18n("dsh.settings.catalog.url.hint"), field));
+                null, field));
         return list;
     }
 
