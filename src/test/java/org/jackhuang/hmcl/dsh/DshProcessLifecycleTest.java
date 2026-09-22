@@ -119,6 +119,9 @@ class DshProcessLifecycleTest {
         DshInstance instance = DshInstanceManager.create(INSTANCE_ID, "1.0.0", DshInstance.DEFAULT_PROFILE,
                 workspace, DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null, List.of(),
                 Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString()));
+        // Stopping is what most of these tests do on the way out, so the stub may go as soon as it
+        // is asked. The test that is about the wait removes this again.
+        Files.writeString(drainFile(), "go");
         installStubSurface(instance);
         return instance;
     }
@@ -188,6 +191,9 @@ class DshProcessLifecycleTest {
 
         DshProcessManager.launch(instance);
         await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.RUNNING, "the stub to report ready");
+
+        // This test is about the wait, so the stub does not get to leave until it is over.
+        Files.deleteIfExists(drainFile());
 
         DshProcess process = DshProcessManager.find(instance.id()).orElseThrow();
         CompletableFuture<Boolean> stopped = CompletableFuture.supplyAsync(() -> DshProcessManager.stop(instance.id()));
