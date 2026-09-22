@@ -168,6 +168,17 @@ public final class InstanceSettingsPage extends ScrollPane {
             list.getContent().add(row);
         }
 
+        if (environment.isEmpty()) {
+            // A row that is only an input box says nothing about what it is for. With no
+            // variables yet, the block says what one would do.
+            javafx.scene.control.Label empty = new javafx.scene.control.Label(i18n("dsh.settings.env_vars.empty"));
+            empty.getStyleClass().add("desc");
+            empty.setWrapText(true);
+            javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(empty);
+            box.setPadding(new Insets(8, 12, 8, 12));
+            list.getContent().add(box);
+        }
+
         // A new variable: the name and the value, then it is part of the instance.
         com.jfoenix.controls.JFXTextField name = new com.jfoenix.controls.JFXTextField();
         name.setPromptText(i18n("dsh.settings.env_vars.name"));
