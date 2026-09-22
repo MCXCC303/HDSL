@@ -24,6 +24,7 @@ import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineToggleButton;
 import java.util.ArrayList;
@@ -159,35 +160,30 @@ public final class GeneralSettingsPage extends ScrollPane {
     private ComponentList buildCommandsList() {
         ComponentList list = new ComponentList();
         list.getContent().add(commandRow(i18n("dsh.settings.commands.pre"),
-                i18n("dsh.settings.commands.pre.hint"),
                 settings().preLaunchCommandProperty()));
         list.getContent().add(commandRow(i18n("dsh.settings.commands.post"),
-                i18n("dsh.settings.commands.post.hint"),
                 settings().postExitCommandProperty()));
         return list;
     }
 
     /// Builds one command row.
     ///
+    /// The original's shape for a row with a box to type in: the name on the left and the field
+    /// beside it, which is how every other row here is built. A paragraph under the name says
+    /// what the row already says.
+    ///
     /// @param title    the row's name
-    /// @param hint     what the command is for
     /// @param property what is typed into it
     /// @return the row
-    private javafx.scene.Node commandRow(String title, String hint,
-                                         javafx.beans.property.StringProperty property) {
-        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
-        box.setPadding(new Insets(8, 12, 8, 12));
-
-        javafx.scene.control.Label label = new javafx.scene.control.Label(title);
-        javafx.scene.control.Label description = new javafx.scene.control.Label(hint);
-        description.getStyleClass().add("desc");
+    private javafx.scene.Node commandRow(String title, javafx.beans.property.StringProperty property) {
+        LinePane pane = new LinePane();
+        pane.setTitle(title);
 
         com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
-        field.setPromptText(i18n("dsh.settings.commands.hint"));
+        field.setMinWidth(420);
         field.textProperty().bindBidirectional(property);
-
-        box.getChildren().addAll(label, description, field);
-        return box;
+        pane.setRight(field);
+        return pane;
     }
 
     /// Builds the row about install scripts.
