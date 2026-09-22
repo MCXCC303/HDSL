@@ -164,7 +164,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
         root.getChildren().add(buildSearchPane());
 
-        spinner.getStyleClass().add("card");
+
         VBox.setVgrow(spinner, Priority.ALWAYS);
         VBox.setMargin(spinner, new Insets(0, 0, 10, 0));
 
@@ -208,7 +208,9 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         instanceBox.getItems().setAll(DshInstanceManager.list());
         instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
         pane.addRow(0, new Label(i18n("dsh.download.instance")), instanceBox,
-                new Label(i18n("mods.name")), nameField);
+                new Label(""), new Label(""));
+        pane.addRow(1, new Label(i18n("mods.name")), nameField,
+                new Label(i18n("dsh.market.dsh_version")), versionBox);
         versionBox.setMaxWidth(Double.MAX_VALUE);
         versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
         versionBox.getItems().setAll(i18n("download.type.all"));
@@ -219,8 +221,8 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
             search();
         });
         loadVersions();
-        pane.addRow(1, new Label(i18n("addon.category")), categoryBox,
-                new Label(i18n("dsh.market.dsh_version")), versionBox);
+        pane.addRow(2, new Label(i18n("addon.category")), categoryBox,
+                new Label(i18n("search.sort")), sortBox);
 
         categoryBox.setMaxWidth(Double.MAX_VALUE);
         categoryBox.setConverter(FXUtils.stringConverter(Function.identity()));
@@ -231,14 +233,14 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         sortBox.getItems().setAll("downloads", "stars", "added");
         sortBox.setValue("downloads");
         sortBox.valueProperty().addListener((observable, was, value) -> search());
-        pane.addRow(2, new Label(i18n("search.sort")), sortBox, new Label(""), new Label(""));
+
 
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
         search.setOnAction(event -> search());
 
         note.getStyleClass().add("desc");
-        pane.add(note, 0, 3, 4, 1);
+        pane.add(note, 0, 4, 4, 1);
 
         HBox paging = new HBox(8);
         paging.setAlignment(Pos.CENTER_LEFT);
@@ -247,7 +249,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
         HBox buttons = new HBox(8, paging, search);
         buttons.setAlignment(Pos.CENTER_RIGHT);
-        pane.add(buttons, 0, 4, 4, 1);
+        pane.add(buttons, 0, 3, 4, 1);
 
         return pane;
     }
