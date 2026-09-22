@@ -45,6 +45,9 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
     /// The size of the mark beside a row's name.
     private static final int INHERIT_ICON_SIZE = 12;
 
+    /// The mark shown once a row has taken the setting over, when the icon set has one.
+    private static final SVG MANUAL_ICON = SVG.EDIT;
+
     /// How faint the mark is while the launcher is the one deciding.
     private static final double INHERIT_FAINT = 0.45;
 
@@ -82,13 +85,18 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // Following the launcher is not a choice of this row's, so the value is not editable while
         // it does — but the row itself stays enabled, because the globe on it is the way in, and a
         // disabled row disables what is on it.
-        overridden.addListener((observable, was, value) -> {
-            inheritButton.setOpacity(value ? 1.0 : INHERIT_FAINT);
+        Runnable showState = () -> {
+            boolean overridden = isOverridden();
+            inheritButton.setOpacity(overridden ? INHERIT_FAINT : 1.0);
+            inheritButton.setGraphic((overridden ? MANUAL_ICON : SVG.PUBLIC).createIcon(INHERIT_ICON_SIZE));
             FXUtils.installFastTooltip(inheritButton,
-                    i18n(value ? "dsh.settings.override.tooltip" : "dsh.settings.inherit.tooltip"));
+                    i18n(overridden ? "dsh.settings.override.tooltip" : "dsh.settings.inherit.tooltip"));
+        };
+        overridden.addListener((observable, was, value) -> {
+            showState.run();
             applyEditable();
         });
-        inheritButton.setOpacity(isOverridden() ? 1.0 : INHERIT_FAINT);
+        showState.run();
         applyEditable();
     }
 

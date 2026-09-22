@@ -47,7 +47,11 @@ public class LineInheritableTextField extends LinePane {
     /// The size of the mark beside a row's name.
     private static final int INHERIT_ICON_SIZE = 12;
 
-    /// How faint the mark is while the launcher is the one deciding.
+    /// The mark shown once a row has taken the setting over, when the icon set has one.
+    private static final SVG MANUAL_ICON = SVG.EDIT;
+
+    /// How faint the mark is while this row is the one deciding.
+
     private static final double INHERIT_FAINT = 0.45;
 
     /// Whether this row has taken the setting over from the launcher.
