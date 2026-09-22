@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import java.util.Set;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -180,14 +182,35 @@ public final class DshModpacks {
     /// @param author          who made it
     /// @param description     what it is for
     /// @param includeSessions whether the instance's conversations travel with it
+    /// @param excludedBundles the bundles the person chose to leave out
     public record Options(String name, String version, String author, String description,
-                          boolean includeSessions) {
+                          boolean includeSessions, Set<String> excludedBundles) {
+        /// Returns options that carry every bundle.
+        ///
+        /// @param name            what the pack is called
+        /// @param version         the pack's own version
+        /// @param author          who made it
+        /// @param description     what it is for
+        /// @param includeSessions whether the conversations travel
+        public Options(String name, String version, String author, String description,
+                       boolean includeSessions) {
+            this(name, version, author, description, includeSessions, Set.of());
+        }
+
         /// Returns the options a pack is written with when nobody chose any.
         ///
         /// @param instance the instance
         /// @return the options
         public static Options of(DshInstance instance) {
             return new Options(instance.id(), "1.0", "", "", false);
+        }
+
+        /// Returns whether a bundle travels.
+        ///
+        /// @param bundle the bundle's name
+        /// @return whether it does
+        public boolean includesBundle(String bundle) {
+            return !excludedBundles.contains(bundle);
         }
     }
 
@@ -214,10 +237,18 @@ public final class DshModpacks {
         Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
         Map<String, String> dependencies = DshPluginInstaller.readDependencies(
                 instance.homeDirectory(), instance.profile());
-        List<String> bundles = DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile());
+        List<String> bundles = new ArrayList<>(
+                DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile()));
+        // A bundle somebody unticked is not in the pack and is not recorded as one of its plugins:
+        // a pack that named a plugin it does not install would describe an installation nobody can
+        // make, and an import would try.
+        bundles.removeIf(bundle -> !options.includesBundle(bundle));
 
         List<Plugin> plugins = new ArrayList<>();
         for (Map.Entry<String, String> entry : dependencies.entrySet()) {
+            if (!options.includesBundle(entry.getKey())) {
+                continue;
+            }
             plugins.add(new Plugin(entry.getKey(), entry.getValue(), bundles.contains(entry.getKey()),
                     isLocalSpec(entry.getValue())));
         }

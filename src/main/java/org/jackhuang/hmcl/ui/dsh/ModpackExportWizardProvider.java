@@ -63,6 +63,9 @@ public final class ModpackExportWizardProvider implements WizardProvider {
     /// The kind the community's DSH-PackForge tooling reads.
     public static final String FORMAT_PACKFORGE = "packforge";
 
+    /// The key the bundles left out of a pack are held under.
+    public static final String EXCLUDED_BUNDLES = "modpack.excludedBundles";
+
     /// The key that says whether the conversations travel too.
     public static final String SESSIONS = "modpack.sessions";
 
@@ -142,6 +145,17 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         return true;
     }
 
+    /// Reads the bundles the person chose to leave out.
+    ///
+    /// @param settings the wizard's settings
+    /// @return the names, never `null`
+    @SuppressWarnings("unchecked")
+    public static java.util.Set<String> excludedBundlesOf(org.jackhuang.hmcl.util.SettingsMap settings) {
+        Object value = settings.get(EXCLUDED_BUNDLES);
+        return value instanceof java.util.Set<?> set
+                ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
+    }
+
     /// Reads the options the pages collected.
     ///
     /// @param settings the wizard's settings
@@ -153,7 +167,8 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 string(settings, VERSION, "1.0"),
                 string(settings, AUTHOR, ""),
                 string(settings, DESCRIPTION, ""),
-                Boolean.TRUE.equals(settings.get(SESSIONS)));
+                Boolean.TRUE.equals(settings.get(SESSIONS)),
+                excludedBundlesOf(settings));
     }
 
     /// Reads a string setting.

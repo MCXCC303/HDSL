@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.ui.dsh;
 import java.nio.file.Files;
 
 import org.jackhuang.hmcl.dsh.DshPackForge;
+import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 
 import org.jackhuang.hmcl.dsh.DshModpacks;
 
@@ -58,8 +59,11 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// The wizard's settings.
     private final SettingsMap settings;
 
-    /// Whether the conversations travel with the pack.
-    private final CheckBox sessionsBox = new CheckBox();
+    /// The boxes for the bundles, so what was unticked can be read when the pack is written.
+    private final List<javafx.scene.control.CheckBoxTreeItem<String>> bundleItems = new java.util.ArrayList<>();
+
+    /// The box for the conversations.
+    private javafx.scene.control.CheckBoxTreeItem<String> sessionsItem;
 
     /// How many conversations the instance has.
     private int sessionCount;
@@ -86,10 +90,20 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         Label title = new Label(i18n("dsh.modpack.files.title"));
         getChildren().add(title);
 
-        ComponentList list = new ComponentList();
-        list.getContent().add(configurationRow());
-        list.getContent().add(sessionsRow());
-        getChildren().add(list);
+        // A tree, as the original draws this step: the instance at the root, what it holds beneath
+        // it, and a box on everything that can travel. Ticking a branch takes its children with it,
+        // which is how the original's boxes behave too.
+        javafx.scene.control.TreeView<String> tree = new javafx.scene.control.TreeView<>(buildTree());
+        tree.setShowRoot(true);
+        tree.setCellFactory(view -> new javafx.scene.control.cell.CheckBoxTreeCell<>() {
+            @Override
+            public void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item);
+            }
+        });
+        javafx.scene.layout.VBox.setVgrow(tree, javafx.scene.layout.Priority.ALWAYS);
+        getChildren().add(tree);
 
         javafx.scene.layout.HBox buttons = new javafx.scene.layout.HBox(8);
         buttons.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
@@ -103,48 +117,70 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         getChildren().add(buttons);
     }
 
-    /// Builds the row for what always travels.
+    /// Builds the tree of what the pack can carry.
     ///
-    /// @return the row
-    private Node configurationRow() {
-        // A line with the box on it, which is how the original draws the entries of
-        // its file tree: what it is on the left, whether it goes on the right, and
-        // nothing that has to be opened before either can be seen.
-        CheckBox box = new CheckBox();
-        box.setSelected(true);
-        box.setDisable(true);
+    /// @return the root
+    private javafx.scene.control.CheckBoxTreeItem<String> buildTree() {
+        javafx.scene.control.CheckBoxTreeItem<String> root =
+                new javafx.scene.control.CheckBoxTreeItem<>(instance.id());
+        root.setExpanded(true);
+        root.setSelected(true);
 
-        LinePane pane = new LinePane();
-        pane.setTitle(i18n("dsh.modpack.files.configuration"));
-        pane.setRight(box);
-        FXUtils.installFastTooltip(pane, i18n("dsh.modpack.files.configuration.detail"));
-        return pane;
-    }
+        // The plugins, one box each: a bundle somebody unticks is not in the pack and is not
+        // recorded as one of its plugins.
+        List<String> bundles = List.of();
+        try {
+            bundles = DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile());
+        } catch (DshException | RuntimeException e) {
+            // The page still works without the list; the pack is then simply written whole.
+        }
+        javafx.scene.control.CheckBoxTreeItem<String> plugins = new javafx.scene.control.CheckBoxTreeItem<>(
+                i18n("dsh.modpack.files.plugins", bundles.size()));
+        plugins.setExpanded(true);
+        for (String bundle : bundles) {
+            javafx.scene.control.CheckBoxTreeItem<String> item =
+                    new javafx.scene.control.CheckBoxTreeItem<>(bundle);
+            item.setSelected(true);
+            plugins.getChildren().add(item);
+        }
+        bundleItems.clear();
+        for (javafx.scene.control.TreeItem<String> child : plugins.getChildren()) {
+            bundleItems.add((javafx.scene.control.CheckBoxTreeItem<String>) child);
+        }
+        root.getChildren().add(plugins);
 
-    /// Builds the row for the conversations.
-    ///
-    /// @return the row
-    private Node sessionsRow() {
+        // The configuration always travels, so its boxes are there to be seen rather than used.
+        javafx.scene.control.CheckBoxTreeItem<String> configuration =
+                new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.configuration"));
+        configuration.setSelected(true);
+        for (String name : List.of("package.json", "cordis.patch.yml")) {
+            javafx.scene.control.CheckBoxTreeItem<String> item =
+                    new javafx.scene.control.CheckBoxTreeItem<>(name);
+            item.setSelected(true);
+                configuration.getChildren().add(item);
+        }
+        root.getChildren().add(configuration);
+
+        // The conversations, and the attachments that go with them.
         List<DshSession> sessions;
         try {
             sessions = DshSessions.list(instance.homeDirectory());
         } catch (DshException e) {
-            // The count is a courtesy; the page still works without it.
             sessions = List.of();
         }
         sessionCount = sessions.size();
 
-        sessionsBox.setDisable(sessionCount == 0);
-        sessionsBox.setSelected(Boolean.TRUE.equals(settings.get(ModpackExportWizardProvider.SESSIONS))
+        sessionsItem = new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.sessions"));
+        sessionsItem.setSelected(Boolean.TRUE.equals(settings.get(ModpackExportWizardProvider.SESSIONS))
                 && sessionCount > 0);
+        sessionsItem.setIndependent(sessionCount == 0);
+        javafx.scene.control.CheckBoxTreeItem<String> attachments =
+                new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.attachments"));
+        attachments.setSelected(sessionsItem.isSelected());
+        sessionsItem.getChildren().add(attachments);
+        root.getChildren().add(sessionsItem);
 
-        LinePane pane = new LinePane();
-        pane.setTitle(i18n("dsh.modpack.files.sessions"));
-        pane.setRight(sessionsBox);
-        FXUtils.installFastTooltip(pane, sessionCount == 0
-                ? i18n("dsh.modpack.files.sessions.none")
-                : i18n("dsh.modpack.files.sessions.count", sessionCount));
-        return pane;
+        return root;
     }
 
     @Override
@@ -154,7 +190,15 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
 
     @Override
     public void cleanup(SettingsMap settings) {
-        settings.put(ModpackExportWizardProvider.SESSIONS, sessionsBox.isSelected());
+        settings.put(ModpackExportWizardProvider.SESSIONS,
+                sessionsItem != null && sessionsItem.isSelected());
+        java.util.Set<String> excluded = new java.util.LinkedHashSet<>();
+        for (javafx.scene.control.CheckBoxTreeItem<String> item : bundleItems) {
+            if (!item.isSelected()) {
+                excluded.add(item.getValue());
+            }
+        }
+        settings.put(ModpackExportWizardProvider.EXCLUDED_BUNDLES, excluded);
     }
 
     @Override
