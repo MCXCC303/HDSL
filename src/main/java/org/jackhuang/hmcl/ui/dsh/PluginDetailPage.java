@@ -90,6 +90,14 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
     /// The plugin being described.
     private final DshPluginCatalog.Plugin plugin;
 
+    /// The instance this page installs into, or `null` to use the selected one.
+    ///
+    /// A page reached from an instance's auto-install tab is about *that* instance,
+    /// and one reached from the market is about whichever instance the market's own
+    /// picker names; falling back to the launcher's selection is only what a page
+    /// opened with nothing to say about its target can do.
+    private final @Nullable DshInstance target;
+
     /// The page's state published to the window decorator.
     private final javafx.beans.property.ReadOnlyObjectWrapper<State> state;
 
@@ -112,7 +120,16 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
     ///
     /// @param plugin the plugin to describe
     public PluginDetailPage(DshPluginCatalog.Plugin plugin) {
+        this(plugin, null);
+    }
+
+    /// Creates the page for one instance.
+    ///
+    /// @param plugin the plugin to describe
+    /// @param target the instance to install into, or `null` for the selected one
+    public PluginDetailPage(DshPluginCatalog.Plugin plugin, @Nullable DshInstance target) {
         this.plugin = plugin;
+        this.target = target;
         this.state = new javafx.beans.property.ReadOnlyObjectWrapper<>(State.fromTitle(plugin.name()));
 
         VBox root = new VBox(10);
@@ -246,7 +263,7 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
     ///
     /// @return the selected instance, or `null` when none is selected
     private @Nullable DshInstance target() {
-        return GameDirectoryManager.selectedInstanceProperty().get();
+        return target != null ? target : GameDirectoryManager.selectedInstanceProperty().get();
     }
 
     /// Asks what to do with one version, the way the original does.

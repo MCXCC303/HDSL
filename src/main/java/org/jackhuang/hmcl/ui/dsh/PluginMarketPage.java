@@ -375,7 +375,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
             onClicked(() -> {
                 DshPluginCatalog.Plugin item = getItem();
                 if (item != null) {
-                    Controllers.navigate(new PluginDetailPage(item));
+                    Controllers.navigate(new PluginDetailPage(item, target()));
                 }
             });
         }

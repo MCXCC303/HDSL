@@ -24,6 +24,7 @@ import javafx.scene.image.ImageView;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
+import org.jackhuang.hmcl.dsh.DshPluginCatalog;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.dsh.DshPreset;
 import org.jackhuang.hmcl.dsh.DshPresetCatalog;
@@ -161,7 +162,11 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
         row.statusProperty().set(installed == null ? i18n("install.installer.not_installed") : installed);
 
         if (market != null) {
-            row.setOnChange(() -> installMarket(market), i18n("download.install"));
+            // The button offers the versions rather than installing whatever the
+            // catalogue last saw: that is what the original's version button does,
+            // and the page it opens is where the version is chosen.
+            row.setOnChange(() -> Controllers.navigate(new PluginDetailPage(catalogueEntry(market), instance)),
+                    i18n("download.install"));
             row.setOnRemove(installed == null ? null : () -> removeMarket(market),
                     i18n("dsh.instance.plugins.remove"));
         }
@@ -176,6 +181,25 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
                 .filter(preset -> preset.id().equals("dshmarket"))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /// Describes a preset as the catalogue would describe it.
+    ///
+    /// A preset is the catalogue's marketplace entry boiled down to what the create
+    /// page chooses between: a name and the package to install. The plugin page
+    /// wants the catalogue's shape, so this builds the part of it that is known —
+    /// and nothing else, because inventing a repository or a download count would
+    /// be describing something that does not exist.
+    ///
+    /// @param preset the preset
+    /// @return the catalogue entry
+    private static DshPluginCatalog.Plugin catalogueEntry(DshPreset preset) {
+        String spec = preset.spec();
+        int at = spec.lastIndexOf('@');
+        String name = at > 0 ? spec.substring(0, at) : spec;
+        String version = at > 0 ? spec.substring(at + 1) : null;
+        return new DshPluginCatalog.Plugin(preset.name(), "", "", "market",
+                preset.description(), preset.description(), name, version, 0, 0, null, null);
     }
 
     /// Returns the version of a package the instance's profile declares.
@@ -199,8 +223,17 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
             // The chooser reports the launcher's own version as `null`, because
             // a wizard that runs inside another one has no instance to pin it to.
             String appBoot = chosen == null ? instance.version() : chosen;
-            ProgressDialog.run(i18n("dsh.install.app_boot"), progress ->
-                    DshVersionManager.overrideAppBoot(instance, appBoot, progress::accept), null);
+            String current = DshVersionManager.readAppBoot(instance);
+            String from = current == null || current.isBlank() ? instance.version() : current;
+            if (from.equals(appBoot)) {
+                return;
+            }
+            Controllers.confirm(i18n("dsh.install.app_boot.change.confirm", from, appBoot),
+                    i18n("dsh.install.app_boot"),
+                    () -> ProgressDialog.run(i18n("dsh.install.app_boot"), progress ->
+                            DshVersionManager.overrideAppBoot(instance, appBoot, progress::accept),
+                            this::refresh),
+                    null);
         }), i18n("dsh.install.app_boot"));
     }
 
