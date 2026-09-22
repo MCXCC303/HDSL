@@ -89,7 +89,9 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         list.getContent().add(textRow(i18n("modpack.name"), name));
         list.getContent().add(textRow(i18n("archive.version"), packVersion));
         list.getContent().add(textRow(i18n("archive.author"), author));
-        list.getContent().add(descriptionRow());
+        javafx.scene.Node description = descriptionRow();
+        javafx.scene.layout.VBox.setVgrow(description, javafx.scene.layout.Priority.ALWAYS);
+        list.getContent().add(description);
 
         ScrollPane scroll = new ScrollPane(list);
         scroll.setFitToWidth(true);
@@ -150,10 +152,12 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
 
         Label label = new Label(i18n("modpack.description"));
         com.jfoenix.controls.JFXTextArea area = new com.jfoenix.controls.JFXTextArea();
-        area.setMinHeight(200);
+        area.setPrefRowCount(6);
+        javafx.scene.layout.VBox.setVgrow(area, javafx.scene.layout.Priority.ALWAYS);
         area.setWrapText(true);
         area.textProperty().bindBidirectional(description);
         box.getChildren().addAll(label, area);
+        javafx.scene.layout.VBox.setVgrow(area, javafx.scene.layout.Priority.ALWAYS);
         return box;
     }
 
