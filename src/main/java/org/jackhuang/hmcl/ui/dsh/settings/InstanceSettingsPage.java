@@ -581,25 +581,19 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// take effect on the control the user is looking at.
     private void syncPortRow() {
         boolean fixed = instance.hasOwnPortMode() && instance.portMode() == DshPortMode.FIXED;
-        portRow.setSubtitle(fixed
-                ? i18n("dsh.instance.port.fixed.hint")
-                : i18n("dsh.instance.port.auto.current", portDescription()));
 
-        // The row exists only for a port somebody chose: when the mode is automatic or
-        // following the launcher there is no port to name, and an empty box asking for one
-        // is a question with no answer. The mode row already says which port is in use.
+        // The port is always shown, whether or not it can be changed. It is settled when the
+        // instance is created and stays the same for its whole life — a browser keys its stored
+        // state by origin, so the port is part of the instance's identity — which makes it
+        // something the person needs to be able to read at any time: to reach the interface
+        // directly, to point another tool at it, or to see which of two instances is which.
+        // Only its editability follows the mode.
         portField.setDisable(!fixed);
-        portField.setText(fixed ? Integer.toString(instance.portOrDefault()) : "");
-        portRow.setVisible(fixed);
-        portRow.setManaged(fixed);
-    }
-
-    /// Describes the port an automatic instance is currently bound to.
-    ///
-    /// @return the port as text, or a note that none has been chosen yet
-    private String portDescription() {
-        int port = instance.portOrDefault();
-        return port > 0 ? Integer.toString(port) : i18n("dsh.instance.port.auto.none");
+        portField.setText(instance.portOrDefault() > 0
+                ? Integer.toString(instance.portOrDefault()) : "");
+        portField.setPromptText(i18n("dsh.instance.port.auto.none"));
+        portRow.setVisible(true);
+        portRow.setManaged(true);
     }
 
     /// Writes a typed port back.
