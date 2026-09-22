@@ -108,6 +108,8 @@ class PageStringsTest {
             "dsh.settings.isolation.never",
             "dsh.settings.proxy",
             "dsh.settings.download.cache",
+            "dsh.settings.download.cache.default",
+            "dsh.settings.download.cache.custom",
             "dsh.settings.download.threads",
             "dsh.settings.download.threads.custom",
             "dsh.settings.download.threads.auto",

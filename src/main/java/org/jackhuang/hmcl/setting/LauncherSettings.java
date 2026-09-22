@@ -182,6 +182,16 @@ public final class LauncherSettings {
         return variables == null ? Map.of() : variables;
     }
 
+    /// Whether the cache folder was chosen rather than left where the launcher puts it.
+    private final BooleanProperty cacheDirectoryCustom = new SimpleBooleanProperty(false);
+
+    /// Returns whether the cache folder was chosen.
+    ///
+    /// @return the property
+    public BooleanProperty cacheDirectoryCustomProperty() {
+        return cacheDirectoryCustom;
+    }
+
     /// Where the launcher keeps what it fetched, or empty for the default place.
     private final javafx.beans.property.StringProperty cacheDirectory =
             new javafx.beans.property.SimpleStringProperty("");

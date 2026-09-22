@@ -276,9 +276,10 @@ public final class DshPluginCatalog {
     /// @return the directory, which may not exist
     public static Path cacheDirectory() {
         try {
-            String configured = org.jackhuang.hmcl.setting.SettingsManager.settings()
-                    .cacheDirectoryProperty().get();
-            if (configured != null && !configured.isBlank()) {
+            org.jackhuang.hmcl.setting.LauncherSettings settings =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings();
+            String configured = settings.cacheDirectoryProperty().get();
+            if (settings.cacheDirectoryCustomProperty().get() && configured != null && !configured.isBlank()) {
                 return Path.of(configured.trim());
             }
         } catch (RuntimeException e) {

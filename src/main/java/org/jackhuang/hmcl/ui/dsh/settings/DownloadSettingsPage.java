@@ -27,6 +27,7 @@ import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.RadioChoiceList;
 import org.jackhuang.hmcl.ui.construct.ComponentSublist;
 import org.jackhuang.hmcl.ui.construct.LinePane;
+import org.jackhuang.hmcl.ui.construct.MultiFileItem;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jetbrains.annotations.NotNullByDefault;
 
@@ -117,9 +118,24 @@ public final class DownloadSettingsPage extends ScrollPane {
         // The original's rows for the same job: where the cache lives — shown, with a button that
         // empties it and a way to choose another place — and how many downloads happen at once,
         // which is a choice rather than a number to type.
-        javafx.scene.control.Label path = new javafx.scene.control.Label(
-                org.jackhuang.hmcl.dsh.DshPluginCatalog.cacheDirectory().toString());
-        path.setMaxWidth(260);
+        // The original's cache row opens where it stands and offers the launcher's own folder or one
+        // of your own, with a picker for it, and keeps the button that empties it on the row itself.
+        ComponentSublist cache = new ComponentSublist(() -> {
+            MultiFileItem<Boolean> location = new MultiFileItem<>();
+            location.loadChildren(java.util.List.of(
+                    new MultiFileItem.Option<>(i18n("dsh.settings.download.cache.default"), true),
+                    new MultiFileItem.FileOption<>(i18n("dsh.settings.download.cache.custom"), false)
+                            .setChooserTitle(i18n("dsh.settings.download.cache.choose"))
+                            .setSelectionMode(org.jackhuang.hmcl.ui.construct.FileSelector.SelectionMode.DIRECTORY)
+                            .bindBidirectional(settings().cacheDirectoryProperty())));
+            location.selectedDataProperty().bindBidirectional(settings().cacheDirectoryCustomProperty());
+            return java.util.List.of(location);
+        });
+        cache.setTitle(i18n("dsh.settings.download.cache"));
+        cache.setHasSubtitle(true);
+        cache.descriptionProperty().bind(javafx.beans.binding.Bindings.createStringBinding(
+                () -> org.jackhuang.hmcl.dsh.DshPluginCatalog.cacheDirectory().toString(),
+                settings().cacheDirectoryCustomProperty(), settings().cacheDirectoryProperty()));
 
         com.jfoenix.controls.JFXButton clear = new com.jfoenix.controls.JFXButton(
                 i18n("dsh.settings.download.cache.clear"));
@@ -130,24 +146,7 @@ public final class DownloadSettingsPage extends ScrollPane {
             int removed = org.jackhuang.hmcl.dsh.DshPluginCatalog.clearCache();
             clear.setText(i18n("dsh.settings.download.cache.cleared", removed));
         });
-
-        com.jfoenix.controls.JFXButton choose = new com.jfoenix.controls.JFXButton();
-        choose.setGraphic(org.jackhuang.hmcl.ui.SVG.FOLDER_OPEN.createIcon(16));
-        choose.getStyleClass().add("jfx-button-border");
-        org.jackhuang.hmcl.ui.FXUtils.installFastTooltip(choose,
-                i18n("dsh.settings.download.cache.choose"));
-        choose.setOnAction(event -> {
-            javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
-            chooser.setTitle(i18n("dsh.settings.download.cache.choose"));
-            java.io.File chosen = chooser.showDialog(getScene() == null ? null : getScene().getWindow());
-            if (chosen != null) {
-                settings().cacheDirectoryProperty().set(chosen.getAbsolutePath());
-                path.setText(chosen.getAbsolutePath());
-            }
-        });
-
-        javafx.scene.layout.HBox cache = new javafx.scene.layout.HBox(8, path, clear, choose);
-        cache.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        cache.setHeaderRight(clear);
 
         // Automatic is the absence of a number, and the row says so rather than showing nothing.
         // The original's row for this: a row that opens where it stands, offering the automatic
@@ -207,8 +206,7 @@ public final class DownloadSettingsPage extends ScrollPane {
         }, settings().autoDownloadThreadsProperty(), settings().downloadConcurrencyProperty()));
 
         ComponentList list = new ComponentList();
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.download.cache"),
-                null, cache));
+        list.getContent().add(cache);
         list.getContent().add(threads);
         return list;
     }
