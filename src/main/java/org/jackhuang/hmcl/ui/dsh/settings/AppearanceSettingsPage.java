@@ -117,6 +117,23 @@ public final class AppearanceSettingsPage extends ScrollPane {
     /// for. This mirrors HMCL's `RadioChoiceList` of `ThemeColorType`.
     ///
     /// @return the assembled component list
+    /// Adds a colour style by name, when this build has it.
+    ///
+    /// The type comes from the theme library, so a name that library does not have is skipped
+    /// rather than failing: a row with fewer choices is better than a launcher that will not
+    /// start.
+    ///
+    /// @param styles where to add it
+    /// @param name   the style's name
+    private static void addStyle(java.util.List<org.glavo.monetfx.ColorStyle> styles, String name) {
+        try {
+            styles.add(org.glavo.monetfx.ColorStyle.valueOf(name));
+        } catch (IllegalArgumentException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.info(
+                    "This build has no colour style named " + name);
+        }
+    }
+
     private ComponentList buildThemeColorList() {
         ComponentList list = new ComponentList();
 
@@ -166,6 +183,35 @@ public final class AppearanceSettingsPage extends ScrollPane {
         });
 
         list.getContent().add(choices);
+        // The colour style says how the chosen colour becomes a palette, and the theme engine
+        // has been applying it with no way of reaching it from here. It belongs beside the
+        // colour itself, which is where the original keeps it. Its choices are the ones both
+        // bundles name, so the row can never show a key where a word belongs.
+        java.util.List<org.glavo.monetfx.ColorStyle> styles = new java.util.ArrayList<>();
+        addStyle(styles, "CONTENT");
+        addStyle(styles, "EXPRESSIVE");
+        addStyle(styles, "FIDELITY");
+        addStyle(styles, "FRUIT_SALAD");
+        addStyle(styles, "MONOCHROME");
+        addStyle(styles, "NEUTRAL");
+        addStyle(styles, "RAINBOW");
+        addStyle(styles, "TONAL_SPOT");
+        addStyle(styles, "VIBRANT");
+        if (!styles.isEmpty()) {
+            LineSelectButton<org.glavo.monetfx.ColorStyle> colorStyle = new LineSelectButton<>();
+            colorStyle.setTitle(i18n("settings.launcher.theme_color_style"));
+            colorStyle.setItems(styles);
+            colorStyle.setConverter(style -> style == null ? ""
+                    : i18n("settings.launcher.theme_color_style." + style.name().toLowerCase(java.util.Locale.ROOT)));
+            colorStyle.setValue(settings().themeColorStyleProperty().get());
+            colorStyle.valueProperty().addListener((observable, was, value) -> {
+                if (value != null) {
+                    settings().themeColorStyleProperty().set(value);
+                }
+            });
+            list.getContent().add(colorStyle);
+        }
+
         return list;
     }
 
