@@ -140,8 +140,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
         // and the choices are inside it, which is where a setting with several forms belongs.
         ComponentSublist sublist = new ComponentSublist();
         sublist.setTitle(i18n("settings.launcher.theme_color"));
-        sublist.setHasSubtitle(true);
-        sublist.subtitleProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
+        sublist.descriptionProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
             org.jackhuang.hmcl.setting.ThemeColorType type = settings().themeColorTypeProperty().get();
             return type == null ? ""
                     : i18n("dsh.settings.theme_color." + type.name().toLowerCase(java.util.Locale.ROOT));
@@ -224,7 +223,11 @@ public final class AppearanceSettingsPage extends ScrollPane {
         }
 
         sublist.getContent().add(list);
-        return sublist;
+        // A list is what turns a sublist into the row that opens: it wraps it with the header the
+        // original's expanding rows have, which is why the original adds them to a list as well.
+        ComponentList wrapper = new ComponentList();
+        wrapper.getContent().add(sublist);
+        return wrapper;
     }
 
     /// Builds the font section.
