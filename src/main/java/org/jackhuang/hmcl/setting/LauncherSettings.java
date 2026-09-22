@@ -436,6 +436,40 @@ public final class LauncherSettings {
     /// Whether an instance's log window opens when it launches.
     private final BooleanProperty showLogs = new SimpleBooleanProperty(false);
 
+    /// Returns the command that runs before an instance starts.
+    ///
+    /// The instance's own command wins; without one, the launcher's applies.
+    ///
+    /// @param instanceId the instance
+    /// @return the command, or an empty string for none
+    public String preLaunchCommandFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            String own = org.jackhuang.hmcl.dsh.DshInstanceSettings.preLaunchCommand(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return preLaunchCommand.get() == null ? "" : preLaunchCommand.get();
+    }
+
+    /// Returns the command that runs after an instance has ended.
+    ///
+    /// @param instanceId the instance
+    /// @return the command, or an empty string for none
+    public String postExitCommandFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            String own = org.jackhuang.hmcl.dsh.DshInstanceSettings.postExitCommand(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return postExitCommand.get() == null ? "" : postExitCommand.get();
+    }
+
     /// Returns whether an instance's log window opens when it launches.
     ///
     /// @return the property

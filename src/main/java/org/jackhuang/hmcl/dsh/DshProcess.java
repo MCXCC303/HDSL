@@ -154,7 +154,7 @@ public final class DshProcess {
         // Whatever was asked to happen before this instance starts happens first, and a
         // failure stops the launch: it was asked for, and starting anyway would ignore it.
         DshCustomCommands.run(instance,
-                org.jackhuang.hmcl.setting.SettingsManager.settings().preLaunchCommandProperty().get(),
+                org.jackhuang.hmcl.setting.SettingsManager.settings().preLaunchCommandFor(instance.id()),
                 "pre-launch", null);
         DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
         LOG.info("Launching instance " + instance.id() + ": " + plan.commandLine());
@@ -261,7 +261,7 @@ public final class DshProcess {
         // The command that follows an instance runs once it has gone, whether it was
         // stopped or had already ended: what it is for is knowing that a session is over.
         DshCustomCommands.runQuietly(plan.instance(),
-                org.jackhuang.hmcl.setting.SettingsManager.settings().postExitCommandProperty().get(),
+                org.jackhuang.hmcl.setting.SettingsManager.settings().postExitCommandFor(plan.instance().id()),
                 "post-exit", null);
         stopRequested = true;
         if (!isRunning()) {

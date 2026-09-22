@@ -75,15 +75,29 @@ class DshProcessLifecycleTest {
                 const index = args.indexOf('--port');
                 const port = index >= 0 ? args[index + 1] : '0';
                 console.log('dsh web: http://127.0.0.1:' + port + '/?token=lifecycle-stub');
-                // Drain on request rather than exiting at once: the launcher has
-                // to keep treating the instance as busy while this is happening.
-                process.on('SIGTERM', () => setTimeout(() => process.exit(0), 1200));
+                // Drain when the test says so rather than after a delay: a delay is a race the
+                // test can lose on a busy machine, and what the test is about is the window
+                // between being asked to stop and being gone.
+                const fs = require('fs');
+                const release = process.env.DSH_TEST_DRAIN_FILE;
+                process.on('SIGTERM', () => {
+                  const poll = setInterval(() => {
+                    if (!release || fs.existsSync(release)) { clearInterval(poll); process.exit(0); }
+                  }, 50);
+                });
                 // Nothing may outlive the test that started it: a stub that keeps
                 // running keeps the test's own JVM from finishing, and a suite that
                 // never finishes is worse than one that fails.
                 setTimeout(() => process.exit(0), 60000);
                 setInterval(() => {}, 1000);
                 """);
+    }
+
+    /// The file the stub waits for and the test writes.
+    ///
+    /// @return the file, which is inside the instance's own workspace
+    private Path drainFile() {
+        return workspace.resolve("drain-ok");
     }
 
     /// Creates the instance the tests run.
@@ -103,7 +117,8 @@ class DshProcessLifecycleTest {
         }
 
         DshInstance instance = DshInstanceManager.create(INSTANCE_ID, "1.0.0", DshInstance.DEFAULT_PROFILE,
-                workspace, DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null, List.of(), Map.of());
+                workspace, DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null, List.of(),
+                Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString()));
         installStubSurface(instance);
         return instance;
     }
@@ -187,6 +202,8 @@ class DshProcessLifecycleTest {
                 "starting again while the first server still holds its port is what moved an instance's port");
         assertTrue(refused.getMessage().contains(INSTANCE_ID), refused.getMessage());
 
+        // Everything the test is about has been seen, so the child may go.
+        Files.writeString(drainFile(), "go");
         assertTrue(stopped.get(20, TimeUnit.SECONDS));
         await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.STOPPED, "the instance to be gone");
         assertEquals(LaunchState.STOPPED, DshProcessManager.stateOf(instance.id()));
