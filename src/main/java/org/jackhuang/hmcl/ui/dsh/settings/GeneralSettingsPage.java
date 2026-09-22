@@ -69,7 +69,8 @@ public final class GeneralSettingsPage extends ScrollPane {
                 sectionTitle(i18n("settings.launcher.general")), buildInterfaceList(),
                 buildLogList(),
                 buildStorageList(),
-                sectionTitle(i18n("dsh.settings.build_scripts")), buildBuildScriptsList());
+                sectionTitle(i18n("dsh.settings.build_scripts")), buildBuildScriptsList(),
+                sectionTitle(i18n("dsh.settings.commands")), buildCommandsList());
     }
 
     /// Builds a section title.
@@ -103,6 +104,48 @@ public final class GeneralSettingsPage extends ScrollPane {
     /// Builds the log section.
     ///
     /// @return the assembled component list
+    /// Builds the two commands that run around an instance.
+    ///
+    /// The original keeps them in the launcher's settings because they are about the
+    /// launcher's own behaviour rather than about a game: one runs before an instance
+    /// starts and one after it has ended, and what they are for is fitting the launcher
+    /// into somebody's workflow.
+    ///
+    /// @return the list
+    private ComponentList buildCommandsList() {
+        ComponentList list = new ComponentList();
+        list.getContent().add(commandRow(i18n("dsh.settings.commands.pre"),
+                i18n("dsh.settings.commands.pre.hint"),
+                settings().preLaunchCommandProperty()));
+        list.getContent().add(commandRow(i18n("dsh.settings.commands.post"),
+                i18n("dsh.settings.commands.post.hint"),
+                settings().postExitCommandProperty()));
+        return list;
+    }
+
+    /// Builds one command row.
+    ///
+    /// @param title    the row's name
+    /// @param hint     what the command is for
+    /// @param property what is typed into it
+    /// @return the row
+    private javafx.scene.Node commandRow(String title, String hint,
+                                         javafx.beans.property.StringProperty property) {
+        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
+        box.setPadding(new Insets(8, 12, 8, 12));
+
+        javafx.scene.control.Label label = new javafx.scene.control.Label(title);
+        javafx.scene.control.Label description = new javafx.scene.control.Label(hint);
+        description.getStyleClass().add("desc");
+
+        com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
+        field.setPromptText(i18n("dsh.settings.commands.hint"));
+        field.textProperty().bindBidirectional(property);
+
+        box.getChildren().addAll(label, description, field);
+        return box;
+    }
+
     /// Builds the row about install scripts.
     ///
     /// Off by default: an install script runs with the user's own rights and nobody

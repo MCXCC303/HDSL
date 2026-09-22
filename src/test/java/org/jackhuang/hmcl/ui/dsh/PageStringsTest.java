@@ -80,6 +80,13 @@ class PageStringsTest {
             "dsh.market.fitting",
             "dsh.market.fitting.hidden",
             "dsh.instance.port.mode.global",
+            "dsh.settings.commands",
+            "dsh.settings.commands.pre",
+            "dsh.settings.commands.pre.hint",
+            "dsh.settings.commands.post",
+            "dsh.settings.commands.post.hint",
+            "dsh.settings.commands.hint",
+            "dsh.settings.inherit",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",
