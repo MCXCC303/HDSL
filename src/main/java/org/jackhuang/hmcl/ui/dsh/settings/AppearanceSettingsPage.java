@@ -248,7 +248,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
 
 
         LineTextPane row = new LineTextPane();
-        row.setTitle(i18n("dsh.settings.font"));
+        row.setTitle(i18n("dsh.settings.font.launcher"));
         row.setSubtitle(i18n("dsh.settings.font.hint"));
 
         FontComboBox font = new FontComboBox();
@@ -264,6 +264,44 @@ public final class AppearanceSettingsPage extends ScrollPane {
         row.setRowTrailing(controls);
 
         list.getContent().add(row);
+        // The log has a font and a size of its own: the original keeps them as a row here, and both
+        // settings have existed all along with nothing on the page to reach them.
+        LineTextPane logRow = new LineTextPane();
+        logRow.setTitle(i18n("dsh.settings.font.log"));
+
+        FontComboBox logFont = new FontComboBox();
+        logFont.setValue(settings().logFontFamilyProperty().get());
+        logFont.valueProperty().addListener((observable, was, value) ->
+                settings().logFontFamilyProperty().set(value == null ? "" : value));
+
+        com.jfoenix.controls.JFXTextField size = new com.jfoenix.controls.JFXTextField();
+        org.jackhuang.hmcl.ui.FXUtils.setLimitWidth(size, 60);
+        size.setText(Double.toString(settings().logFontSizeProperty().get()));
+        size.textProperty().addListener((observable, was, text) -> {
+            try {
+                double value = Double.parseDouble(text == null ? "" : text.trim());
+                if (value > 0) {
+                    settings().logFontSizeProperty().set(value);
+                }
+            } catch (NumberFormatException e) {
+                // Half-typed numbers are not settings.
+            }
+        });
+
+        JFXButton resetLogFont = FXUtils.newToggleButton4(SVG.RESTORE);
+        FXUtils.installFastTooltip(resetLogFont, i18n("button.reset"));
+        resetLogFont.setOnAction(event -> {
+            logFont.setValue(null);
+            size.setText("12");
+        });
+
+        HBox logControls = new HBox(8, logFont, size, resetLogFont);
+        logControls.setAlignment(Pos.CENTER_RIGHT);
+        // Attached the way the row above attaches its own controls.
+        logRow.setRowTrailing(logControls);
+        list.getContent().add(logRow);
+
+
         return list;
     }
 
