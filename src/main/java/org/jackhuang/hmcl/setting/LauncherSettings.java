@@ -129,6 +129,17 @@ public final class LauncherSettings {
         return pluginCatalogUrl;
     }
 
+    /// What the launcher does with itself once an instance is running.
+    private final ObjectProperty<org.jackhuang.hmcl.dsh.DshLauncherVisibility> launcherVisibility =
+            new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP);
+
+    /// Returns what the launcher does with itself once an instance is running.
+    ///
+    /// @return the property
+    public ObjectProperty<org.jackhuang.hmcl.dsh.DshLauncherVisibility> launcherVisibilityProperty() {
+        return launcherVisibility;
+    }
+
     /// A command to run before an instance starts, or an empty string for none.
     private final javafx.beans.property.StringProperty preLaunchCommand =
             new javafx.beans.property.SimpleStringProperty("");

@@ -292,6 +292,7 @@ public final class DshLaunchService {
                 // window, another workspace, or turned off in the settings, and
                 // the launcher is the only thing that knows the instance is up.
                 Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
+                applyLauncherVisibility();
                 if (settings().openBrowserOnLaunchProperty().get()) {
                     FXUtils.openLink(url.get().toString());
                 }
@@ -322,10 +323,41 @@ public final class DshLaunchService {
                     if (throwable != null) {
                         LOG.warning("Failed to stop instance " + instanceId, throwable);
                     }
+                    // The instance has ended, so whatever the launcher did with itself
+                    // when it started is undone: it was only out of the way while there was
+                    // something else to look at.
+                    restoreLauncher();
                     if (onDone != null) {
                         onDone.run();
                     }
                 }));
+    }
+
+    /// Moves the launcher out of the way, if it was asked to.
+    private static void applyLauncherVisibility() {
+        org.jackhuang.hmcl.dsh.DshLauncherVisibility choice =
+                settings().launcherVisibilityProperty().get();
+        switch (choice == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : choice) {
+            case HIDE -> Controllers.getStage().hide();
+            case MINIMIZE -> Controllers.getStage().setIconified(true);
+            case KEEP -> {
+            }
+        }
+    }
+
+    /// Brings the launcher back.
+    private static void restoreLauncher() {
+        javafx.stage.Stage stage = Controllers.getStage();
+        if (stage == null) {
+            return;
+        }
+        if (!stage.isShowing()) {
+            stage.show();
+        }
+        if (stage.isIconified()) {
+            stage.setIconified(false);
+        }
+        stage.toFront();
     }
 
     /// Describes a launch failure in the user's terms.

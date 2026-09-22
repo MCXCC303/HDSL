@@ -70,6 +70,7 @@ public final class GeneralSettingsPage extends ScrollPane {
                 buildLogList(),
                 buildStorageList(),
                 sectionTitle(i18n("dsh.settings.build_scripts")), buildBuildScriptsList(),
+                sectionTitle(i18n("dsh.settings.launcher")), buildLauncherList(),
                 sectionTitle(i18n("dsh.settings.commands")), buildCommandsList(),
                 sectionTitle(i18n("dsh.settings.debug")), buildDebugList());
     }
@@ -118,6 +119,27 @@ public final class GeneralSettingsPage extends ScrollPane {
 
         ComponentList list = new ComponentList();
         list.getContent().add(debug);
+        return list;
+    }
+
+    /// Builds the row about what the launcher does while an instance runs.
+    ///
+    /// @return the list
+    private ComponentList buildLauncherList() {
+        LineSelectButton<org.jackhuang.hmcl.dsh.DshLauncherVisibility> visibility = new LineSelectButton<>();
+        visibility.setTitle(i18n("dsh.settings.launcher.visibility"));
+        visibility.setItems(org.jackhuang.hmcl.dsh.DshLauncherVisibility.values());
+        visibility.setConverter(choice -> choice == null ? ""
+                : i18n("dsh.settings.launcher.visibility." + choice.id()));
+        visibility.setValue(settings().launcherVisibilityProperty().get());
+        visibility.valueProperty().addListener((observable, was, value) -> {
+            if (value != null) {
+                settings().launcherVisibilityProperty().set(value);
+            }
+        });
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(visibility);
         return list;
     }
 

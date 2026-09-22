@@ -101,6 +101,11 @@ class PageStringsTest {
             "dsh.settings.catalog",
             "dsh.settings.catalog.url",
             "dsh.settings.catalog.url.hint",
+            "dsh.settings.launcher",
+            "dsh.settings.launcher.visibility",
+            "dsh.settings.launcher.visibility.keep",
+            "dsh.settings.launcher.visibility.hide",
+            "dsh.settings.launcher.visibility.minimize",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",
