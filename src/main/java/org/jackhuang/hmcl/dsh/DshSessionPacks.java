@@ -193,28 +193,7 @@ public final class DshSessionPacks {
         List<Entry> entries = new ArrayList<>();
         long bytes = 0;
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
-            for (DshSession session : ordered) {
-                Path slugDirectory = session.directory().getParent();
-                String slug = slugDirectory.getFileName().toString();
-                long size = 0;
-                for (Path log : logsOf(session.directory())) {
-                    String name = SESSIONS + slug + "/" + session.id() + "/" + log.getFileName();
-                    size += copyInto(zip, log, name);
-                }
-                if (size == 0) {
-                    throw new DshException("Session " + session.id() + " holds no log to write");
-                }
-
-                Path cache = cacheFile(home, session.id());
-                if (cache != null) {
-                    copyInto(zip, cache, PROJCACHE + "sessions/" + session.id() + ".json");
-                }
-
-                entries.add(new Entry(session.id(), slug, session.workingDirectory(),
-                        session.formatVersion(), session.title(), size));
-                bytes += size;
-            }
-
+            entries.addAll(writeInto(zip, home, ordered, onStage));
             for (Path attachment : attachments) {
                 copyInto(zip, attachment, ATTACHMENTS + relativeToStore(home, attachment));
             }
@@ -234,6 +213,71 @@ public final class DshSessionPacks {
                 + " attachment(s), " + (size / 1024 / 1024) + " MiB");
         LOG.info("Wrote a session pack of " + entries.size() + " session(s) to " + target);
         return new ExportResult(entries.size(), attachments.size(), size);
+    }
+
+    /// Writes sessions into an archive that is already open.
+    ///
+    /// The layout is the one a session pack uses, which is also the one a home uses:
+    /// a modpack that carries conversations carries exactly these entries, and
+    /// whoever reads them applies the same rules either way — a log is copied byte
+    /// for byte, named as the harness names it, and put in the directory its own
+    /// working directory identifies.
+    ///
+    /// @param zip      the archive
+    /// @param home     the `DSH_HOME` they live in
+    /// @param sessions the sessions, in the order to write them
+    /// @param onStage  receives progress lines, or `null`
+    /// @return the entries describing what was written
+    /// @throws DshException  when a session holds no log
+    /// @throws IOException   when the archive cannot be written
+    public static List<Entry> writeInto(ZipOutputStream zip, Path home, List<DshSession> sessions,
+                                        @Nullable Consumer<String> onStage) throws DshException, IOException {
+        List<Entry> entries = new ArrayList<>();
+        for (DshSession session : sessions) {
+            Path slugDirectory = session.directory().getParent();
+            String slug = slugDirectory.getFileName().toString();
+            long size = 0;
+            for (Path log : logsOf(session.directory())) {
+                String name = SESSIONS + slug + "/" + session.id() + "/" + log.getFileName();
+                size += copyInto(zip, log, name);
+            }
+            if (size == 0) {
+                throw new DshException("Session " + session.id() + " holds no log to write");
+            }
+
+            Path cache = cacheFile(home, session.id());
+            if (cache != null) {
+                copyInto(zip, cache, PROJCACHE + "sessions/" + session.id() + ".json");
+            }
+
+            entries.add(new Entry(session.id(), slug, session.workingDirectory(),
+                    session.formatVersion(), session.title(), size));
+        }
+        report(onStage, "Wrote " + entries.size() + " session(s)");
+        return entries;
+    }
+
+    /// Writes the attachments the given sessions name into an archive that is
+    /// already open.
+    ///
+    /// @param zip      the archive
+    /// @param home     the `DSH_HOME`
+    /// @param sessions the sessions
+    /// @param onStage  receives progress lines, or `null`
+    /// @return how many attachment objects were written
+    /// @throws IOException when the archive cannot be written
+    public static int writeAttachmentsInto(ZipOutputStream zip, Path home, List<DshSession> sessions,
+                                           @Nullable Consumer<String> onStage) throws IOException {
+        Set<String> referenced = referencedAttachments(home, sessions);
+        List<Path> attachments = referenced == null
+                ? allAttachments(home)
+                : referenced.stream().map(id -> findAttachment(home, id))
+                        .filter(java.util.Objects::nonNull).toList();
+        for (Path attachment : attachments) {
+            copyInto(zip, attachment, ATTACHMENTS + relativeToStore(home, attachment));
+        }
+        report(onStage, "Wrote " + attachments.size() + " attachment(s)");
+        return attachments.size();
     }
 
     /// Reads a pack into a home.
@@ -263,82 +307,13 @@ public final class DshSessionPacks {
 
         Set<String> held = new LinkedHashSet<>(DshSessions.list(home).stream().map(DshSession::id).toList());
         List<Entry> wanted = manifest.sessions().stream().filter(entry -> !held.contains(entry.id())).toList();
-        Set<String> wantedIds = new LinkedHashSet<>(wanted.stream().map(Entry::id).toList());
 
         report(onStage, "Reading " + wanted.size() + " session(s)");
-        int imported = 0;
-        int attachments = 0;
+        int imported;
+        int attachments;
         try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
-            ZipEntry entry;
-            while ((entry = zip.getNextEntry()) != null) {
-                String name = entry.getName();
-                if (entry.isDirectory()) {
-                    continue;
-                }
-
-                if (name.startsWith(SESSIONS)) {
-                    String[] parts = name.substring(SESSIONS.length()).split("/");
-                    if (parts.length != 3 || !wantedIds.contains(parts[1])) {
-                        continue;
-                    }
-                    String recorded = slugOf(wanted, parts[1]);
-                    if (recorded == null || !recorded.equals(parts[0])) {
-                        // The harness matches a log's header against the directory
-                        // it is in and refuses the whole home when they disagree, so
-                        // a session is only ever written into the directory the
-                        // manifest says it came from.
-                        LOG.warning("Skipping " + name + " in a session pack: the manifest puts session "
-                                + parts[1] + " in " + recorded + ", not " + parts[0]);
-                        continue;
-                    }
-                    if (!DshSessions.isLogName(parts[2])) {
-                        // Anything in a session directory that is not a log name is
-                        // at best ignored and at worst read as something it is not.
-                        LOG.warning("Skipping " + name + " in a session pack: not a session log name");
-                        continue;
-                    }
-                    if (!matchesCompression(home, parts[2])) {
-                        // The uncompressed spelling is a log name too, and writing
-                        // one into a home that compresses makes the harness refuse
-                        // the whole root — not the session, the root.
-                        LOG.warning("Skipping " + name + " in a session pack: this home reads "
-                                + (expectsCompressed(home) ? "compressed" : "uncompressed") + " logs");
-                        continue;
-                    }
-                    Path target = home.resolve("sessions").resolve(parts[0]).resolve(parts[1]).resolve(parts[2]);
-                    boolean fresh = !Files.exists(target);
-                    Files.createDirectories(target.getParent());
-                    write(zip, target);
-                    if (fresh) {
-                        imported++;
-                    }
-                } else if (name.startsWith(PROJCACHE)) {
-                    String file = name.substring(PROJCACHE.length());
-                    if (!file.startsWith("sessions/") || !file.endsWith(".json")) {
-                        continue;
-                    }
-                    String id = file.substring("sessions/".length(), file.length() - ".json".length());
-                    if (!wantedIds.contains(id)) {
-                        continue;
-                    }
-                    Path target = home.resolve("storages").resolve("session_projcache").resolve(file);
-                    Files.createDirectories(target.getParent());
-                    write(zip, target);
-                } else if (name.startsWith(ATTACHMENTS)) {
-                    String relative = name.substring(ATTACHMENTS.length());
-                    if (!safeRelative(relative)) {
-                        LOG.warning("Skipping " + name + " in a session pack: unsafe path");
-                        continue;
-                    }
-                    Path target = home.resolve("attachments").resolve(relative);
-                    if (Files.exists(target)) {
-                        continue;
-                    }
-                    Files.createDirectories(target.getParent());
-                    write(zip, target);
-                    attachments++;
-                }
-            }
+            imported = copyEntries(zip, home, wanted);
+            attachments = copiedAttachments;
         } catch (IOException e) {
             throw new DshException("Failed to read " + pack, e);
         }
@@ -354,6 +329,125 @@ public final class DshSessionPacks {
                 + " already present");
         LOG.info("Imported " + imported + " session(s) from " + pack);
         return new ImportResult(imported, manifest.sessions().size() - imported, attachments, manifest);
+    }
+
+
+    /// Reads sessions out of an archive that holds them beside something else.
+    ///
+    /// A modpack carries a conversation history the same way a session pack does —
+    /// the same entries, the same rules, including the one that a log is never
+    /// written into a directory its own working directory does not identify — and it
+    /// does not carry a session manifest, because it has one of its own. What is
+    /// written is therefore everything the archive holds that the home does not
+    /// already have.
+    ///
+    /// @param archive the archive
+    /// @param home    the `DSH_HOME` to read into
+    /// @param onStage receives progress lines, or `null`
+    /// @return how many sessions were restored
+    /// @throws DshException when the archive cannot be read
+    public static int restoreInto(Path archive, Path home, @Nullable Consumer<String> onStage) throws DshException {
+        int imported;
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
+            imported = copyEntries(zip, home, null);
+        } catch (IOException e) {
+            throw new DshException("Failed to read " + archive, e);
+        }
+        if (imported > 0) {
+            DshSessions.regroup(home);
+        }
+        report(onStage, "Restored " + imported + " session(s) from the pack");
+        return imported;
+    }
+
+    /// How many attachment objects the last copy added.
+    private static int copiedAttachments;
+
+    /// Copies the session, cache and attachment entries of an open archive.
+    ///
+    /// @param zip    the archive
+    /// @param home   the `DSH_HOME` to read into
+    /// @param wanted the sessions to take, or `null` to take every one the archive
+    ///               holds that the home does not already have
+    /// @return how many session logs were written
+    /// @throws IOException when the archive cannot be read
+    private static int copyEntries(ZipInputStream zip, Path home, @Nullable List<Entry> wanted) throws IOException {
+        Set<String> wantedIds = wanted == null
+                ? Set.of()
+                : new LinkedHashSet<>(wanted.stream().map(Entry::id).toList());
+        int imported = 0;
+        copiedAttachments = 0;
+
+        ZipEntry entry;
+        while ((entry = zip.getNextEntry()) != null) {
+            String name = entry.getName();
+            if (entry.isDirectory()) {
+                continue;
+            }
+
+            if (name.startsWith(SESSIONS)) {
+                String[] parts = name.substring(SESSIONS.length()).split("/");
+                if (parts.length != 3) {
+                    continue;
+                }
+                if (wanted != null) {
+                    if (!wantedIds.contains(parts[1])) {
+                        continue;
+                    }
+                    String recorded = slugOf(wanted, parts[1]);
+                    if (recorded == null || !recorded.equals(parts[0])) {
+                        // The harness matches a log's header against the directory it
+                        // is in and refuses the whole home when they disagree, so a
+                        // session is only written where the manifest says it came from.
+                        LOG.warning("Skipping " + name + " in a session pack: the manifest puts session "
+                                + parts[1] + " in " + recorded + ", not " + parts[0]);
+                        continue;
+                    }
+                }
+                if (!DshSessions.isLogName(parts[2])) {
+                    LOG.warning("Skipping " + name + " in a session pack: not a session log name");
+                    continue;
+                }
+                if (!matchesCompression(home, parts[2])) {
+                    LOG.warning("Skipping " + name + " in a session pack: this home reads "
+                            + (expectsCompressed(home) ? "compressed" : "uncompressed") + " logs");
+                    continue;
+                }
+                Path target = home.resolve("sessions").resolve(parts[0]).resolve(parts[1]).resolve(parts[2]);
+                boolean fresh = !Files.exists(target);
+                Files.createDirectories(target.getParent());
+                write(zip, target);
+                if (fresh) {
+                    imported++;
+                }
+            } else if (name.startsWith(PROJCACHE)) {
+                String file = name.substring(PROJCACHE.length());
+                if (!file.startsWith("sessions/") || !file.endsWith(".json")) {
+                    continue;
+                }
+                String id = file.substring("sessions/".length(), file.length() - ".json".length());
+                if (!wantedIds.isEmpty() && !wantedIds.contains(id)) {
+                    continue;
+                }
+                Path target = home.resolve("storages").resolve("session_projcache").resolve(file);
+                Files.createDirectories(target.getParent());
+                write(zip, target);
+            } else if (name.startsWith(ATTACHMENTS)) {
+                String relative = name.substring(ATTACHMENTS.length());
+                if (!safeRelative(relative)) {
+                    LOG.warning("Skipping " + name + " in a session pack: unsafe path");
+                    continue;
+                }
+                Path target = home.resolve("attachments").resolve(relative);
+                if (Files.exists(target)) {
+                    continue;
+                }
+                Files.createDirectories(target.getParent());
+                write(zip, target);
+                copiedAttachments++;
+            }
+        }
+        return imported;
     }
 
     /// Reads a pack's manifest.

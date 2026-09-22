@@ -282,6 +282,7 @@ public final class DshCli {
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
+                case "--with-sessions" -> positional.add("--with-sessions");
                 case "--install-modpack" -> {
                     command = Command.INSTALL_MODPACK;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
@@ -534,7 +535,10 @@ public final class DshCli {
                         return 1;
                     }
                     java.nio.file.Path target = java.nio.file.Path.of(invocation.arguments().get(1));
-                    DshModpacks.ExportResult exported = DshModpacks.export(instance, target, out::println);
+                    boolean withSessions = invocation.arguments().contains("--with-sessions");
+                    DshModpacks.Options options = new DshModpacks.Options(instance.id(), "1.0", "", "",
+                            withSessions);
+                    DshModpacks.ExportResult exported = DshModpacks.export(instance, target, options, out::println);
                     out.println("Wrote " + exported.plugins() + " plugin(s), " + exported.bytes() + " byte(s)");
                     return 0;
                 }
@@ -1054,6 +1058,7 @@ public final class DshCli {
                   --import-pack <id> <file>        read a pack of sessions into an instance
                   --install-plugin-file <id> <file>  install a plugin from a packed file
                   --export-modpack <id> <file>     write an instance's configuration into a pack
+                      --with-sessions                also carry the instance's conversations
                   --install-modpack <file> [<id>]  build an instance from a pack
                   --restore-profile <id> <file>    put a pack's profile into an existing instance
 

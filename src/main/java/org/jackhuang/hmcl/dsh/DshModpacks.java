@@ -109,9 +109,16 @@ public final class DshModpacks {
     /// @param plugins    the plugins, in the profile manifest's order
     /// @param bundles    the active bundle list, in load order
     /// @param hasPatch   whether the pack carries the profile's patch layer
+    /// @param name        what the pack is called
+    /// @param packVersion the pack's own version
+    /// @param author      who made it, or an empty string
+    /// @param description what it is for, or an empty string
+    /// @param sessionCount how many conversations it carries, zero for none
     public record Manifest(String format, int version, String createdAt, String instanceId,
                            String dshVersion, @Nullable String appBoot, String profile,
-                           List<Plugin> plugins, List<String> bundles, boolean hasPatch) {
+                           List<Plugin> plugins, List<String> bundles, boolean hasPatch,
+                           String name, String packVersion, String author, String description,
+                           int sessionCount) {
 
         /// Returns the plugins that should be installed, in the order they are
         /// listed in.
@@ -166,12 +173,43 @@ public final class DshModpacks {
 
     /// Writes an instance's configuration into a pack.
     ///
+    /// What a pack says about itself, and what it carries.
+    ///
+    /// @param name            what the pack is called, or an empty string for the instance's id
+    /// @param version         the pack's own version
+    /// @param author          who made it
+    /// @param description     what it is for
+    /// @param includeSessions whether the instance's conversations travel with it
+    public record Options(String name, String version, String author, String description,
+                          boolean includeSessions) {
+        /// Returns the options a pack is written with when nobody chose any.
+        ///
+        /// @param instance the instance
+        /// @return the options
+        public static Options of(DshInstance instance) {
+            return new Options(instance.id(), "1.0", "", "", false);
+        }
+    }
+
     /// @param instance the instance to describe
     /// @param target   the archive to create
     /// @param onStage  receives progress lines, or `null`
     /// @return what was written
     /// @throws DshException when the configuration cannot be read or written
     public static ExportResult export(DshInstance instance, Path target,
+                                      @Nullable Consumer<String> onStage) throws DshException {
+        return export(instance, target, Options.of(instance), onStage);
+    }
+
+    /// Writes an instance's configuration into a pack.
+    ///
+    /// @param instance the instance to describe
+    /// @param target   the archive to create
+    /// @param options  what the pack should say and carry
+    /// @param onStage  receives progress lines, or `null`
+    /// @return what was written
+    /// @throws DshException when the configuration cannot be read or written
+    public static ExportResult export(DshInstance instance, Path target, Options options,
                                       @Nullable Consumer<String> onStage) throws DshException {
         Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
         Map<String, String> dependencies = DshPluginInstaller.readDependencies(
@@ -194,9 +232,14 @@ public final class DshModpacks {
             appBoot = null;
         }
 
+        List<DshSession> sessions = options.includeSessions()
+                ? DshSessions.list(instance.homeDirectory())
+                : List.of();
+
         Manifest manifest = new Manifest(FORMAT, FORMAT_VERSION, Instant.now().toString(), instance.id(),
                 instance.version(), appBoot, instance.profile(), List.copyOf(plugins), List.copyOf(bundles),
-                hasPatch);
+                hasPatch, options.name(), options.version(), options.author(), options.description(),
+                sessions.size());
 
         report(onStage, "Recording " + plugins.size() + " plugin(s), " + bundles.size() + " active bundle(s)");
         Path parent = target.toAbsolutePath().getParent();
@@ -210,6 +253,13 @@ public final class DshModpacks {
                     zip.putNextEntry(new ZipEntry(PATCH));
                     zip.write(body);
                     zip.closeEntry();
+                }
+                if (!sessions.isEmpty()) {
+                    // The conversations are written the way a session pack writes
+                    // them, because that is the layout the harness reads and the
+                    // rules are the same either way.
+                    DshSessionPacks.writeInto(zip, instance.homeDirectory(), sessions, onStage);
+                    DshSessionPacks.writeAttachmentsInto(zip, instance.homeDirectory(), sessions, onStage);
                 }
                 zip.putNextEntry(new ZipEntry(MANIFEST));
                 zip.write(JsonUtils.GSON.toJson(manifest).getBytes(StandardCharsets.UTF_8));
@@ -290,6 +340,9 @@ public final class DshModpacks {
         }
 
         int plugins = restoreProfile(existing, manifest, pack, onStage);
+        if (manifest.sessionCount() > 0) {
+            DshSessionPacks.restoreInto(pack, existing.homeDirectory(), onStage);
+        }
         return new InstallResult(existing, !installed, plugins, manifest.bundles().size());
     }
 
@@ -461,7 +514,12 @@ public final class DshModpacks {
                 string(root, "dshVersion") == null ? "" : string(root, "dshVersion"),
                 string(root, "appBoot"),
                 string(root, "profile") == null ? DshInstance.DEFAULT_PROFILE : string(root, "profile"),
-                List.copyOf(plugins), List.copyOf(bundles), bool(root, "hasPatch"));
+                List.copyOf(plugins), List.copyOf(bundles), bool(root, "hasPatch"),
+                string(root, "name") == null ? "" : string(root, "name"),
+                string(root, "packVersion") == null ? "1.0" : string(root, "packVersion"),
+                string(root, "author") == null ? "" : string(root, "author"),
+                string(root, "description") == null ? "" : string(root, "description"),
+                integer(root, "sessionCount"));
     }
 
     /// Reports whether a declared version is really the path of a local file.
