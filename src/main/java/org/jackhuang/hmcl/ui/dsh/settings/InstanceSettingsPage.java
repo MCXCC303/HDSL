@@ -407,14 +407,12 @@ public final class InstanceSettingsPage extends ScrollPane {
         LineInheritableSelectButton<String> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.node.title"));
         row.setItems(choices);
-        row.setNullSafeConverter(selection -> {
-            if (DshNodeRuntime.GLOBAL.equals(selection)) {
-                return i18n("dsh.instance.follow_global") + " (" + describeGlobalRuntime() + ")";
-            }
-            return DshNodeRuntime.SYSTEM.equals(selection)
-                    ? i18n("dsh.install.node.system")
-                    : selection;
-        });
+        // The resolved runtime is what the row shows, whether the instance chose it or is
+        // following the launcher: a name that changed to a sentence about following would be a
+        // second way of saying what the globe already says.
+        row.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
+                ? i18n("dsh.install.node.system")
+                : selection);
         // Following the launcher is the state the globe shows, so the value is the
         // instance's own choice and the globe says whether there is one.
         row.setOverridden(instance.nodeRuntime() != null && !DshNodeRuntime.GLOBAL.equals(instance.nodeRuntime()));
@@ -424,7 +422,9 @@ public final class InstanceSettingsPage extends ScrollPane {
                 ? settings().defaultNodeRuntimeProperty().get() : instance.nodeRuntime());
         row.overriddenProperty().addListener((observable, was, overridden) -> {
             if (!overridden) {
-                row.setValue(DshNodeRuntime.GLOBAL);
+                // Handing it back shows what the launcher resolves to, which is what the row is
+                // now showing; `GLOBAL` is a stored state, not a runtime anything can run.
+                row.setValue(settings().defaultNodeRuntimeProperty().get());
                 write(instance.withNodeRuntime(null));
             }
         });
@@ -436,27 +436,19 @@ public final class InstanceSettingsPage extends ScrollPane {
         return row;
     }
 
-    /// Describes what following the launcher currently resolves to.
-    ///
-    /// @return the runtime the launcher is set to
-    private String describeGlobalRuntime() {
-        String value = settings().defaultNodeRuntimeProperty().get();
-        return DshNodeRuntime.SYSTEM.equals(value) ? i18n("dsh.install.node.system") : value;
-    }
-
     /// Builds the DSH_HOME policy row.
     ///
     /// @return the row
     private LineSelectButton<DshHomeMode> buildHomeModeRow() {
         LineInheritableSelectButton<DshHomeMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.install.home"));
-        row.setSubtitle(i18n("dsh.instance.home.hint"));
         row.setItems(DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
-        row.setNullSafeConverter(mode -> DshHomeMode.GLOBAL.equals(mode)
-                ? i18n("dsh.instance.follow_global") + " ("
-                        + i18n("dsh.instance.home."
-                                + settings().defaultHomeModeProperty().get().name().toLowerCase(Locale.ROOT)) + ")"
-                : i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
+        // The policy in force, named the same way whether this instance chose it or is following
+        // the launcher; the globe is what says which.
+        row.setNullSafeConverter(mode -> i18n("dsh.instance.home."
+                + (DshHomeMode.GLOBAL.equals(mode)
+                        ? settings().defaultHomeModeProperty().get() : mode)
+                        .name().toLowerCase(Locale.ROOT)));
         row.setOverridden(instance.homeMode() != DshHomeMode.GLOBAL);
         row.setValue(instance.homeMode() == DshHomeMode.GLOBAL
                 ? settings().defaultHomeModeProperty().get() : instance.homeMode());

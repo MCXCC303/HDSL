@@ -51,6 +51,9 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     /// The icon size used by the compact inheritance state button.
     private static final int INHERIT_BUTTON_ICON_SIZE = 12;
 
+    /// How faint the switch is drawn while this row is showing the launcher's answer.
+    private static final double INHERIT_FAINT = 0.45;
+
     /// The button that toggles between inherited and overridden mode.
     private final JFXButton inheritButton;
 
@@ -63,6 +66,11 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     /// Creates an inheritable boolean toggle row.
     public LineInheritableToggleButton() {
         this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-toggle-button");
+        // The same class the inheritable choice rows wear, so a theme that styles "this row is
+        // following the launcher" reaches this row too. The dimming itself is done in `refresh()`
+        // rather than by that rule: the rule keys on `.trailing-label`, and this row's value is a
+        // toggle, which is not a label.
+        this.getStyleClass().add("line-inheritable-value");
 
         // The launcher's own small icon button, so the globe takes the theme's colour
         // rather than the SVG's default fill.
@@ -125,6 +133,10 @@ public final class LineInheritableToggleButton extends LineButtonBase {
         inheritTooltip.setText(inherited ? getInheritedTooltip() : getOverriddenTooltip());
 
         toggleButton.setSelected(isEffectiveValue());
+        // Following the launcher shows the launcher's answer, and the row has to look like one that
+        // is showing somebody else's value: the switch is dimmed until this instance decides for
+        // itself, which is what pressing the globe does.
+        toggleButton.setOpacity(inherited ? INHERIT_FAINT : 1.0);
     }
 
     /// The raw value stored in this setting.

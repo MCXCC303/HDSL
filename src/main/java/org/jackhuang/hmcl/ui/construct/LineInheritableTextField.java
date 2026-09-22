@@ -42,13 +42,15 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 /// The globe is put in the slot a row keeps beside its title, which is the one place on a row that
 /// takes a press; the title line itself is mouse-transparent, so anything put there could never be
 /// clicked.
+///
+/// The mark changes with the state, as it does on the choice rows: a globe while the launcher is
+/// deciding, and a small pencil once this instance is. A mark that looked the same either way would
+/// leave the row unable to report the press — while the row follows, the field shows the launcher's
+/// text, so taking the setting over changes nothing on screen except the mark.
 @NotNullByDefault
 public class LineInheritableTextField extends LinePane {
     /// The size of the mark beside a row's name.
     private static final int INHERIT_ICON_SIZE = 12;
-
-    /// The mark shown once a row has taken the setting over, when the icon set has one.
-    private static final SVG MANUAL_ICON = SVG.EDIT;
 
     /// How faint the mark is while this row is the one deciding.
 
@@ -60,6 +62,9 @@ public class LineInheritableTextField extends LinePane {
     /// The field the text is typed into.
     private final JFXTextField field = new JFXTextField();
 
+    /// The mark beside the row's name, kept so its icon can follow the state.
+    private final JFXButton inheritButton;
+
     /// Creates a row that follows the launcher until it is told otherwise.
     ///
     /// @param title the row's name
@@ -68,7 +73,7 @@ public class LineInheritableTextField extends LinePane {
         field.setMinWidth(420);
         setRight(field);
 
-        JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
+        inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
         // The helper's style is what colours it; its size is the row's, and the original's mark is
         // small — thirty pixels of globe beside a name is a control, not a mark.
         inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
@@ -76,7 +81,6 @@ public class LineInheritableTextField extends LinePane {
         inheritButton.setMaxSize(22, 22);
         inheritButton.setMinSize(javafx.scene.layout.Region.USE_PREF_SIZE,
                 javafx.scene.layout.Region.USE_PREF_SIZE);
-        FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit.tooltip"));
         inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
             setOverridden(!isOverridden());
             event.consume();
@@ -133,6 +137,11 @@ public class LineInheritableTextField extends LinePane {
     private void applyState() {
         boolean overridden = isOverridden();
         field.setDisable(!overridden);
+        // The mark says who is deciding, which is the one thing the field cannot say while the row
+        // follows: it is showing the launcher's text either way.
+        inheritButton.setGraphic((overridden ? SVG.EDIT : SVG.PUBLIC).createIcon(INHERIT_ICON_SIZE));
+        FXUtils.installFastTooltip(inheritButton,
+                i18n(overridden ? "dsh.settings.override.tooltip" : "dsh.settings.inherit.tooltip"));
         // The globe says the setting is the launcher's; the dimmed text says the same thing about
         // the value, which is what the original shows.
         pseudoClassStateChanged(PseudoClass.getPseudoClass("inherited"), !overridden);
