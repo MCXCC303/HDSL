@@ -168,6 +168,25 @@ public abstract class LineComponent extends StackPane implements NoPaddingCompon
 
     private Node[] nodes = new Node[2];
 
+    /// Puts a node beside the row's title.
+    ///
+    /// Some rows say something about themselves beside their name rather than at
+    /// their end — the globe that means "follow the launcher" is one — and the title
+    /// line is a row of its own, so what belongs there is added to it rather than
+    /// replacing the whole slot.
+    ///
+    /// @param node the node to add
+    protected final void addTitleNode(Node node) {
+        titleLine.getChildren().add(node);
+    }
+
+    /// Removes a node that was added beside the title.
+    ///
+    /// @param node the node to remove
+    protected final void removeTitleNode(Node node) {
+        titleLine.getChildren().remove(node);
+    }
+
     protected void setNode(int idx, Node node) {
         if (nodes.length <= idx)
             nodes = Arrays.copyOf(nodes, idx + 1);
