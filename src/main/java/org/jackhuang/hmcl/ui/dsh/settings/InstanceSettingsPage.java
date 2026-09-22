@@ -158,7 +158,32 @@ public final class InstanceSettingsPage extends ScrollPane {
 
         ComponentList list = new ComponentList();
         list.getContent().add(row);
+        list.getContent().add(logRow());
         return list;
+    }
+
+    /// Builds the row about this instance's log window.
+    ///
+    /// @return the row
+    private LineInheritableToggleButton logRow() {
+        LineInheritableToggleButton row = new LineInheritableToggleButton();
+        row.setTitle(i18n("dsh.settings.launcher.show_logs"));
+
+        Boolean own = DshInstanceSettings.showLogs(instance);
+        row.overriddenProperty().set(own != null);
+        row.rawValueProperty().set(own != null ? own : settings().showLogsProperty().get());
+
+        javafx.beans.value.ChangeListener<Boolean> store = (observable, was, value) -> {
+            try {
+                DshInstanceSettings.setShowLogs(instance,
+                        row.overriddenProperty().get() ? row.rawValueProperty().get() : null);
+            } catch (DshException e) {
+                LOG.warning("Failed to store the log window setting", e);
+            }
+        };
+        row.overriddenProperty().addListener(store);
+        row.rawValueProperty().addListener(store);
+        return row;
     }
 
     /// Builds the editor for the variables an instance runs with.

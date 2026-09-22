@@ -104,6 +104,7 @@ class PageStringsTest {
             "dsh.settings.launcher",
             "dsh.settings.launcher.visibility",
             "dsh.settings.launcher.visibility.keep",
+            "dsh.settings.launcher.show_logs",
             "dsh.settings.launcher.visibility.hide",
             "dsh.settings.launcher.visibility.minimize",
             // The export wizard's steps.

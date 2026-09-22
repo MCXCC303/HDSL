@@ -237,7 +237,9 @@ public final class DshLaunchService {
         executor.addTaskListener(new TaskListener() {
             @Override
             public void onStop(boolean success, TaskExecutor stopped) {
-                runInFX(() -> settle(instance, success, stopped.getException(), showOutput, onDone, started[0]));
+                boolean openLog = showOutput
+                || org.jackhuang.hmcl.setting.SettingsManager.settings().showLogsFor(instance.id());
+        runInFX(() -> settle(instance, success, stopped.getException(), openLog, onDone, started[0]));
             }
         });
 

@@ -138,8 +138,13 @@ public final class GeneralSettingsPage extends ScrollPane {
             }
         });
 
+        LineToggleButton showLogs = new LineToggleButton();
+        showLogs.setTitle(i18n("dsh.settings.launcher.show_logs"));
+        showLogs.selectedProperty().bindBidirectional(settings().showLogsProperty());
+
         ComponentList list = new ComponentList();
         list.getContent().add(visibility);
+        list.getContent().add(showLogs);
         return list;
     }
 

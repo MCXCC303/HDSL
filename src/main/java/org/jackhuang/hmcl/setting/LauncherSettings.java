@@ -371,6 +371,34 @@ public final class LauncherSettings {
         return buildScriptPolicy;
     }
 
+    /// Whether an instance's log window opens when it launches.
+    private final BooleanProperty showLogs = new SimpleBooleanProperty(false);
+
+    /// Returns whether an instance's log window opens when it launches.
+    ///
+    /// @return the property
+    public BooleanProperty showLogsProperty() {
+        return showLogs;
+    }
+
+    /// Returns whether an instance's log window opens when it launches.
+    ///
+    /// The instance's own answer wins; without one, the launcher's applies.
+    ///
+    /// @param instanceId the instance
+    /// @return whether the window opens
+    public boolean showLogsFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            Boolean own = org.jackhuang.hmcl.dsh.DshInstanceSettings.showLogs(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return showLogs.get();
+    }
+
     /// Returns whether debug lines are written for an instance.
     ///
     /// The instance's own answer wins; without one, the launcher's applies. One method, so the

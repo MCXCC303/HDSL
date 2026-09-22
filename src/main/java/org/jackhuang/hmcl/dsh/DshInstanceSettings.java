@@ -72,6 +72,23 @@ public final class DshInstanceSettings {
         write(instance, "buildScriptPolicy", policy == null ? null : new com.google.gson.JsonPrimitive(policy));
     }
 
+    /// Reads whether this instance's log window opens when it launches.
+    ///
+    /// @param instance the instance
+    /// @return the choice made for this instance, or `null` to follow the launcher
+    public static @Nullable Boolean showLogs(DshInstance instance) {
+        return booleanOf(instance, "showLogs");
+    }
+
+    /// Records whether this instance's log window opens when it launches.
+    ///
+    /// @param instance the instance
+    /// @param value    the choice, or `null` to follow the launcher
+    /// @throws DshException when the file cannot be written
+    public static void setShowLogs(DshInstance instance, @Nullable Boolean value) throws DshException {
+        write(instance, "showLogs", value == null ? null : new com.google.gson.JsonPrimitive(value));
+    }
+
     /// Reads whether this instance writes the launcher's debug lines.
     ///
     /// @param instance the instance
