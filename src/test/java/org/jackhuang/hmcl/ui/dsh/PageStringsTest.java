@@ -156,6 +156,8 @@ class PageStringsTest {
             "modpack.wizard.step.initialization.save",
             "modpack.export.as",
             "modpack.name",
+            "modpack.export.url",
+            "modpack.export.reference_url",
             "modpack.description",
             "archive.version",
             "archive.author",

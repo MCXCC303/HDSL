@@ -62,7 +62,7 @@ class DshPackContentsTest {
                     """);
 
             Path target = temp.resolve("pack.zip");
-            DshModpacks.Options options = new DshModpacks.Options("test", "1.0", "", "", false,
+            DshModpacks.Options options = new DshModpacks.Options("test", "1.0", "", "", "", "", false,
                     Set.of("dsh-cost-meter"));
             DshModpacks.export(instance, target, options, null);
 

@@ -63,6 +63,12 @@ public final class ModpackExportWizardProvider implements WizardProvider {
     /// The kind the community's DSH-PackForge tooling reads.
     public static final String FORMAT_PACKFORGE = "packforge";
 
+    /// The key the pack's download address prefix is held under.
+    public static final String URL = "modpack.url";
+
+    /// The key the pack's own site is held under.
+    public static final String REFERENCE_URL = "modpack.referenceUrl";
+
     /// The key the bundles left out of a pack are held under.
     public static final String EXCLUDED_BUNDLES = "modpack.excludedBundles";
 
@@ -167,6 +173,8 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 string(settings, VERSION, "1.0"),
                 string(settings, AUTHOR, ""),
                 string(settings, DESCRIPTION, ""),
+                string(settings, URL, ""),
+                string(settings, REFERENCE_URL, ""),
                 Boolean.TRUE.equals(settings.get(SESSIONS)),
                 excludedBundlesOf(settings));
     }

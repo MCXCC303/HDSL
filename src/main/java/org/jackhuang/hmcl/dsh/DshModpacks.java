@@ -120,7 +120,7 @@ public final class DshModpacks {
                            String dshVersion, @Nullable String appBoot, String profile,
                            List<Plugin> plugins, List<String> bundles, boolean hasPatch,
                            String name, String packVersion, String author, String description,
-                           int sessionCount) {
+                           String url, String referenceUrl, int sessionCount) {
 
         /// Returns the plugins that should be installed, in the order they are
         /// listed in.
@@ -184,8 +184,9 @@ public final class DshModpacks {
     /// @param includeSessions whether the instance's conversations travel with it
     /// @param excludedBundles the bundles the person chose to leave out
     public record Options(String name, String version, String author, String description,
+                          String url, String referenceUrl,
                           boolean includeSessions, Set<String> excludedBundles) {
-        /// Returns options that carry every bundle.
+        /// Returns options that carry no addresses.
         ///
         /// @param name            what the pack is called
         /// @param version         the pack's own version
@@ -194,8 +195,16 @@ public final class DshModpacks {
         /// @param includeSessions whether the conversations travel
         public Options(String name, String version, String author, String description,
                        boolean includeSessions) {
-            this(name, version, author, description, includeSessions, Set.of());
+            this(name, version, author, description, "", "", includeSessions, Set.of());
         }
+
+        /// Returns options that carry every bundle.
+        ///
+        /// @param name            what the pack is called
+        /// @param version         the pack's own version
+        /// @param author          who made it
+        /// @param description     what it is for
+        /// @param includeSessions whether the conversations travel
 
         /// Returns the options a pack is written with when nobody chose any.
         ///
@@ -270,6 +279,7 @@ public final class DshModpacks {
         Manifest manifest = new Manifest(FORMAT, FORMAT_VERSION, Instant.now().toString(), instance.id(),
                 instance.version(), appBoot, instance.profile(), List.copyOf(plugins), List.copyOf(bundles),
                 hasPatch, options.name(), options.version(), options.author(), options.description(),
+                options.url(), options.referenceUrl(),
                 sessions.size());
 
         report(onStage, "Recording " + plugins.size() + " plugin(s), " + bundles.size() + " active bundle(s)");
@@ -550,6 +560,8 @@ public final class DshModpacks {
                 string(root, "packVersion") == null ? "1.0" : string(root, "packVersion"),
                 string(root, "author") == null ? "" : string(root, "author"),
                 string(root, "description") == null ? "" : string(root, "description"),
+                string(root, "url") == null ? "" : string(root, "url"),
+                string(root, "referenceUrl") == null ? "" : string(root, "referenceUrl"),
                 integer(root, "sessionCount"));
     }
 
