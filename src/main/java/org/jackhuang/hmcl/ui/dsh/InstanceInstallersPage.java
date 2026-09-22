@@ -23,6 +23,7 @@ import javafx.scene.control.Skin;
 import javafx.scene.image.ImageView;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.dsh.DshPluginCatalog;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
@@ -66,7 +67,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 public final class InstanceInstallersPage extends ListPageBase<InstallerListItem>
         implements Refreshable, PageAware {
     /// The instance whose components are listed.
-    private final DshInstance instance;
+    private DshInstance instance;
 
     /// Creates the page.
     ///
@@ -87,6 +88,14 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
     /// page show the result of a change made elsewhere.
     @Override
     public void refresh() {
+        // The version row is read from the instance record rather than from its
+        // files, so a version changed on another page is only visible once the
+        // record is read again — which is what coming back to this page means.
+        DshInstance current = DshInstanceManager.find(instance.id());
+        if (current != null) {
+            instance = current;
+        }
+
         List<InstallerListItem> rows = List.of(versionRow(), appBootRow(), marketRow());
         // One column width for all three, so what each row reports starts in the
         // same place: the runtime's name is longer than the original's column.

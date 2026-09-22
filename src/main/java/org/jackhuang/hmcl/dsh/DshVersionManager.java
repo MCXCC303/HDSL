@@ -80,6 +80,34 @@ public final class DshVersionManager {
     ///
     /// @return the published releases, newest first
     /// @throws DshException when no usable npm is available or the query fails
+    /// The package the web application depends on with its own version line.
+    ///
+    /// `@deepseek-ai/dsh-web-app@X` requires this package at `^X`, and it is
+    /// published separately, so a harness release whose twin here was never
+    /// published cannot be installed: the registry has nothing to satisfy the
+    /// requirement, and pnpm stops with `ERR_PNPM_NO_MATCHING_VERSION`. That is why
+    /// an instance can move to some published versions and not to others, and why
+    /// the version list says which is which before somebody tries one.
+    public static final String LOCKSTEP_PACKAGE = "@deepseek-ai/dsh-client-ui-sidebar-documentpreview";
+
+    /// Returns the published versions of the package the harness is published with.
+    ///
+    /// @return the versions, or an empty set when the registry cannot be reached —
+    ///         in which case nothing is marked, because not knowing is not the same
+    ///         as knowing something is missing
+    public static Set<String> lockstepVersions() {
+        try {
+            DshNodeRuntime runtime = requireRuntime();
+            if (!runtime.canInstall()) {
+                return Set.of();
+            }
+            return Set.copyOf(queryVersions(runtime.npm(), LOCKSTEP_PACKAGE));
+        } catch (DshException | RuntimeException e) {
+            LOG.warning("Could not read the versions of " + LOCKSTEP_PACKAGE, e);
+            return Set.of();
+        }
+    }
+
     public static List<DshRelease> fetchReleases() throws DshException {
         DshNodeRuntime runtime = requireRuntime();
         if (!runtime.canManagePlugins()) {

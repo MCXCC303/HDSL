@@ -62,6 +62,13 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
     /// Every published version the last load returned.
     private List<DshRelease> releases = List.of();
 
+    /// The published versions of the package the harness is published with.
+    ///
+    /// Read once with the release list: a harness version whose twin is missing
+    /// cannot be installed, and saying so beforehand is better than a failure after
+    /// a download.
+    private java.util.Set<String> lockstep = java.util.Set.of();
+
     /// Creates the page.
     ///
     /// @param instance the instance to choose a version for
@@ -103,6 +110,7 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 
         java.util.concurrent.CompletableFuture.supplyAsync(() -> {
             try {
+                lockstep = DshVersionManager.lockstepVersions();
                 return DshVersionManager.fetchReleases();
             } catch (DshException e) {
                 throw new java.util.concurrent.CompletionException(e);
@@ -156,6 +164,15 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
         content.setTitle(release.version());
         content.getTags().clear();
         content.addTag(i18n(current ? "dsh.instance.upgrade.current" : "download.type." + release.type().id()));
+
+        // A version whose published twin is missing cannot be installed: the
+        // registry has nothing to satisfy the dependency it names. Saying so here
+        // is the difference between a list of versions and a list of versions that
+        // can be used.
+        boolean installable = lockstep.isEmpty() || lockstep.contains(release.version());
+        if (!current && !installable) {
+            content.addTag(i18n("dsh.instance.upgrade.missing"));
+        }
         content.setSubtitle(current
                 ? i18n("dsh.instance.upgrade.current.hint")
                 : i18n("dsh.instance.upgrade.hint"));
@@ -171,9 +188,12 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
         StackPane.setAlignment(row, Pos.CENTER_LEFT);
 
         if (!current) {
+            // Part of the row rather than a control of its own: it says where the
+            // row leads, and a press on it is a press on the row.
             JFXButton choose = new JFXButton();
             choose.setGraphic(SVG.ARROW_FORWARD.createIcon());
             choose.getStyleClass().add("toggle-icon4");
+            choose.setMouseTransparent(true);
             row.getChildren().add(choose);
             cell.setCursor(javafx.scene.Cursor.HAND);
         }
