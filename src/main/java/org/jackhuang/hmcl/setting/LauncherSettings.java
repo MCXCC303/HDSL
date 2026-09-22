@@ -161,6 +161,18 @@ public final class LauncherSettings {
         return launcherVisibility;
     }
 
+    /// Returns what the launcher does with itself once an instance is running.
+    ///
+    /// The launcher's own answer, without consulting any instance. This is what is
+    /// stored, so it must be the value the row shows rather than what an instance
+    /// happens to resolve to.
+    ///
+    /// @return the choice, never `null`
+    public org.jackhuang.hmcl.dsh.DshLauncherVisibility launcherVisibility() {
+        org.jackhuang.hmcl.dsh.DshLauncherVisibility choice = launcherVisibility.get();
+        return choice == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : choice;
+    }
+
     /// The variables every instance runs with, unless it sets its own.
     ///
     /// Edited as lines of `NAME=VALUE`, because that is what people paste into a box.

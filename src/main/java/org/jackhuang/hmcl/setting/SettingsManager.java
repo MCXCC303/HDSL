@@ -310,6 +310,73 @@ public final class SettingsManager {
         @SerializedName("openBrowserOnLaunch")
         private @Nullable Boolean openBrowserOnLaunch;
 
+        // Everything below belongs to a control that exists on one of the settings pages,
+        // and each one was written to this file by nothing at all: the snapshot is what
+        // `save()` writes and the only thing `load()` reads, so a property with no field
+        // here is a setting somebody can change, watch take effect, and lose at the next
+        // start. The rows are the ones on the general, download-source and global
+        // instance-settings tabs.
+
+        // Stored as the lowercase id the enum itself publishes, the way `nodeSource` is:
+        // Gson's enum adapter would write `MANUAL`, so a file written by the interface and
+        // one written by hand would disagree about the spelling of the same value.
+        @SerializedName("buildScriptPolicy")
+        private @Nullable String buildScriptPolicy;
+
+        @SerializedName("launcherVisibility")
+        private @Nullable String launcherVisibility;
+
+        @SerializedName("isolationPolicy")
+        private @Nullable String isolationPolicy;
+
+        @SerializedName("showLogs")
+        private @Nullable Boolean showLogs;
+
+        @SerializedName("debugLog")
+        private @Nullable Boolean debugLog;
+
+        @SerializedName("preLaunchCommand")
+        private @Nullable String preLaunchCommand;
+
+        @SerializedName("postExitCommand")
+        private @Nullable String postExitCommand;
+
+        @SerializedName("globalEnvironment")
+        private @Nullable java.util.Map<String, String> globalEnvironment;
+
+        @SerializedName("pluginCatalogUrl")
+        private @Nullable String pluginCatalogUrl;
+
+        @SerializedName("cacheDirectory")
+        private @Nullable String cacheDirectory;
+
+        @SerializedName("cacheDirectoryCustom")
+        private @Nullable Boolean cacheDirectoryCustom;
+
+        @SerializedName("autoDownloadThreads")
+        private @Nullable Boolean autoDownloadThreads;
+
+        @SerializedName("downloadConcurrency")
+        private @Nullable Integer downloadConcurrency;
+
+        @SerializedName("proxyMode")
+        private @Nullable String proxyMode;
+
+        @SerializedName("proxyHost")
+        private @Nullable String proxyHost;
+
+        @SerializedName("proxyPort")
+        private @Nullable String proxyPort;
+
+        @SerializedName("proxyAuthenticated")
+        private @Nullable Boolean proxyAuthenticated;
+
+        @SerializedName("proxyUser")
+        private @Nullable String proxyUser;
+
+        @SerializedName("proxyPassword")
+        private @Nullable String proxyPassword;
+
         /// Captures the current settings into a serialisable snapshot.
         ///
         /// @param settings the settings to capture
@@ -346,6 +413,26 @@ public final class SettingsManager {
             snapshot.nodeSource = settings.nodeSourceProperty().get().id();
             snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
             snapshot.openBrowserOnLaunch = settings.openBrowserOnLaunchProperty().get();
+            snapshot.buildScriptPolicy = settings.buildScriptPolicy().id();
+            snapshot.launcherVisibility = settings.launcherVisibility().id();
+            snapshot.isolationPolicy = settings.isolationPolicy().id();
+            snapshot.showLogs = settings.showLogsProperty().get();
+            snapshot.debugLog = settings.debugLogProperty().get();
+            snapshot.preLaunchCommand = settings.preLaunchCommandProperty().get();
+            snapshot.postExitCommand = settings.postExitCommandProperty().get();
+            snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
+            snapshot.pluginCatalogUrl = settings.pluginCatalogUrlProperty().get();
+            snapshot.cacheDirectory = settings.cacheDirectoryProperty().get();
+            snapshot.cacheDirectoryCustom = settings.cacheDirectoryCustomProperty().get();
+            snapshot.autoDownloadThreads = settings.autoDownloadThreadsProperty().get();
+            snapshot.downloadConcurrency = settings.downloadConcurrencyProperty().get();
+            snapshot.proxyMode = (settings.proxyModeProperty().get() == null
+                    ? org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM : settings.proxyModeProperty().get()).id();
+            snapshot.proxyHost = settings.proxyHostProperty().get();
+            snapshot.proxyPort = settings.proxyPortProperty().get();
+            snapshot.proxyAuthenticated = settings.proxyAuthenticatedProperty().get();
+            snapshot.proxyUser = settings.proxyUserProperty().get();
+            snapshot.proxyPassword = settings.proxyPasswordProperty().get();
             return snapshot;
         }
 
@@ -443,6 +530,67 @@ public final class SettingsManager {
             }
             if (openBrowserOnLaunch != null) {
                 settings.openBrowserOnLaunchProperty().set(openBrowserOnLaunch);
+            }
+            if (buildScriptPolicy != null) {
+                settings.buildScriptPolicyProperty().set(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.of(buildScriptPolicy));
+            }
+            if (launcherVisibility != null) {
+                settings.launcherVisibilityProperty().set(org.jackhuang.hmcl.dsh.DshLauncherVisibility.of(launcherVisibility));
+            }
+            if (isolationPolicy != null) {
+                settings.isolationPolicyProperty().set(org.jackhuang.hmcl.dsh.DshIsolationPolicy.of(isolationPolicy));
+            }
+            if (showLogs != null) {
+                settings.showLogsProperty().set(showLogs);
+            }
+            if (debugLog != null) {
+                settings.debugLogProperty().set(debugLog);
+                // The switch decides whether lines are written, so the logger has to be
+                // told as well: without this it stays as the interface left it, which
+                // after a restart is off.
+                org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(debugLog);
+            }
+            if (preLaunchCommand != null) {
+                settings.preLaunchCommandProperty().set(preLaunchCommand);
+            }
+            if (postExitCommand != null) {
+                settings.postExitCommandProperty().set(postExitCommand);
+            }
+            if (globalEnvironment != null) {
+                settings.globalEnvironmentProperty().set(new java.util.LinkedHashMap<>(globalEnvironment));
+            }
+            if (pluginCatalogUrl != null) {
+                settings.pluginCatalogUrlProperty().set(pluginCatalogUrl);
+            }
+            if (cacheDirectory != null) {
+                settings.cacheDirectoryProperty().set(cacheDirectory);
+            }
+            if (cacheDirectoryCustom != null) {
+                settings.cacheDirectoryCustomProperty().set(cacheDirectoryCustom);
+            }
+            if (autoDownloadThreads != null) {
+                settings.autoDownloadThreadsProperty().set(autoDownloadThreads);
+            }
+            if (downloadConcurrency != null) {
+                settings.downloadConcurrencyProperty().set(downloadConcurrency);
+            }
+            if (proxyMode != null) {
+                settings.proxyModeProperty().set(org.jackhuang.hmcl.dsh.DshProxyMode.of(proxyMode));
+            }
+            if (proxyHost != null) {
+                settings.proxyHostProperty().set(proxyHost);
+            }
+            if (proxyPort != null) {
+                settings.proxyPortProperty().set(proxyPort);
+            }
+            if (proxyAuthenticated != null) {
+                settings.proxyAuthenticatedProperty().set(proxyAuthenticated);
+            }
+            if (proxyUser != null) {
+                settings.proxyUserProperty().set(proxyUser);
+            }
+            if (proxyPassword != null) {
+                settings.proxyPasswordProperty().set(proxyPassword);
             }
         }
     }
