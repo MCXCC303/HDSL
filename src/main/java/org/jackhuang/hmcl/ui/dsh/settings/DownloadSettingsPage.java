@@ -91,20 +91,18 @@ public final class DownloadSettingsPage extends ScrollPane {
     /// @return the list
     private ComponentList buildGlobalEnvironmentList() {
         javafx.scene.control.TextArea area = new javafx.scene.control.TextArea();
-        area.setPrefRowCount(6);
+        area.setPrefRowCount(4);
+        area.setPrefColumnCount(28);
         area.setText(org.jackhuang.hmcl.dsh.DshEnvironment.format(settings().globalEnvironment()));
         area.textProperty().addListener((observable, was, text) ->
                 settings().globalEnvironmentProperty().set(org.jackhuang.hmcl.dsh.DshEnvironment.parse(text)));
 
-        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
-        box.setPadding(new javafx.geometry.Insets(8, 12, 8, 12));
-        javafx.scene.control.Label hint = new javafx.scene.control.Label(i18n("dsh.settings.env_vars.global.hint"));
-        hint.getStyleClass().add("desc");
-        hint.setWrapText(true);
-        box.getChildren().addAll(hint, area);
-
+        // The same row as everything else on the page: the name and what it is for on the left, the
+        // box beside them. A line of explanation floating above a bare box is not a row, and the
+        // reference has no such thing.
         ComponentList list = new ComponentList();
-        list.getContent().add(box);
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.env_vars"),
+                i18n("dsh.settings.env_vars.global.hint"), area));
         return list;
     }
 
