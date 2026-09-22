@@ -69,6 +69,13 @@ public final class LogWindow extends Stage {
     private final Map<Log4jLevel, SimpleIntegerProperty> levelCountMap = new EnumMap<>(Log4jLevel.class);
     private final Map<Log4jLevel, SimpleBooleanProperty> levelShownMap = new EnumMap<>(Log4jLevel.class);
 
+    /// How many lines this window keeps.
+    ///
+    /// The original keeps this number in its log window rather than in the launcher's
+    /// settings, and the same is done here: the count belongs to the window that
+    /// applies it, so there is one control for it rather than two that can disagree.
+    private int retainedLines = LogLine.DEFAULT_LOG_LINES;
+
     {
         for (Log4jLevel level : Log4jLevel.values()) {
             levelCountMap.put(level, new SimpleIntegerProperty());
@@ -134,7 +141,7 @@ public final class LogWindow extends Stage {
     }
 
     private void checkLogCount() {
-        int nRemove = logs.size() - LogLine.getLogLines();
+        int nRemove = logs.size() - retainedLines;
         if (nRemove <= 0)
             return;
 
@@ -186,8 +193,16 @@ public final class LogWindow extends Stage {
             });
 
             cboLines.getItems().setAll(500, 2000, 5000, 10000);
-            cboLines.setValue(LogLine.getLogLines());
-            cboLines.getSelectionModel().selectedItemProperty().addListener((a, b, newValue) -> settings().logLinesProperty().set(newValue));
+            cboLines.setValue(retainedLines);
+            cboLines.getSelectionModel().selectedItemProperty().addListener((a, b, newValue) -> {
+                if (newValue != null) {
+                    retainedLines = newValue;
+                    // The count is used at once rather than at the next start: the buffer is
+                    // trimmed here, which is what makes the box mean something the moment it
+                    // is set.
+                    checkLogCount();
+                }
+            });
 
             for (int i = 0; i < LEVELS.length; ++i) {
                 buttonText[i].bind(Bindings.concat(levelCountMap.get(LEVELS[i]), " " + LEVELS[i].name().toLowerCase(Locale.ROOT) + "s"));

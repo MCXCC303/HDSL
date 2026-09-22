@@ -290,9 +290,6 @@ public final class SettingsManager {
         @SerializedName("logFontSize")
         private @Nullable Double logFontSize;
 
-        @SerializedName("logLines")
-        private @Nullable Integer logLines;
-
         @SerializedName("animationDisabled")
         private @Nullable Boolean animationDisabled;
 
@@ -345,7 +342,6 @@ public final class SettingsManager {
             snapshot.backgroundLoadPolicy = settings.backgroundLoadPolicyProperty().get().name();
             snapshot.logFontFamily = settings.logFontFamilyProperty().get();
             snapshot.logFontSize = settings.logFontSizeProperty().get();
-            snapshot.logLines = settings.logLinesProperty().get();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
             snapshot.nodeSource = settings.nodeSourceProperty().get().id();
             snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
@@ -432,9 +428,6 @@ public final class SettingsManager {
             }
             if (logFontSize != null) {
                 settings.logFontSizeProperty().set(logFontSize);
-            }
-            if (logLines != null) {
-                settings.logLinesProperty().set(logLines);
             }
             if (animationDisabled != null) {
                 settings.animationDisabledProperty().set(animationDisabled);

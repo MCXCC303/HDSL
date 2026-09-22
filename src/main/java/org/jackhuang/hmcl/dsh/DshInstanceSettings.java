@@ -157,6 +157,23 @@ public final class DshInstanceSettings {
         write(instance, "debugLog", value == null ? null : new com.google.gson.JsonPrimitive(value));
     }
 
+    /// Reads what this instance does with the launcher while it runs.
+    ///
+    /// @param instance the instance
+    /// @return the choice made for this instance, or `null` to follow the launcher
+    public static @Nullable String launcherVisibility(DshInstance instance) {
+        return stringOf(instance, "launcherVisibility");
+    }
+
+    /// Records what this instance does with the launcher while it runs.
+    ///
+    /// @param instance the instance
+    /// @param value    the choice, or `null` to follow the launcher
+    /// @throws DshException when the file cannot be written
+    public static void setLauncherVisibility(DshInstance instance, @Nullable String value) throws DshException {
+        write(instance, "launcherVisibility", value == null ? null : new com.google.gson.JsonPrimitive(value));
+    }
+
     /// Reads a boolean member.
     ///
     /// @param instance the instance

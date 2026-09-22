@@ -294,7 +294,7 @@ public final class DshLaunchService {
                 // window, another workspace, or turned off in the settings, and
                 // the launcher is the only thing that knows the instance is up.
                 Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
-                applyLauncherVisibility();
+                applyLauncherVisibility(instance.id());
                 if (settings().openBrowserOnLaunchProperty().get()) {
                     FXUtils.openLink(url.get().toString());
                 }
@@ -336,9 +336,14 @@ public final class DshLaunchService {
     }
 
     /// Moves the launcher out of the way, if it was asked to.
-    private static void applyLauncherVisibility() {
+    ///
+    /// The choice is the one in force for the instance being started: its own when it has
+    /// one, and the launcher's otherwise.
+    ///
+    /// @param instanceId the instance being started
+    private static void applyLauncherVisibility(String instanceId) {
         org.jackhuang.hmcl.dsh.DshLauncherVisibility choice =
-                settings().launcherVisibilityProperty().get();
+                settings().launcherVisibilityFor(instanceId);
         switch (choice == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : choice) {
             case HIDE -> Controllers.getStage().hide();
             case MINIMIZE -> Controllers.getStage().setIconified(true);

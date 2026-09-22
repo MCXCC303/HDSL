@@ -193,6 +193,52 @@ public final class InstanceSettingsPage extends ScrollPane {
     ///
     /// @return the list
     private ComponentList buildDebugList() {
+        ComponentList list = new ComponentList();
+        list.getContent().add(launcherVisibilityRow());
+        list.getContent().add(debugLogRow());
+        list.getContent().add(logRow());
+        return list;
+    }
+
+    /// Builds the row about what the launcher does while this instance runs.
+    ///
+    /// The original offers this inside a game's own settings as well as globally, for the
+    /// same reason it is offered in both places here: one instance may want the launcher to
+    /// get out of the way while another wants it to stay.
+    ///
+    /// @return the row
+    private LineInheritableSelectButton<org.jackhuang.hmcl.dsh.DshLauncherVisibility> launcherVisibilityRow() {
+        LineInheritableSelectButton<org.jackhuang.hmcl.dsh.DshLauncherVisibility> row =
+                new LineInheritableSelectButton<>();
+        row.setTitle(i18n("dsh.settings.launcher.visibility"));
+        row.setItems(java.util.List.of(org.jackhuang.hmcl.dsh.DshLauncherVisibility.values()));
+        row.setNullSafeConverter(choice -> choice == null ? ""
+                : i18n("dsh.settings.launcher.visibility." + choice.id()));
+
+        String own = DshInstanceSettings.launcherVisibility(instance);
+        row.setOverridden(own != null);
+        row.setValue(own != null
+                ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.of(own)
+                : settings().launcherVisibilityFor(instance.id()));
+
+        javafx.beans.value.ChangeListener<Object> store = (observable, was, value) -> {
+            try {
+                DshInstanceSettings.setLauncherVisibility(instance,
+                        row.overriddenProperty().get() && row.getValue() != null
+                                ? row.getValue().id() : null);
+            } catch (DshException e) {
+                LOG.warning("Failed to store the launcher visibility", e);
+            }
+        };
+        row.overriddenProperty().addListener(store);
+        row.valueProperty().addListener(store);
+        return row;
+    }
+
+    /// Builds the row about this instance's debug lines.
+    ///
+    /// @return the row
+    private LineInheritableToggleButton debugLogRow() {
         LineInheritableToggleButton row = new LineInheritableToggleButton();
         row.setTitle(i18n("dsh.settings.debug.log"));
 
@@ -210,11 +256,7 @@ public final class InstanceSettingsPage extends ScrollPane {
         };
         row.overriddenProperty().addListener(store);
         row.rawValueProperty().addListener(store);
-
-        ComponentList list = new ComponentList();
-        list.getContent().add(row);
-        list.getContent().add(logRow());
-        return list;
+        return row;
     }
 
     /// Builds the row about this instance's log window.

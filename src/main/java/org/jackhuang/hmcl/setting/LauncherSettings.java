@@ -398,9 +398,6 @@ public final class LauncherSettings {
     /// The font size used by the log view.
     private final DoubleProperty logFontSize = new SimpleDoubleProperty(12);
 
-    /// The number of log lines retained, or `null` for unlimited.
-    private final ObjectProperty<@Nullable Integer> logLines = new SimpleObjectProperty<>();
-
     /// Whether animations are disabled; `null` follows the platform setting.
     private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
 
@@ -609,6 +606,27 @@ public final class LauncherSettings {
         return debugLog.get();
     }
 
+    /// Returns what the launcher does with itself while an instance runs.
+    ///
+    /// The instance's own choice wins; without one, the launcher's applies. One method, so
+    /// the interface and the launch cannot disagree about which is in force.
+    ///
+    /// @param instanceId the instance
+    /// @return the choice
+    public org.jackhuang.hmcl.dsh.DshLauncherVisibility launcherVisibilityFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            String own = org.jackhuang.hmcl.dsh.DshInstanceSettings.launcherVisibility(instance);
+            if (own != null) {
+                return org.jackhuang.hmcl.dsh.DshLauncherVisibility.of(own);
+            }
+        }
+        org.jackhuang.hmcl.dsh.DshLauncherVisibility launcher =
+                launcherVisibility.get();
+        return launcher == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : launcher;
+    }
+
     /// Returns the launcher's policy.
     ///
     /// @return the policy
@@ -700,13 +718,6 @@ public final class LauncherSettings {
     /// @return the log font size property
     public DoubleProperty logFontSizeProperty() {
         return logFontSize;
-    }
-
-    /// Returns the retained log line count property.
-    ///
-    /// @return the log line count property
-    public ObjectProperty<@Nullable Integer> logLinesProperty() {
-        return logLines;
     }
 
     /// Returns whether animations are disabled.
