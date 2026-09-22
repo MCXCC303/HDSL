@@ -24,6 +24,7 @@ import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jetbrains.annotations.NotNullByDefault;
 
@@ -151,23 +152,23 @@ public final class DownloadSettingsPage extends ScrollPane {
         return proxyRowWithField(title, hint, field);
     }
 
-    /// Builds one row of a label, a hint and a field.
+    /// Builds one row of a name, what it is for, and the field beside them.
+    ///
+    /// The shape the reference shows for a row with something to type: the name on the left with a
+    /// line under it saying what it is for, and the box beside them. A name, a paragraph and a box
+    /// stacked underneath is three lines doing what one row does everywhere else.
     ///
     /// @param title the row's name
     /// @param hint  what it is for
     /// @param field what is typed into it
     /// @return the row
     private javafx.scene.Node proxyRowWithField(String title, String hint, javafx.scene.Node field) {
-        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
-        box.setPadding(new javafx.geometry.Insets(8, 12, 8, 12));
-        javafx.scene.control.Label titleLabel = new javafx.scene.control.Label(title);
-        javafx.scene.control.Label hintLabel = new javafx.scene.control.Label(hint);
-        hintLabel.getStyleClass().add("desc");
-        hintLabel.setWrapText(true);
-        box.getChildren().addAll(titleLabel, hintLabel, field);
-        return box;
+        LinePane pane = new LinePane();
+        pane.setTitle(title);
+        pane.setSubtitle(hint);
+        pane.setRight(field);
+        return pane;
     }
-
     private ComponentList buildCatalogList() {
         com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
         field.setPromptText(org.jackhuang.hmcl.dsh.DshPluginCatalog.CATALOG_URL);
