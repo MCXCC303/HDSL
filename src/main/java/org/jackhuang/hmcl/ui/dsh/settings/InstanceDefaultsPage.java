@@ -117,6 +117,7 @@ public final class InstanceDefaultsPage extends ScrollPane {
                 SettingsManager.save();
             }
         });
+        list.getContent().add(policy);
         list.getContent().add(home);
 
         return list;
