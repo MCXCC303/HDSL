@@ -57,6 +57,7 @@ public final class DownloadSettingsPage extends ScrollPane {
                 buildSourceList(),
                 ComponentList.createComponentListTitle(i18n("dsh.settings.catalog")),
                 buildCatalogList(),
+                ComponentList.createComponentListTitle(i18n("settings.launcher.download")), buildDownloadList(),
                 ComponentList.createComponentListTitle(i18n("dsh.settings.proxy")), buildProxyList(),
                 ComponentList.createComponentListTitle(i18n("dsh.settings.env_vars")), buildGlobalEnvironmentList());
         root.getStyleClass().add("card-list");
@@ -103,6 +104,54 @@ public final class DownloadSettingsPage extends ScrollPane {
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.env_vars"),
                 i18n("dsh.settings.env_vars.global.hint"), area));
+        return list;
+    }
+
+    /// Builds the rows about downloading itself: where what was fetched is kept, and how many
+    /// downloads happen at once.
+    ///
+    /// @return the list
+    private ComponentList buildDownloadList() {
+        com.jfoenix.controls.JFXTextField directory = new com.jfoenix.controls.JFXTextField();
+        directory.setMinWidth(260);
+        directory.setPromptText(org.jackhuang.hmcl.dsh.DshPaths.CATALOG.toString());
+        directory.textProperty().bindBidirectional(settings().cacheDirectoryProperty());
+
+        com.jfoenix.controls.JFXButton clear = new com.jfoenix.controls.JFXButton(
+                i18n("dsh.settings.download.cache.clear"));
+        clear.getStyleClass().add("jfx-button-border");
+        clear.setOnAction(event -> {
+            // Says what it did, because a button that quietly removes nothing looks broken.
+            int removed = org.jackhuang.hmcl.dsh.DshPluginCatalog.clearCache();
+            clear.setText(i18n("dsh.settings.download.cache.cleared", removed));
+        });
+        javafx.scene.layout.HBox cache = new javafx.scene.layout.HBox(8, directory, clear);
+        cache.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+
+        com.jfoenix.controls.JFXTextField threads = new com.jfoenix.controls.JFXTextField();
+        threads.setMinWidth(320);
+        threads.setPromptText(i18n("dsh.settings.proxy.concurrency.hint"));
+        threads.setText(settings().downloadConcurrencyProperty().get() == null ? ""
+                : settings().downloadConcurrencyProperty().get().toString());
+        threads.textProperty().addListener((observable, was, text) -> {
+            String value = text == null ? "" : text.trim();
+            if (value.isEmpty()) {
+                settings().downloadConcurrencyProperty().set(null);
+                return;
+            }
+            try {
+                settings().downloadConcurrencyProperty().set(Integer.valueOf(value));
+            } catch (NumberFormatException e) {
+                // Half-typed numbers are not settings: the field keeps what was typed and the
+                // setting keeps what it had.
+            }
+        });
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.download.cache"),
+                i18n("dsh.settings.download.cache.hint"), cache));
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.concurrency"),
+                i18n("dsh.settings.proxy.concurrency.hint"), threads));
         return list;
     }
 
