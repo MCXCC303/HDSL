@@ -277,7 +277,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
         ComponentList list = new ComponentList();
 
         LineToggleButton animations = new LineToggleButton();
-        animations.setTitle(i18n("dsh.settings.animations"));
+        animations.setTitle(i18n("dsh.settings.animations.off"));
         animations.setSubtitle(i18n("dsh.settings.animations.desc"));
         // The row asks what the original asks — whether to turn the animations off — so the switch
         // reads the same way round as its own name.
