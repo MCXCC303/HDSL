@@ -49,6 +49,7 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.ComponentSublist;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LinePane;
