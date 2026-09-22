@@ -100,6 +100,13 @@ public final class LauncherSettings {
     /// Whether the window background is transparent.
     private final BooleanProperty windowTransparent = new SimpleBooleanProperty(false);
 
+    /// Whether a plugin's install scripts may run without being asked about.
+    ///
+    /// An install script runs with the user's own rights and nobody has read it, which
+    /// is why a package manager stops and asks. Answering is a decision, so the
+    /// launcher's default is to keep asking; an instance can override it.
+    private final BooleanProperty approveBuildScripts = new SimpleBooleanProperty(false);
+
     /// The source used to render the launcher background.
     private final ObjectProperty<@Nullable String> launcherFontFamily =
             new SimpleObjectProperty<>(this, LAUNCHER_FONT_FAMILY, null);
@@ -300,6 +307,33 @@ public final class LauncherSettings {
     /// @return the window transparency property
     public BooleanProperty windowTransparentProperty() {
         return windowTransparent;
+    }
+
+    /// Returns whether install scripts may run without being asked about.
+    ///
+    /// @return the launcher's answer, for instances that do not override it
+    public BooleanProperty approveBuildScriptsProperty() {
+        return approveBuildScripts;
+    }
+
+    /// Returns whether an instance's install scripts may run without being asked.
+    ///
+    /// The instance's own answer wins; without one, the launcher's applies. This is
+    /// the only place the two are combined, so the interface and the installer cannot
+    /// disagree about which one is in force.
+    ///
+    /// @param instanceId the instance
+    /// @return whether the scripts may run
+    public boolean approveBuildScriptsFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            Boolean own = org.jackhuang.hmcl.dsh.DshInstanceSettings.approveBuildScripts(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return approveBuildScripts.get();
     }
 
     /// Returns the background source property.

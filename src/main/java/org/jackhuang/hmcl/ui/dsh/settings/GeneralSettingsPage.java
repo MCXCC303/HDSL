@@ -68,7 +68,8 @@ public final class GeneralSettingsPage extends ScrollPane {
         root.getChildren().addAll(
                 sectionTitle(i18n("settings.launcher.general")), buildInterfaceList(),
                 buildLogList(),
-                buildStorageList());
+                buildStorageList(),
+                sectionTitle(i18n("dsh.settings.build_scripts")), buildBuildScriptsList());
     }
 
     /// Builds a section title.
@@ -102,6 +103,23 @@ public final class GeneralSettingsPage extends ScrollPane {
     /// Builds the log section.
     ///
     /// @return the assembled component list
+    /// Builds the row about install scripts.
+    ///
+    /// Off by default: an install script runs with the user's own rights and nobody
+    /// has read it, so a launcher that ran them without being asked would be deciding
+    /// something that is not its to decide.
+    ///
+    /// @return the list
+    private ComponentList buildBuildScriptsList() {
+        LineToggleButton approve = new LineToggleButton();
+        approve.setTitle(i18n("dsh.settings.build_scripts.approve"));
+        approve.selectedProperty().bindBidirectional(settings().approveBuildScriptsProperty());
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(approve);
+        return list;
+    }
+
     private ComponentList buildLogList() {
         LineSelectButton<Integer> logLines = new LineSelectButton<>();
         logLines.setTitle(i18n("dsh.settings.log.lines"));

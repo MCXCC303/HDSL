@@ -30,6 +30,7 @@ import org.jackhuang.hmcl.dsh.NodeRuntimeManager;
 import org.jackhuang.hmcl.dsh.NodeRuntime;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
+import org.jackhuang.hmcl.dsh.DshInstanceSettings;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshPortMode;
 import org.jackhuang.hmcl.dsh.DshPorts;
@@ -47,6 +48,7 @@ import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.construct.LineInheritableToggleButton;
 import org.jackhuang.hmcl.ui.construct.NumberValidator;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -112,13 +114,47 @@ public final class InstanceSettingsPage extends ScrollPane {
         VBox root = new VBox(
                 ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
                 ComponentList.createComponentListTitle(i18n("dsh.settings.environment")), environmentList,
-                ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList);
+                ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList,
+                ComponentList.createComponentListTitle(i18n("dsh.settings.build_scripts")), buildScriptsList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to the
         // content node and throws on a null content.
         FXUtils.smoothScrolling(this);
+    }
+
+    /// Builds the row about install scripts.
+    ///
+    /// It follows the launcher until it is told otherwise, which is the shape of a
+    /// per-instance setting here: the answer for this instance is stored beside the
+    /// instance, and its absence is what "follow the launcher" means.
+    ///
+    /// @return the list
+    private ComponentList buildScriptsList() {
+        LineInheritableToggleButton row = new LineInheritableToggleButton();
+        row.setTitle(i18n("dsh.settings.build_scripts.approve"));
+
+        Boolean own = DshInstanceSettings.approveBuildScripts(instance);
+        row.overriddenProperty().set(own != null);
+        row.rawValueProperty().set(own != null ? own : settings().approveBuildScriptsProperty().get());
+
+        // The row keeps its own two states; what is stored is the instance's answer,
+        // or nothing at all while it follows the launcher.
+        javafx.beans.value.ChangeListener<Boolean> store = (observable, was, value) -> {
+            try {
+                DshInstanceSettings.setApproveBuildScripts(instance,
+                        row.overriddenProperty().get() ? row.rawValueProperty().get() : null);
+            } catch (DshException e) {
+                LOG.warning("Failed to store the build script setting", e);
+            }
+        };
+        row.overriddenProperty().addListener(store);
+        row.rawValueProperty().addListener(store);
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(row);
+        return list;
     }
 
     /// Builds the Node runtime row.

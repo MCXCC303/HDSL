@@ -273,10 +273,27 @@ public final class DshPluginInstaller {
         environment.putAll(runtime.pathEnvironment());
         environment.putAll(instance.environment());
 
+        boolean retried = false;
+        while (true) {
         try {
             DshCommand.Result result = DshCommand.run(command, instance.workspacePath(), environment,
                     line -> report(onLine, line));
             int exitCode = result.exitCode();
+            if (exitCode != 0
+                    && explainIgnoredBuilds(result.output(), home, instance.profile()) != null
+                    && !retried
+                    && approvalsAllowed(instance)) {
+                // Somebody has said this instance's plugins may build themselves, so
+                // the question the package manager is asking is already answered for
+                // it: say so and run the same command again, once.
+                List<String> waiting = DshBuildScripts.unanswered(instance);
+                if (!waiting.isEmpty()) {
+                    report(onLine, "Allowing install scripts for " + String.join(", ", waiting));
+                    DshBuildScripts.answer(instance, waiting, true);
+                    retried = true;
+                    continue;
+                }
+            }
             if (exitCode != 0) {
                 String explanation = explainIgnoredBuilds(result.output(), home, instance.profile());
                 if (explanation != null) {
@@ -290,6 +307,24 @@ public final class DshPluginInstaller {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new DshException("`dsh plugin " + String.join(" ", args) + "` was interrupted", e);
+        }
+            return;
+        }
+    }
+
+    /// Reports whether an instance's plugins may run their install scripts.
+    ///
+    /// Read through the launcher's settings, which are where the answer lives: the
+    /// installer does not decide it, it asks.
+    ///
+    /// @param instance the instance
+    /// @return whether the scripts may run
+    private static boolean approvalsAllowed(DshInstance instance) {
+        try {
+            return org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .approveBuildScriptsFor(instance.id());
+        } catch (RuntimeException e) {
+            return false;
         }
     }
 

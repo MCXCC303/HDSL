@@ -114,6 +114,29 @@ class DshBuildScriptsTest {
                 "a package that was never asked about is not invented");
     }
 
+    @Test
+    void anInstancesOwnAnswerOverridesTheLaunchers() throws Exception {
+        DshInstance instance = makeInstance("""
+                allowBuilds:
+                  node-pty: set this to true or false
+                """);
+
+        // Following the launcher: the instance's file says nothing.
+        assertNull(DshInstanceSettings.approveBuildScripts(instance));
+        assertFalse(org.jackhuang.hmcl.setting.SettingsManager.settings().approveBuildScriptsFor(ID),
+                "with no answer of its own, the launcher's applies, and it starts off");
+
+        DshInstanceSettings.setApproveBuildScripts(instance, Boolean.TRUE);
+        assertEquals(Boolean.TRUE, DshInstanceSettings.approveBuildScripts(instance));
+        assertTrue(org.jackhuang.hmcl.setting.SettingsManager.settings().approveBuildScriptsFor(ID),
+                "an instance may allow what the launcher does not");
+
+        DshInstanceSettings.setApproveBuildScripts(instance, null);
+        assertNull(DshInstanceSettings.approveBuildScripts(instance),
+                "and may go back to following the launcher");
+        assertFalse(org.jackhuang.hmcl.setting.SettingsManager.settings().approveBuildScriptsFor(ID));
+    }
+
     /// Creates an instance whose profile holds the given workspace file.
     ///
     /// @param workspace the file's contents

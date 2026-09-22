@@ -65,6 +65,9 @@ class PageStringsTest {
             "dsh.session.pack.export.empty",
             "dsh.session.pack.import",
             "dsh.session.pack.filter",
+            // The build-script setting.
+            "dsh.settings.build_scripts",
+            "dsh.settings.build_scripts.approve",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",
