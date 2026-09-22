@@ -103,12 +103,16 @@ public final class AppearanceSettingsPage extends ScrollPane {
         // itself, and the colours, font, animations and window belong to one
         // section called appearance. A section per setting puts the section's
         // name and its only row's name next to each other saying the same word.
+        // The sections and their order are the original's: the theme, then how the launcher looks —
+        // including the picture and how solid it is — then how a background is fetched, then the
+        // animations, and the fonts last.
         root.getChildren().addAll(
                 sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
                 sectionTitle(i18n("settings.launcher.appearance")),
-                buildThemeColorList(), buildFontList(), buildAnimationList(), buildWindowList(),
-                buildBackgroundSourceList(),
-                buildBackgroundFallbackList());
+                buildThemeColorList(), buildBackgroundDetailList(), buildWindowList(),
+                sectionTitle(i18n("dsh.settings.background.load.section")), buildBackgroundLoadingList(),
+                sectionTitle(i18n("dsh.settings.animations")), buildAnimationList(),
+                sectionTitle(i18n("dsh.settings.font")), buildFontList());
     }
 
     /// Builds the theme colour section.
@@ -275,9 +279,11 @@ public final class AppearanceSettingsPage extends ScrollPane {
         LineToggleButton animations = new LineToggleButton();
         animations.setTitle(i18n("dsh.settings.animations"));
         animations.setSubtitle(i18n("dsh.settings.animations.desc"));
-        animations.setSelected(!settings().isAnimationDisabled());
+        // The row asks what the original asks — whether to turn the animations off — so the switch
+        // reads the same way round as its own name.
+        animations.setSelected(settings().isAnimationDisabled());
         animations.selectedProperty().addListener((observable, was, value) ->
-                settings().animationDisabledProperty().set(!value));
+                settings().animationDisabledProperty().set(value));
 
         list.getContent().add(animations);
         return list;
@@ -355,17 +361,13 @@ public final class AppearanceSettingsPage extends ScrollPane {
         ComponentList list = new ComponentList();
         this.backgroundLoadRow = loadPolicy;
         list.getContent().add(backgroundType);
-        // The original keeps one row called 背景 that opens to show everything about it: where it
-        // comes from, the picture, the network address, the built-in one and the opacity.
+        // The original keeps one row about a background that does not arrive, and this is it: the
+        // choices about where a background comes from and how solid it is are the appearance
+        // section's rows, which is where the original puts them.
         ComponentSublist sublist = new ComponentSublist();
-        sublist.setTitle(i18n("dsh.settings.background.title"));
-        sublist.descriptionProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
-            org.jackhuang.hmcl.setting.BackgroundType type = settings().backgroundTypeProperty().get();
-            return type == null ? "" : i18n("dsh.settings.background." + type.name().toLowerCase(java.util.Locale.ROOT));
-        }, settings().backgroundTypeProperty()));
+        sublist.setTitle(i18n("dsh.settings.background.fallback"));
         ComponentList wrapper = new ComponentList();
         sublist.getContent().add(list);
-        sublist.getContent().addAll(buildBackgroundDetailList().getContent());
         wrapper.getContent().add(sublist);
         return wrapper;
     }
@@ -379,6 +381,22 @@ public final class AppearanceSettingsPage extends ScrollPane {
     /// the question the row asks, and it belongs to nothing else.
     ///
     /// @return the assembled component list
+    /// Builds the rows about how a background is fetched and what is used when it does not arrive.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildBackgroundLoadingList() {
+        // The original's two rows for this: the fallback that opens, and the policy beside it. The
+        // fallback builder is what makes the policy row, so it is asked for it first.
+        ComponentList fallback = buildBackgroundSourceList();
+        ComponentList list = new ComponentList();
+        list.getContent().add(fallback);
+        if (backgroundLoadRow != null) {
+            list.getContent().add(backgroundLoadRow);
+        }
+        return list;
+    }
+
+
     private ComponentList buildBackgroundFallbackList() {
         ComponentSublist sublist = new ComponentSublist();
         sublist.setTitle(i18n("dsh.settings.background.fallback"));
