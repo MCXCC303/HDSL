@@ -26,8 +26,9 @@ import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshSession;
 import org.jackhuang.hmcl.dsh.DshSessions;
+import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.ComponentSublist;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardPage;
 import org.jackhuang.hmcl.util.SettingsMap;
@@ -57,6 +58,9 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// How many conversations the instance has.
     private int sessionCount;
 
+    /// The wizard this page belongs to.
+    private final WizardController controller;
+
     /// The instance being written out.
     private final DshInstance instance;
 
@@ -65,8 +69,8 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// @param controller the wizard controller
     /// @param instance   the instance being written out
     /// @param settings   the wizard's settings
-    @SuppressWarnings("unused")
     public ModpackFilesPage(WizardController controller, DshInstance instance, SettingsMap settings) {
+        this.controller = controller;
         this.instance = instance;
         this.settings = settings;
 
@@ -80,30 +84,41 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         list.getContent().add(configurationRow());
         list.getContent().add(sessionsRow());
         getChildren().add(list);
+
+        javafx.scene.layout.HBox buttons = new javafx.scene.layout.HBox(8);
+        buttons.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        com.jfoenix.controls.JFXButton write = new com.jfoenix.controls.JFXButton(i18n("modpack.export"));
+        write.getStyleClass().add("jfx-button-raised");
+        write.setOnAction(event -> {
+            cleanup(settings);
+            controller.onFinish();
+        });
+        buttons.getChildren().add(write);
+        getChildren().add(buttons);
     }
 
     /// Builds the row for what always travels.
     ///
     /// @return the row
     private Node configurationRow() {
-        ComponentSublist sublist = new ComponentSublist();
-        sublist.setTitle(i18n("dsh.modpack.files.configuration"));
-
+        // A line with the box on it, which is how the original draws the entries of
+        // its file tree: what it is on the left, whether it goes on the right, and
+        // nothing that has to be opened before either can be seen.
         CheckBox box = new CheckBox();
         box.setSelected(true);
         box.setDisable(true);
-        box.setText(i18n("dsh.modpack.files.configuration.detail"));
-        sublist.getContent().add(box);
-        return sublist;
+
+        LinePane pane = new LinePane();
+        pane.setTitle(i18n("dsh.modpack.files.configuration"));
+        pane.setRight(box);
+        FXUtils.installFastTooltip(pane, i18n("dsh.modpack.files.configuration.detail"));
+        return pane;
     }
 
     /// Builds the row for the conversations.
     ///
     /// @return the row
     private Node sessionsRow() {
-        ComponentSublist sublist = new ComponentSublist();
-        sublist.setTitle(i18n("dsh.modpack.files.sessions"));
-
         List<DshSession> sessions;
         try {
             sessions = DshSessions.list(instance.homeDirectory());
@@ -113,14 +128,17 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         }
         sessionCount = sessions.size();
 
-        sessionsBox.setText(sessionCount == 0
-                ? i18n("dsh.modpack.files.sessions.none")
-                : i18n("dsh.modpack.files.sessions.count", sessionCount));
         sessionsBox.setDisable(sessionCount == 0);
         sessionsBox.setSelected(Boolean.TRUE.equals(settings.get(ModpackExportWizardProvider.SESSIONS))
                 && sessionCount > 0);
-        sublist.getContent().add(sessionsBox);
-        return sublist;
+
+        LinePane pane = new LinePane();
+        pane.setTitle(i18n("dsh.modpack.files.sessions"));
+        pane.setRight(sessionsBox);
+        FXUtils.installFastTooltip(pane, sessionCount == 0
+                ? i18n("dsh.modpack.files.sessions.none")
+                : i18n("dsh.modpack.files.sessions.count", sessionCount));
+        return pane;
     }
 
     @Override

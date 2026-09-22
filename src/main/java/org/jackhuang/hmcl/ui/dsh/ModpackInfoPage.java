@@ -25,7 +25,7 @@ import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.ComponentSublist;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardPage;
@@ -95,6 +95,20 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         scroll.setFitToWidth(true);
         VBox.setVgrow(scroll, javafx.scene.layout.Priority.ALWAYS);
         getChildren().add(scroll);
+
+        // This launcher's wizards carry no footer of their own — the create page
+        // has its own install button, the boot library's chooser applies its choice
+        // on the row — so each step carries the button that leaves it.
+        javafx.scene.layout.HBox buttons = new javafx.scene.layout.HBox(8);
+        buttons.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        com.jfoenix.controls.JFXButton next = new com.jfoenix.controls.JFXButton(i18n("button.next"));
+        next.getStyleClass().add("jfx-button-raised");
+        next.setOnAction(event -> {
+            cleanup(settings);
+            controller.onNext();
+        });
+        buttons.getChildren().add(next);
+        getChildren().add(buttons);
     }
 
     /// Builds the row that says which instance is being written out.
@@ -103,7 +117,8 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
     private javafx.scene.Node instanceRow() {
         LineTextPane pane = new LineTextPane();
         pane.setTitle(i18n("modpack.wizard.step.initialization.exported_version"));
-        pane.setText(instance.id() + " · " + instance.version());
+        pane.setText(instance.id().equals(instance.version())
+                ? instance.id() : instance.id() + " · " + instance.version());
         return pane;
     }
 
@@ -113,28 +128,33 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
     /// @param property what is typed into it
     /// @return the row
     private javafx.scene.Node textRow(String title, SimpleStringProperty property) {
-        ComponentSublist sublist = new ComponentSublist();
-        sublist.setTitle(title);
+        // A line with the field on it, which is the shape the original's
+        // information page has: a label and what is typed beside it, not a
+        // collapsible section that has to be opened before anything can be read.
+        LinePane pane = new LinePane();
+        pane.setTitle(title);
 
         com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
-        FXUtils.bindString(field, property);
-        sublist.getContent().add(field);
-        return sublist;
+        field.setMinWidth(420);
+        pane.setRight(field);
+        field.textProperty().bindBidirectional(property);
+        return pane;
     }
 
     /// Builds the row for what the pack is for.
     ///
     /// @return the row
     private javafx.scene.Node descriptionRow() {
-        ComponentSublist sublist = new ComponentSublist();
-        sublist.setTitle(i18n("modpack.description"));
+        VBox box = new VBox(6);
+        box.setPadding(new Insets(8, 12, 8, 12));
 
-        javafx.scene.control.TextArea area = new javafx.scene.control.TextArea();
-        area.setPrefRowCount(6);
+        Label label = new Label(i18n("modpack.description"));
+        com.jfoenix.controls.JFXTextArea area = new com.jfoenix.controls.JFXTextArea();
+        area.setMinHeight(200);
         area.setWrapText(true);
         area.textProperty().bindBidirectional(description);
-        sublist.getContent().add(area);
-        return sublist;
+        box.getChildren().addAll(label, area);
+        return box;
     }
 
     /// Reads a setting.

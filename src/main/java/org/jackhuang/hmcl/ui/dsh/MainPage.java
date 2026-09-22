@@ -227,6 +227,17 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             return true;
         }
 
+        if (raw.toLowerCase(Locale.ROOT).startsWith("export-modpack:")) {
+            org.jackhuang.hmcl.dsh.DshInstance instance = org.jackhuang.hmcl.dsh.DshInstanceManager
+                    .find(raw.substring("export-modpack:".length()));
+            if (instance == null) {
+                return false;
+            }
+            Controllers.getDecorator().startWizard(new ModpackExportWizardProvider(instance),
+                    i18n("modpack.wizard"));
+            return true;
+        }
+
         String value = raw.toLowerCase(Locale.ROOT);
         if (value.startsWith("download/")) {
             DownloadPage page = getDownloadPage();
