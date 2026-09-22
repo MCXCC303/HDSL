@@ -62,10 +62,9 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     public LineInheritableToggleButton() {
         this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-toggle-button");
 
-        this.inheritButton = new JFXButton();
-        inheritButton.getStyleClass().add(INHERIT_BUTTON_STYLE_CLASS);
-        inheritButton.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
-        inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_BUTTON_ICON_SIZE));
+        // The launcher's own small icon button, so the globe takes the theme's colour
+        // rather than the SVG's default fill.
+        this.inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
         this.inheritTooltip = new Tooltip();
         FXUtils.installFastTooltip(inheritButton, inheritTooltip);
         inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
