@@ -72,9 +72,11 @@ public final class DshNetworkSettings {
 
             Integer concurrency = settings.downloadConcurrencyProperty().get();
             if (concurrency != null && concurrency > 0) {
-                // npm's configuration is read from the environment by npm and pnpm both, and
-                // this is the one that decides how many downloads happen at once.
-                environment.put("npm_config_network_concurrency", Integer.toString(concurrency));
+                // npm reads its configuration from the environment, and `maxsockets` is the key
+                // that decides how many requests it makes at once. The name matters: npm answers an
+                // unknown `npm_config_*` variable with a warning on **stdout**, which is the same
+                // stream the answers come back on.
+                environment.put("npm_config_maxsockets", Integer.toString(concurrency));
             }
         } catch (RuntimeException e) {
             // A launcher whose settings cannot be read is not a reason to fail every command: it

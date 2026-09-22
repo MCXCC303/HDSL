@@ -659,20 +659,37 @@ public final class DshVersionManager {
         }
     }
 
-    /// Parses JSON, returning `null` rather than throwing on malformed input.
+    /// Parses JSON out of a command's output, returning `null` rather than throwing.
     ///
-    /// @param text the JSON text
-    /// @return the parsed element, or `null`
+    /// npm writes warnings, deprecation notices and progress lines to the same stream as the
+    /// answer, so the output is not JSON — it is some number of lines that are not JSON followed by
+    /// the JSON. Reading from the first line that begins a value is what makes the answer findable
+    /// whatever npm has decided to say first; parsing the whole output works only until the day npm
+    /// has something to say, and then the version list is empty and the error blames the network.
+    ///
+    /// @param text the command's output
+    /// @return the parsed element, or `null` when there is no value in it
     private static @Nullable JsonElement parseJson(String text) {
-        if (text.isEmpty()) {
+        if (text.isBlank()) {
             return null;
         }
-        try {
-            return JsonParser.parseString(text);
-        } catch (RuntimeException e) {
-            LOG.warning("Failed to parse npm output as JSON", e);
-            return null;
+        java.util.List<String> lines = text.lines().toList();
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i).stripLeading();
+            if (line.isEmpty() || (line.charAt(0) != '{' && line.charAt(0) != '[')) {
+                continue;
+            }
+            try {
+                return JsonParser.parseString(String.join("\n", lines.subList(i, lines.size())));
+            } catch (RuntimeException e) {
+                // The first line that looked like a value was not the whole of it; the next one
+                // that does may be.
+                LOG.info("npm output from line " + (i + 1) + " did not parse as JSON; trying the next");
+            }
         }
+        LOG.warning("No JSON value in the command's output: "
+                + text.substring(0, Math.min(200, text.length())));
+        return null;
     }
 
     /// Deletes a directory, ignoring failures.

@@ -121,18 +121,36 @@ public final class NodeRuntimeManager {
     /// @throws DshException when the index cannot be read
     public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
         String platform = platformTag();
-        String url = source.indexUrl();
 
-        JsonElement parsed;
-        try {
-            parsed = JsonParser.parseString(NetworkUtils.doGet(URI.create(url)));
-        } catch (IOException | RuntimeException e) {
-            // The URL is in the message because the failure is almost always the
-            // route to that host rather than anything about the index: a network
-            // that reaches npm through a mirror may not reach this at all, and
-            // "which host" is the one thing that says so.
-            throw new DshException("Failed to read the Node.js release index from " + url
-                    + " (" + source.host() + " could not be reached: " + e.getMessage() + ")", e);
+        // The chosen source first, then the other one. A source is a host, and a host can be
+        // unreachable for reasons that have nothing to do with the source being wrong — a route, a
+        // blocked address family, a moment of downtime — while the other one answers in
+        // milliseconds. Trying the other costs nothing when the first works, which is why the order
+        // still says which one was asked for.
+        List<NodeSource> candidates = new ArrayList<>();
+        candidates.add(source);
+        for (NodeSource other : NodeSource.values()) {
+            if (other != source) {
+                candidates.add(other);
+            }
+        }
+
+        JsonElement parsed = null;
+        List<String> failures = new ArrayList<>();
+        for (NodeSource candidate : candidates) {
+            String url = candidate.indexUrl();
+            try {
+                parsed = JsonParser.parseString(NetworkUtils.doGet(URI.create(url)));
+                break;
+            } catch (IOException | RuntimeException e) {
+                // Which host failed is the one thing that says whether this is a route problem or
+                // something about the index, so every address that was tried is reported.
+                failures.add(url + " (" + e.getMessage() + ")");
+            }
+        }
+        if (parsed == null) {
+            throw new DshException("Failed to read the Node.js release index; tried "
+                    + String.join(", ", failures));
         }
         if (!parsed.isJsonArray()) {
             throw new DshException("The Node.js release index had an unexpected shape");
