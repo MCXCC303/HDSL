@@ -215,8 +215,15 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
             String nodeRuntime = org.jackhuang.hmcl.setting.SettingsManager.settings()
                     .defaultNodeRuntimeProperty().get();
-            DshHomeMode homeMode = org.jackhuang.hmcl.setting.SettingsManager.settings()
-                    .defaultHomeModeProperty().get();
+            // How a new instance keeps its state is a policy rather than a value, which is what
+            // the original asks at the same moment: a profile that brings its own plugins keeps
+            // them to itself, and a bare one usually shares.
+            org.jackhuang.hmcl.setting.LauncherSettings launcherSettings =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings();
+            DshHomeMode shared = launcherSettings.defaultHomeModeProperty().get() == DshHomeMode.ISOLATED
+                    ? DshHomeMode.VERSION_SHARED : launcherSettings.defaultHomeModeProperty().get();
+            DshHomeMode homeMode = launcherSettings.isolationPolicy()
+                    .homeMode(!presetChoices(settings).isEmpty(), shared);
             Path workspace = Path.of(System.getProperty("user.home"));
 
             // The instance comes first, because the runtime it runs goes inside

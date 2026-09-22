@@ -94,6 +94,20 @@ public final class InstanceDefaultsPage extends ScrollPane {
         LineSelectButton<DshHomeMode> home = new LineSelectButton<>();
         home.setTitle(i18n("dsh.settings.default_home"));
         home.setSubtitle(i18n("dsh.settings.default_home.hint"));
+        // The policy first, then what "not isolated" means — the original's arrangement, and the
+        // one that reads correctly: the rule decides, and the mode below says what it falls back to.
+        LineSelectButton<org.jackhuang.hmcl.dsh.DshIsolationPolicy> policy = new LineSelectButton<>();
+        policy.setTitle(i18n("dsh.settings.isolation"));
+        policy.setSubtitle(i18n("dsh.settings.isolation.hint"));
+        policy.setItems(org.jackhuang.hmcl.dsh.DshIsolationPolicy.values());
+        policy.setConverter(choice -> choice == null ? ""
+                : i18n("dsh.settings.isolation." + choice.id()));
+        policy.setValue(settings().isolationPolicy());
+        policy.valueProperty().addListener((observable, was, value) -> {
+            if (value != null) {
+                settings().isolationPolicyProperty().set(value);
+            }
+        });
         home.setItems(DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED);
         home.setNullSafeConverter(mode -> i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
         home.setValue(settings().defaultHomeModeProperty().get());

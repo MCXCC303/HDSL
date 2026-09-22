@@ -129,6 +129,25 @@ public final class LauncherSettings {
         return pluginCatalogUrl;
     }
 
+    /// Whether a new instance keeps its own home.
+    private final ObjectProperty<org.jackhuang.hmcl.dsh.DshIsolationPolicy> isolationPolicy =
+            new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshIsolationPolicy.WITH_PLUGINS);
+
+    /// Returns whether a new instance keeps its own home.
+    ///
+    /// @return the property
+    public ObjectProperty<org.jackhuang.hmcl.dsh.DshIsolationPolicy> isolationPolicyProperty() {
+        return isolationPolicy;
+    }
+
+    /// Returns the policy a new instance is created under.
+    ///
+    /// @return the policy
+    public org.jackhuang.hmcl.dsh.DshIsolationPolicy isolationPolicy() {
+        return isolationPolicy.get() == null
+                ? org.jackhuang.hmcl.dsh.DshIsolationPolicy.WITH_PLUGINS : isolationPolicy.get();
+    }
+
     /// What the launcher does with itself once an instance is running.
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshLauncherVisibility> launcherVisibility =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP);
