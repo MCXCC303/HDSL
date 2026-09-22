@@ -5,6 +5,12 @@ build/
 *.iml
 out/
 
+# Working notes, verification captures and references. Not part of the product: the plan is a
+# scratch pad, the screenshots are evidence for one review, the reference images belong to HMCL.
+.dev/
+.verify/
+docs/
+
 # build outputs, but keep the vendored JFoenix patch base
 *.jar
 !lib/JFoenix.jar
