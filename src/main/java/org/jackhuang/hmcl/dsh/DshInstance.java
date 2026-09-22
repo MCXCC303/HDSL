@@ -284,6 +284,20 @@ public record DshInstance(
     /// @param mode the new policy
     /// @param home the custom home, required when `mode` is [DshHomeMode#CUSTOM]
     /// @return the updated instance
+    /// Returns a copy of this instance with a different environment.
+    ///
+    /// The environment is how a per-instance secret is passed to what the instance runs —
+    /// an API key for one instance and another key for the next — so it is a field somebody
+    /// changes rather than one set at creation.
+    ///
+    /// @param environment the variables the instance runs with
+    /// @return the copy
+    public DshInstance withEnvironment(java.util.Map<String, String> environment) {
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, java.util.Map.copyOf(environment), icon, iconFile, portMode, port,
+                createdAt);
+    }
+
     public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, mode,
                 home == null ? null : home.toAbsolutePath().normalize().toString(),

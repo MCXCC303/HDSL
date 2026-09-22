@@ -87,6 +87,12 @@ class PageStringsTest {
             "dsh.settings.commands.post.hint",
             "dsh.settings.commands.hint",
             "dsh.settings.inherit",
+            "dsh.settings.env_vars",
+            "dsh.settings.env_vars.new",
+            "dsh.settings.env_vars.name",
+            "dsh.settings.env_vars.value",
+            "dsh.settings.env_vars.add",
+            "dsh.settings.env_vars.remove",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",

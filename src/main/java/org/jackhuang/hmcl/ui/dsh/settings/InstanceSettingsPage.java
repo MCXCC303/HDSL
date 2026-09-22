@@ -46,10 +46,12 @@ import org.jackhuang.hmcl.ui.construct.ImagePickerItem;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineInheritableSelectButton;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.LineInheritableSelectButton;
+import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.NumberValidator;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -117,13 +119,82 @@ public final class InstanceSettingsPage extends ScrollPane {
                 ComponentList.createComponentListTitle(i18n("dsh.instance.icon")), iconList,
                 ComponentList.createComponentListTitle(i18n("dsh.settings.environment")), environmentList,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList,
-                ComponentList.createComponentListTitle(i18n("dsh.settings.build_scripts")), buildScriptsList());
+                ComponentList.createComponentListTitle(i18n("dsh.settings.build_scripts")), buildScriptsList(),
+                ComponentList.createComponentListTitle(i18n("dsh.settings.env_vars")), buildEnvironmentVariablesList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to the
         // content node and throws on a null content.
         FXUtils.smoothScrolling(this);
+    }
+
+    /// Builds the editor for the variables an instance runs with.
+    ///
+    /// This is how one instance is given one API key and the next another: the variables are
+    /// passed to whatever the instance runs, so a key set here belongs to this instance and
+    /// is never written into a profile, a plugin or a pack.
+    ///
+    /// @return the list
+    private ComponentList buildEnvironmentVariablesList() {
+        ComponentList list = new ComponentList();
+
+        java.util.Map<String, String> environment = instance.environment();
+        for (java.util.Map.Entry<String, String> entry : new java.util.TreeMap<>(environment).entrySet()) {
+            com.jfoenix.controls.JFXTextField value = new com.jfoenix.controls.JFXTextField(entry.getValue());
+            value.setPromptText(i18n("dsh.settings.env_vars.value"));
+
+            com.jfoenix.controls.JFXButton remove = FXUtils.newToggleButton4(org.jackhuang.hmcl.ui.SVG.CLOSE);
+            FXUtils.installFastTooltip(remove, i18n("dsh.settings.env_vars.remove"));
+            remove.setOnAction(event -> {
+                java.util.Map<String, String> changed = new java.util.LinkedHashMap<>(instance.environment());
+                changed.remove(entry.getKey());
+                write(instance.withEnvironment(changed));
+            });
+
+            javafx.scene.layout.HBox right = new javafx.scene.layout.HBox(8, value, remove);
+            right.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+            javafx.scene.layout.HBox.setHgrow(value, javafx.scene.layout.Priority.ALWAYS);
+
+            value.textProperty().addListener((observable, was, text) -> {
+                java.util.Map<String, String> changed = new java.util.LinkedHashMap<>(instance.environment());
+                changed.put(entry.getKey(), text == null ? "" : text);
+                write(instance.withEnvironment(changed));
+            });
+
+            LinePane row = new LinePane();
+            row.setTitle(entry.getKey());
+            row.setRight(right);
+            list.getContent().add(row);
+        }
+
+        // A new variable: the name and the value, then it is part of the instance.
+        com.jfoenix.controls.JFXTextField name = new com.jfoenix.controls.JFXTextField();
+        name.setPromptText(i18n("dsh.settings.env_vars.name"));
+        com.jfoenix.controls.JFXTextField value = new com.jfoenix.controls.JFXTextField();
+        value.setPromptText(i18n("dsh.settings.env_vars.value"));
+        com.jfoenix.controls.JFXButton add = new com.jfoenix.controls.JFXButton(i18n("dsh.settings.env_vars.add"));
+        add.getStyleClass().add("jfx-button-raised");
+        add.setOnAction(event -> {
+            String key = name.getText() == null ? "" : name.getText().trim();
+            if (key.isEmpty()) {
+                return;
+            }
+            java.util.Map<String, String> changed = new java.util.LinkedHashMap<>(instance.environment());
+            changed.put(key, value.getText() == null ? "" : value.getText());
+            write(instance.withEnvironment(changed));
+        });
+
+        javafx.scene.layout.HBox fields = new javafx.scene.layout.HBox(8, name, value, add);
+        fields.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        javafx.scene.layout.HBox.setHgrow(name, javafx.scene.layout.Priority.ALWAYS);
+        javafx.scene.layout.HBox.setHgrow(value, javafx.scene.layout.Priority.ALWAYS);
+
+        LinePane row = new LinePane();
+        row.setTitle(i18n("dsh.settings.env_vars.new"));
+        row.setRight(fields);
+        list.getContent().add(row);
+        return list;
     }
 
     /// Builds the row about install scripts.
