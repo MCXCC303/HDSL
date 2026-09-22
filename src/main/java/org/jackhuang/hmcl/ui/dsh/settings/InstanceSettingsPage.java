@@ -45,9 +45,11 @@ import org.jackhuang.hmcl.ui.dsh.InstanceIconDialog;
 import org.jackhuang.hmcl.ui.construct.ImagePickerItem;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.LineInheritableSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.construct.LineInheritableSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.NumberValidator;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -176,7 +178,7 @@ public final class InstanceSettingsPage extends ScrollPane {
             choices.add(runtime.version());
         }
 
-        LineSelectButton<String> row = new LineSelectButton<>();
+        LineInheritableSelectButton<String> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.node.title"));
         row.setItems(choices);
         row.setNullSafeConverter(selection -> {
@@ -187,7 +189,16 @@ public final class InstanceSettingsPage extends ScrollPane {
                     ? i18n("dsh.install.node.system")
                     : selection;
         });
+        // Following the launcher is the state the globe shows, so the value is the
+        // instance's own choice and the globe says whether there is one.
+        row.setOverridden(instance.nodeRuntime() != null && !DshNodeRuntime.GLOBAL.equals(instance.nodeRuntime()));
         row.setValue(instance.nodeRuntime() == null ? DshNodeRuntime.GLOBAL : instance.nodeRuntime());
+        row.overriddenProperty().addListener((observable, was, overridden) -> {
+            if (!overridden) {
+                row.setValue(DshNodeRuntime.GLOBAL);
+                write(instance.withNodeRuntime(null));
+            }
+        });
         row.valueProperty().addListener((observable, was, value) -> {
             if (value != null && !value.equals(was)) {
                 write(instance.withNodeRuntime(DshNodeRuntime.GLOBAL.equals(value) ? null : value));
@@ -208,7 +219,7 @@ public final class InstanceSettingsPage extends ScrollPane {
     ///
     /// @return the row
     private LineSelectButton<DshHomeMode> buildHomeModeRow() {
-        LineSelectButton<DshHomeMode> row = new LineSelectButton<>();
+        LineInheritableSelectButton<DshHomeMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.install.home"));
         row.setSubtitle(i18n("dsh.instance.home.hint"));
         row.setItems(DshHomeMode.GLOBAL, DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
@@ -217,7 +228,14 @@ public final class InstanceSettingsPage extends ScrollPane {
                         + i18n("dsh.instance.home."
                                 + settings().defaultHomeModeProperty().get().name().toLowerCase(Locale.ROOT)) + ")"
                 : i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
+        row.setOverridden(instance.homeMode() != DshHomeMode.GLOBAL);
         row.setValue(instance.homeMode());
+        row.overriddenProperty().addListener((observable, was, overridden) -> {
+            if (!overridden) {
+                row.setValue(DshHomeMode.GLOBAL);
+                write(instance.withHome(DshHomeMode.GLOBAL, null));
+            }
+        });
         row.valueProperty().addListener((observable, was, mode) -> {
             if (mode == null || mode == was) {
                 return;
@@ -281,13 +299,20 @@ public final class InstanceSettingsPage extends ScrollPane {
     ///
     /// @return the row
     private LineSelectButton<DshPortMode> buildPortModeRow() {
-        LineSelectButton<DshPortMode> row = new LineSelectButton<>();
+        LineInheritableSelectButton<DshPortMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.instance.port.mode"));
         row.setSubtitle(i18n("dsh.instance.port.mode.hint"));
         row.setItems(DshPortMode.GLOBAL, DshPortMode.AUTO, DshPortMode.FIXED);
         // What it follows is the launcher's policy, and an instance that has not
         // chosen one shows that rather than the policy it happens to resolve to.
         row.setValue(instance.hasOwnPortMode() ? instance.portMode() : DshPortMode.GLOBAL);
+        row.setOverridden(instance.hasOwnPortMode());
+        row.overriddenProperty().addListener((observable, was, overridden) -> {
+            if (!overridden) {
+                row.setValue(DshPortMode.GLOBAL);
+                write(withPortMode(DshPortMode.GLOBAL));
+            }
+        });
         // The control runs its converter the moment one is installed, before a
         // value need exist, so the null-safe form is required here.
         row.setNullSafeConverter(mode -> i18n("dsh.instance.port.mode." + mode.id()));
