@@ -73,6 +73,7 @@ class PageStringsTest {
             "dsh.settings.build_scripts.never",
             "dsh.settings.build_scripts.follow",
             "dsh.settings.build_scripts.ask",
+            "dsh.settings.build_scripts.approve.hint",
             "dsh.instance.upgrade.missing",
             "download.install.success",
             "download.type.all",

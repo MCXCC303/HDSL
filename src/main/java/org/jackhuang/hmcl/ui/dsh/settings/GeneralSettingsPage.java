@@ -173,6 +173,10 @@ public final class GeneralSettingsPage extends ScrollPane {
     private ComponentList buildBuildScriptsList() {
         LineSelectButton<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> approve = new LineSelectButton<>();
         approve.setTitle(i18n("dsh.settings.build_scripts.approve"));
+        // The rows around it say what they are for, and this one is the least obvious of
+        // them: what it decides is whether somebody is asked before a plugin's install
+        // script runs.
+        approve.setSubtitle(i18n("dsh.settings.build_scripts.approve.hint"));
         approve.setItems(java.util.List.of(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.AUTO,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.NEVER));
