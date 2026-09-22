@@ -42,6 +42,9 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 @NotNullByDefault
 public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.UnknownNullability Object>
         extends LineSelectButton<T> {
+    /// The size of the globe, matching the original's.
+    private static final int INHERIT_ICON_SIZE = 12;
+
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
 
@@ -51,10 +54,24 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // colour like every other icon in a row: a bare SVG button takes the default
         // fill, which on these rows is a dark shape that looks like a smudge.
         JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
+        // The helper's style is what colours the icon; its size is this row's, and the original's
+        // globe is a small mark beside the name rather than a control as tall as the row.
+        inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
         FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit"));
-        inheritButton.setOnAction(event -> setOverridden(!isOverridden()));
+        inheritButton.setOnAction(event -> {
+            setOverridden(!isOverridden());
+            event.consume();
+        });
         addTitleNode(inheritButton);
 
+        // Following the launcher is not a choice of this row's, so the value is not editable while
+        // it does — but the row itself stays enabled, because the globe on it is the way in, and a
+        // disabled row disables what is on it.
+        addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            if (!isOverridden()) {
+                event.consume();
+            }
+        });
         overridden.addListener((observable, was, value) -> applyEditable());
         applyEditable();
     }
@@ -85,6 +102,8 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
     /// Following the launcher is not a choice of this row's, so the row does not offer to
     /// change it: the globe is the way in, and the value is read-only until it is pressed.
     private void applyEditable() {
-        setDisable(!isOverridden());
+        // What says the value is the launcher's is the globe, not a greyed-out row: the row stays
+        // usable so the globe can be pressed, and its action is consumed while it follows.
+        pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("inherited"), !isOverridden());
     }
 }

@@ -276,7 +276,7 @@ public final class InstanceSettingsPage extends ScrollPane {
         // The entries are the policies with a null in front, which is what
         // "follow the launcher" is.
         java.util.List<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> choices = new java.util.ArrayList<>();
-        choices.add(null);
+
         choices.addAll(java.util.List.of(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.AUTO,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.NEVER));
@@ -313,7 +313,6 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// @return the row
     private LineSelectButton<String> buildNodeRuntimeRow() {
         List<String> choices = new ArrayList<>();
-        choices.add(DshNodeRuntime.GLOBAL);
         choices.add(DshNodeRuntime.SYSTEM);
         for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
             choices.add(runtime.version());
@@ -333,7 +332,10 @@ public final class InstanceSettingsPage extends ScrollPane {
         // Following the launcher is the state the globe shows, so the value is the
         // instance's own choice and the globe says whether there is one.
         row.setOverridden(instance.nodeRuntime() != null && !DshNodeRuntime.GLOBAL.equals(instance.nodeRuntime()));
-        row.setValue(instance.nodeRuntime() == null ? DshNodeRuntime.GLOBAL : instance.nodeRuntime());
+        // While it follows the launcher, the row shows what the launcher uses — the value is the
+        // answer, and "follow the launcher" is what the globe beside the name says.
+        row.setValue(instance.nodeRuntime() == null
+                ? settings().defaultNodeRuntimeProperty().get() : instance.nodeRuntime());
         row.overriddenProperty().addListener((observable, was, overridden) -> {
             if (!overridden) {
                 row.setValue(DshNodeRuntime.GLOBAL);
@@ -363,14 +365,15 @@ public final class InstanceSettingsPage extends ScrollPane {
         LineInheritableSelectButton<DshHomeMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.install.home"));
         row.setSubtitle(i18n("dsh.instance.home.hint"));
-        row.setItems(DshHomeMode.GLOBAL, DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
+        row.setItems(DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
         row.setNullSafeConverter(mode -> DshHomeMode.GLOBAL.equals(mode)
                 ? i18n("dsh.instance.follow_global") + " ("
                         + i18n("dsh.instance.home."
                                 + settings().defaultHomeModeProperty().get().name().toLowerCase(Locale.ROOT)) + ")"
                 : i18n("dsh.instance.home." + mode.name().toLowerCase(Locale.ROOT)));
         row.setOverridden(instance.homeMode() != DshHomeMode.GLOBAL);
-        row.setValue(instance.homeMode());
+        row.setValue(instance.homeMode() == DshHomeMode.GLOBAL
+                ? settings().defaultHomeModeProperty().get() : instance.homeMode());
         row.overriddenProperty().addListener((observable, was, overridden) -> {
             if (!overridden) {
                 row.setValue(DshHomeMode.GLOBAL);
@@ -443,7 +446,7 @@ public final class InstanceSettingsPage extends ScrollPane {
         LineInheritableSelectButton<DshPortMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.instance.port.mode"));
         row.setSubtitle(i18n("dsh.instance.port.mode.hint"));
-        row.setItems(DshPortMode.GLOBAL, DshPortMode.AUTO, DshPortMode.FIXED);
+        row.setItems(DshPortMode.AUTO, DshPortMode.FIXED);
         // What it follows is the launcher's policy, and an instance that has not
         // chosen one shows that rather than the policy it happens to resolve to.
         row.setValue(instance.hasOwnPortMode() ? instance.portMode() : DshPortMode.GLOBAL);

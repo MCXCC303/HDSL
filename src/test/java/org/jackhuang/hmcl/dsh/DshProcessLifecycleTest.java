@@ -77,7 +77,7 @@ class DshProcessLifecycleTest {
                 console.log('dsh web: http://127.0.0.1:' + port + '/?token=lifecycle-stub');
                 // Drain on request rather than exiting at once: the launcher has
                 // to keep treating the instance as busy while this is happening.
-                process.on('SIGTERM', () => setTimeout(() => process.exit(0), 1500));
+                process.on('SIGTERM', () => setTimeout(() => process.exit(0), 4000));
                 // Nothing may outlive the test that started it: a stub that keeps
                 // running keeps the test's own JVM from finishing, and a suite that
                 // never finishes is worse than one that fails.
