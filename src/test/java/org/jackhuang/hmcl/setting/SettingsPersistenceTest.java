@@ -47,14 +47,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsPersistenceTest {
     /// The properties that are deliberately not stored.
     ///
-    /// Each is a value the launcher works out again on every start, so storing it would
-    /// be storing a copy that can disagree with its source.
-    private static final List<String> NOT_STORED = List.of(
-            // Both are read when a background is painted and written by nothing: this
-            // launcher offers no flat-colour background, so their contents belong to the
-            // theme pack, which is itself stored.
-            "backgroundFallbackPaint",
-            "customBackgroundPaint");
+    /// Empty: every setting a page can bind to is one the settings file holds. It is kept
+    /// so that a future exception has somewhere to be written down with its reason.
+    private static final List<String> NOT_STORED = List.of();
 
     @Test
     void everySettingAPropertyExposesIsCapturedAndRestored() throws IOException {

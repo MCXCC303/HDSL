@@ -181,6 +181,36 @@ public final class SettingsManager {
         }
     }
 
+    /// Renders a background colour for the settings file.
+    ///
+    /// Only a flat colour is stored: the appearance page's pickers produce one, and a
+    /// gradient in a settings file would be a value nothing can edit.
+    ///
+    /// @param paint the colour, or `null`
+    /// @return its hex form, or `null` when there is nothing to store
+    private static @Nullable String paintToString(@Nullable javafx.scene.paint.Paint paint) {
+        if (!(paint instanceof javafx.scene.paint.Color color)) {
+            return null;
+        }
+        return String.format("#%02X%02X%02X",
+                Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255),
+                Math.round(color.getBlue() * 255));
+    }
+
+    /// Reads a background colour written by [SettingsManager#paintToString].
+    ///
+    /// @param value the stored hex string
+    /// @return the colour, or `null` when it cannot be read
+    private static javafx.scene.paint.@Nullable Paint paintOf(String value) {
+        try {
+            return javafx.scene.paint.Color.web(value.trim());
+        } catch (IllegalArgumentException e) {
+            LOG.warning("Unknown background colour in settings: " + value);
+            return null;
+        }
+    }
+
     /// Writes the current launcher settings to disk.
     ///
     /// Failures are logged rather than propagated so that a read-only home
@@ -280,6 +310,15 @@ public final class SettingsManager {
 
         @SerializedName("backgroundFallbackType")
         private @Nullable String backgroundFallbackType;
+
+        // Both are colours the appearance page's pickers edit, so both are settings the user
+        // can change. They are stored as a hex string, which is what a colour picker
+        // round-trips and what a settings file written by hand can say.
+        @SerializedName("customBackgroundPaint")
+        private @Nullable String customBackgroundPaint;
+
+        @SerializedName("backgroundFallbackPaint")
+        private @Nullable String backgroundFallbackPaint;
 
         @SerializedName("backgroundLoadPolicy")
         private @Nullable String backgroundLoadPolicy;
@@ -406,6 +445,8 @@ public final class SettingsManager {
             snapshot.backgroundOpacity = settings.backgroundOpacityProperty().get();
             snapshot.networkBackgroundImageCachePolicy = settings.networkBackgroundImageCachePolicyProperty().get().name();
             snapshot.backgroundFallbackType = settings.backgroundFallbackTypeProperty().get().name();
+            snapshot.customBackgroundPaint = paintToString(settings.customBackgroundPaintProperty().get());
+            snapshot.backgroundFallbackPaint = paintToString(settings.backgroundFallbackPaintProperty().get());
             snapshot.backgroundLoadPolicy = settings.backgroundLoadPolicyProperty().get().name();
             snapshot.logFontFamily = settings.logFontFamilyProperty().get();
             snapshot.logFontSize = settings.logFontSizeProperty().get();
@@ -506,6 +547,18 @@ public final class SettingsManager {
             }
             if (backgroundFallbackType != null) {
                 settings.backgroundFallbackTypeProperty().set(parseEnum(BackgroundType.class, backgroundFallbackType, BackgroundType.BUILTIN));
+            }
+            if (customBackgroundPaint != null) {
+                javafx.scene.paint.Paint paint = paintOf(customBackgroundPaint);
+                if (paint != null) {
+                    settings.customBackgroundPaintProperty().set(paint);
+                }
+            }
+            if (backgroundFallbackPaint != null) {
+                javafx.scene.paint.Paint paint = paintOf(backgroundFallbackPaint);
+                if (paint != null) {
+                    settings.backgroundFallbackPaintProperty().set(paint);
+                }
             }
             if (backgroundLoadPolicy != null) {
                 settings.backgroundLoadPolicyProperty().set(parseEnum(BackgroundLoadPolicy.class, backgroundLoadPolicy, BackgroundLoadPolicy.WAIT_FOR_BACKGROUND));
