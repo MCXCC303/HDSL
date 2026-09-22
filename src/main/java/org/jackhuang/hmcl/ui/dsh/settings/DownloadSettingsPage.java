@@ -24,6 +24,8 @@ import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.RadioChoiceList;
+import org.jackhuang.hmcl.ui.construct.ComponentSublist;
 import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -148,18 +150,61 @@ public final class DownloadSettingsPage extends ScrollPane {
         cache.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
 
         // Automatic is the absence of a number, and the row says so rather than showing nothing.
-        LineSelectButton<Integer> threads = new LineSelectButton<>();
-        threads.setTitle(i18n("dsh.settings.download.threads"));
-        threads.setItems(java.util.List.of(0, 1, 2, 4, 8, 16));
-        threads.setConverter(count -> count == null || count == 0
-                ? i18n("dsh.settings.download.threads.auto") : count.toString());
-        threads.setValue(settings().downloadConcurrencyProperty().get() == null
-                ? 0 : settings().downloadConcurrencyProperty().get());
-        threads.valueProperty().addListener((observable, was, value) -> {
-            if (value != null) {
-                settings().downloadConcurrencyProperty().set(value == 0 ? null : value);
-            }
+        // The original's row for this: a row that opens where it stands, offering the automatic
+        // count or one of your own, with a slider for it. A popup would be a different gesture for
+        // the same question, and this is the one the original uses.
+        ComponentSublist threads = new ComponentSublist(() -> {
+            RadioChoiceList<Boolean> choices = new RadioChoiceList<>();
+            choices.setChoices(
+                    new RadioChoiceList.Choice<>(i18n("dsh.settings.download.threads.auto"), true),
+                    new RadioChoiceList.Choice<>(i18n("dsh.settings.download.threads.custom"), false) {
+                        @Override
+                        protected javafx.scene.Node createRightNode() {
+                            javafx.scene.layout.HBox box = new javafx.scene.layout.HBox(8);
+                            box.setAlignment(javafx.geometry.Pos.CENTER);
+                            box.disableProperty().bind(settings().autoDownloadThreadsProperty());
+
+                            com.jfoenix.controls.JFXSlider slider = new com.jfoenix.controls.JFXSlider(1, 256, 64);
+                            javafx.scene.layout.HBox.setHgrow(slider, javafx.scene.layout.Priority.ALWAYS);
+                            com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
+                            org.jackhuang.hmcl.ui.FXUtils.setLimitWidth(field, 60);
+
+                            Integer current = settings().downloadConcurrencyProperty().get();
+                            int value = current == null ? 64 : current;
+                            slider.setValue(value);
+                            field.setText(Integer.toString(value));
+                            slider.valueProperty().addListener((observable, was, now) -> {
+                                settings().downloadConcurrencyProperty().set(now.intValue());
+                                field.setText(Integer.toString(now.intValue()));
+                            });
+                            field.textProperty().addListener((observable, was, text) -> {
+                                try {
+                                    int typed = Integer.parseInt(text == null ? "" : text.trim());
+                                    if (typed > 0) {
+                                        settings().downloadConcurrencyProperty().set(typed);
+                                        slider.setValue(typed);
+                                    }
+                                } catch (NumberFormatException e) {
+                                    // Half-typed numbers are not settings.
+                                }
+                            });
+
+                            box.getChildren().setAll(slider, field);
+                            return box;
+                        }
+                    });
+            choices.selectedValueProperty().bindBidirectional(settings().autoDownloadThreadsProperty());
+            return java.util.List.of(choices);
         });
+        threads.setTitle(i18n("dsh.settings.download.threads"));
+        threads.setHasSubtitle(true);
+        threads.descriptionProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
+            if (settings().autoDownloadThreadsProperty().get()) {
+                return i18n("dsh.settings.download.threads.auto");
+            }
+            Integer count = settings().downloadConcurrencyProperty().get();
+            return Integer.toString(count == null ? 64 : count);
+        }, settings().autoDownloadThreadsProperty(), settings().downloadConcurrencyProperty()));
 
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.download.cache"),

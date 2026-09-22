@@ -258,8 +258,18 @@ public final class LauncherSettings {
         return proxyPassword;
     }
 
-    /// How many downloads may happen at once, or `null` for the tool's own choice.
-    private final ObjectProperty<@Nullable Integer> downloadConcurrency = new SimpleObjectProperty<>();
+    /// Whether the launcher chooses how many downloads happen at once.
+    private final BooleanProperty autoDownloadThreads = new SimpleBooleanProperty(true);
+
+    /// How many downloads may happen at once, when the launcher is not choosing.
+    private final ObjectProperty<@Nullable Integer> downloadConcurrency = new SimpleObjectProperty<>(64);
+
+    /// Returns whether the launcher chooses how many downloads happen at once.
+    ///
+    /// @return the property
+    public BooleanProperty autoDownloadThreadsProperty() {
+        return autoDownloadThreads;
+    }
 
     /// Returns the proxy downloads go through.
     ///
