@@ -112,6 +112,7 @@ class DshPackForgeTest {
                  "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
                 """);
 
+        try {
         JsonObject manifest = DshPackForge.buildManifest(instance,
                 new DshPackForge.Options("My Pack", "2.1.0", "我的整合包", "a description", "someone"),
                 null);
@@ -130,7 +131,9 @@ class DshPackForgeTest {
                 "the bundle order is what the profile loads in");
         assertEquals("1.52.0", manifest.getAsJsonObject("dependencies").get("dshmarket").getAsString());
 
-        DshInstanceManager.delete("packforge-test");
+        } finally {
+            DshInstanceManager.delete("packforge-test");
+        }
     }
 
     @Test
