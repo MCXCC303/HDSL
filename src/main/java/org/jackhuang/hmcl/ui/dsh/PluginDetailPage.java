@@ -36,6 +36,7 @@ import org.jackhuang.hmcl.dsh.DshCommand;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
+import org.jackhuang.hmcl.dsh.DshLauncher;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshPluginCatalog;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
@@ -236,7 +237,12 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
             List<String> published = new ArrayList<>();
             try {
                 if (plugin.npm() != null) {
-                    published.addAll(DshVersionManager.fetchPackageVersions(plugin.npm()));
+                    // The instance's own runtime when it has one: an instance on a
+                    // launcher-managed Node should not need the machine to have one.
+                    DshNodeRuntime runtime = instance == null
+                            ? DshNodeRuntime.detect().orElse(null)
+                            : DshLauncher.resolveRuntime(instance);
+                    published.addAll(DshVersionManager.fetchPackageVersions(runtime, plugin.npm()));
                 } else if (plugin.version() != null) {
                     published.add(plugin.version());
                 }

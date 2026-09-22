@@ -218,8 +218,10 @@ public final class DshVersionManager {
 
         LOG.info("Holding " + instance.id() + " to boot library " + appBoot);
         int exitCode;
+        DshCommand.Result commandResult;
         try {
-            exitCode = DshCommand.run(command, null, onLine).exitCode();
+            commandResult = DshCommand.run(command, null, onLine);
+            exitCode = commandResult.exitCode();
         } catch (IOException e) {
             throw new DshException("Failed to run pnpm", e);
         } catch (InterruptedException e) {
@@ -228,7 +230,8 @@ public final class DshVersionManager {
         }
         if (exitCode != 0) {
             throw new DshException("pnpm exited with code " + exitCode
-                    + " while changing the boot library of " + instance.id());
+                    + " while changing the boot library of " + instance.id()
+                    + ":\n" + tail(commandResult.output()));
         }
     }
 
@@ -375,8 +378,10 @@ public final class DshVersionManager {
         LOG.info("Installing DSH " + version + " for " + instance.id() + ": " + String.join(" ", command));
 
         int exitCode;
+        DshCommand.Result commandResult;
         try {
-            exitCode = DshCommand.run(command, null, onLine).exitCode();
+            commandResult = DshCommand.run(command, null, onLine);
+            exitCode = commandResult.exitCode();
         } catch (IOException e) {
             throw new DshException("Failed to run pnpm", e);
         } catch (InterruptedException e) {
@@ -386,8 +391,12 @@ public final class DshVersionManager {
 
         if (exitCode != 0) {
             deleteQuietly(staging);
+            // pnpm's own last lines say what went wrong — a version that is not
+            // published, a dependency tree that cannot be resolved, a registry that
+            // cannot be reached — and an exit code says none of that.
             throw new DshException("pnpm exited with code " + exitCode
-                    + " while installing " + version + " for " + instance.id());
+                    + " while installing " + version + " for " + instance.id()
+                    + ":\n" + tail(commandResult.output()));
         }
 
         Path bin = staging.resolve(DshVersion.PACKAGE_PATH).resolve("lib/bin.js");
@@ -435,13 +444,38 @@ public final class DshVersionManager {
     /// @return the published version strings, newest first
     /// @throws DshException when the query fails or returns unexpected data
     public static List<String> fetchPackageVersions(String pkg) throws DshException {
-        DshNodeRuntime runtime = requireRuntime();
+        return fetchPackageVersions(requireRuntime(), pkg);
+    }
+
+    /// Reads the published version list of one package, using a runtime the caller
+    /// already resolved.
+    ///
+    /// An instance that runs on a launcher-managed Node has a runtime of its own, and
+    /// asking whether the machine happens to have one on its path is asking the wrong
+    /// question: the version list of a plugin is read with the runtime the instance
+    /// would install it with.
+    ///
+    /// @param runtime the runtime to read with
+    /// @param pkg     the package name
+    /// @return the versions, newest first
+    /// @throws DshException when npm is missing or the registry cannot be reached
+    public static List<String> fetchPackageVersions(DshNodeRuntime runtime, String pkg) throws DshException {
         if (!runtime.canInstall()) {
-            throw new DshException("npm was not found on PATH; reading the registry requires it");
+            throw new DshException("npm was not found for this instance's Node runtime;"
+                    + " reading the registry requires it");
         }
         List<String> versions = new ArrayList<>(queryVersions(runtime.npm(), pkg));
         versions.sort((left, right) -> compareVersions(right, left));
         return List.copyOf(versions);
+    }
+
+    /// Returns the last few output lines, for an error message.
+    ///
+    /// @param lines the captured output
+    /// @return the trailing lines joined by newlines
+    private static String tail(List<String> lines) {
+        int from = Math.max(0, lines.size() - 12);
+        return String.join("\n", lines.subList(from, lines.size()));
     }
 
     /// Reads the published version list of one package from the registry.

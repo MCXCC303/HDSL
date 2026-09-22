@@ -89,6 +89,12 @@ public final class DshCli {
         /// Installs a plugin from a file the user has.
         INSTALL_PLUGIN_FILE(false),
 
+        /// Moves an instance to another harness version, and reinstalls its plugins.
+        UPGRADE_INSTANCE(false),
+
+        /// Lists or answers the install scripts a profile is waiting to be told about.
+        BUILD_SCRIPTS(false),
+
         /// Writes an instance's configuration into a pack.
         EXPORT_MODPACK(false),
 
@@ -176,6 +182,8 @@ public final class DshCli {
                 && !args.contains("--remove-plugin")
                 && !args.contains("--export-sessions")
                 && !args.contains("--export-modpack")
+                && !args.contains("--upgrade-instance")
+                && !args.contains("--build-scripts")
                 && !args.contains("--install-plugin-file")
                 && !args.contains("--install-modpack")
                 && !args.contains("--restore-profile")
@@ -277,6 +285,17 @@ public final class DshCli {
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
+                case "--upgrade-instance" -> {
+                    command = Command.UPGRADE_INSTANCE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--build-scripts" -> {
+                    command = Command.BUILD_SCRIPTS;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--allow" -> positional.add("--allow");
+                case "--deny" -> positional.add("--deny");
                 case "--export-modpack" -> {
                     command = Command.EXPORT_MODPACK;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
@@ -502,6 +521,77 @@ public final class DshCli {
                     for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
                         out.println("  bundle: " + bundle);
                     }
+                    return 0;
+                }
+                case BUILD_SCRIPTS -> {
+                    if (invocation.arguments().isEmpty()) {
+                        err.println("error: --build-scripts needs an instance");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+
+                    List<String> flags = invocation.arguments().stream()
+                            .filter(value -> value.equals("--allow") || value.equals("--deny")).toList();
+                    List<String> names = invocation.arguments().stream()
+                            .filter(value -> !value.equals(instance.id()) && !value.startsWith("--")).toList();
+
+                    if (flags.isEmpty()) {
+                        for (DshBuildScripts.Pending entry : DshBuildScripts.pending(instance)) {
+                            out.println(entry.name() + ": " + (entry.allowed() == null
+                                    ? "waiting for an answer" : entry.allowed()));
+                        }
+                        return 0;
+                    }
+
+                    boolean allow = flags.contains("--allow");
+                    List<String> targets = names.isEmpty() ? DshBuildScripts.unanswered(instance) : names;
+                    int written = DshBuildScripts.answer(instance, targets, allow);
+                    out.println((allow ? "Allowed" : "Refused") + " install scripts for " + written
+                            + " package(s) in " + instance.id());
+                    return 0;
+                }
+                case UPGRADE_INSTANCE -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --upgrade-instance needs an instance and a version");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    String version = invocation.arguments().get(1);
+
+                    // What the profile holds, read before the install rewrites the
+                    // manifest it is read from.
+                    Map<String, String> dependencies =
+                            DshPluginInstaller.readDependencies(instance.homeDirectory(), instance.profile());
+                    List<String> specs = new ArrayList<>();
+                    for (Map.Entry<String, String> entry : dependencies.entrySet()) {
+                        String declared = entry.getValue() == null ? "" : entry.getValue();
+                        boolean local = declared.startsWith("file:") || declared.startsWith("link:");
+                        specs.add(local || declared.isBlank()
+                                ? entry.getKey() : entry.getKey() + "@" + declared);
+                    }
+
+                    out.println("Moving " + instance.id() + " from " + instance.version() + " to " + version);
+                    DshVersionManager.install(instance, version, out::println);
+                    DshInstanceManager.update(new DshInstance(instance.id(), version, instance.profile(),
+                            instance.workspace(), instance.nodeRuntime(), instance.homeMode(),
+                            instance.customHome(), instance.extraArguments(), instance.environment(),
+                            instance.icon(), instance.iconFile(), instance.portMode(), instance.port(),
+                            instance.createdAt()));
+
+                    if (!specs.isEmpty()) {
+                        out.println("Reinstalling " + specs.size() + " plugin(s)");
+                        DshInstance moved = DshInstanceManager.find(instance.id());
+                        DshPluginInstaller.installSpecs(moved, specs, out::println);
+                    }
+                    out.println("Instance " + instance.id() + " now records " + version);
                     return 0;
                 }
                 case INSTALL_PLUGIN_FILE -> {
@@ -1056,6 +1146,8 @@ public final class DshCli {
                   --remove-plugin <id> <spec>...   remove one or more plugins from an instance profile
                   --export-sessions <id> <file>    write the instance's sessions into a pack
                   --import-pack <id> <file>        read a pack of sessions into an instance
+                  --build-scripts <id> [--allow|--deny] [pkg...]  read or answer what may build
+                  --upgrade-instance <id> <version>  move an instance to another harness version
                   --install-plugin-file <id> <file>  install a plugin from a packed file
                   --export-modpack <id> <file>     write an instance's configuration into a pack
                       --with-sessions                also carry the instance's conversations
