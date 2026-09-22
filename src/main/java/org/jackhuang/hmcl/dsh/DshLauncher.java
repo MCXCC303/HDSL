@@ -21,11 +21,14 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Files;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Turns an [DshInstance] into the exact command and environment to run.
 ///
@@ -114,6 +117,55 @@ public final class DshLauncher {
         return DshNodeRuntime.fromManaged(managed);
     }
 
+    /// The versions whose help has been read, and whether it mentions `--no-open`.
+    private static final Map<String, Boolean> NO_OPEN_SUPPORT = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// Reports whether a version's interface accepts `--no-open`.
+    ///
+    /// Asked of the version itself rather than decided from its number: what a
+    /// release accepts is what its own help says, and a list of version numbers that
+    /// once needed the flag is a list that goes stale.
+    ///
+    /// @param instance the instance
+    /// @return whether the flag may be passed
+    private static boolean acceptsNoOpen(DshInstance instance) {
+        String version = instance.version();
+        Boolean cached = NO_OPEN_SUPPORT.get(version);
+        if (cached != null) {
+            return cached;
+        }
+
+        boolean accepted = false;
+        try {
+            DshNodeRuntime runtime = resolveRuntime(instance);
+            Path script = instance.dshEntryPoint();
+            DshCommand.Result result = DshCommand.run(
+                    List.of(runtime.node().toString(), script.toString(), "--help"),
+                    instance.workspacePath(), Map.of("DSH_HOME", instance.homeDirectory().toString()),
+                    null);
+            accepted = helpMentionsNoOpen(String.join("\n", result.output()));
+        } catch (DshException | IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            // Not knowing is not permission: a flag a version does not accept stops
+            // it from starting at all, and the cost of leaving it out is a browser
+            // tab the harness opens for itself.
+            LOG.warning("Could not read the help of DeepSeek Harness " + version, e);
+        }
+
+        NO_OPEN_SUPPORT.put(version, accepted);
+        return accepted;
+    }
+
+    /// Reports whether a version's help mentions `--no-open`.
+    ///
+    /// @param help the help output
+    /// @return whether the flag is listed
+    static boolean helpMentionsNoOpen(String help) {
+        return help != null && help.contains("--no-open");
+    }
+
     /// Builds the launch plan for an instance.
     ///
     /// @param instance the instance to launch
@@ -157,7 +209,15 @@ public final class DshLauncher {
         command.add(script.toString());
         command.add("--profile");
         command.add(instance.profile());
-        command.addAll(surface.arguments(port));
+        // `--no-open` is newer than the browser surface is: an old release that does
+        // not know the flag exits rather than starting, so it is only passed to a
+        // version whose own help mentions it. The launcher opens the browser once the
+        // readiness line arrives either way.
+        List<String> surfaceArguments = new ArrayList<>(surface.arguments(port));
+        if (surfaceArguments.remove("--no-open") && acceptsNoOpen(instance)) {
+            surfaceArguments.add("--no-open");
+        }
+        command.addAll(surfaceArguments);
         command.addAll(instance.extraArguments());
 
         Map<String, String> environment = new LinkedHashMap<>();
