@@ -105,6 +105,19 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
     /// Which category to keep.
     private final JFXComboBox<String> categoryBox = new JFXComboBox<>();
 
+    /// The version picker, in the position the original keeps its game version in.
+    private final JFXComboBox<String> versionBox = new JFXComboBox<>();
+
+    /// Says how many plugins the filter is holding back, so a shorter list is not
+    /// mistaken for a smaller catalogue.
+    private final Label note = new Label();
+
+    /// Whether only plugins that fit the chosen instance are shown.
+    private boolean onlyFitting;
+
+    /// Which plugins fit, by package name, once it has been worked out.
+    private final java.util.Map<String, Boolean> fitting = new java.util.concurrent.ConcurrentHashMap<>();
+
     /// How to order the results.
     private final JFXComboBox<String> sortBox = new JFXComboBox<>();
 
@@ -193,7 +206,16 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
         pane.addRow(0, new Label(i18n("dsh.download.instance")), instanceBox,
                 new Label(i18n("mods.name")), nameField);
-        pane.addRow(1, new Label(i18n("addon.category")), categoryBox, new Label(i18n("search.sort")), sortBox);
+        versionBox.setMaxWidth(Double.MAX_VALUE);
+        versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
+        versionBox.getItems().setAll(i18n("download.type.all"), i18n("dsh.market.fitting"));
+        versionBox.setValue(i18n("download.type.all"));
+        versionBox.valueProperty().addListener((observable, was, value) -> {
+            onlyFitting = value != null && value.equals(i18n("dsh.market.fitting"));
+            search();
+        });
+        pane.addRow(1, new Label(i18n("addon.category")), categoryBox,
+                new Label(i18n("dsh.market.dsh_version")), versionBox);
 
         categoryBox.setMaxWidth(Double.MAX_VALUE);
         categoryBox.setConverter(FXUtils.stringConverter(Function.identity()));
@@ -208,6 +230,9 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
         search.setOnAction(event -> search());
+
+        note.getStyleClass().add("desc");
+        pane.add(note, 0, 3, 4, 1);
 
         HBox paging = new HBox(8);
         paging.setAlignment(Pos.CENTER_LEFT);
@@ -377,6 +402,43 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         StackPane container = new StackPane(label);
         container.getStyleClass().add("notice-pane");
         return container;
+    }
+
+    /// Reports whether a plugin fits the instance the page installs into.
+    ///
+    /// What fits is decided from the plugin's own peer requirements against the
+    /// packages the instance's harness holds, and the requirements are read from the
+    /// registry for the rows that are shown — once each, in the background, and the
+    /// list is redrawn when an answer arrives.
+    ///
+    /// @param plugin the plugin
+    /// @return whether it fits, or whether it fits as far as is known
+    private boolean fits(DshPluginCatalog.Plugin plugin) {
+        String name = plugin.npm() == null ? plugin.name() : plugin.npm();
+        Boolean known = fitting.get(name);
+        if (known != null) {
+            return known;
+        }
+
+        DshInstance instance = target();
+        if (instance == null || plugin.npm() == null) {
+            return true;
+        }
+
+        fitting.put(name, Boolean.TRUE);
+        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+            org.jackhuang.hmcl.dsh.DshPluginRequirements.coreVersions(instance);
+            com.google.gson.JsonObject peers = org.jackhuang.hmcl.dsh.DshPackageRegistry
+                    .peerDependencies(plugin.npm(), plugin.version());
+            return org.jackhuang.hmcl.dsh.DshPluginRequirements.fits(
+                    peers, org.jackhuang.hmcl.dsh.DshPluginRequirements.coreVersions(instance));
+        }).whenComplete((result, failure) -> FXUtils.runInFX(() -> {
+            fitting.put(name, failure != null || result == null ? Boolean.TRUE : result);
+            if (onlyFitting) {
+                search();
+            }
+        }));
+        return true;
     }
 
     /// Returns the instance the page installs into.

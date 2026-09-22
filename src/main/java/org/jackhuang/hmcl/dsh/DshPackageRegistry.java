@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.dsh;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -26,6 +27,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -121,6 +123,53 @@ public final class DshPackageRegistry {
     ///
     /// @param spec the spec, for example `dshmarket` or `dshmarket@1.48.0`
     /// @return the package name
+    /// Reads the peer requirements a published package declares.
+    ///
+    /// Asked of the package rather than of the catalogue, because the catalogue does not
+    /// carry them. The answer is remembered: a page asks about the same packages again
+    /// whenever it is searched, and a registry is not to be asked twice for the same
+    /// thing.
+    ///
+    /// @param packageName the package
+    /// @param version     the version, or `null` for the latest
+    /// @return the peer requirements, empty when there are none or they cannot be read
+    public static JsonObject peerDependencies(String packageName, @Nullable String version) {
+        String spec = version == null || version.isBlank() ? packageName : packageName + "@" + version;
+        JsonObject cached = PEERS.get(spec);
+        if (cached != null) {
+            return cached;
+        }
+
+        JsonObject peers = new JsonObject();
+        try {
+            DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
+            if (runtime == null || runtime.npm() == null) {
+                return peers;
+            }
+            DshCommand.Result result = DshCommand.run(
+                    List.of(runtime.npm().toString(), "view", spec, "peerDependencies", "--json"),
+                    null, null);
+            String body = String.join("\n", result.output()).trim();
+            if (result.exitCode() == 0 && body.startsWith("{")) {
+                JsonElement parsed = com.google.gson.JsonParser.parseString(body);
+                if (parsed.isJsonObject()) {
+                    peers = parsed.getAsJsonObject();
+                }
+            }
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            LOG.warning("Could not read the peer requirements of " + spec, e);
+        }
+
+        PEERS.put(spec, peers);
+        return peers;
+    }
+
+    /// The peer requirements read so far, by specification.
+    private static final Map<String, JsonObject> PEERS = new java.util.concurrent.ConcurrentHashMap<>();
+
     public static String packageNameOf(String spec) {
         String trimmed = spec.trim();
         if (trimmed.startsWith("@")) {

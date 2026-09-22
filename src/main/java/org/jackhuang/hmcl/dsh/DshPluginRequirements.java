@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
 /// Works out whether a plugin fits the harness an instance runs.
 ///
 /// A plugin declares what it needs in its `peerDependencies`, and those are the
@@ -46,6 +48,52 @@ public final class DshPluginRequirements {
 
     private DshPluginRequirements() {
     }
+
+    /// Reads the versions of the harness's packages that an instance holds.
+    ///
+    /// Read from the instance's own installation rather than from the registry: what an
+    /// instance can run is what it has, and it has an exact set of these packages. The
+    /// answer is remembered per instance version, because it cannot change while the
+    /// instance does not.
+    ///
+    /// @param instance the instance
+    /// @return the package versions, empty when they cannot be read
+    public static Map<String, String> coreVersions(DshInstance instance) {
+        String key = instance.id() + "@" + instance.version();
+        Map<String, String> cached = CORE_VERSIONS.get(key);
+        if (cached != null) {
+            return cached;
+        }
+
+        Map<String, String> versions = new java.util.LinkedHashMap<>();
+        try {
+            java.nio.file.Path manifest = instance.dshDirectory()
+                    .resolve("node_modules").resolve("@deepseek-ai").resolve("dsh")
+                    .resolve("package.json");
+            if (java.nio.file.Files.isRegularFile(manifest)) {
+                JsonObject root = org.jackhuang.hmcl.util.gson.JsonUtils
+                        .fromJsonFile(manifest, JsonObject.class);
+                if (root != null && root.has("dependencies") && root.get("dependencies").isJsonObject()) {
+                    for (Map.Entry<String, JsonElement> entry
+                            : root.getAsJsonObject("dependencies").entrySet()) {
+                        if (entry.getKey().startsWith(CORE_PREFIX) && entry.getValue().isJsonPrimitive()) {
+                            versions.put(entry.getKey(), entry.getValue().getAsString());
+                        }
+                    }
+                }
+            }
+        } catch (DshException | java.io.IOException | RuntimeException e) {
+            LOG.warning("Could not read the packages of " + instance.id(), e);
+        }
+
+        Map<String, String> result = Map.copyOf(versions);
+        CORE_VERSIONS.put(key, result);
+        return result;
+    }
+
+    /// The versions read so far, per instance and version.
+    private static final Map<String, Map<String, String>> CORE_VERSIONS =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     /// Reports whether a plugin fits the versions an instance holds.
     ///

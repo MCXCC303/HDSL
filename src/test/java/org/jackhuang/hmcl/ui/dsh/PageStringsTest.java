@@ -75,6 +75,10 @@ class PageStringsTest {
             "dsh.settings.build_scripts.ask",
             "dsh.instance.upgrade.missing",
             "download.install.success",
+            "download.type.all",
+            "dsh.market.dsh_version",
+            "dsh.market.fitting",
+            "dsh.market.fitting.hidden",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",
