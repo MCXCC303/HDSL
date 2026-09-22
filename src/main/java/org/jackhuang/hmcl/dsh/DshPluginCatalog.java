@@ -26,6 +26,8 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -236,15 +238,29 @@ public final class DshPluginCatalog {
     /// @throws DshException when it cannot be read or does not parse
     public static Catalog fetch() throws DshException {
         String url = catalogUrl();
+        Path cached = cachedFile(url);
         String body;
         try {
             body = NetworkUtils.doGet(URI.create(url));
+            // Kept, so that the next fetch has something to fall back on.
+            try {
+                Files.createDirectories(cached.getParent());
+                Files.writeString(cached, body);
+            } catch (IOException e) {
+                LOG.warning("Could not keep a copy of the plugin catalogue", e);
+            }
         } catch (IOException | RuntimeException e) {
-            // The address is in the message for the same reason it is in the Node
-            // index's: a network that reaches one host may not reach another, and
-            // which host failed is the one thing that says so.
-            throw new DshException("Failed to read the plugin catalogue from " + url
-                    + " (" + e.getMessage() + ")", e);
+            // The address is in the message for the same reason it is in the Node index's: a
+            // network that reaches one host may not reach another, and which host failed is the
+            // one thing that says so. But the last copy is worth more than nothing: a launcher
+            // that cannot reach the catalogue can still show what it showed yesterday.
+            String kept = readCached(cached);
+            if (kept == null) {
+                throw new DshException("Failed to read the plugin catalogue from " + url
+                        + " (" + e.getMessage() + ")", e);
+            }
+            LOG.info("The plugin catalogue could not be fetched; using the copy kept at " + cached);
+            body = kept;
         }
         try {
             Catalog catalog = parse(body);
@@ -253,6 +269,81 @@ public final class DshPluginCatalog {
         } catch (RuntimeException e) {
             throw new DshException("The plugin catalogue had an unexpected shape", e);
         }
+    }
+
+    /// Returns the directory the launcher keeps fetched catalogues in.
+    ///
+    /// @return the directory, which may not exist
+    public static Path cacheDirectory() {
+        try {
+            String configured = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .cacheDirectoryProperty().get();
+            if (configured != null && !configured.isBlank()) {
+                return Path.of(configured.trim());
+            }
+        } catch (RuntimeException e) {
+            LOG.warning("Could not read the cache directory", e);
+        }
+        return DshPaths.CATALOG;
+    }
+
+    /// Returns the file one address's copy is kept in.
+    ///
+    /// The name comes from the address, so pointing the launcher at another catalogue does not
+    /// overwrite the copy of the first one.
+    ///
+    /// @param url the address
+    /// @return the file, which may not exist
+    static Path cachedFile(String url) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            StringBuilder name = new StringBuilder();
+            for (byte value : digest.digest(url.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+                name.append(String.format("%02x", value));
+            }
+            return cacheDirectory().resolve(name.substring(0, 16) + ".json");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return cacheDirectory().resolve("catalog.json");
+        }
+    }
+
+    /// Reads a kept copy.
+    ///
+    /// @param file the file
+    /// @return its text, or `null` when it is not there or cannot be read
+    private static @org.jetbrains.annotations.Nullable String readCached(Path file) {
+        try {
+            return Files.isRegularFile(file) ? Files.readString(file) : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /// Removes every kept copy.
+    ///
+    /// @return how many files were removed
+    public static int clearCache() {
+        Path directory = cacheDirectory();
+        if (!Files.isDirectory(directory)) {
+            return 0;
+        }
+        int removed = 0;
+        try (java.util.stream.Stream<Path> files = Files.list(directory)) {
+            for (Path file : files.toList()) {
+                try {
+                    if (Files.isDirectory(file)) {
+                        continue;
+                    }
+                    Files.delete(file);
+                    removed++;
+                } catch (IOException e) {
+                    LOG.warning("Could not remove " + file, e);
+                }
+            }
+        } catch (IOException e) {
+            LOG.warning("Could not list " + directory, e);
+        }
+        return removed;
     }
 
     /// Parses a catalogue document.

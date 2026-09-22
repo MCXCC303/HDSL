@@ -182,6 +182,17 @@ public final class LauncherSettings {
         return variables == null ? Map.of() : variables;
     }
 
+    /// Where the launcher keeps what it fetched, or empty for the default place.
+    private final javafx.beans.property.StringProperty cacheDirectory =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns where the launcher keeps what it fetched.
+    ///
+    /// @return the property, empty for the default place
+    public javafx.beans.property.StringProperty cacheDirectoryProperty() {
+        return cacheDirectory;
+    }
+
     /// How the launcher reaches the network.
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshProxyMode> proxyMode =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM);
