@@ -46,6 +46,7 @@ import org.jackhuang.hmcl.ui.construct.ImagePickerItem;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineInheritableSelectButton;
+import org.jackhuang.hmcl.ui.construct.LineInheritableToggleButton;
 import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
@@ -120,13 +121,44 @@ public final class InstanceSettingsPage extends ScrollPane {
                 ComponentList.createComponentListTitle(i18n("dsh.settings.environment")), environmentList,
                 ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList,
                 ComponentList.createComponentListTitle(i18n("dsh.settings.build_scripts")), buildScriptsList(),
-                ComponentList.createComponentListTitle(i18n("dsh.settings.env_vars")), buildEnvironmentVariablesList());
+                ComponentList.createComponentListTitle(i18n("dsh.settings.env_vars")), buildEnvironmentVariablesList(),
+                ComponentList.createComponentListTitle(i18n("dsh.settings.debug")), buildDebugList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to the
         // content node and throws on a null content.
         FXUtils.smoothScrolling(this);
+    }
+
+    /// Builds the row about this instance's debug lines.
+    ///
+    /// It follows the launcher until it is told otherwise, which is the shape every
+    /// per-instance setting here has: the globe beside its name is the way in.
+    ///
+    /// @return the list
+    private ComponentList buildDebugList() {
+        LineInheritableToggleButton row = new LineInheritableToggleButton();
+        row.setTitle(i18n("dsh.settings.debug.log"));
+
+        Boolean own = DshInstanceSettings.debugLog(instance);
+        row.overriddenProperty().set(own != null);
+        row.rawValueProperty().set(own != null ? own : settings().debugLogProperty().get());
+
+        javafx.beans.value.ChangeListener<Boolean> store = (observable, was, value) -> {
+            try {
+                DshInstanceSettings.setDebugLog(instance,
+                        row.overriddenProperty().get() ? row.rawValueProperty().get() : null);
+            } catch (DshException e) {
+                LOG.warning("Failed to store the debug log setting", e);
+            }
+        };
+        row.overriddenProperty().addListener(store);
+        row.rawValueProperty().addListener(store);
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(row);
+        return list;
     }
 
     /// Builds the editor for the variables an instance runs with.

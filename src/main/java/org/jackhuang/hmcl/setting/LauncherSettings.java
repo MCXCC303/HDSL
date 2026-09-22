@@ -371,6 +371,25 @@ public final class LauncherSettings {
         return buildScriptPolicy;
     }
 
+    /// Returns whether debug lines are written for an instance.
+    ///
+    /// The instance's own answer wins; without one, the launcher's applies. One method, so the
+    /// interface and the launch cannot disagree about which is in force.
+    ///
+    /// @param instanceId the instance
+    /// @return whether debug lines are written
+    public boolean debugLogFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            Boolean own = org.jackhuang.hmcl.dsh.DshInstanceSettings.debugLog(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return debugLog.get();
+    }
+
     /// Returns the launcher's policy.
     ///
     /// @return the policy

@@ -72,6 +72,40 @@ public final class DshInstanceSettings {
         write(instance, "buildScriptPolicy", policy == null ? null : new com.google.gson.JsonPrimitive(policy));
     }
 
+    /// Reads whether this instance writes the launcher's debug lines.
+    ///
+    /// @param instance the instance
+    /// @return the choice made for this instance, or `null` to follow the launcher
+    public static @Nullable Boolean debugLog(DshInstance instance) {
+        return booleanOf(instance, "debugLog");
+    }
+
+    /// Records whether this instance writes the launcher's debug lines.
+    ///
+    /// @param instance the instance
+    /// @param value    the choice, or `null` to follow the launcher
+    /// @throws DshException when the file cannot be written
+    public static void setDebugLog(DshInstance instance, @Nullable Boolean value) throws DshException {
+        write(instance, "debugLog", value == null ? null : new com.google.gson.JsonPrimitive(value));
+    }
+
+    /// Reads a boolean member.
+    ///
+    /// @param instance the instance
+    /// @param name     the member
+    /// @return the value, or `null` when it is absent or not a boolean
+    private static @Nullable Boolean booleanOf(DshInstance instance, String name) {
+        JsonObject root = read(instance);
+        if (root == null || !root.has(name) || !root.get(name).isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            return root.get(name).getAsBoolean();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /// Reads whether install scripts may run without being asked about.
     ///
     /// @param instance the instance

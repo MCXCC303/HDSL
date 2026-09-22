@@ -146,6 +146,11 @@ public final class DshProcess {
     /// @return the running handle
     /// @throws DshException when the plan cannot be built or the process cannot start
     public static DshProcess start(DshInstance instance) throws DshException {
+        // An instance may answer for itself about debug lines, so the switch is applied here
+        // rather than once at startup: what is written while this instance runs is what its
+        // own answer says.
+        org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
+                org.jackhuang.hmcl.setting.SettingsManager.settings().debugLogFor(instance.id()));
         // Whatever was asked to happen before this instance starts happens first, and a
         // failure stops the launch: it was asked for, and starting anyway would ignore it.
         DshCustomCommands.run(instance,
