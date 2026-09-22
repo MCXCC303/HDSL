@@ -35,6 +35,7 @@ import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -183,6 +184,17 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
     /// Builds the search form.
     ///
+    /// The first row is the original's version-list toolbar, row for row: the name on
+    /// the left with its box taking what is left, then the filter's own name and its
+    /// capped box, then the button. That is what the original's download page looks
+    /// like — its plugins are reached from the same page as its game versions, and
+    /// both lead with 名称 — so a version list and a plugin list that are opened from
+    /// the same place are searched the same way.
+    ///
+    /// What is left over goes on a second row: the instance the install will go into,
+    /// and the two ways of narrowing the catalogue further, which the original's
+    /// version list does not have because it has nothing to narrow by.
+    ///
     /// @return the form, on the surface the original puts it on
     private Node buildSearchPane() {
         GridPane pane = new GridPane();
@@ -191,26 +203,21 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         pane.setVgap(10);
         pane.setPadding(new Insets(10));
 
-        ColumnConstraints first = new ColumnConstraints();
-        ColumnConstraints second = new ColumnConstraints();
-        second.setHgrow(Priority.ALWAYS);
-        ColumnConstraints third = new ColumnConstraints();
-        ColumnConstraints fourth = new ColumnConstraints();
-        fourth.setHgrow(Priority.ALWAYS);
-        pane.getColumnConstraints().setAll(first, second, third, fourth);
+        // The columns the rows below share: a label takes its own width, and the two filter
+        // boxes share the rest, so the box on the second row lines up with the one on the
+        // first. The last column takes the action button.
+        ColumnConstraints labelColumn = new ColumnConstraints();
+        labelColumn.setMinWidth(Region.USE_PREF_SIZE);
+        ColumnConstraints fieldColumn = new ColumnConstraints();
+        fieldColumn.setHgrow(Priority.ALWAYS);
+        ColumnConstraints filterColumn = new ColumnConstraints();
+        filterColumn.setHgrow(Priority.ALWAYS);
+        ColumnConstraints actionColumn = new ColumnConstraints();
+        pane.getColumnConstraints().setAll(labelColumn, fieldColumn, labelColumn, filterColumn, actionColumn);
 
         nameField.setPromptText(i18n("search.hint.chinese"));
         HBox.setHgrow(nameField, Priority.ALWAYS);
         FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
-        instanceBox.setMaxWidth(Double.MAX_VALUE);
-        instanceBox.setConverter(FXUtils.stringConverter(
-                instance -> instance == null ? i18n("dsh.market.no_instance") : instance.id()));
-        instanceBox.getItems().setAll(DshInstanceManager.list());
-        instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
-        pane.addRow(0, new Label(i18n("dsh.download.instance")), instanceBox,
-                new Label(""), new Label(""));
-        pane.addRow(1, new Label(i18n("mods.name")), nameField,
-                new Label(i18n("dsh.market.dsh_version")), versionBox);
         versionBox.setMaxWidth(Double.MAX_VALUE);
         versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
         versionBox.getItems().setAll(i18n("download.type.all"));
@@ -221,9 +228,26 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
             search();
         });
         loadVersions();
-        pane.addRow(2, new Label(i18n("addon.category")), categoryBox,
-                new Label(i18n("search.sort")), sortBox);
 
+        JFXButton search = new JFXButton(i18n("search"));
+        search.getStyleClass().add("jfx-button-raised");
+        search.setOnAction(event -> search());
+
+        // The first row, in the original's order: 名称, its box, 版本类型, its box, the button.
+        pane.addRow(0, new Label(i18n("mods.name")), nameField,
+                new Label(i18n("dsh.market.dsh_version")), versionBox, search);
+
+        // The rest, on the row below it.
+        instanceBox.setMaxWidth(Double.MAX_VALUE);
+        instanceBox.setConverter(FXUtils.stringConverter(
+                instance -> instance == null ? i18n("dsh.market.no_instance") : instance.id()));
+        instanceBox.getItems().setAll(DshInstanceManager.list());
+        instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
+
+        // No choice yet: the catalogue has not been read, so there is nothing to choose
+        // between. A prompt says so; without one the box draws as an empty rectangle that
+        // the card's surface shows through, which reads as a missing control.
+        categoryBox.setPromptText(i18n("download.type.all"));
         categoryBox.setMaxWidth(Double.MAX_VALUE);
         categoryBox.setConverter(FXUtils.stringConverter(Function.identity()));
         categoryBox.valueProperty().addListener((observable, was, value) -> search());
@@ -234,22 +258,26 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         sortBox.setValue("downloads");
         sortBox.valueProperty().addListener((observable, was, value) -> search());
 
+        pane.addRow(1, new Label(i18n("dsh.download.instance")), instanceBox,
+                new Label(i18n("addon.category")), categoryBox);
+        pane.addRow(2, new Label(i18n("search.sort")), sortBox, new Label(""), new Label(""));
 
-        JFXButton search = new JFXButton(i18n("search"));
-        search.getStyleClass().add("jfx-button-raised");
-        search.setOnAction(event -> search());
+        // Nothing else goes in the fifth column: the search button has to sit at the top
+        // right of the card, and a control on any lower row would stretch that column and
+        // carry the button off the edge.
+        GridPane.setColumnSpan(nameField, 2);
 
         note.getStyleClass().add("desc");
-        pane.add(note, 0, 4, 4, 1);
+        pane.add(note, 0, 3, 5, 1);
 
         HBox paging = new HBox(8);
         paging.setAlignment(Pos.CENTER_LEFT);
         paging.getChildren().setAll(pagingButtons());
         HBox.setHgrow(paging, Priority.ALWAYS);
 
-        HBox buttons = new HBox(8, paging, search);
+        HBox buttons = new HBox(8, paging);
         buttons.setAlignment(Pos.CENTER_RIGHT);
-        pane.add(buttons, 0, 3, 4, 1);
+        pane.add(buttons, 0, 4, 5, 1);
 
         return pane;
     }
