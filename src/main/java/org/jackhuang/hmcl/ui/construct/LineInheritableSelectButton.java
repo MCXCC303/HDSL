@@ -42,6 +42,12 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 @NotNullByDefault
 public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.UnknownNullability Object>
         extends LineSelectButton<T> {
+    /// The size of the mark beside a row's name.
+    private static final int INHERIT_ICON_SIZE = 12;
+
+    /// How faint the mark is while the launcher is the one deciding.
+    private static final double INHERIT_FAINT = 0.45;
+
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
 
@@ -55,6 +61,13 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         getStyleClass().add("line-inheritable-value");
 
         JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
+        // The helper's style is what colours it; its size is the row's, and the original's mark is
+        // small — thirty pixels of globe beside a name is a control, not a mark.
+        inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
+        inheritButton.setPrefSize(22, 22);
+        inheritButton.setMaxSize(22, 22);
+        inheritButton.setMinSize(javafx.scene.layout.Region.USE_PREF_SIZE,
+                javafx.scene.layout.Region.USE_PREF_SIZE);
         FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit"));
         inheritButton.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, event -> {
             setOverridden(!isOverridden());
@@ -69,7 +82,13 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // Following the launcher is not a choice of this row's, so the value is not editable while
         // it does — but the row itself stays enabled, because the globe on it is the way in, and a
         // disabled row disables what is on it.
-        overridden.addListener((observable, was, value) -> applyEditable());
+        overridden.addListener((observable, was, value) -> {
+            inheritButton.setOpacity(value ? 1.0 : INHERIT_FAINT);
+            FXUtils.installFastTooltip(inheritButton,
+                    i18n(value ? "dsh.settings.override.tooltip" : "dsh.settings.inherit.tooltip"));
+            applyEditable();
+        });
+        inheritButton.setOpacity(isOverridden() ? 1.0 : INHERIT_FAINT);
         applyEditable();
     }
 

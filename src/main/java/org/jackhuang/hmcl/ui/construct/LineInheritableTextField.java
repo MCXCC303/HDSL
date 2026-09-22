@@ -44,6 +44,12 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 /// clicked.
 @NotNullByDefault
 public class LineInheritableTextField extends LinePane {
+    /// The size of the mark beside a row's name.
+    private static final int INHERIT_ICON_SIZE = 12;
+
+    /// How faint the mark is while the launcher is the one deciding.
+    private static final double INHERIT_FAINT = 0.45;
+
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
 
@@ -59,6 +65,13 @@ public class LineInheritableTextField extends LinePane {
         setRight(field);
 
         JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
+        // The helper's style is what colours it; its size is the row's, and the original's mark is
+        // small — thirty pixels of globe beside a name is a control, not a mark.
+        inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
+        inheritButton.setPrefSize(22, 22);
+        inheritButton.setMaxSize(22, 22);
+        inheritButton.setMinSize(javafx.scene.layout.Region.USE_PREF_SIZE,
+                javafx.scene.layout.Region.USE_PREF_SIZE);
         FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit.tooltip"));
         inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
             setOverridden(!isOverridden());
