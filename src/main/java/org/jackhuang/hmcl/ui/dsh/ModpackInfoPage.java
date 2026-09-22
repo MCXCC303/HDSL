@@ -89,22 +89,22 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         list.getContent().add(textRow(i18n("modpack.name"), name));
         list.getContent().add(textRow(i18n("archive.version"), packVersion));
         list.getContent().add(textRow(i18n("archive.author"), author));
-        javafx.scene.Node description = descriptionRow();
-        // A list reads the room a child should take from this property, not from the VBox helper.
-        description.getProperties().put("ComponentList.vgrow", javafx.scene.layout.Priority.ALWAYS);
-        if (description instanceof javafx.scene.layout.Region region) {
-            region.setMaxHeight(Double.MAX_VALUE);
-        }
-        list.getContent().add(description);
+        // The description row is the height of its own block, like every other row. It used to be
+        // given the card's leftover height and told to take it, and since the card was told to fill
+        // the scroll pane, every extra pixel of window became another pixel of text area: the row
+        // grew without bound and the fields above it drifted up the page. The original's block is
+        // the same shape and does the same thing — a label, then an area of its own height.
+        list.getContent().add(descriptionRow());
 
         list.setMaxHeight(Double.MAX_VALUE);
         ScrollPane scroll = new ScrollPane(list);
         scroll.setFitToWidth(true);
         VBox.setVgrow(scroll, javafx.scene.layout.Priority.ALWAYS);
-        // A scroll pane sizes its content to the content's own preference unless it is told
-        // otherwise, which is why the page stopped short of the bottom: the card inside it was as
-        // tall as its rows and no taller, however much room the wizard had.
-        scroll.setFitToHeight(true);
+        // Width only. Filling the height as well would make the card as tall as the scroll pane,
+        // and the card's rows then share that extra height out — the description row, being the one
+        // with no height of its own to insist on, took all of it, so every pixel the window grew by
+        // became another pixel of text area. The card is as tall as its rows, which is what its
+        // rows add up to.
         scroll.setFitToWidth(true);
         getChildren().add(scroll);
 
@@ -157,17 +157,26 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
     ///
     /// @return the row
     private javafx.scene.Node descriptionRow() {
-        VBox box = new VBox(6);
-        box.setPadding(new Insets(8, 12, 8, 12));
+        // The original's spacing for this block, and its arrangement: the name above the box rather
+        // than beside it, because a description is a paragraph and a paragraph beside a label would
+        // be a column two words wide.
+        VBox box = new VBox(8);
 
         Label label = new Label(i18n("modpack.description"));
         com.jfoenix.controls.JFXTextArea area = new com.jfoenix.controls.JFXTextArea();
         area.setPrefRowCount(6);
-        javafx.scene.layout.VBox.setVgrow(area, javafx.scene.layout.Priority.ALWAYS);
+        // Six lines' worth, stated in pixels as well as in rows: a row count is a preference the
+        // surrounding layout does not consult, so a box sized only by `setPrefRowCount` grows to
+        // whatever height it is offered. That is what made the edit area unbounded — the card was
+        // as tall as the wizard, and this box, being the only thing in it with no height to insist
+        // on, took every pixel the window gained.
+        FXUtils.setLimitHeight(area, 132);
         area.setWrapText(true);
         area.textProperty().bindBidirectional(description);
         box.getChildren().addAll(label, area);
-        javafx.scene.layout.VBox.setVgrow(area, javafx.scene.layout.Priority.ALWAYS);
+        // And the block itself is its own height, so the row cannot be stretched even if the card
+        // around it is taller than its rows.
+        box.setMaxHeight(javafx.scene.layout.Region.USE_PREF_SIZE);
         return box;
     }
 

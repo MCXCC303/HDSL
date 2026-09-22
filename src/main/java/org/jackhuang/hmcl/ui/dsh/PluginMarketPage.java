@@ -104,7 +104,12 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
     private final JFXTextField nameField = new JFXTextField();
 
     /// Which category to keep.
-    private final JFXComboBox<String> categoryBox = new JFXComboBox<>();
+    ///
+    /// Its own type with an "all" member rather than an empty string: an empty value is drawn
+    /// together with the prompt, because the prompt is a second node rather than a placeholder for
+    /// the value, so the box showed the word twice. It is also what lets the filter be a filter —
+    /// an empty string cannot be told apart from "nothing chosen" when the search asks.
+    private final JFXComboBox<CategoryFilter> categoryBox = new JFXComboBox<>();
 
     /// The version picker, in the position the original keeps its game version in.
     private final JFXComboBox<String> versionBox = new JFXComboBox<>();
@@ -203,21 +208,37 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         pane.setVgap(10);
         pane.setPadding(new Insets(10));
 
-        // The columns the rows below share: a label takes its own width, and the two filter
-        // boxes share the rest, so the box on the second row lines up with the one on the
-        // first. The last column takes the action button.
-        ColumnConstraints labelColumn = new ColumnConstraints();
-        labelColumn.setMinWidth(Region.USE_PREF_SIZE);
+        // The original's own search panel, from the tab it keeps its mods in: the thing everything
+        // below is about takes a line of its own across the whole card, then two rows of
+        // name-and-box — what to search for and which version, then which category and how to order
+        // the answers — and the paging with the button at the end.
+        //
+        //   [ 游戏                                   ▾ ]
+        //   [ 名称 ............ ] [ 游戏版本 ......... ▾ ]
+        //   [ 类别 ......... ▾  ] [ 排序 ........... ▾ ]
+        //   [ 分页 … ]                                     [ 搜索 ]
+        //
+        // Four columns: a name, a box that takes what is left, another name, another such box.
+        ColumnConstraints nameColumn = new ColumnConstraints();
+        nameColumn.setMinWidth(Region.USE_PREF_SIZE);
         ColumnConstraints fieldColumn = new ColumnConstraints();
         fieldColumn.setHgrow(Priority.ALWAYS);
-        ColumnConstraints filterColumn = new ColumnConstraints();
-        filterColumn.setHgrow(Priority.ALWAYS);
-        ColumnConstraints actionColumn = new ColumnConstraints();
-        pane.getColumnConstraints().setAll(labelColumn, fieldColumn, labelColumn, filterColumn, actionColumn);
+        ColumnConstraints secondFieldColumn = new ColumnConstraints();
+        secondFieldColumn.setHgrow(Priority.ALWAYS);
+        pane.getColumnConstraints().setAll(nameColumn, fieldColumn, nameColumn, secondFieldColumn);
 
         nameField.setPromptText(i18n("search.hint.chinese"));
-        HBox.setHgrow(nameField, Priority.ALWAYS);
+        // A grid cell gives a child what it asks for, and a field asks for the width of its prompt;
+        // without this the box stops short of the column it is in.
+        nameField.setMaxWidth(Double.MAX_VALUE);
         FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
+
+        instanceBox.setMaxWidth(Double.MAX_VALUE);
+        instanceBox.setConverter(FXUtils.stringConverter(
+                instance -> instance == null ? i18n("dsh.market.no_instance") : instance.id()));
+        instanceBox.getItems().setAll(DshInstanceManager.list());
+        instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
+
         versionBox.setMaxWidth(Double.MAX_VALUE);
         versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
         versionBox.getItems().setAll(i18n("download.type.all"));
@@ -229,27 +250,10 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         });
         loadVersions();
 
-        JFXButton search = new JFXButton(i18n("search"));
-        search.getStyleClass().add("jfx-button-raised");
-        search.setOnAction(event -> search());
-
-        // The first row, in the original's order: 名称, its box, 版本类型, its box, the button.
-        pane.addRow(0, new Label(i18n("mods.name")), nameField,
-                new Label(i18n("dsh.market.dsh_version")), versionBox, search);
-
-        // The rest, on the row below it.
-        instanceBox.setMaxWidth(Double.MAX_VALUE);
-        instanceBox.setConverter(FXUtils.stringConverter(
-                instance -> instance == null ? i18n("dsh.market.no_instance") : instance.id()));
-        instanceBox.getItems().setAll(DshInstanceManager.list());
-        instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
-
-        // No choice yet: the catalogue has not been read, so there is nothing to choose
-        // between. A prompt says so; without one the box draws as an empty rectangle that
-        // the card's surface shows through, which reads as a missing control.
-        categoryBox.setPromptText(i18n("download.type.all"));
         categoryBox.setMaxWidth(Double.MAX_VALUE);
-        categoryBox.setConverter(FXUtils.stringConverter(Function.identity()));
+        categoryBox.setConverter(FXUtils.stringConverter(CategoryFilter::displayName));
+        categoryBox.getItems().add(CategoryFilter.ALL);
+        categoryBox.getSelectionModel().select(CategoryFilter.ALL);
         categoryBox.valueProperty().addListener((observable, was, value) -> search());
 
         sortBox.setMaxWidth(Double.MAX_VALUE);
@@ -258,26 +262,31 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         sortBox.setValue("downloads");
         sortBox.valueProperty().addListener((observable, was, value) -> search());
 
-        pane.addRow(1, new Label(i18n("dsh.download.instance")), instanceBox,
-                new Label(i18n("addon.category")), categoryBox);
-        pane.addRow(2, new Label(i18n("search.sort")), sortBox, new Label(""), new Label(""));
+        // The instance the install goes into, across the top: it is what every filter below is
+        // narrowing a list *for*, which is why the original leads with it and gives it the width.
+        pane.add(new Label(i18n("dsh.download.instance")), 0, 0);
+        pane.add(instanceBox, 1, 0, 3, 1);
 
-        // Nothing else goes in the fifth column: the search button has to sit at the top
-        // right of the card, and a control on any lower row would stretch that column and
-        // carry the button off the edge.
-        GridPane.setColumnSpan(nameField, 2);
+        pane.addRow(1, new Label(i18n("mods.name")), nameField,
+                new Label(i18n("dsh.market.dsh_version")), versionBox);
+        pane.addRow(2, new Label(i18n("addon.category")), categoryBox,
+                new Label(i18n("search.sort")), sortBox);
 
         note.getStyleClass().add("desc");
-        pane.add(note, 0, 3, 5, 1);
+        pane.add(note, 0, 3, 4, 1);
+
+        JFXButton search = new JFXButton(i18n("search"));
+        search.getStyleClass().add("jfx-button-raised");
+        search.setOnAction(event -> search());
 
         HBox paging = new HBox(8);
         paging.setAlignment(Pos.CENTER_LEFT);
         paging.getChildren().setAll(pagingButtons());
         HBox.setHgrow(paging, Priority.ALWAYS);
 
-        HBox buttons = new HBox(8, paging);
+        HBox buttons = new HBox(8, paging, search);
         buttons.setAlignment(Pos.CENTER_RIGHT);
-        pane.add(buttons, 0, 4, 5, 1);
+        pane.add(buttons, 0, 4, 4, 1);
 
         return pane;
     }
@@ -372,13 +381,15 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
                 return;
             }
 
-            List<String> categories = new ArrayList<>();
-            categories.add("");
-            categories.addAll(catalogue.categories());
+            // The categories the catalogue publishes, after the "all" member the box starts on.
+            List<CategoryFilter> categories = new ArrayList<>();
+            categories.add(CategoryFilter.ALL);
+            for (String category : catalogue.categories()) {
+                categories.add(new CategoryFilter(category));
+            }
+            CategoryFilter chosen = categoryBox.getValue();
             categoryBox.getItems().setAll(categories);
-            categoryBox.setConverter(FXUtils.stringConverter(
-                    key -> key == null || key.isEmpty() ? i18n("download.type.all") : key));
-            categoryBox.setValue("");
+            categoryBox.getSelectionModel().select(chosen == null ? CategoryFilter.ALL : chosen);
 
             all.setAll(catalogue.plugins());
             loaded = true;
@@ -388,12 +399,43 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         }));
     }
 
+    /// One category, or every one of them.
+    ///
+    /// The "all" answer is a member rather than a null or an empty string so that it can be the
+    /// box's selection: the original's version filter is built the same way, and for the same
+    /// reason — a filter that is "not chosen yet" draws differently from one that says "all".
+    ///
+    /// @param name the catalogue's category, or `null` for the member that keeps every one
+    record CategoryFilter(@Nullable String name) {
+        /// The member that keeps everything.
+        static final CategoryFilter ALL = new CategoryFilter(null);
+
+        /// Reports whether a plugin's category passes this filter.
+        ///
+        /// @param category the plugin's category
+        /// @return whether to keep it
+        boolean accepts(@Nullable String category) {
+            return name == null || name.equals(category);
+        }
+
+        /// Returns what the box shows for this member.
+        ///
+        /// @return the category's name, or the word for all of them
+        String displayName() {
+            return name == null ? i18n("download.type.all") : name;
+        }
+    }
+
     /// Filters, sorts and pages what the catalogue holds.
     private void search() {
         String query = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase();
+        CategoryFilter category = categoryBox.getValue();
         List<DshPluginCatalog.Plugin> matching = new ArrayList<>();
         for (DshPluginCatalog.Plugin plugin : DshPluginCatalog.sorted(all, sortBox.getValue())) {
             if (!query.isEmpty() && !matches(plugin, query)) {
+                continue;
+            }
+            if (category != null && !category.accepts(plugin.category())) {
                 continue;
             }
             matching.add(plugin);
