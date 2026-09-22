@@ -113,13 +113,15 @@ public final class DownloadSettingsPage extends ScrollPane {
     /// @return the list
     private ComponentList buildDownloadList() {
         com.jfoenix.controls.JFXTextField directory = new com.jfoenix.controls.JFXTextField();
-        directory.setMinWidth(260);
+        directory.setMinWidth(220);
         directory.setPromptText(org.jackhuang.hmcl.dsh.DshPaths.CATALOG.toString());
         directory.textProperty().bindBidirectional(settings().cacheDirectoryProperty());
 
         com.jfoenix.controls.JFXButton clear = new com.jfoenix.controls.JFXButton(
                 i18n("dsh.settings.download.cache.clear"));
         clear.getStyleClass().add("jfx-button-border");
+        // Wide enough for its own label: a button squeezed to "清…" says nothing.
+        clear.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
         clear.setOnAction(event -> {
             // Says what it did, because a button that quietly removes nothing looks broken.
             int removed = org.jackhuang.hmcl.dsh.DshPluginCatalog.clearCache();
