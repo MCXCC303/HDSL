@@ -606,18 +606,18 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
             content.addTags(List.of(plugin.category(), plugin.owner()));
             content.addTag(plugin.sourceKind());
 
-            JFXButton open = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
-            open.setMouseTransparent(true);
-            // The original's row: an HBox with the content growing beside what leads
-            // it, a hand cursor because the whole row is pressable, and the surface
-            // the list's cards wear. There is no icon here, because the catalogue
-            // publishes none — a made-up one would be a picture of nothing.
+            // The original's row: content that grows to fill it, a hand cursor because the whole
+            // row is pressable, and the surface the list's cards wear. There is no icon here,
+            // because the catalogue publishes none — a made-up one would be a picture of nothing.
+            // Nor is there an arrow at the end: the row is pressable in its entirety, and the
+            // original's mod rows have nothing there either. It was carried over from a list whose
+            // rows led somewhere else and read as a button that was not one.
             HBox row = new HBox(8);
             row.setPadding(new Insets(8));
             row.setAlignment(Pos.CENTER_LEFT);
             row.setCursor(javafx.scene.Cursor.HAND);
             HBox.setHgrow(content, Priority.ALWAYS);
-            row.getChildren().addAll(content, open);
+            row.getChildren().add(content);
             getContainer().getChildren().setAll(row);
             if (!getContainer().getStyleClass().contains("card-no-padding")) {
                 getContainer().getStyleClass().add("card-no-padding");
