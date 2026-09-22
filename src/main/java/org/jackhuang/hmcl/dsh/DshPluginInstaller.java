@@ -271,7 +271,7 @@ public final class DshPluginInstaller {
         Map<String, String> environment = new java.util.LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());
         environment.putAll(runtime.pathEnvironment());
-        environment.putAll(instance.environment());
+        environment.putAll(DshEnvironment.of(instance));
 
         boolean retried = false;
         while (true) {

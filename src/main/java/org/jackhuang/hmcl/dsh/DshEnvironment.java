@@ -19,6 +19,8 @@ package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
 /// The launcher-wide environment an instance may inherit from.
@@ -64,5 +66,64 @@ public final class DshEnvironment {
     public static DshHomeMode homeModeDefault() {
         DshHomeMode value = homeDefault.get();
         return value == null || value == DshHomeMode.GLOBAL ? DshHomeMode.ISOLATED : value;
+    }
+
+
+    /// Returns the variables an instance runs with.
+    ///
+    /// @param instance the instance
+    /// @return the variables, never `null`
+    public static Map<String, String> of(DshInstance instance) {
+        Map<String, String> merged = new LinkedHashMap<>();
+        try {
+            Map<String, String> launcherWide =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings().globalEnvironment();
+            merged.putAll(launcherWide);
+        } catch (RuntimeException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                    "Could not read the launcher's environment", e);
+        }
+        merged.putAll(instance.environment());
+        return merged;
+    }
+
+    /// Parses a set written as lines of `NAME=VALUE`.
+    ///
+    /// The launcher's own set is edited as text, because a list of one-line pairs is what people
+    /// paste into a box; a line without an `=` is a name with an empty value, and blank lines and
+    /// lines starting with `#` are comments.
+    ///
+    /// @param text the text
+    /// @return the variables, in the order they were written
+    public static Map<String, String> parse(String text) {
+        Map<String, String> variables = new LinkedHashMap<>();
+        if (text == null) {
+            return variables;
+        }
+        for (String line : text.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                continue;
+            }
+            int equals = trimmed.indexOf('=');
+            if (equals < 0) {
+                variables.put(trimmed, "");
+            } else {
+                variables.put(trimmed.substring(0, equals).trim(), trimmed.substring(equals + 1).trim());
+            }
+        }
+        return variables;
+    }
+
+    /// Writes a set as lines of `NAME=VALUE`.
+    ///
+    /// @param variables the variables
+    /// @return the text, one variable per line
+    public static String format(Map<String, String> variables) {
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, String> entry : variables.entrySet()) {
+            text.append(entry.getKey()).append('=').append(entry.getValue()).append('\n');
+        }
+        return text.toString();
     }
 }

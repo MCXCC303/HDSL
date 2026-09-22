@@ -253,7 +253,7 @@ public final class DshLauncher {
         Map<String, String> environment = new LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());
         environment.putAll(runtime.pathEnvironment());
-        environment.putAll(instance.environment());
+        environment.putAll(DshEnvironment.of(instance));
 
         LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,

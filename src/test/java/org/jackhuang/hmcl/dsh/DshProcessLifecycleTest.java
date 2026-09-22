@@ -200,7 +200,9 @@ class DshProcessLifecycleTest {
 
         // The window the report is about: asked to stop, not yet gone.
         await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.STOPPING, "the instance to be stopping");
-        assertTrue(process.isStopRequested(), "the process has to know it was stopped on purpose");
+        // Waited for rather than looked at once: the flag is set when the stop actually reaches the
+        // process, which is a moment after the state changes, and a single look races it.
+        await(process::isStopRequested, "the process to know it was stopped on purpose");
         assertTrue(DshProcessManager.isStopping(instance.id()),
                 "the instance stays busy for as long as the child takes to exit");
 

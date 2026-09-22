@@ -56,7 +56,8 @@ public final class DownloadSettingsPage extends ScrollPane {
                 buildSourceList(),
                 ComponentList.createComponentListTitle(i18n("dsh.settings.catalog")),
                 buildCatalogList(),
-                ComponentList.createComponentListTitle(i18n("dsh.settings.proxy")), buildProxyList());
+                ComponentList.createComponentListTitle(i18n("dsh.settings.proxy")), buildProxyList(),
+                ComponentList.createComponentListTitle(i18n("dsh.settings.env_vars")), buildGlobalEnvironmentList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
@@ -80,6 +81,32 @@ public final class DownloadSettingsPage extends ScrollPane {
     /// installs, and nothing has to be configured twice.
     ///
     /// @return the list
+    /// Builds the editor for the variables every instance runs with.
+    ///
+    /// One per line as `NAME=VALUE`, which is what people paste into a box. A launcher-wide set is
+    /// for the things that are the same everywhere, and an instance adds its own on top rather than
+    /// replacing them — which is what an API key per instance needs.
+    ///
+    /// @return the list
+    private ComponentList buildGlobalEnvironmentList() {
+        javafx.scene.control.TextArea area = new javafx.scene.control.TextArea();
+        area.setPrefRowCount(6);
+        area.setText(org.jackhuang.hmcl.dsh.DshEnvironment.format(settings().globalEnvironment()));
+        area.textProperty().addListener((observable, was, text) ->
+                settings().globalEnvironmentProperty().set(org.jackhuang.hmcl.dsh.DshEnvironment.parse(text)));
+
+        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
+        box.setPadding(new javafx.geometry.Insets(8, 12, 8, 12));
+        javafx.scene.control.Label hint = new javafx.scene.control.Label(i18n("dsh.settings.env_vars.global.hint"));
+        hint.getStyleClass().add("desc");
+        hint.setWrapText(true);
+        box.getChildren().addAll(hint, area);
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(box);
+        return list;
+    }
+
     private ComponentList buildProxyList() {
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRow(i18n("dsh.settings.proxy.http"),

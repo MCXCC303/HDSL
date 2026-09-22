@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.setting;
 
+import java.util.Map;
+
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.ObjectProperty;
@@ -157,6 +159,27 @@ public final class LauncherSettings {
     /// @return the property
     public ObjectProperty<org.jackhuang.hmcl.dsh.DshLauncherVisibility> launcherVisibilityProperty() {
         return launcherVisibility;
+    }
+
+    /// The variables every instance runs with, unless it sets its own.
+    ///
+    /// Edited as lines of `NAME=VALUE`, because that is what people paste into a box.
+    private final ObjectProperty<Map<String, String>> globalEnvironment =
+            new SimpleObjectProperty<>(Map.of());
+
+    /// Returns the variables every instance runs with.
+    ///
+    /// @return the property
+    public ObjectProperty<Map<String, String>> globalEnvironmentProperty() {
+        return globalEnvironment;
+    }
+
+    /// Returns the variables every instance runs with.
+    ///
+    /// @return the variables, never `null`
+    public Map<String, String> globalEnvironment() {
+        Map<String, String> variables = globalEnvironment.get();
+        return variables == null ? Map.of() : variables;
     }
 
     /// The proxy the launcher's downloads go through, or empty for none.
