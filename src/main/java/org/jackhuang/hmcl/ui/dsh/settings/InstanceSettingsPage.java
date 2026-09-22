@@ -284,8 +284,10 @@ public final class InstanceSettingsPage extends ScrollPane {
         LineSelectButton<DshPortMode> row = new LineSelectButton<>();
         row.setTitle(i18n("dsh.instance.port.mode"));
         row.setSubtitle(i18n("dsh.instance.port.mode.hint"));
-        row.setItems(DshPortMode.AUTO, DshPortMode.FIXED);
-        row.setValue(instance.portModeOrDefault());
+        row.setItems(DshPortMode.GLOBAL, DshPortMode.AUTO, DshPortMode.FIXED);
+        // What it follows is the launcher's policy, and an instance that has not
+        // chosen one shows that rather than the policy it happens to resolve to.
+        row.setValue(instance.hasOwnPortMode() ? instance.portMode() : DshPortMode.GLOBAL);
         // The control runs its converter the moment one is installed, before a
         // value need exist, so the null-safe form is required here.
         row.setNullSafeConverter(mode -> i18n("dsh.instance.port.mode." + mode.id()));
@@ -349,7 +351,7 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// Called after every write, so that switching the mode and naming a port
     /// take effect on the control the user is looking at.
     private void syncPortRow() {
-        boolean fixed = instance.portModeOrDefault() == DshPortMode.FIXED;
+        boolean fixed = instance.hasOwnPortMode() && instance.portMode() == DshPortMode.FIXED;
         portRow.setSubtitle(fixed
                 ? i18n("dsh.instance.port.fixed.hint")
                 : i18n("dsh.instance.port.auto.current", portDescription()));

@@ -79,6 +79,7 @@ class PageStringsTest {
             "dsh.market.dsh_version",
             "dsh.market.fitting",
             "dsh.market.fitting.hidden",
+            "dsh.instance.port.mode.global",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",

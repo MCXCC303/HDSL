@@ -31,7 +31,10 @@ public enum DshPortMode {
     AUTO,
 
     /// Use the port the user chose.
-    FIXED;
+    FIXED,
+
+    /// Follow the launcher's own policy, which is what an instance starts at.
+    GLOBAL;
 
     /// Returns the name used in settings files and on the command line.
     ///

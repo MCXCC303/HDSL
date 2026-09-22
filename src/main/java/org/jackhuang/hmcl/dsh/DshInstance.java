@@ -114,7 +114,17 @@ public record DshInstance(
     ///
     /// @return the port mode, never `null`
     public DshPortMode portModeOrDefault() {
-        return portMode == null ? DshPortMode.AUTO : portMode;
+        // An instance that follows the launcher says so, and what it follows is the
+        // launcher's own policy — which is auto unless a person changed it.
+        DshPortMode mode = portMode();
+        return mode == null || mode == DshPortMode.GLOBAL ? DshPortMode.AUTO : mode;
+    }
+
+    /// Reports whether this instance chooses its own port policy.
+    ///
+    /// @return whether it does not follow the launcher
+    public boolean hasOwnPortMode() {
+        return portMode() != null && portMode() != DshPortMode.GLOBAL;
     }
 
     /// Returns the port to pass to DeepSeek Harness.
