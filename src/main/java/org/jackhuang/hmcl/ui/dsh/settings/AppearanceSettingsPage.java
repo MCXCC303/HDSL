@@ -109,7 +109,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
         root.getChildren().addAll(
                 sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
                 sectionTitle(i18n("settings.launcher.appearance")),
-                buildThemeColorList(), buildBackgroundDetailList(), buildWindowList(),
+                buildThemeColorList(), buildColorStyleList(), buildBackgroundDetailList(), buildWindowList(),
                 sectionTitle(i18n("dsh.settings.background.load.section")), buildBackgroundLoadingList(),
                 sectionTitle(i18n("dsh.settings.animations")), buildAnimationList(),
                 sectionTitle(i18n("dsh.settings.font")), buildFontList());
@@ -223,7 +223,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
                     settings().themeColorStyleProperty().set(value);
                 }
             });
-            list.getContent().add(colorStyle);
+        this.colorStyleRow = colorStyle;
         }
 
         sublist.getContent().add(list);
@@ -360,6 +360,9 @@ public final class AppearanceSettingsPage extends ScrollPane {
         return list;
     }
 
+    /// The row that chooses how the theme colour becomes a palette.
+    private javafx.scene.Node colorStyleRow;
+
     /// The row about what happens when the background cannot be loaded.
     private javafx.scene.Node backgroundLoadRow;
 
@@ -422,6 +425,21 @@ public final class AppearanceSettingsPage extends ScrollPane {
     /// Builds the rows about how a background is fetched and what is used when it does not arrive.
     ///
     /// @return the assembled component list
+    /// Builds the row that chooses how the theme's colour becomes a palette.
+    ///
+    /// The original keeps this beside the colour row rather than inside it, so the choice is visible
+    /// without opening anything.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildColorStyleList() {
+        ComponentList list = new ComponentList();
+        if (colorStyleRow != null) {
+            list.getContent().add(colorStyleRow);
+        }
+        return list;
+    }
+
+
     private ComponentList buildBackgroundLoadingList() {
         // The original's two rows for this: the fallback that opens, and the policy beside it. The
         // fallback builder is what makes the policy row, so it is asked for it first.
