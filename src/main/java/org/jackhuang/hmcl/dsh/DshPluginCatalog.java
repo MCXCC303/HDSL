@@ -191,6 +191,30 @@ public final class DshPluginCatalog {
         }
     }
 
+    /// The catalogue the launcher last read, if it read one.
+    private static volatile @Nullable Catalog lastCatalog;
+
+    /// Looks a package up in the catalogue the launcher last read.
+    ///
+    /// The catalogue is already held for the market page, so a page that wants to
+    /// describe one plugin can ask for it rather than fetching four megabytes of
+    /// entries again.
+    ///
+    /// @param packageName the npm package name
+    /// @return the entry, or empty when the catalogue does not hold it
+    public static java.util.Optional<Plugin> find(String packageName) {
+        Catalog catalog = lastCatalog;
+        if (catalog == null || packageName == null || packageName.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        for (Plugin plugin : catalog.plugins()) {
+            if (packageName.equals(plugin.npm()) || packageName.equals(plugin.name())) {
+                return java.util.Optional.of(plugin);
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
     /// Reads the catalogue.
     ///
     /// @return the catalogue
@@ -208,7 +232,9 @@ public final class DshPluginCatalog {
                     + " (" + e.getMessage() + ")", e);
         }
         try {
-            return parse(body);
+            Catalog catalog = parse(body);
+            lastCatalog = catalog;
+            return catalog;
         } catch (RuntimeException e) {
             throw new DshException("The plugin catalogue had an unexpected shape", e);
         }

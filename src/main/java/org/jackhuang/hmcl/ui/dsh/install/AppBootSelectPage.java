@@ -205,9 +205,12 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
         content.setSubtitle(i18n(paired ? "dsh.install.app_boot.hint" : "dsh.install.app_boot.departure.hint"));
         content.setAlignment(Pos.CENTER);
 
+        // The arrow is part of the row rather than a control of its own: it says
+        // where the row leads, and a press on it is a press on the row.
         JFXButton arrow = new JFXButton();
         arrow.setGraphic(SVG.ARROW_FORWARD.createIcon());
         arrow.getStyleClass().add("toggle-icon4");
+        arrow.setMouseTransparent(true);
 
         HBox row = new HBox(16, icon, content, arrow);
         row.setAlignment(Pos.CENTER);

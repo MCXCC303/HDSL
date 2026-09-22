@@ -132,11 +132,16 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
         this.target = target;
         this.state = new javafx.beans.property.ReadOnlyObjectWrapper<>(State.fromTitle(plugin.name()));
 
-        VBox root = new VBox(10);
-        root.setPadding(new Insets(10));
-        root.getChildren().addAll(buildHeader(), buildVersionList());
+        // A border pane rather than a box: its centre takes whatever height is
+        // left, where a box stops at the sum of its children's preferred heights —
+        // which is what left the version list ending halfway down the window.
+        BorderPane layout = new BorderPane();
+        layout.setPadding(new Insets(10));
+        layout.setTop(buildHeader());
+        layout.setCenter(buildVersionList());
+        BorderPane.setMargin(layout.getCenter(), new Insets(10, 0, 0, 0));
 
-        setCenter(root);
+        setCenter(layout);
         refresh();
     }
 
@@ -162,15 +167,21 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
         content.setTitle(plugin.name());
         content.setSubtitle(plugin.localizedDescription() == null
                 ? plugin.owner() : plugin.localizedDescription());
-        content.addTags(List.of(plugin.category(), plugin.owner()));
+        content.addTags(java.util.stream.Stream.of(plugin.category(), plugin.owner())
+                .filter(tag -> tag != null && !tag.isBlank()).toList());
         content.addTag(plugin.sourceKind());
-        if (plugin.version() != null) {
+        if (plugin.version() != null && !plugin.version().isBlank()) {
             content.addTag(plugin.version());
         }
         card.setCenter(content);
 
-        if (plugin.hasRepository() && plugin.url().startsWith("http")) {
+        if (plugin.url() != null && plugin.url().startsWith("http")) {
             JFXButton page = new JFXButton(i18n("download.release_page"));
+            // The label says what the link is: a plugin published as a package has a
+            // package page rather than a repository one.
+            if (!plugin.hasRepository()) {
+                page.setText(i18n("dsh.market.package_page"));
+            }
             page.setGraphic(SVG.OPEN_IN_NEW.createIcon(20));
             page.getStyleClass().add("jfx-tool-bar-button");
             page.setOnAction(event -> openExternal(plugin.url()));
@@ -304,8 +315,12 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
         }
 
         String finalSpec = spec;
+        // Back to where the page was opened from once it is installed: the versions
+        // it lists are about to change, and the page a person came from is where
+        // the result of installing is worth seeing.
         ProgressDialog.run(i18n("download.install"), progress ->
-                DshPluginInstaller.installSpecs(instance, List.of(finalSpec), progress::accept), this::refresh);
+                        DshPluginInstaller.installSpecs(instance, List.of(finalSpec), progress::accept),
+                () -> fireEvent(new org.jackhuang.hmcl.ui.construct.PageCloseEvent()));
     }
 
     /// Downloads one version into a folder the user chooses.
@@ -427,7 +442,12 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
             }
             content.setTitle(version);
             boolean current = version.equals(installed);
-            content.setSubtitle(current ? i18n("dsh.instance.upgrade.current") : plugin.owner());
+            content.setSubtitle(current ? i18n("dsh.instance.upgrade.current")
+                    : (plugin.owner() == null || plugin.owner().isBlank() ? plugin.name() : plugin.owner()));
+            // The original marks a mod's versions the same way, and a plugin's
+            // versions are marked by the same rule: a pre-release says so in its
+            // name, and anything that does not is a release.
+            content.addTag(version.contains("-") ? i18n("addon.channel.beta") : i18n("addon.channel.release"));
             if (current) {
                 content.addTag(i18n("dsh.instance.upgrade.current"));
             }

@@ -110,6 +110,12 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
     /// Where the page number is shown between the paging buttons.
     private final Label pageLabel = new Label();
 
+    /// The paging buttons, kept so their states can follow the page.
+    private @Nullable JFXButton firstPage;
+    private @Nullable JFXButton previousPage;
+    private @Nullable JFXButton nextPage;
+    private @Nullable JFXButton lastPage;
+
     /// The instance the plugins are installed into.
     ///
     /// A picker rather than a label, which is the original's own arrangement: its
@@ -218,16 +224,34 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
     ///
     /// @return the buttons, from the first page to the last
     private List<Node> pagingButtons() {
-        JFXButton first = new JFXButton(i18n("search.first_page"));
-        first.setOnAction(event -> showPage(1));
-        JFXButton previous = new JFXButton(i18n("search.previous_page"));
-        previous.setOnAction(event -> showPage(page - 1));
-        JFXButton next = new JFXButton(i18n("search.next_page"));
-        next.setOnAction(event -> showPage(page + 1));
-        JFXButton last = new JFXButton(i18n("search.last_page"));
-        last.setOnAction(event -> showPage(pageCount));
+        // The original's own border buttons, which is what makes these look like
+        // buttons rather than like labels that happen to be grey.
+        firstPage = FXUtils.newBorderButton(i18n("search.first_page"));
+        firstPage.setOnAction(event -> showPage(1));
+        previousPage = FXUtils.newBorderButton(i18n("search.previous_page"));
+        previousPage.setOnAction(event -> showPage(page - 1));
+        nextPage = FXUtils.newBorderButton(i18n("search.next_page"));
+        nextPage.setOnAction(event -> showPage(page + 1));
+        lastPage = FXUtils.newBorderButton(i18n("search.last_page"));
+        lastPage.setOnAction(event -> showPage(pageCount));
+        updatePagingButtons();
 
-        return List.of(first, previous, pageLabel, next, last);
+        return List.of(firstPage, previousPage, pageLabel, nextPage, lastPage);
+    }
+
+    /// Disables the buttons whose direction has nowhere to go.
+    ///
+    /// A button that does nothing when pressed is worse than one that says so: the
+    /// original leaves them pressable and ignores the press, and this says the same
+    /// thing by greying them out at the ends of the range.
+    private void updatePagingButtons() {
+        if (firstPage == null) {
+            return;
+        }
+        firstPage.setDisable(page <= 1);
+        previousPage.setDisable(page <= 1);
+        nextPage.setDisable(page >= pageCount);
+        lastPage.setDisable(page >= pageCount);
     }
 
     /// Returns the label for a sort key.
@@ -307,6 +331,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
         int from = (page - 1) * PAGE_SIZE;
         shown.setAll(matching.subList(from, Math.min(from + PAGE_SIZE, matching.size())));
         pageLabel.setText(page + " / " + pageCount);
+        updatePagingButtons();
     }
 
     /// Reports whether a plugin matches a search.

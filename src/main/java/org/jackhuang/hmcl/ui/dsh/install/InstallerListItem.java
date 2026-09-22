@@ -64,6 +64,12 @@ public final class InstallerListItem extends StackPane {
     /// The button that installs or changes the component.
     private final JFXButton change = FXUtils.newToggleButton4(SVG.UPDATE);
 
+    /// The ripple surface the row is pressed on.
+    private @Nullable RipplerContainer rippler;
+
+    /// What pressing the row does.
+    private @Nullable Runnable activate;
+
     /// The button that removes the component.
     private final JFXButton remove = FXUtils.newToggleButton4(SVG.CLOSE);
 
@@ -127,7 +133,8 @@ public final class InstallerListItem extends StackPane {
         wrapper.getStyleClass().add("installer-item-wrapper");
         // One rippler, as the card uses: the row's surface is what ripples, and
         // building a second one around the same pane would move the pane into it.
-        wrapper.getChildren().setAll(new RipplerContainer(pane));
+        this.rippler = new RipplerContainer(pane);
+        wrapper.getChildren().setAll(rippler);
         getChildren().setAll(wrapper);
     }
 
@@ -167,6 +174,24 @@ public final class InstallerListItem extends StackPane {
     ///
     /// @param action the action, or `null` to hide the button
     /// @param tooltip what the button does, for the pointer
+    /// Makes the row itself do what its version button does.
+    ///
+    /// A row that looks pressable and is not is worse than one that does not look
+    /// pressable: the original's lists act on the row, and the button at its end is
+    /// the same action with a tooltip.
+    ///
+    /// @param action the action, or `null` for a row that does nothing
+    public void setOnActivate(@Nullable Runnable action) {
+        activate = action;
+        if (rippler != null) {
+            FXUtils.onClicked(rippler, () -> {
+                if (activate != null) {
+                    activate.run();
+                }
+            });
+        }
+    }
+
     public void setOnChange(@Nullable Runnable action, String tooltip) {
         this.changeAction = action;
         change.setVisible(action != null);

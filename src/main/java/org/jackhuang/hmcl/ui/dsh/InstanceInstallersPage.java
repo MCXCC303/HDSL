@@ -110,6 +110,7 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
         InstallerListItem row = new InstallerListItem(
                 DshInstanceIcon.DSH_APPLICATION.load(), i18n("dsh.install.version.name"));
         row.statusProperty().set(instance.version());
+        row.setOnActivate(() -> Controllers.navigate(new VersionPickerPage(instance)));
         row.setOnChange(() -> Controllers.navigate(new VersionPickerPage(instance)),
                 i18n("dsh.instance.upgrade.hint"));
         return row;
@@ -136,6 +137,7 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
             row.statusProperty().set(i18n("dsh.install.app_boot.chosen", appBoot));
         }
 
+        row.setOnActivate(this::chooseAppBoot);
         row.setOnChange(this::chooseAppBoot, i18n("dsh.install.app_boot"));
         return row;
     }
@@ -165,8 +167,9 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
             // The button offers the versions rather than installing whatever the
             // catalogue last saw: that is what the original's version button does,
             // and the page it opens is where the version is chosen.
-            row.setOnChange(() -> Controllers.navigate(new PluginDetailPage(catalogueEntry(market), instance)),
-                    i18n("download.install"));
+            Runnable versions = () -> Controllers.navigate(new PluginDetailPage(catalogueEntry(market), instance));
+            row.setOnActivate(versions);
+            row.setOnChange(versions, i18n("download.install"));
             row.setOnRemove(installed == null ? null : () -> removeMarket(market),
                     i18n("dsh.instance.plugins.remove"));
         }
@@ -198,8 +201,19 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
         int at = spec.lastIndexOf('@');
         String name = at > 0 ? spec.substring(0, at) : spec;
         String version = at > 0 ? spec.substring(at + 1) : null;
-        return new DshPluginCatalog.Plugin(preset.name(), "", "", "market",
-                preset.description(), preset.description(), name, version, 0, 0, null, null);
+
+        // The package's own page is the link that always exists for a plugin, and
+        // it is where its versions and its repository are named. The catalogue is
+        // asked first, because a plugin it knows has a page of its own.
+        DshPluginCatalog.Plugin known = org.jackhuang.hmcl.dsh.DshPluginCatalog.find(name).orElse(null);
+        if (known != null) {
+            return known;
+        }
+        // The record's fields in order: name, owner, address, category, description,
+        // localised description, package, version, stars, downloads, tarball, source.
+        return new DshPluginCatalog.Plugin(preset.name(), "",
+                "https://www.npmjs.com/package/" + name, "market", preset.description(),
+                preset.description(), name, version, 0, 0, null, null);
     }
 
     /// Returns the version of a package the instance's profile declares.
