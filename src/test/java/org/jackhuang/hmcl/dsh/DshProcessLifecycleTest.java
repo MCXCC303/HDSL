@@ -26,6 +26,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -76,6 +78,10 @@ class DshProcessLifecycleTest {
                 // Drain on request rather than exiting at once: the launcher has
                 // to keep treating the instance as busy while this is happening.
                 process.on('SIGTERM', () => setTimeout(() => process.exit(0), 1500));
+                // Nothing may outlive the test that started it: a stub that keeps
+                // running keeps the test's own JVM from finishing, and a suite that
+                // never finishes is worse than one that fails.
+                setTimeout(() => process.exit(0), 60000);
                 setInterval(() => {}, 1000);
                 """);
     }
@@ -84,6 +90,18 @@ class DshProcessLifecycleTest {
     ///
     /// @return the instance
     private DshInstance makeInstance() throws Exception {
+        // A run that failed before its cleanup leaves an instance behind, and
+        // creating one with the same id then fails — which turns one bad run into a
+        // suite that cannot pass again. Clearing the id first is what makes each run
+        // independent of the last.
+        try {
+            if (DshInstanceManager.find(INSTANCE_ID) != null) {
+                DshInstanceManager.delete(INSTANCE_ID);
+            }
+        } catch (DshException e) {
+            LOG.warning("Could not clear the instance a previous run left behind", e);
+        }
+
         DshInstance instance = DshInstanceManager.create(INSTANCE_ID, "1.0.0", DshInstance.DEFAULT_PROFILE,
                 workspace, DshHomeMode.ISOLATED, null, List.of(), Map.of());
         installStubSurface(instance);
