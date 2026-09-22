@@ -172,18 +172,12 @@ public final class DownloadSettingsPage extends ScrollPane {
     private ComponentList buildCatalogList() {
         com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
         field.setPromptText(org.jackhuang.hmcl.dsh.DshPluginCatalog.CATALOG_URL);
+        field.setMinWidth(320);
         field.textProperty().bindBidirectional(settings().pluginCatalogUrlProperty());
 
-        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
-        box.setPadding(new javafx.geometry.Insets(8, 12, 8, 12));
-        javafx.scene.control.Label label = new javafx.scene.control.Label(i18n("dsh.settings.catalog.url"));
-        javafx.scene.control.Label hint = new javafx.scene.control.Label(i18n("dsh.settings.catalog.url.hint"));
-        hint.getStyleClass().add("desc");
-        hint.setWrapText(true);
-        box.getChildren().addAll(label, hint, field);
-
         ComponentList list = new ComponentList();
-        list.getContent().add(box);
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.catalog.url"),
+                i18n("dsh.settings.catalog.url.hint"), field));
         return list;
     }
 
