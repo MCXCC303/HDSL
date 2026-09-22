@@ -182,41 +182,82 @@ public final class LauncherSettings {
         return variables == null ? Map.of() : variables;
     }
 
-    /// The proxy the launcher's downloads go through, or empty for none.
-    private final javafx.beans.property.StringProperty httpProxy =
+    /// How the launcher reaches the network.
+    private final ObjectProperty<org.jackhuang.hmcl.dsh.DshProxyMode> proxyMode =
+            new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM);
+
+    /// The proxy's host.
+    private final javafx.beans.property.StringProperty proxyHost =
             new javafx.beans.property.SimpleStringProperty("");
 
-    /// The proxy secure downloads go through, or empty for none.
-    private final javafx.beans.property.StringProperty httpsProxy =
+    /// The proxy's port.
+    private final javafx.beans.property.StringProperty proxyPort =
             new javafx.beans.property.SimpleStringProperty("");
 
-    /// Hosts that are reached without a proxy, or empty for none.
-    private final javafx.beans.property.StringProperty noProxy =
+    /// Whether the proxy wants a name and a password.
+    private final BooleanProperty proxyAuthenticated = new SimpleBooleanProperty(false);
+
+    /// The name the proxy wants, when it wants one.
+    private final javafx.beans.property.StringProperty proxyUser =
             new javafx.beans.property.SimpleStringProperty("");
+
+    /// The password the proxy wants, when it wants one.
+    private final javafx.beans.property.StringProperty proxyPassword =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns how the launcher reaches the network.
+    ///
+    /// @return the property
+    public ObjectProperty<org.jackhuang.hmcl.dsh.DshProxyMode> proxyModeProperty() {
+        return proxyMode;
+    }
+
+    /// Returns the proxy's host.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyHostProperty() {
+        return proxyHost;
+    }
+
+    /// Returns the proxy's port.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyPortProperty() {
+        return proxyPort;
+    }
+
+    /// Returns whether the proxy wants a name and a password.
+    ///
+    /// @return the property
+    public BooleanProperty proxyAuthenticatedProperty() {
+        return proxyAuthenticated;
+    }
+
+    /// Returns the name the proxy wants.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyUserProperty() {
+        return proxyUser;
+    }
+
+    /// Returns the password the proxy wants.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyPasswordProperty() {
+        return proxyPassword;
+    }
 
     /// How many downloads may happen at once, or `null` for the tool's own choice.
     private final ObjectProperty<@Nullable Integer> downloadConcurrency = new SimpleObjectProperty<>();
 
     /// Returns the proxy downloads go through.
     ///
-    /// @return the property, empty for none
-    public javafx.beans.property.StringProperty httpProxyProperty() {
-        return httpProxy;
-    }
 
     /// Returns the proxy secure downloads go through.
     ///
-    /// @return the property, empty for none
-    public javafx.beans.property.StringProperty httpsProxyProperty() {
-        return httpsProxy;
-    }
 
     /// Returns the hosts reached without a proxy.
     ///
-    /// @return the property, empty for none
-    public javafx.beans.property.StringProperty noProxyProperty() {
-        return noProxy;
-    }
 
     /// Returns how many downloads may happen at once.
     ///

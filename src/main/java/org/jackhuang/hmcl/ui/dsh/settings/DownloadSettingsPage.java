@@ -107,33 +107,74 @@ public final class DownloadSettingsPage extends ScrollPane {
     }
 
     private ComponentList buildProxyList() {
-        ComponentList list = new ComponentList();
-        list.getContent().add(proxyRow(i18n("dsh.settings.proxy.http"),
-                i18n("dsh.settings.proxy.hint"), settings().httpProxyProperty()));
-        list.getContent().add(proxyRow(i18n("dsh.settings.proxy.https"),
-                i18n("dsh.settings.proxy.hint"), settings().httpsProxyProperty()));
-        list.getContent().add(proxyRow(i18n("dsh.settings.proxy.none"),
-                i18n("dsh.settings.proxy.none.hint"), settings().noProxyProperty()));
-
-        com.jfoenix.controls.JFXTextField concurrency = new com.jfoenix.controls.JFXTextField();
-        concurrency.setPromptText(i18n("dsh.settings.proxy.concurrency.hint"));
-        concurrency.setText(settings().downloadConcurrencyProperty().get() == null ? ""
-                : settings().downloadConcurrencyProperty().get().toString());
-        concurrency.textProperty().addListener((observable, was, text) -> {
-            String value = text == null ? "" : text.trim();
-            if (value.isEmpty()) {
-                settings().downloadConcurrencyProperty().set(null);
-                return;
-            }
-            try {
-                settings().downloadConcurrencyProperty().set(Integer.valueOf(value));
-            } catch (NumberFormatException e) {
-                // Half-typed numbers are not settings: the field keeps what was typed and the
-                // setting keeps what it had.
+        // The original's shape, in its order: the four choices on the first line of the card, and
+        // under them the host, the port, and the name and password the proxy may want. Which of those
+        // mean anything is decided by the choice above them.
+        javafx.scene.layout.HBox modes = new javafx.scene.layout.HBox(18);
+        modes.setPadding(new javafx.geometry.Insets(10, 12, 10, 12));
+        javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
+        java.util.Map<org.jackhuang.hmcl.dsh.DshProxyMode, javafx.scene.control.RadioButton> buttons =
+                new java.util.LinkedHashMap<>();
+        for (org.jackhuang.hmcl.dsh.DshProxyMode mode : org.jackhuang.hmcl.dsh.DshProxyMode.values()) {
+            javafx.scene.control.RadioButton button =
+                    new javafx.scene.control.RadioButton(i18n("dsh.settings.proxy.mode." + mode.id()));
+            button.setToggleGroup(group);
+            button.setUserData(mode);
+            buttons.put(mode, button);
+            modes.getChildren().add(button);
+        }
+        org.jackhuang.hmcl.dsh.DshProxyMode current = settings().proxyModeProperty().get() == null
+                ? org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM : settings().proxyModeProperty().get();
+        buttons.get(current).setSelected(true);
+        group.selectedToggleProperty().addListener((observable, was, now) -> {
+            if (now != null && now.getUserData() instanceof org.jackhuang.hmcl.dsh.DshProxyMode mode) {
+                settings().proxyModeProperty().set(mode);
             }
         });
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.concurrency"),
-                i18n("dsh.settings.proxy.concurrency.hint"), concurrency));
+
+        com.jfoenix.controls.JFXTextField host = new com.jfoenix.controls.JFXTextField();
+        host.setMinWidth(320);
+        host.textProperty().bindBidirectional(settings().proxyHostProperty());
+        com.jfoenix.controls.JFXTextField port = new com.jfoenix.controls.JFXTextField();
+        port.setMinWidth(320);
+        port.textProperty().bindBidirectional(settings().proxyPortProperty());
+
+        javafx.scene.control.CheckBox authenticated = new javafx.scene.control.CheckBox();
+        authenticated.selectedProperty().bindBidirectional(settings().proxyAuthenticatedProperty());
+        com.jfoenix.controls.JFXTextField user = new com.jfoenix.controls.JFXTextField();
+        user.setMinWidth(320);
+        user.textProperty().bindBidirectional(settings().proxyUserProperty());
+        com.jfoenix.controls.JFXPasswordField password = new com.jfoenix.controls.JFXPasswordField();
+        password.setMinWidth(320);
+        password.textProperty().bindBidirectional(settings().proxyPasswordProperty());
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(modes);
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.host"),
+                i18n("dsh.settings.proxy.host.hint"), host));
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.port"),
+                i18n("dsh.settings.proxy.port.hint"), port));
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.auth"),
+                i18n("dsh.settings.proxy.auth.hint"), authenticated));
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.user"),
+                i18n("dsh.settings.proxy.user.hint"), user));
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.password"),
+                i18n("dsh.settings.proxy.password.hint"), password));
+
+        // A field the chosen mode cannot use is not worth typing into.
+        Runnable refresh = () -> {
+            org.jackhuang.hmcl.dsh.DshProxyMode mode = settings().proxyModeProperty().get() == null
+                    ? org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM : settings().proxyModeProperty().get();
+            host.setDisable(!mode.usesAddress());
+            port.setDisable(!mode.usesAddress());
+            authenticated.setDisable(!mode.usesAddress());
+            boolean wanted = mode.usesAddress() && authenticated.isSelected();
+            user.setDisable(!wanted);
+            password.setDisable(!wanted);
+        };
+        settings().proxyModeProperty().addListener(observable -> refresh.run());
+        authenticated.selectedProperty().addListener(observable -> refresh.run());
+        refresh.run();
         return list;
     }
 

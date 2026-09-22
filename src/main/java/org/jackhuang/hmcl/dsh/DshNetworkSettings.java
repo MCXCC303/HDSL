@@ -46,9 +46,29 @@ public final class DshNetworkSettings {
         try {
             org.jackhuang.hmcl.setting.LauncherSettings settings =
                     org.jackhuang.hmcl.setting.SettingsManager.settings();
-            add(environment, "HTTP_PROXY", settings.httpProxyProperty().get());
-            add(environment, "HTTPS_PROXY", settings.httpsProxyProperty().get());
-            add(environment, "NO_PROXY", settings.noProxyProperty().get());
+            DshProxyMode mode = settings.proxyModeProperty().get() == null
+                    ? DshProxyMode.SYSTEM : settings.proxyModeProperty().get();
+            switch (mode) {
+                case SYSTEM -> {
+                    // Nothing: whatever the system uses is what a child inherits anyway.
+                }
+                case NONE -> {
+                    // Said out loud, because a child that inherits a proxy from the system would
+                    // otherwise keep using one after being told not to.
+                    environment.put("HTTP_PROXY", "");
+                    environment.put("HTTPS_PROXY", "");
+                    environment.put("NO_PROXY", "*");
+                }
+                case HTTP, SOCKS -> {
+                    String address = address(settings, mode);
+                    if (address != null) {
+                        environment.put("HTTP_PROXY", address);
+                        environment.put("HTTPS_PROXY", address);
+                        // Some tools read only this one, and a SOCKS proxy is usually named here.
+                        environment.put("ALL_PROXY", address);
+                    }
+                }
+            }
 
             Integer concurrency = settings.downloadConcurrencyProperty().get();
             if (concurrency != null && concurrency > 0) {
@@ -62,6 +82,31 @@ public final class DshNetworkSettings {
             org.jackhuang.hmcl.util.logging.Logger.LOG.warning("Could not read the network settings", e);
         }
         return environment;
+    }
+
+    /// Builds the address of the proxy the settings describe.
+    ///
+    /// @param settings the settings
+    /// @param mode     the chosen mode
+    /// @return the address, or `null` when there is no host to reach
+    private static @org.jetbrains.annotations.Nullable String address(
+            org.jackhuang.hmcl.setting.LauncherSettings settings, DshProxyMode mode) {
+        String host = settings.proxyHostProperty().get();
+        if (host == null || host.isBlank()) {
+            return null;
+        }
+        String port = settings.proxyPortProperty().get();
+        String credentials = "";
+        if (settings.proxyAuthenticatedProperty().get()) {
+            String user = settings.proxyUserProperty().get();
+            String password = settings.proxyPasswordProperty().get();
+            if (user != null && !user.isBlank()) {
+                credentials = user + ":" + (password == null ? "" : password) + "@";
+            }
+        }
+        String scheme = mode == DshProxyMode.SOCKS ? "socks5" : "http";
+        return scheme + "://" + credentials + host.trim()
+                + (port == null || port.isBlank() ? "" : ":" + port.trim());
     }
 
     /// Adds a variable when it holds something.
