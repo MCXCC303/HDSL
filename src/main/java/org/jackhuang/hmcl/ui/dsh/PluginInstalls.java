@@ -59,8 +59,19 @@ public final class PluginInstalls {
     /// @param work     the installation
     /// @param onDone   run when it finishes, or `null`
     private static void attempt(DshInstance instance, ProgressDialog.Work work, @Nullable Runnable onDone) {
+        java.util.concurrent.atomic.AtomicBoolean failed = new java.util.concurrent.atomic.AtomicBoolean();
         ProgressDialog.run(i18n("download.install"), work, () -> {
+            // The original says so when an installation worked, and so does this:
+            // the dialog goes away, and without a word the only thing a person knows
+            // is that something stopped happening.
+            if (!failed.get()) {
+                Controllers.showToast(i18n("download.install.success"));
+            }
+            if (onDone != null) {
+                onDone.run();
+            }
         }, failure -> {
+            failed.set(true);
             if (!(failure instanceof DshPluginInstaller.DshBuildScriptApprovalRequired required)) {
                 return false;
             }

@@ -95,16 +95,56 @@ public final class DshVersionManager {
     /// @return the versions, or an empty set when the registry cannot be reached —
     ///         in which case nothing is marked, because not knowing is not the same
     ///         as knowing something is missing
+    /// Reports whether a harness version predates the lockstep package entirely.
+    ///
+    /// The package was introduced partway through the harness's history, so a release
+    /// older than it cannot depend on it: a version without a twin there is not
+    /// missing anything, and marking it was wrong — an old release installs perfectly
+    /// well, as 0.0.1 did.
+    ///
+    /// @param version the harness version
+    /// @param oldest  the oldest published version of the lockstep package, or `null`
+    /// @return whether the harness version is older than the package
+    public static boolean predatesLockstep(String version, @Nullable String oldest) {
+        return oldest != null && compareVersions(version, oldest) < 0;
+    }
+
     public static Set<String> lockstepVersions() {
+        return lockstepVersionsAndOldest().versions();
+    }
+
+    /// The published versions of the lockstep package, and the oldest of them.
+    ///
+    /// The oldest matters because the package was introduced partway through the
+    /// harness's history: a harness release older than it cannot depend on it, so a
+    /// version without a twin there is not missing anything. Marking those was wrong
+    /// — an old release installs perfectly well — and this is what tells them apart.
+    ///
+    /// @param versions the published versions
+    /// @param oldest   the oldest published version, or `null`
+    public record Lockstep(Set<String> versions, @Nullable String oldest) {
+    }
+
+    /// Reads the lockstep package's versions and its oldest one.
+    ///
+    /// @return what the registry holds, or nothing when it cannot be reached
+    public static Lockstep lockstepVersionsAndOldest() {
         try {
             DshNodeRuntime runtime = requireRuntime();
             if (!runtime.canInstall()) {
-                return Set.of();
+                return new Lockstep(Set.of(), null);
             }
-            return Set.copyOf(queryVersions(runtime.npm(), LOCKSTEP_PACKAGE));
+            java.util.Collection<String> versions = queryVersions(runtime.npm(), LOCKSTEP_PACKAGE);
+            String oldest = null;
+            for (String version : versions) {
+                if (oldest == null || compareVersions(version, oldest) < 0) {
+                    oldest = version;
+                }
+            }
+            return new Lockstep(Set.copyOf(versions), oldest);
         } catch (DshException | RuntimeException e) {
             LOG.warning("Could not read the versions of " + LOCKSTEP_PACKAGE, e);
-            return Set.of();
+            return new Lockstep(Set.of(), null);
         }
     }
 

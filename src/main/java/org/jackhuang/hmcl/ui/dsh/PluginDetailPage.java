@@ -446,6 +446,9 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
             if (empty || version == null) {
                 return;
             }
+            // The cell is reused: tags from the version it held before must go, or
+            // every row shows the same tag many times over.
+            content.getTags().clear();
             content.setTitle(version);
             boolean current = version.equals(installed);
             content.setSubtitle(current ? i18n("dsh.instance.upgrade.current")

@@ -50,6 +50,7 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.construct.PageAware;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
@@ -82,7 +83,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// plugin belongs: the original's page installs into the instance it is showing
 /// for the same reason, and refuses without one rather than picking for the user.
 @NotNullByDefault
-public final class PluginMarketPage extends StackPane implements Refreshable {
+public final class PluginMarketPage extends StackPane implements Refreshable, PageAware {
     /// How many results a page holds.
     private static final int PAGE_SIZE = 24;
 
@@ -271,6 +272,17 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
     /// Reading is what a refresh means the first time; afterwards the filter is
     /// re-applied to what is already in hand, because the catalogue is one
     /// document rather than a query.
+    ///
+    /// A catalogue that failed to load is not remembered as loaded, so entering the
+    /// page again tries again: a network that was down for a moment should not cost
+    /// the page for the rest of the session.
+    @Override
+    public void onPageShown() {
+        if (!loaded) {
+            refresh();
+        }
+    }
+
     @Override
     public void refresh() {
         if (loaded || busy) {
@@ -413,6 +425,9 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
             content.setTitle(plugin.name());
             content.setSubtitle(plugin.localizedDescription() == null
                     ? plugin.owner() : plugin.localizedDescription());
+            // A cell is reused for whatever scrolls into it, so what it said before
+            // has to go: otherwise every row wears the tags of the rows it replaced.
+            content.getTags().clear();
             content.addTags(List.of(plugin.category(), plugin.owner()));
             content.addTag(plugin.sourceKind());
 

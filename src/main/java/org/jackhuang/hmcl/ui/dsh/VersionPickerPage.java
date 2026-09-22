@@ -69,6 +69,9 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
     /// a download.
     private java.util.Set<String> lockstep = java.util.Set.of();
 
+    /// The oldest version of the lockstep package, or `null` when it is unknown.
+    private String oldestLockstep;
+
     /// Creates the page.
     ///
     /// @param instance the instance to choose a version for
@@ -110,7 +113,9 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 
         java.util.concurrent.CompletableFuture.supplyAsync(() -> {
             try {
-                lockstep = DshVersionManager.lockstepVersions();
+                DshVersionManager.Lockstep twins = DshVersionManager.lockstepVersionsAndOldest();
+                lockstep = twins.versions();
+                oldestLockstep = twins.oldest();
                 return DshVersionManager.fetchReleases();
             } catch (DshException e) {
                 throw new java.util.concurrent.CompletionException(e);
@@ -169,7 +174,8 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
         // registry has nothing to satisfy the dependency it names. Saying so here
         // is the difference between a list of versions and a list of versions that
         // can be used.
-        boolean installable = lockstep.isEmpty() || lockstep.contains(release.version());
+        boolean installable = lockstep.isEmpty() || lockstep.contains(release.version())
+                || DshVersionManager.predatesLockstep(release.version(), oldestLockstep);
         if (!current && !installable) {
             content.addTag(i18n("dsh.instance.upgrade.missing"));
         }
