@@ -17,7 +17,9 @@
  */
 package org.jackhuang.hmcl.ui.dsh.settings;
 
+import javafx.geometry.Pos;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.NodeSource;
 import org.jackhuang.hmcl.setting.SettingsManager;
@@ -217,89 +219,153 @@ public final class DownloadSettingsPage extends ScrollPane {
         return list;
     }
 
-    private ComponentList buildProxyList() {
-        // The original's shape, in its order: the four choices on the first line of the card, and
-        // under them the host, the port, and the name and password the proxy may want. Which of those
-        // mean anything is decided by the choice above them.
-        javafx.scene.layout.HBox modes = new javafx.scene.layout.HBox(18);
-        modes.setPadding(new javafx.geometry.Insets(10, 12, 10, 12));
+    /// Builds the rows for the network the launcher downloads through.
+    ///
+    /// A package manager is configured through the environment it inherits, so these travel with
+    /// every child the launcher starts: one proxy covers the version lists and the plugin
+    /// installs, and nothing has to be configured twice.
+    ///
+    /// The original's own arrangement, which is not a list of rows: one card holding the four
+    /// modes on a line of their own and, under them, a small form. Which parts of the form mean
+    /// anything is decided by the mode — a proxy that is not used has no address — so the whole
+    /// form is switched off together rather than field by field, and the name and password are
+    /// switched off separately because they are asked for on top of an address rather than
+    /// instead of one.
+    ///
+    /// The fields are laid out in a grid with the names in the first column, which is what the
+    /// original uses: a card of `LinePane` rows would draw a separator between the host and the
+    /// port, and the original's proxy form has none.
+    ///
+    /// @return the section
+    private javafx.scene.layout.VBox buildProxyList() {
+        javafx.scene.layout.VBox proxyList = new javafx.scene.layout.VBox(10);
+        proxyList.getStyleClass().add("card-non-transparent");
+
+        javafx.scene.layout.HBox proxyTypePane = new javafx.scene.layout.HBox();
+        proxyTypePane.setAlignment(Pos.CENTER_LEFT);
+        proxyTypePane.setPadding(new javafx.geometry.Insets(10, 0, 0, 0));
+
         javafx.scene.control.ToggleGroup group = new javafx.scene.control.ToggleGroup();
-        java.util.Map<org.jackhuang.hmcl.dsh.DshProxyMode, javafx.scene.control.RadioButton> buttons =
+        java.util.Map<org.jackhuang.hmcl.dsh.DshProxyMode, com.jfoenix.controls.JFXRadioButton> buttons =
                 new java.util.LinkedHashMap<>();
         for (org.jackhuang.hmcl.dsh.DshProxyMode mode : org.jackhuang.hmcl.dsh.DshProxyMode.values()) {
-            javafx.scene.control.RadioButton button =
-                    new javafx.scene.control.RadioButton(i18n("dsh.settings.proxy.mode." + mode.id()));
+            // The original's own control and its own wording, so the line reads the same.
+            com.jfoenix.controls.JFXRadioButton button =
+                    new com.jfoenix.controls.JFXRadioButton(i18n(proxyModeKey(mode)));
             button.setToggleGroup(group);
             button.setUserData(mode);
             buttons.put(mode, button);
-            modes.getChildren().add(button);
+            proxyTypePane.getChildren().add(button);
         }
-        org.jackhuang.hmcl.dsh.DshProxyMode current = settings().proxyModeProperty().get() == null
-                ? org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM : settings().proxyModeProperty().get();
-        buttons.get(current).setSelected(true);
+        buttons.get(currentProxyMode()).setSelected(true);
         group.selectedToggleProperty().addListener((observable, was, now) -> {
-            if (now != null && now.getUserData() instanceof org.jackhuang.hmcl.dsh.DshProxyMode mode) {
-                settings().proxyModeProperty().set(mode);
+            settings().proxyModeProperty().set(now != null
+                    && now.getUserData() instanceof org.jackhuang.hmcl.dsh.DshProxyMode mode
+                    ? mode : org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM);
+        });
+        proxyList.getChildren().add(proxyTypePane);
+
+        javafx.scene.layout.VBox proxyPane = new javafx.scene.layout.VBox();
+        // Nothing in the form means anything while the mode says the proxy is not used.
+        proxyPane.disableProperty().bind(javafx.beans.binding.Bindings.createBooleanBinding(
+                () -> !currentProxyMode().usesAddress(), settings().proxyModeProperty()));
+
+        com.jfoenix.controls.JFXTextField host = new com.jfoenix.controls.JFXTextField();
+        host.textProperty().bindBidirectional(settings().proxyHostProperty());
+
+        com.jfoenix.controls.JFXTextField port = new com.jfoenix.controls.JFXTextField();
+        FXUtils.setLimitWidth(port, 200);
+        FXUtils.setValidateWhileTextChanged(port, true);
+        // The port is stored as text, so the converter is taken as far as the number and the
+        // conversion back to text is done here: binding it through the library's own helper
+        // would need the property to be an integer one, and the file has always held a string.
+        org.jackhuang.hmcl.util.javafx.SafeStringConverter<Integer, Number> portConverter =
+                org.jackhuang.hmcl.util.javafx.SafeStringConverter.fromInteger()
+                        .restrict(it -> it >= 0 && it <= 0xFFFF)
+                        .fallbackTo(0);
+        portConverter.asPredicate(org.jackhuang.hmcl.ui.construct.Validator.addTo(port));
+        port.setText(portConverter.toString(portConverter.fromString(
+                settings().proxyPortProperty().get())));
+        port.textProperty().addListener((observable, was, text) -> {
+            Integer port0 = portConverter.fromString(text == null ? "" : text);
+            if (port0 != null) {
+                settings().proxyPortProperty().set(Integer.toString(port0));
             }
         });
 
-        com.jfoenix.controls.JFXTextField host = new com.jfoenix.controls.JFXTextField();
-        host.setMinWidth(320);
-        host.textProperty().bindBidirectional(settings().proxyHostProperty());
-        com.jfoenix.controls.JFXTextField port = new com.jfoenix.controls.JFXTextField();
-        port.setMinWidth(320);
-        port.textProperty().bindBidirectional(settings().proxyPortProperty());
+        proxyPane.getChildren().add(formGrid(new javafx.scene.control.Label(i18n("settings.launcher.proxy.host")),
+                host, new javafx.scene.control.Label(i18n("settings.launcher.proxy.port")), port));
 
-        javafx.scene.control.CheckBox authenticated = new javafx.scene.control.CheckBox();
+        com.jfoenix.controls.JFXCheckBox authenticated =
+                new com.jfoenix.controls.JFXCheckBox(i18n("settings.launcher.proxy.authentication"));
         authenticated.selectedProperty().bindBidirectional(settings().proxyAuthenticatedProperty());
+        javafx.scene.layout.VBox authToggle = new javafx.scene.layout.VBox(authenticated);
+        authToggle.setPadding(new javafx.geometry.Insets(20, 0, 20, 5));
+        proxyPane.getChildren().add(authToggle);
+
         com.jfoenix.controls.JFXTextField user = new com.jfoenix.controls.JFXTextField();
-        user.setMinWidth(320);
         user.textProperty().bindBidirectional(settings().proxyUserProperty());
         com.jfoenix.controls.JFXPasswordField password = new com.jfoenix.controls.JFXPasswordField();
-        password.setMinWidth(320);
         password.textProperty().bindBidirectional(settings().proxyPasswordProperty());
 
-        ComponentList list = new ComponentList();
-        list.getContent().add(modes);
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.host"),
-                null, host));
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.port"),
-                null, port));
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.auth"),
-                null, authenticated));
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.user"),
-                null, user));
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.password"),
-                null, password));
+        javafx.scene.layout.GridPane authPane = formGrid(
+                new javafx.scene.control.Label(i18n("settings.launcher.proxy.username")), user,
+                new javafx.scene.control.Label(i18n("settings.launcher.proxy.password")), password);
+        authPane.disableProperty().bind(settings().proxyAuthenticatedProperty().not());
+        proxyPane.getChildren().add(authPane);
 
-        // A field the chosen mode cannot use is not worth typing into.
-        Runnable refresh = () -> {
-            org.jackhuang.hmcl.dsh.DshProxyMode mode = settings().proxyModeProperty().get() == null
-                    ? org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM : settings().proxyModeProperty().get();
-            host.setDisable(!mode.usesAddress());
-            port.setDisable(!mode.usesAddress());
-            authenticated.setDisable(!mode.usesAddress());
-            boolean wanted = mode.usesAddress() && authenticated.isSelected();
-            user.setDisable(!wanted);
-            password.setDisable(!wanted);
-        };
-        settings().proxyModeProperty().addListener(observable -> refresh.run());
-        authenticated.selectedProperty().addListener(observable -> refresh.run());
-        refresh.run();
-        return list;
+        proxyList.getChildren().add(proxyPane);
+        return proxyList;
     }
 
-    /// Builds one proxy row.
+    /// Returns the proxy mode in force.
     ///
-    /// @param title    the row's name
-    /// @param hint     what it is for
-    /// @param property what is typed into it
-    /// @return the row
-    private javafx.scene.Node proxyRow(String title, String hint,
-                                       javafx.beans.property.StringProperty property) {
-        com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
-        field.textProperty().bindBidirectional(property);
-        return proxyRowWithField(title, hint, field);
+    /// @return the mode, never `null`
+    private static org.jackhuang.hmcl.dsh.DshProxyMode currentProxyMode() {
+        return java.util.Objects.requireNonNullElse(
+                settings().proxyModeProperty().get(), org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM);
+    }
+
+    /// Returns the string key for one proxy mode.
+    ///
+    /// The original's keys, because the four choices are its four choices.
+    ///
+    /// @param mode the mode
+    /// @return the key
+    private static String proxyModeKey(org.jackhuang.hmcl.dsh.DshProxyMode mode) {
+        return switch (mode) {
+            case SYSTEM -> "settings.launcher.proxy.default";
+            case NONE -> "settings.launcher.proxy.none";
+            case HTTP -> "settings.launcher.proxy.http";
+            case SOCKS -> "settings.launcher.proxy.socks";
+        };
+    }
+
+    /// Builds a two-row form: a name and its field, twice.
+    ///
+    /// The shape the original's proxy form has, down to the grid it uses: the names take their
+    /// own width, the fields take what is left, and the whole block is indented so that it reads
+    /// as belonging to the line of modes above it.
+    ///
+    /// @param firstLabel  the first row's name
+    /// @param firstField  the first row's field
+    /// @param secondLabel the second row's name
+    /// @param secondField the second row's field
+    /// @return the grid
+    private static javafx.scene.layout.GridPane formGrid(
+            javafx.scene.Node firstLabel, javafx.scene.Node firstField,
+            javafx.scene.Node secondLabel, javafx.scene.Node secondField) {
+        javafx.scene.layout.ColumnConstraints grow = new javafx.scene.layout.ColumnConstraints();
+        grow.setHgrow(Priority.ALWAYS);
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setPadding(new javafx.geometry.Insets(0, 0, 0, 30));
+        grid.setHgap(20);
+        grid.setVgap(10);
+        grid.getColumnConstraints().setAll(new javafx.scene.layout.ColumnConstraints(), grow);
+        grid.addRow(0, firstLabel, firstField);
+        grid.addRow(1, secondLabel, secondField);
+        return grid;
     }
 
     /// Builds one row of a name, what it is for, and the field beside them.
