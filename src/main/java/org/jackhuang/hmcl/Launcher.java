@@ -56,6 +56,8 @@ public final class Launcher extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
+                SettingsManager.settings().debugLogProperty().get());
         LOG.info("HMCL-DSH " + Metadata.VERSION);
         LOG.info("JavaFX version: " + System.getProperty("javafx.runtime.version"));
         LOG.info("User home: " + Metadata.HMCL_USER_HOME);

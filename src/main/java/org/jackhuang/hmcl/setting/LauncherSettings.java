@@ -108,6 +108,16 @@ public final class LauncherSettings {
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> buildScriptPolicy =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL);
 
+    /// Whether the launcher writes debug lines to its log.
+    private final BooleanProperty debugLog = new SimpleBooleanProperty(false);
+
+    /// Returns whether debug lines are written.
+    ///
+    /// @return the property
+    public BooleanProperty debugLogProperty() {
+        return debugLog;
+    }
+
     /// A command to run before an instance starts, or an empty string for none.
     private final javafx.beans.property.StringProperty preLaunchCommand =
             new javafx.beans.property.SimpleStringProperty("");

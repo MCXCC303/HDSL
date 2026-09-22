@@ -225,6 +225,7 @@ public final class DshLauncher {
         environment.putAll(runtime.pathEnvironment());
         environment.putAll(instance.environment());
 
+        LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,
                 Map.copyOf(environment), home, port);
     }

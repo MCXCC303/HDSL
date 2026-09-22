@@ -358,11 +358,37 @@ public final class Logger {
         log(Level.INFO, CallerFinder.getCaller(), msg, exception);
     }
 
+    /// Whether debug lines are written.
+    ///
+    /// Off unless somebody asks: a debug line is for diagnosing something, and a log full of
+    /// them hides the lines that say what happened.
+    private static volatile boolean debugEnabled;
+
+    /// Sets whether debug lines are written.
+    ///
+    /// @param enabled whether to write them
+    public static void setDebugEnabled(boolean enabled) {
+        debugEnabled = enabled;
+    }
+
+    /// Returns whether debug lines are written.
+    ///
+    /// @return whether they are
+    public static boolean isDebugEnabled() {
+        return debugEnabled;
+    }
+
     public void debug(String msg) {
+        if (!debugEnabled) {
+            return;
+        }
         log(Level.DEBUG, CallerFinder.getCaller(), msg, null);
     }
 
     public void debug(String msg, Throwable exception) {
+        if (!debugEnabled) {
+            return;
+        }
         log(Level.DEBUG, CallerFinder.getCaller(), msg, exception);
     }
 

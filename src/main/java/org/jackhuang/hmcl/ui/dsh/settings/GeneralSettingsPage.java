@@ -70,7 +70,8 @@ public final class GeneralSettingsPage extends ScrollPane {
                 buildLogList(),
                 buildStorageList(),
                 sectionTitle(i18n("dsh.settings.build_scripts")), buildBuildScriptsList(),
-                sectionTitle(i18n("dsh.settings.commands")), buildCommandsList());
+                sectionTitle(i18n("dsh.settings.commands")), buildCommandsList(),
+                sectionTitle(i18n("dsh.settings.debug")), buildDebugList());
     }
 
     /// Builds a section title.
@@ -104,6 +105,22 @@ public final class GeneralSettingsPage extends ScrollPane {
     /// Builds the log section.
     ///
     /// @return the assembled component list
+    /// Builds the switch for the launcher's own debug lines.
+    ///
+    /// @return the list
+    private ComponentList buildDebugList() {
+        LineToggleButton debug = new LineToggleButton();
+        debug.setTitle(i18n("dsh.settings.debug.log"));
+        debug.setSubtitle(i18n("dsh.settings.debug.log.hint"));
+        debug.selectedProperty().bindBidirectional(settings().debugLogProperty());
+        debug.selectedProperty().addListener((observable, was, value) ->
+                org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(Boolean.TRUE.equals(value)));
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(debug);
+        return list;
+    }
+
     /// Builds the two commands that run around an instance.
     ///
     /// The original keeps them in the launcher's settings because they are about the

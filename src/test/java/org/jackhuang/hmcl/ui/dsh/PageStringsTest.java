@@ -93,6 +93,9 @@ class PageStringsTest {
             "dsh.settings.env_vars.value",
             "dsh.settings.env_vars.add",
             "dsh.settings.env_vars.remove",
+            "dsh.settings.debug",
+            "dsh.settings.debug.log",
+            "dsh.settings.debug.log.hint",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",
