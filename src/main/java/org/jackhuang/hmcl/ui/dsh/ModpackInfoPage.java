@@ -96,6 +96,11 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         ScrollPane scroll = new ScrollPane(list);
         scroll.setFitToWidth(true);
         VBox.setVgrow(scroll, javafx.scene.layout.Priority.ALWAYS);
+        // A scroll pane sizes its content to the content's own preference unless it is told
+        // otherwise, which is why the page stopped short of the bottom: the card inside it was as
+        // tall as its rows and no taller, however much room the wizard had.
+        scroll.setFitToHeight(true);
+        scroll.setFitToWidth(true);
         getChildren().add(scroll);
 
         // This launcher's wizards carry no footer of their own — the create page
