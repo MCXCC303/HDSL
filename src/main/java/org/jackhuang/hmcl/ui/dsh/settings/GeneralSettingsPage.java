@@ -180,7 +180,10 @@ public final class GeneralSettingsPage extends ScrollPane {
         approve.setItems(java.util.List.of(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.AUTO,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.NEVER));
-        approve.setNullSafeConverter(policy -> i18n("dsh.settings.build_scripts." + policy.id()));
+        // The control asks for a display name before a value exists, so the converter
+        // answers for nothing as well as for an answer.
+        approve.setConverter(policy -> policy == null
+                ? "" : i18n("dsh.settings.build_scripts." + policy.id()));
         approve.setValue(settings().buildScriptPolicy());
         approve.valueProperty().addListener((observable, was, value) -> {
             if (value != null) {

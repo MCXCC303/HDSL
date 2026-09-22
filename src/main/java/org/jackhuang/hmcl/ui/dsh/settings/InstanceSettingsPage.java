@@ -216,7 +216,9 @@ public final class InstanceSettingsPage extends ScrollPane {
         LineSelectButton<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> row = new LineSelectButton<>();
         row.setTitle(i18n("dsh.settings.build_scripts.approve"));
         row.setItems(choices);
-        row.setNullSafeConverter(policy -> i18n(policy == null
+        // Not the null-safe wrapper: for this row null is an answer — it is what "follow
+        // the launcher" is stored as — and the wrapper would draw nothing for it.
+        row.setConverter(policy -> i18n(policy == null
                 ? "dsh.settings.build_scripts.follow"
                 : "dsh.settings.build_scripts." + policy.id()));
         row.setValue(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.of(
