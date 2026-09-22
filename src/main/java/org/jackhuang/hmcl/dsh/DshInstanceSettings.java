@@ -72,6 +72,57 @@ public final class DshInstanceSettings {
         write(instance, "buildScriptPolicy", policy == null ? null : new com.google.gson.JsonPrimitive(policy));
     }
 
+    /// Reads the command that runs before this instance starts.
+    ///
+    /// @param instance the instance
+    /// @return its own command, or `null` to follow the launcher
+    public static @Nullable String preLaunchCommand(DshInstance instance) {
+        return stringOf(instance, "preLaunchCommand");
+    }
+
+    /// Records the command that runs before this instance starts.
+    ///
+    /// @param instance the instance
+    /// @param command  the command, or `null` to follow the launcher
+    /// @throws DshException when the file cannot be written
+    public static void setPreLaunchCommand(DshInstance instance, @Nullable String command) throws DshException {
+        write(instance, "preLaunchCommand", command == null ? null : new com.google.gson.JsonPrimitive(command));
+    }
+
+    /// Reads the command that runs after this instance has ended.
+    ///
+    /// @param instance the instance
+    /// @return its own command, or `null` to follow the launcher
+    public static @Nullable String postExitCommand(DshInstance instance) {
+        return stringOf(instance, "postExitCommand");
+    }
+
+    /// Records the command that runs after this instance has ended.
+    ///
+    /// @param instance the instance
+    /// @param command  the command, or `null` to follow the launcher
+    /// @throws DshException when the file cannot be written
+    public static void setPostExitCommand(DshInstance instance, @Nullable String command) throws DshException {
+        write(instance, "postExitCommand", command == null ? null : new com.google.gson.JsonPrimitive(command));
+    }
+
+    /// Reads a string member.
+    ///
+    /// @param instance the instance
+    /// @param name     the member
+    /// @return the value, or `null` when it is absent or not a string
+    private static @Nullable String stringOf(DshInstance instance, String name) {
+        JsonObject root = read(instance);
+        if (root == null || !root.has(name) || !root.get(name).isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            return root.get(name).getAsString();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /// Reads whether this instance's log window opens when it launches.
     ///
     /// @param instance the instance

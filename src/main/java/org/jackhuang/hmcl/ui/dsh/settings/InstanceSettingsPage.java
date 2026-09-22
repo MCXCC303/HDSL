@@ -46,6 +46,7 @@ import org.jackhuang.hmcl.ui.construct.ImagePickerItem;
 import org.jackhuang.hmcl.dsh.DshInstanceIcon;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineInheritableSelectButton;
+import org.jackhuang.hmcl.ui.construct.LineInheritableTextField;
 import org.jackhuang.hmcl.ui.construct.LineInheritableToggleButton;
 import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
@@ -122,13 +123,67 @@ public final class InstanceSettingsPage extends ScrollPane {
                 ComponentList.createComponentListTitle(i18n("dsh.instance.port")), portList,
                 ComponentList.createComponentListTitle(i18n("dsh.settings.build_scripts")), buildScriptsList(),
                 ComponentList.createComponentListTitle(i18n("dsh.settings.env_vars")), buildEnvironmentVariablesList(),
-                ComponentList.createComponentListTitle(i18n("dsh.settings.debug")), buildDebugList());
+                ComponentList.createComponentListTitle(i18n("dsh.settings.debug")), buildDebugList(),
+                ComponentList.createComponentListTitle(i18n("dsh.settings.commands")), buildCommandsList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to the
         // content node and throws on a null content.
         FXUtils.smoothScrolling(this);
+    }
+
+    /// Builds the two commands that run around this instance.
+    ///
+    /// Each follows the launcher until it is taken over, which is the shape every per-instance
+    /// setting here has: the globe beside the name is the way in, and the field shows the
+    /// launcher's command until it is.
+    ///
+    /// @return the list
+    private ComponentList buildCommandsList() {
+        ComponentList list = new ComponentList();
+        list.getContent().add(commandRow(i18n("dsh.settings.commands.pre"), true));
+        list.getContent().add(commandRow(i18n("dsh.settings.commands.post"), false));
+        return list;
+    }
+
+    /// Builds one command row for this instance.
+    ///
+    /// @param title  the row's name
+    /// @param before whether it is the command that runs before the instance starts
+    /// @return the row
+    private LineInheritableTextField commandRow(String title, boolean before) {
+        String own = before ? DshInstanceSettings.preLaunchCommand(instance)
+                : DshInstanceSettings.postExitCommand(instance);
+        String launcher = before ? settings().preLaunchCommandProperty().get()
+                : settings().postExitCommandProperty().get();
+
+        LineInheritableTextField row = new LineInheritableTextField(title);
+        row.setOverridden(own != null);
+        row.setText(own != null ? own : launcher);
+
+        javafx.beans.value.ChangeListener<String> store = (observable, was, value) -> {
+            try {
+                if (before) {
+                    DshInstanceSettings.setPreLaunchCommand(instance,
+                            row.isOverridden() ? value : null);
+                } else {
+                    DshInstanceSettings.setPostExitCommand(instance,
+                            row.isOverridden() ? value : null);
+                }
+            } catch (DshException e) {
+                LOG.warning("Failed to store the command", e);
+            }
+        };
+        row.textProperty().addListener(store);
+        row.overriddenProperty().addListener((observable, was, overridden) -> {
+            if (!overridden) {
+                // Handing it back shows the launcher's command again, which is what the row now is.
+                row.setText(settings().preLaunchCommandProperty().get() == null ? "" : launcher);
+                store.changed(null, null, null);
+            }
+        });
+        return row;
     }
 
     /// Builds the row about this instance's debug lines.
