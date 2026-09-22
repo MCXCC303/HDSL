@@ -357,27 +357,14 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 com.jfoenix.controls.JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
     }
 
-    /// Writes this instance's configuration into a pack the user chooses.
+    /// Writes this instance into a pack, through the original's wizard.
     ///
-    /// What goes into it is what reproduces the instance: the harness version, the
-    /// boot library it is paired with, the profile's plugins at their versions and
-    /// in their load order, and the profile's patch layer. What is installed does
-    /// not, because an installed tree belongs to one machine's platform and one
-    /// machine's package-manager store.
+    /// The wizard asks what kind of pack, what it says about itself and what of the
+    /// instance goes into it, which is the order the original asks in — and writing
+    /// it is what the last step does.
     private void exportModpack() {
-        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
-        chooser.setTitle(i18n("modpack.export"));
-        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.modpack.filter"), "*.zip"));
-        chooser.setInitialFileName("hdsl-" + instance.id() + "-" + instance.version() + ".zip");
-        java.io.File chosen = chooser.showSaveDialog(Controllers.getStage());
-        if (chosen == null) {
-            return;
-        }
-
-        java.nio.file.Path target = chosen.toPath();
-        ProgressDialog.run(i18n("modpack.export"),
-                progress -> org.jackhuang.hmcl.dsh.DshModpacks.export(instance, target, progress::accept), null);
+        Controllers.getDecorator().startWizard(new ModpackExportWizardProvider(instance),
+                i18n("modpack.wizard"));
     }
 
     /// Shows the operations available on this instance.
