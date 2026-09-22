@@ -42,12 +42,6 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 @NotNullByDefault
 public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.UnknownNullability Object>
         extends LineSelectButton<T> {
-    /// The size of the globe, matching the original's.
-    private static final int INHERIT_ICON_SIZE = 12;
-
-    /// The globe, which is the way in and out of following the launcher.
-    private final JFXButton inheritButton;
-
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
 
@@ -61,30 +55,26 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         getStyleClass().add("line-inheritable-value");
 
         JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
-        // The helper's style is what colours the icon; its size is this row's, and the original's
-        // globe is a small mark beside the name rather than a control as tall as the row.
-        inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
         FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit"));
-        inheritButton.setOnAction(event -> {
+        inheritButton.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, event -> {
             setOverridden(!isOverridden());
             event.consume();
         });
-        addTitleNode(inheritButton);
+        setTitleTrailing(inheritButton);
 
         // Following the launcher is not a choice of this row's, so the value is not editable while
         // it does — but the row itself stays enabled, because the globe on it is the way in, and a
         // disabled row disables what is on it.
-        this.inheritButton = inheritButton;
-        addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
-            // Only the row's own press is held back while it follows. The globe is a button of its
-            // own inside this row, and a filter runs before every handler — consuming here without
-            // looking at where the press came from is what made the globe unpressable.
-            if (!isOverridden() && event.getTarget() != inheritButton) {
-                event.consume();
-            }
-        });
         overridden.addListener((observable, was, value) -> applyEditable());
         applyEditable();
+    }
+
+    @Override
+    public void fire() {
+        // Pressing the row is taking the setting over — the original's rows behave this way, and
+        // it means there is no state in which a press writes a value without saying whose it is.
+        setOverridden(true);
+        super.fire();
     }
 
     /// Returns whether this row has taken the setting over.
