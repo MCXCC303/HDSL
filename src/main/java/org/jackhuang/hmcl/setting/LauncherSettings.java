@@ -108,6 +108,28 @@ public final class LauncherSettings {
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> buildScriptPolicy =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL);
 
+    /// A command to run before an instance starts, or an empty string for none.
+    private final javafx.beans.property.StringProperty preLaunchCommand =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// A command to run after an instance has ended, or an empty string for none.
+    private final javafx.beans.property.StringProperty postExitCommand =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns the command to run before an instance starts.
+    ///
+    /// @return the property, empty for none
+    public javafx.beans.property.StringProperty preLaunchCommandProperty() {
+        return preLaunchCommand;
+    }
+
+    /// Returns the command to run after an instance has ended.
+    ///
+    /// @return the property, empty for none
+    public javafx.beans.property.StringProperty postExitCommandProperty() {
+        return postExitCommand;
+    }
+
     /// The source used to render the launcher background.
     private final ObjectProperty<@Nullable String> launcherFontFamily =
             new SimpleObjectProperty<>(this, LAUNCHER_FONT_FAMILY, null);
