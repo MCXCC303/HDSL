@@ -56,6 +56,9 @@ class PageStringsTest {
             // the original calls one.
             "install.modpack",
             "modpack.export",
+            "dsh.packforge.type",
+            "dsh.packforge.type.detail",
+            "dsh.packforge.filter",
             "dsh.modpack.filter",
             "dsh.modpack.exists",
             // The session pack's entries.
