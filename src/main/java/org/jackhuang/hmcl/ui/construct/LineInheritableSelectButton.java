@@ -20,7 +20,6 @@ package org.jackhuang.hmcl.ui.construct;
 import com.jfoenix.controls.JFXButton;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
-import javafx.scene.control.ContentDisplay;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -43,18 +42,15 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 @NotNullByDefault
 public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.UnknownNullability Object>
         extends LineSelectButton<T> {
-    /// The size of the globe, matching the original's.
-    private static final int INHERIT_ICON_SIZE = 12;
-
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
 
     /// Creates a row that follows the launcher until it is told otherwise.
     public LineInheritableSelectButton() {
-        JFXButton inheritButton = new JFXButton();
-        inheritButton.getStyleClass().add("toggle-icon-tiny");
-        inheritButton.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
-        inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
+        // The launcher's own small icon button, so the globe is drawn in the theme's
+        // colour like every other icon in a row: a bare SVG button takes the default
+        // fill, which on these rows is a dark shape that looks like a smudge.
+        JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
         FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit"));
         inheritButton.setOnAction(event -> setOverridden(!isOverridden()));
         addTitleNode(inheritButton);
