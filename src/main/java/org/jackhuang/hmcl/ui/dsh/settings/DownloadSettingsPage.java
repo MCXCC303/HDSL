@@ -55,7 +55,8 @@ public final class DownloadSettingsPage extends ScrollPane {
                 ComponentList.createComponentListTitle(i18n("settings.launcher.download_source")),
                 buildSourceList(),
                 ComponentList.createComponentListTitle(i18n("dsh.settings.catalog")),
-                buildCatalogList());
+                buildCatalogList(),
+                ComponentList.createComponentListTitle(i18n("dsh.settings.proxy")), buildProxyList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
@@ -72,6 +73,74 @@ public final class DownloadSettingsPage extends ScrollPane {
     /// lives on one host, and a network that cannot reach it can point this at a mirror.
     ///
     /// @return the list
+    /// Builds the rows for the network the launcher downloads through.
+    ///
+    /// A package manager is configured through the environment it inherits, so these travel with
+    /// every child the launcher starts: one proxy covers the version lists and the plugin
+    /// installs, and nothing has to be configured twice.
+    ///
+    /// @return the list
+    private ComponentList buildProxyList() {
+        ComponentList list = new ComponentList();
+        list.getContent().add(proxyRow(i18n("dsh.settings.proxy.http"),
+                i18n("dsh.settings.proxy.hint"), settings().httpProxyProperty()));
+        list.getContent().add(proxyRow(i18n("dsh.settings.proxy.https"),
+                i18n("dsh.settings.proxy.hint"), settings().httpsProxyProperty()));
+        list.getContent().add(proxyRow(i18n("dsh.settings.proxy.none"),
+                i18n("dsh.settings.proxy.none.hint"), settings().noProxyProperty()));
+
+        com.jfoenix.controls.JFXTextField concurrency = new com.jfoenix.controls.JFXTextField();
+        concurrency.setPromptText(i18n("dsh.settings.proxy.concurrency.hint"));
+        concurrency.setText(settings().downloadConcurrencyProperty().get() == null ? ""
+                : settings().downloadConcurrencyProperty().get().toString());
+        concurrency.textProperty().addListener((observable, was, text) -> {
+            String value = text == null ? "" : text.trim();
+            if (value.isEmpty()) {
+                settings().downloadConcurrencyProperty().set(null);
+                return;
+            }
+            try {
+                settings().downloadConcurrencyProperty().set(Integer.valueOf(value));
+            } catch (NumberFormatException e) {
+                // Half-typed numbers are not settings: the field keeps what was typed and the
+                // setting keeps what it had.
+            }
+        });
+        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.concurrency"),
+                i18n("dsh.settings.proxy.concurrency.hint"), concurrency));
+        return list;
+    }
+
+    /// Builds one proxy row.
+    ///
+    /// @param title    the row's name
+    /// @param hint     what it is for
+    /// @param property what is typed into it
+    /// @return the row
+    private javafx.scene.Node proxyRow(String title, String hint,
+                                       javafx.beans.property.StringProperty property) {
+        com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
+        field.textProperty().bindBidirectional(property);
+        return proxyRowWithField(title, hint, field);
+    }
+
+    /// Builds one row of a label, a hint and a field.
+    ///
+    /// @param title the row's name
+    /// @param hint  what it is for
+    /// @param field what is typed into it
+    /// @return the row
+    private javafx.scene.Node proxyRowWithField(String title, String hint, javafx.scene.Node field) {
+        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
+        box.setPadding(new javafx.geometry.Insets(8, 12, 8, 12));
+        javafx.scene.control.Label titleLabel = new javafx.scene.control.Label(title);
+        javafx.scene.control.Label hintLabel = new javafx.scene.control.Label(hint);
+        hintLabel.getStyleClass().add("desc");
+        hintLabel.setWrapText(true);
+        box.getChildren().addAll(titleLabel, hintLabel, field);
+        return box;
+    }
+
     private ComponentList buildCatalogList() {
         com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
         field.setPromptText(org.jackhuang.hmcl.dsh.DshPluginCatalog.CATALOG_URL);

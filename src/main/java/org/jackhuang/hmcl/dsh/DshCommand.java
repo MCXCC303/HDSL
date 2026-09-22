@@ -105,6 +105,9 @@ public final class DshCommand {
                              Map<String, String> environment, @Nullable Consumer<String> onLine)
             throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder(command);
+        // What the launcher is configured to download through travels with every child, so a
+        // proxy covers the version lists and the plugin installs alike.
+        builder.environment().putAll(DshNetworkSettings.environment());
         if (directory != null) {
             builder.directory(directory.toFile());
         }

@@ -140,6 +140,49 @@ public final class LauncherSettings {
         return launcherVisibility;
     }
 
+    /// The proxy the launcher's downloads go through, or empty for none.
+    private final javafx.beans.property.StringProperty httpProxy =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// The proxy secure downloads go through, or empty for none.
+    private final javafx.beans.property.StringProperty httpsProxy =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Hosts that are reached without a proxy, or empty for none.
+    private final javafx.beans.property.StringProperty noProxy =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// How many downloads may happen at once, or `null` for the tool's own choice.
+    private final ObjectProperty<@Nullable Integer> downloadConcurrency = new SimpleObjectProperty<>();
+
+    /// Returns the proxy downloads go through.
+    ///
+    /// @return the property, empty for none
+    public javafx.beans.property.StringProperty httpProxyProperty() {
+        return httpProxy;
+    }
+
+    /// Returns the proxy secure downloads go through.
+    ///
+    /// @return the property, empty for none
+    public javafx.beans.property.StringProperty httpsProxyProperty() {
+        return httpsProxy;
+    }
+
+    /// Returns the hosts reached without a proxy.
+    ///
+    /// @return the property, empty for none
+    public javafx.beans.property.StringProperty noProxyProperty() {
+        return noProxy;
+    }
+
+    /// Returns how many downloads may happen at once.
+    ///
+    /// @return the property, `null` for the tool's own choice
+    public ObjectProperty<@Nullable Integer> downloadConcurrencyProperty() {
+        return downloadConcurrency;
+    }
+
     /// A command to run before an instance starts, or an empty string for none.
     private final javafx.beans.property.StringProperty preLaunchCommand =
             new javafx.beans.property.SimpleStringProperty("");
