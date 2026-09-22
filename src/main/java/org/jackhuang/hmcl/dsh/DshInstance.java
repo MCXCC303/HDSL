@@ -46,12 +46,30 @@ public record DshInstance(
         @SerializedName("homeMode") DshHomeMode homeMode,
         @SerializedName("customHome") @Nullable String customHome,
         @SerializedName("arguments") @Unmodifiable List<String> extraArguments,
+        // Empty means this instance adds nothing of its own, so what it runs with is the launcher's
+        // set — which is what "follow the launcher" comes to, and is why the instance page's row
+        // reads its own state from emptiness. A set of its own is laid over the launcher's rather
+        // than replacing it, so an empty one and no set at all are the same thing here.
         @SerializedName("environment") @Unmodifiable Map<String, String> environment,
         @SerializedName("icon") @Nullable String icon,
         @SerializedName("iconFile") @Nullable String iconFile,
         @SerializedName("portMode") @Nullable DshPortMode portMode,
         @SerializedName("port") int port,
         @SerializedName("createdAt") long createdAt) {
+
+    /// Normalises the members a settings file may leave out.
+    ///
+    /// The instance file is written by this launcher but not only read from files this launcher
+    /// wrote, and Gson fills a record through its fields rather than through its constructor — so a
+    /// member that is missing arrives here as `null` even though the record says it is never null.
+    /// An instance whose `environment` was absent therefore used to reach the interface as a `null`
+    /// map, and the first row that asked it whether it was empty brought the whole launcher down.
+    /// Doing it in the constructor is what makes every reader safe at once: there are a dozen
+    /// places that take an instance apart and rebuild it, and they all go through here.
+    public DshInstance {
+        environment = java.util.Map.copyOf(
+                environment == null ? java.util.Map.of() : environment);
+    }
 
     /// The profile booted when this instance is launched.
     public static final String DEFAULT_PROFILE = "web";
@@ -292,10 +310,14 @@ public record DshInstance(
     ///
     /// @param environment the variables the instance runs with
     /// @return the copy
-    public DshInstance withEnvironment(java.util.Map<String, String> environment) {
+    public DshInstance withEnvironment(java.util.Map<@Nullable String, @Nullable String> environment) {
+        // `null` is the state "this instance adds nothing of its own", which is what following the
+        // launcher is; it is written as an absent member. The constructor puts the field back to an
+        // empty map for readers, so nothing downstream has to know about it.
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, java.util.Map.copyOf(environment), icon, iconFile, portMode, port,
-                createdAt);
+                extraArguments,
+                environment == null ? null : java.util.Map.copyOf(environment),
+                icon, iconFile, portMode, port, createdAt);
     }
 
     public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {

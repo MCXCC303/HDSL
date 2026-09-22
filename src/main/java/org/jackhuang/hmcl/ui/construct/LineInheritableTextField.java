@@ -137,6 +137,9 @@ public class LineInheritableTextField extends LinePane {
     private void applyState() {
         boolean overridden = isOverridden();
         field.setDisable(!overridden);
+        // The dimming is what says the value belongs to the launcher: the mark says who decides,
+        // and the field has to look like one showing somebody else's answer.
+        field.setOpacity(overridden ? 1.0 : INHERIT_FAINT);
         // The mark says who is deciding, which is the one thing the field cannot say while the row
         // follows: it is showing the launcher's text either way.
         inheritButton.setGraphic((overridden ? SVG.EDIT : SVG.PUBLIC).createIcon(INHERIT_ICON_SIZE));

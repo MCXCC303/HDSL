@@ -157,6 +157,31 @@ public final class DshInstanceSettings {
         write(instance, "debugLog", value == null ? null : new com.google.gson.JsonPrimitive(value));
     }
 
+    /// Reads whether this instance has an environment of its own.
+    ///
+    /// The instance file cannot say so: its `environment` member is never absent once read, because
+    /// the record turns a missing one into an empty map so that no reader has to guard against a
+    /// null. This is the same shape the other per-instance answers here have — a member that is
+    /// there when somebody chose something and absent when they did not.
+    ///
+    /// @param instance the instance
+    /// @return whether it has one
+    public static boolean environmentIsOwn(DshInstance instance) {
+        JsonObject root = read(instance);
+        return root != null && root.has("environmentIsOwn")
+                && root.get("environmentIsOwn").isJsonPrimitive()
+                && root.get("environmentIsOwn").getAsBoolean();
+    }
+
+    /// Records whether this instance has an environment of its own.
+    ///
+    /// @param instance the instance
+    /// @param value    whether it has one
+    /// @throws DshException when the file cannot be written
+    public static void setEnvironmentIsOwn(DshInstance instance, boolean value) throws DshException {
+        write(instance, "environmentIsOwn", new com.google.gson.JsonPrimitive(value));
+    }
+
     /// Reads what this instance does with the launcher while it runs.
     ///
     /// @param instance the instance

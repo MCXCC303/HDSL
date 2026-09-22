@@ -286,69 +286,75 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// Builds the editor for the variables an instance runs with.
     ///
     /// This is how one instance is given one API key and the next another: the variables are
-    /// passed to whatever the instance runs, so a key set here belongs to this instance and
-    /// is never written into a profile, a plugin or a pack.
+    /// passed to whatever the instance runs, so a key set here belongs to this instance and is
+    /// never written into a profile, a plugin or a pack.
+    ///
+    /// The row follows the launcher until it is taken over, like every other row here: while it
+    /// follows, the box shows the launcher's set and does not accept typing, and the globe beside
+    /// the name is the way in. What an instance sets is laid on top of the launcher's set rather
+    /// than replacing it, so taking the row over starts from nothing: an instance that lists only
+    /// its own key keeps every launcher-wide one as well.
+    ///
+    /// The set is written the way the global tab writes it — `NAME=VALUE`, one per line — so the
+    /// same text can be moved between the two boxes.
     ///
     /// @return the list
     private ComponentList buildEnvironmentVariablesList() {
-        ComponentList list = new ComponentList();
+        LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.env_vars"));
 
-        java.util.Map<String, String> environment = instance.environment();
-        for (java.util.Map.Entry<String, String> entry : new java.util.TreeMap<>(environment).entrySet()) {
-            com.jfoenix.controls.JFXTextField value = new com.jfoenix.controls.JFXTextField(entry.getValue());
-            value.setPromptText(i18n("dsh.settings.env_vars.value"));
+        // Whether the instance has a set of its own is the state, and it has to be read from the
+        // file rather than from the map: the constructor turns an absent member into an empty map
+        // for safety, so an instance that adds nothing and one that has never been asked both look
+        // empty in memory. The file is what remembers which it is.
+        boolean own = org.jackhuang.hmcl.dsh.DshInstanceSettings.environmentIsOwn(instance);
+        row.setOverridden(own);
+        row.setText(org.jackhuang.hmcl.dsh.DshEnvironment.format(
+                own ? instance.environment() : settings().globalEnvironment()));
 
-            com.jfoenix.controls.JFXButton remove = FXUtils.newToggleButton4(org.jackhuang.hmcl.ui.SVG.CLOSE);
-            FXUtils.installFastTooltip(remove, i18n("dsh.settings.env_vars.remove"));
-            remove.setOnAction(event -> {
-                java.util.Map<String, String> changed = new java.util.LinkedHashMap<>(instance.environment());
-                changed.remove(entry.getKey());
-                write(instance.withEnvironment(changed));
-            });
-
-            javafx.scene.layout.HBox right = new javafx.scene.layout.HBox(8, value, remove);
-            right.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
-            javafx.scene.layout.HBox.setHgrow(value, javafx.scene.layout.Priority.ALWAYS);
-
-            value.textProperty().addListener((observable, was, text) -> {
-                java.util.Map<String, String> changed = new java.util.LinkedHashMap<>(instance.environment());
-                changed.put(entry.getKey(), text == null ? "" : text);
-                write(instance.withEnvironment(changed));
-            });
-
-            LinePane row = new LinePane();
-            row.setTitle(entry.getKey());
-            row.setRight(right);
-            list.getContent().add(row);
-        }
-
-        // A new variable: the name and the value, then it is part of the instance.
-        com.jfoenix.controls.JFXTextField name = new com.jfoenix.controls.JFXTextField();
-        name.setPromptText(i18n("dsh.settings.env_vars.name"));
-        com.jfoenix.controls.JFXTextField value = new com.jfoenix.controls.JFXTextField();
-        value.setPromptText(i18n("dsh.settings.env_vars.value"));
-        com.jfoenix.controls.JFXButton add = new com.jfoenix.controls.JFXButton(i18n("dsh.settings.env_vars.add"));
-        add.getStyleClass().add("jfx-button-raised");
-        add.setOnAction(event -> {
-            String key = name.getText() == null ? "" : name.getText().trim();
-            if (key.isEmpty()) {
-                return;
+        // Typing is only this instance's to store while the row is the one deciding; what is
+        // written is this instance's own set, which is what is laid over the launcher's.
+        row.textProperty().addListener((observable, was, text) -> {
+            if (row.isOverridden()) {
+                write(instance.withEnvironment(org.jackhuang.hmcl.dsh.DshEnvironment.parse(text)));
+                rememberEnvironment(instance, true);
             }
-            java.util.Map<String, String> changed = new java.util.LinkedHashMap<>(instance.environment());
-            changed.put(key, value.getText() == null ? "" : value.getText());
-            write(instance.withEnvironment(changed));
+        });
+        row.overriddenProperty().addListener((observable, was, overridden) -> {
+            if (overridden) {
+                // An instance's own set is laid on top of the launcher's, so it starts empty: a
+                // copy of the launcher's set would say the opposite — that every launcher-wide
+                // variable is now this instance's, which would freeze them here.
+                write(instance.withEnvironment(java.util.Map.of()));
+                rememberEnvironment(instance, true);
+                row.setText("");
+            } else {
+                write(instance.withEnvironment(null));
+                rememberEnvironment(instance, false);
+                row.setText(org.jackhuang.hmcl.dsh.DshEnvironment.format(settings().globalEnvironment()));
+            }
         });
 
-        javafx.scene.layout.HBox fields = new javafx.scene.layout.HBox(8, name, value, add);
-        fields.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-        javafx.scene.layout.HBox.setHgrow(name, javafx.scene.layout.Priority.ALWAYS);
-        javafx.scene.layout.HBox.setHgrow(value, javafx.scene.layout.Priority.ALWAYS);
-
-        LinePane row = new LinePane();
-        row.setTitle(i18n("dsh.settings.env_vars.new"));
-        row.setRight(fields);
+        ComponentList list = new ComponentList();
         list.getContent().add(row);
         return list;
+    }
+
+    /// Records whether an instance has an environment of its own.
+    ///
+    /// The instance file cannot answer this: its `environment` member is read as an empty map
+    /// whether the instance adds nothing or has never been asked, so the answer is kept beside the
+    /// instance's other own-versus-launcher choices. A failure is logged rather than shown: the
+    /// variables themselves are already stored, and the worst a lost flag does is show the box
+    /// empty next time.
+    ///
+    /// @param instance the instance
+    /// @param own      whether it has one
+    private static void rememberEnvironment(DshInstance instance, boolean own) {
+        try {
+            DshInstanceSettings.setEnvironmentIsOwn(instance, own);
+        } catch (DshException e) {
+            LOG.warning("Failed to record whether the instance has its own environment", e);
+        }
     }
 
     /// Builds the row about install scripts.
@@ -523,7 +529,6 @@ public final class InstanceSettingsPage extends ScrollPane {
     private LineSelectButton<DshPortMode> buildPortModeRow() {
         LineInheritableSelectButton<DshPortMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.instance.port.mode"));
-        row.setSubtitle(i18n("dsh.instance.port.mode.hint"));
         row.setItems(DshPortMode.AUTO, DshPortMode.FIXED);
         // What it follows is the launcher's policy, and an instance that has not
         // chosen one shows that rather than the policy it happens to resolve to.
