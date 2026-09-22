@@ -61,12 +61,27 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
             event.consume();
         });
         setTitleTrailing(inheritButton);
+        // The row's own skeleton marks parts of itself mouse-transparent so that a press goes to the
+        // row rather than to its content; the globe is inside that content, and has to be reachable
+        // for the setting to have a way back.
+        makeClickable(inheritButton);
 
         // Following the launcher is not a choice of this row's, so the value is not editable while
         // it does — but the row itself stays enabled, because the globe on it is the way in, and a
         // disabled row disables what is on it.
         overridden.addListener((observable, was, value) -> applyEditable());
         applyEditable();
+    }
+
+    /// Clears mouse-transparency from a node up to this row.
+    ///
+    /// @param node the node to make reachable
+    private void makeClickable(javafx.scene.Node node) {
+        javafx.scene.Node current = node;
+        while (current != null && current != this) {
+            current.setMouseTransparent(false);
+            current = current.getParent();
+        }
     }
 
     @Override
@@ -103,6 +118,15 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
     /// Following the launcher is not a choice of this row's, so the row does not offer to
     /// change it: the globe is the way in, and the value is read-only until it is pressed.
     private void applyEditable() {
+        // Both, deliberately: the stylesheet rule says it for a row that a theme styles the way
+        // this one expects, and this says it whatever the stylesheet does — because a setting that
+        // is following the launcher has to look like one.
+        javafx.application.Platform.runLater(() -> {
+            javafx.scene.Node value = lookup(".trailing-label");
+            if (value != null) {
+                value.setOpacity(isOverridden() ? 1.0 : 0.55);
+            }
+        });
         // What says the value is the launcher's is the globe, not a greyed-out row: the row stays
         // usable so the globe can be pressed, and its action is consumed while it follows.
         pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("inherited"), !isOverridden());
