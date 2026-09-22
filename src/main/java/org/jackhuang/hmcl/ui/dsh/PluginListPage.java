@@ -159,6 +159,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                         this::refresh), null);
     }
 
+    /// Opens the page that lists the community's plugins.
+    private void openMarket() {
+        DownloadPage page = Controllers.getDownloadPage();
+        Controllers.navigate(page);
+        page.openTab("plugins");
+    }
+
     /// Installs a plugin from a packed file the user chooses.
     ///
     /// The file is copied into the instance before it is installed, because the
@@ -198,6 +205,11 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 // plugin is a package, so the file is a packed one.
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add"), SVG.ADD,
                         this::installFromFile),
+                // The original's mod list also carries 下载, which leads to the list
+                // of what can be installed rather than to a file dialog; this is
+                // that, pointing at the download page's plugin tab.
+                ToolbarListPageSkin.createToolbarButton2(i18n("mods.download"), SVG.DOWNLOAD,
+                        this::openMarket),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
                         this::revealProfile));
 

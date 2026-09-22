@@ -151,7 +151,11 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
     /// @return the row
     private InstallerListItem marketRow() {
         DshPreset market = marketPreset();
-        InstallerListItem row = new InstallerListItem(SVG.EXTENSION, market == null ? "dsh-market" : market.name());
+        // The marketplace leads with the mark of the loader it stands in for, and
+        // the create page's card carries that same picture; a row that showed
+        // something else would be describing a different thing.
+        InstallerListItem row = new InstallerListItem(DshInstanceIcon.FABRIC.load(),
+                market == null ? "dsh-market" : market.name());
 
         String installed = market == null ? null : installedVersion(market);
         row.statusProperty().set(installed == null ? i18n("install.installer.not_installed") : installed);

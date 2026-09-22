@@ -40,6 +40,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshPluginCatalog;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
@@ -47,6 +48,7 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
@@ -109,7 +111,13 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
     private final Label pageLabel = new Label();
 
     /// The instance the plugins are installed into.
-    private final Label targetLabel = new Label();
+    ///
+    /// A picker rather than a label, which is the original's own arrangement: its
+    /// mod page leads with the instance the download will go into, because the
+    /// same list is browsed for whichever instance the person is working on. It
+    /// starts at whatever instance the launcher has selected and does not change
+    /// that selection, so browsing the market never moves the launch button.
+    private final JFXComboBox<DshInstance> instanceBox = new JFXComboBox<>();
 
     /// The page being shown, counted from one.
     private int page = 1;
@@ -140,7 +148,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
         listView.setPadding(Insets.EMPTY);
         listView.getStyleClass().add("no-horizontal-scrollbar");
         listView.setItems(shown);
-        listView.setCellFactory(view -> new PluginCell());
+        listView.setCellFactory(view -> new PluginCell((JFXListView<DshPluginCatalog.Plugin>) view));
         listView.setPlaceholder(placeholder(i18n("search.no_results_found")));
         spinner.setContent(listView);
         root.getChildren().add(spinner);
@@ -171,7 +179,14 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
         nameField.setPromptText(i18n("search.hint.chinese"));
         HBox.setHgrow(nameField, Priority.ALWAYS);
         FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
-        pane.addRow(0, new Label(i18n("mods.name")), nameField, new Label(i18n("addon.category")), categoryBox);
+        instanceBox.setMaxWidth(Double.MAX_VALUE);
+        instanceBox.setConverter(FXUtils.stringConverter(
+                instance -> instance == null ? i18n("dsh.market.no_instance") : instance.id()));
+        instanceBox.getItems().setAll(DshInstanceManager.list());
+        instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
+        pane.addRow(0, new Label(i18n("dsh.download.instance")), instanceBox,
+                new Label(i18n("mods.name")), nameField);
+        pane.addRow(1, new Label(i18n("addon.category")), categoryBox, new Label(i18n("search.sort")), sortBox);
 
         categoryBox.setMaxWidth(Double.MAX_VALUE);
         categoryBox.setConverter(FXUtils.stringConverter(Function.identity()));
@@ -182,7 +197,6 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
         sortBox.getItems().setAll("downloads", "stars", "added");
         sortBox.setValue("downloads");
         sortBox.valueProperty().addListener((observable, was, value) -> search());
-        pane.addRow(1, new Label(i18n("search.sort")), sortBox, new Label(i18n("dsh.download.instance")), targetLabel);
 
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
@@ -279,9 +293,6 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
 
     /// Filters, sorts and pages what the catalogue holds.
     private void search() {
-        DshInstance target = GameDirectoryManager.selectedInstanceProperty().get();
-        targetLabel.setText(target == null ? i18n("dsh.market.no_instance") : target.id());
-
         String query = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase();
         List<DshPluginCatalog.Plugin> matching = new ArrayList<>();
         for (DshPluginCatalog.Plugin plugin : DshPluginCatalog.sorted(all, sortBox.getValue())) {
@@ -331,95 +342,64 @@ public final class PluginMarketPage extends StackPane implements Refreshable {
         return container;
     }
 
-    /// Installs one plugin into the selected instance.
+    /// Returns the instance the page installs into.
     ///
-    /// @param plugin the plugin
-    private void install(DshPluginCatalog.Plugin plugin) {
-        DshInstance instance = GameDirectoryManager.selectedInstanceProperty().get();
-        if (instance == null) {
-            Controllers.dialog(i18n("dsh.market.no_instance"), i18n("download.install"), MessageType.ERROR);
-            return;
-        }
-
-        String spec = plugin.installSpec();
-        if (spec == null) {
-            Controllers.dialog(i18n("dsh.market.not_installable", plugin.name()),
-                    i18n("download.install"), MessageType.ERROR);
-            return;
-        }
-
-        ProgressDialog.run(i18n("download.install"),
-                progress -> DshPluginInstaller.installSpecs(instance, List.of(spec), progress::accept),
-                null);
+    /// The picker's own choice, falling back to whatever the launcher has selected
+    /// when the picker has none — which is what a fresh page shows, so browsing the
+    /// market starts where the person already is.
+    ///
+    /// @return the instance, or `null` when there is none
+    private @Nullable DshInstance target() {
+        DshInstance chosen = instanceBox.getValue();
+        return chosen != null ? chosen : GameDirectoryManager.selectedInstanceProperty().get();
     }
 
-    /// One result row: the plugin, what it is, and what installing it takes.
-    private final class PluginCell extends ListCell<DshPluginCatalog.Plugin> {
+    /// One result row: the plugin, what it is, and the way to its own page.
+    ///
+    /// The shape the session and plugin lists use: a two-line item on the surface
+    /// the list cells wear, with the row's action wired to the rippler — which is
+    /// what takes the press, and the reason a handler put on the pane inside it
+    /// never fires.
+    private final class PluginCell extends MDListCell<DshPluginCatalog.Plugin> {
+        /// The plugin's name, description and tags.
+        private final TwoLineListItem content = new TwoLineListItem();
+
+        /// Creates the cell.
+        ///
+        /// @param listView the list it belongs to
+        /// Creates the cell.
+        ///
+        /// @param listView the list it belongs to
+        PluginCell(JFXListView<DshPluginCatalog.Plugin> listView) {
+            super(listView);
+            onClicked(() -> {
+                DshPluginCatalog.Plugin item = getItem();
+                if (item != null) {
+                    Controllers.navigate(new PluginDetailPage(item));
+                }
+            });
+        }
+
         @Override
-        protected void updateItem(@Nullable DshPluginCatalog.Plugin plugin, boolean empty) {
-            super.updateItem(plugin, empty);
+        protected void updateControl(@Nullable DshPluginCatalog.Plugin plugin, boolean empty) {
             if (empty || plugin == null) {
-                setText(null);
-                setGraphic(null);
                 return;
             }
-
-            BorderPane root = new BorderPane();
-            root.getStyleClass().add("md-list-cell");
-            root.setPadding(new Insets(8));
-
-            TwoLineListItem content = new TwoLineListItem();
-            content.setMouseTransparent(true);
             content.setTitle(plugin.name());
             content.setSubtitle(plugin.localizedDescription() == null
                     ? plugin.owner() : plugin.localizedDescription());
             content.addTags(List.of(plugin.category(), plugin.owner()));
             content.addTag(plugin.sourceKind());
-            root.setCenter(content);
 
-            HBox buttons = new HBox(8);
-            buttons.setAlignment(Pos.CENTER_RIGHT);
-            buttons.setPickOnBounds(false);
-
-            JFXButton install = FXUtils.newToggleButton4(SVG.DOWNLOAD);
-            install.setDisable(plugin.installSpec() == null);
-            FXUtils.installFastTooltip(install, i18n("download.install"));
-            install.setOnAction(event -> {
-                install(plugin);
-                event.consume();
-            });
-            buttons.getChildren().add(install);
-
-            if (plugin.hasRepository() && plugin.url().startsWith("http")) {
-                JFXButton page = FXUtils.newToggleButton4(SVG.OPEN_IN_NEW);
-                FXUtils.installFastTooltip(page, i18n("download.release_page"));
-                page.setOnAction(event -> {
-                    openPage(plugin.url());
-                    event.consume();
-                });
-                buttons.getChildren().add(page);
-            }
-
-            root.setRight(buttons);
-            setText(null);
-            setGraphic(new RipplerContainer(root));
+            JFXButton open = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
+            open.setMouseTransparent(true);
+            BorderPane row = new BorderPane();
+            row.setPadding(new Insets(8));
+            row.setCenter(content);
+            HBox right = new HBox(open);
+            right.setAlignment(Pos.CENTER_RIGHT);
+            row.setRight(right);
+            getContainer().getChildren().setAll(row);
         }
-    }
-
-    /// Opens a plugin's page in the browser.
-    ///
-    /// @param url the address
-    private static void openPage(String url) {
-        Schedulers.io().execute(() -> {
-            try {
-                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
-                    Desktop.getDesktop().browse(URI.create(url));
-                } else {
-                    LOG.warning("No desktop integration to open " + url);
-                }
-            } catch (Exception e) {
-                LOG.warning("Failed to open " + url, e);
-            }
-        });
     }
 }
