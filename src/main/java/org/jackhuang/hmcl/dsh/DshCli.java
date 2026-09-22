@@ -98,6 +98,9 @@ public final class DshCli {
         /// Writes an instance's configuration into a pack.
         EXPORT_MODPACK(false),
 
+        /// Writes an instance as a DSH-PackForge pack.
+        EXPORT_PACKFORGE(false),
+
         /// Builds an instance from a pack.
         INSTALL_MODPACK(false),
 
@@ -182,6 +185,7 @@ public final class DshCli {
                 && !args.contains("--remove-plugin")
                 && !args.contains("--export-sessions")
                 && !args.contains("--export-modpack")
+                && !args.contains("--export-packforge")
                 && !args.contains("--upgrade-instance")
                 && !args.contains("--build-scripts")
                 && !args.contains("--install-plugin-file")
@@ -296,6 +300,11 @@ public final class DshCli {
                 }
                 case "--allow" -> positional.add("--allow");
                 case "--deny" -> positional.add("--deny");
+                case "--export-packforge" -> {
+                    command = Command.EXPORT_PACKFORGE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
                 case "--export-modpack" -> {
                     command = Command.EXPORT_MODPACK;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
@@ -612,6 +621,24 @@ public final class DshCli {
                     for (String bundle : DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile())) {
                         out.println("  bundle: " + bundle);
                     }
+                    return 0;
+                }
+                case EXPORT_PACKFORGE -> {
+                    if (invocation.arguments().size() < 2) {
+                        err.println("error: --export-packforge needs an instance and a file to write");
+                        return 1;
+                    }
+                    DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+                    if (instance == null) {
+                        err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+                        return 1;
+                    }
+                    java.nio.file.Path target = java.nio.file.Path.of(invocation.arguments().get(1));
+                    DshPackForge.Options options = new DshPackForge.Options(
+                            DshPackForge.Options.kebab(instance.id()), "1.0.0", instance.id(), "", "");
+                    DshPackForge.Result exported = DshPackForge.export(instance, target, options, out::println);
+                    out.println("Wrote " + exported.files() + " file(s), left out " + exported.excluded()
+                            + ", sha256 " + exported.sha256());
                     return 0;
                 }
                 case EXPORT_MODPACK -> {
@@ -1150,6 +1177,7 @@ public final class DshCli {
                   --upgrade-instance <id> <version>  move an instance to another harness version
                   --install-plugin-file <id> <file>  install a plugin from a packed file
                   --export-modpack <id> <file>     write an instance's configuration into a pack
+                  --export-packforge <id> <file>   write an instance as a DSH-PackForge pack
                       --with-sessions                also carry the instance's conversations
                   --install-modpack <file> [<id>]  build an instance from a pack
                   --restore-profile <id> <file>    put a pack's profile into an existing instance
