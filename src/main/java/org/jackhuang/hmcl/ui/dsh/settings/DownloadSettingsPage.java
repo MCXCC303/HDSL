@@ -53,7 +53,9 @@ public final class DownloadSettingsPage extends ScrollPane {
 
         VBox root = new VBox(
                 ComponentList.createComponentListTitle(i18n("settings.launcher.download_source")),
-                buildSourceList());
+                buildSourceList(),
+                ComponentList.createComponentListTitle(i18n("dsh.settings.catalog")),
+                buildCatalogList());
         root.getStyleClass().add("card-list");
         setContent(root);
 
@@ -64,6 +66,33 @@ public final class DownloadSettingsPage extends ScrollPane {
     /// Builds the download source section.
     ///
     /// @return the assembled component list
+    /// Builds the row that says where the plugin catalogue is read from.
+    ///
+    /// The address is the one thing a network may need to change: the community catalogue
+    /// lives on one host, and a network that cannot reach it can point this at a mirror.
+    ///
+    /// @return the list
+    private ComponentList buildCatalogList() {
+        com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
+        field.setPromptText(org.jackhuang.hmcl.dsh.DshPluginCatalog.CATALOG_URL);
+        field.textProperty().bindBidirectional(settings().pluginCatalogUrlProperty());
+
+        javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(6);
+        box.setPadding(new javafx.geometry.Insets(8, 12, 8, 12));
+        javafx.scene.control.Label label = new javafx.scene.control.Label(i18n("dsh.settings.catalog.url"));
+        javafx.scene.control.Label hint = new javafx.scene.control.Label(i18n("dsh.settings.catalog.url.hint"));
+        hint.getStyleClass().add("desc");
+        hint.setWrapText(true);
+        box.getChildren().addAll(label, hint, field);
+
+        ComponentList list = new ComponentList();
+        list.getContent().add(box);
+        return list;
+    }
+
+    /// Builds the source row.
+    ///
+    /// @return the list
     private ComponentList buildSourceList() {
         ComponentList list = new ComponentList();
 

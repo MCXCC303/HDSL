@@ -66,8 +66,23 @@ public final class DshPluginCatalog {
     ///
     /// @return the address to read
     public static String catalogUrl() {
-        String override = System.getProperty("hdsl.pluginCatalog");
-        return override == null || override.isBlank() ? CATALOG_URL : override.trim();
+        // Three sources, most specific first: the property is for a developer who wants one
+        // run to read somewhere else, the setting is for a network that cannot reach the
+        // community host, and the constant is what the ecosystem publishes.
+        String property = System.getProperty("hdsl.pluginCatalog");
+        if (property != null && !property.isBlank()) {
+            return property.trim();
+        }
+        try {
+            String setting = org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .pluginCatalogUrlProperty().get();
+            if (setting != null && !setting.isBlank()) {
+                return setting.trim();
+            }
+        } catch (RuntimeException e) {
+            LOG.warning("Could not read the catalogue address from the settings", e);
+        }
+        return CATALOG_URL;
     }
 
     /// The hosts a catalogue URL may name for a prebuilt release archive.

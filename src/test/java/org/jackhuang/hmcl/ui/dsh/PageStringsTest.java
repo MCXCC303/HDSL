@@ -98,6 +98,9 @@ class PageStringsTest {
             "dsh.settings.debug",
             "dsh.settings.debug.log",
             "dsh.settings.debug.log.hint",
+            "dsh.settings.catalog",
+            "dsh.settings.catalog.url",
+            "dsh.settings.catalog.url.hint",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",

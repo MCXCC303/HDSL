@@ -118,6 +118,17 @@ public final class LauncherSettings {
         return debugLog;
     }
 
+    /// Where the plugin catalogue is read from, or empty for the built-in address.
+    private final javafx.beans.property.StringProperty pluginCatalogUrl =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns the address the plugin catalogue is read from.
+    ///
+    /// @return the property, empty for the built-in address
+    public javafx.beans.property.StringProperty pluginCatalogUrlProperty() {
+        return pluginCatalogUrl;
+    }
+
     /// A command to run before an instance starts, or an empty string for none.
     private final javafx.beans.property.StringProperty preLaunchCommand =
             new javafx.beans.property.SimpleStringProperty("");
