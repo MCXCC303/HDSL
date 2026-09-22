@@ -135,7 +135,17 @@ public final class AppearanceSettingsPage extends ScrollPane {
         }
     }
 
-    private ComponentList buildThemeColorList() {
+    private javafx.scene.Node buildThemeColorList() {
+        // The original keeps this as an expanding row: the colour in force is shown beside the name
+        // and the choices are inside it, which is where a setting with several forms belongs.
+        ComponentSublist sublist = new ComponentSublist();
+        sublist.setTitle(i18n("settings.launcher.theme_color"));
+        sublist.setHasSubtitle(true);
+        sublist.subtitleProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
+            org.jackhuang.hmcl.setting.ThemeColorType type = settings().themeColorTypeProperty().get();
+            return type == null ? ""
+                    : i18n("dsh.settings.theme_color." + type.name().toLowerCase(java.util.Locale.ROOT));
+        }, settings().themeColorTypeProperty()));
         ComponentList list = new ComponentList();
 
 
@@ -213,7 +223,8 @@ public final class AppearanceSettingsPage extends ScrollPane {
             list.getContent().add(colorStyle);
         }
 
-        return list;
+        sublist.getContent().add(list);
+        return sublist;
     }
 
     /// Builds the font section.
