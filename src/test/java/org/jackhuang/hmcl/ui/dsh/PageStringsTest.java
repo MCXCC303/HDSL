@@ -26,7 +26,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// ever been added to the Chinese one.
 class PageStringsTest {
     /// The bundles this launcher keeps complete.
+    ///
+    /// Every key below has to be in both of these. They are the two the launcher's own
+    /// pages are written against, so a key neither holds is a page asking for something
+    /// nobody wrote rather than a translation still to come.
     private static final List<String> BUNDLES = List.of("I18N.properties", "I18N_zh_Hans.properties");
+
+    /// Every other bundle the launcher ships.
+    ///
+    /// Held to a weaker rule: the strings this launcher added have to be present, because
+    /// those are the ones nobody else can supply and the ones whose absence is most
+    /// visible. The transplanted interface's strings are not required here — most of these
+    /// bundles are the original's, trimmed, and filling them is a translation job rather
+    /// than a coding one.
+    ///
+    /// Where a string is missing the interface now shows the English one rather than the
+    /// key, so this is no longer a visible defect; it is a list of work left to do, and it
+    /// is kept so that the list does not grow.
+    private static final List<String> TRANSLATED_BUNDLES = List.of(
+            "I18N_zh_Hant.properties",
+            "I18N_ja.properties",
+            "I18N_ru.properties",
+            "I18N_de.properties",
+            "I18N_es.properties",
+            "I18N_uk.properties",
+            "I18N_ar.properties",
+            "I18N_lzh.properties");
+
+    /// The prefix every key this launcher added carries.
+    private static final String OWN_PREFIX = "dsh.";
 
     /// Every key the pages added here ask a bundle for.
     private static final List<String> KEYS = List.of(
@@ -188,6 +216,41 @@ class PageStringsTest {
             for (String key : KEYS) {
                 assertTrue(strings.containsKey(key), bundle + " has no string for " + key);
             }
+        }
+    }
+
+    /// Verifies that the strings this launcher added exist in the two bundles it maintains.
+    ///
+    /// The other languages are reported rather than checked: they are the original's
+    /// trimmed bundles and none of them carries the strings this launcher added, so the
+    /// interface falls back to English there. Failing on that would mean failing on a
+    /// translation job; passing over it in silence would mean nobody knew. The counts are
+    /// printed instead, which is what a person needs to decide whether to translate them.
+    @Test
+    void theStringsThisLauncherAddedAreInTheBundlesItMaintains() throws IOException {
+        List<String> own = KEYS.stream().filter(key -> key.startsWith(OWN_PREFIX)).toList();
+        assertTrue(!own.isEmpty(), "no keys with the " + OWN_PREFIX + " prefix to check");
+
+        for (String bundle : BUNDLES) {
+            Properties strings = load(bundle);
+            List<String> missing = own.stream().filter(key -> !strings.containsKey(key)).toList();
+            assertTrue(missing.isEmpty(),
+                    bundle + " is one of the two bundles this launcher maintains, and has no string for " + missing);
+        }
+    }
+
+    /// Reports how much of this launcher's own text each other language carries.
+    ///
+    /// Not an assertion: see the comment on the method above. It always passes, and its
+    /// output is the point.
+    @Test
+    void reportsHowMuchOfThisLaunchersTextEachLanguageCarries() throws IOException {
+        List<String> own = KEYS.stream().filter(key -> key.startsWith(OWN_PREFIX)).toList();
+        for (String bundle : TRANSLATED_BUNDLES) {
+            Properties strings = load(bundle);
+            long present = own.stream().filter(strings::containsKey).count();
+            System.out.println(String.format("%-28s %3d / %3d of this launcher's strings",
+                    bundle, present, own.size()));
         }
     }
 

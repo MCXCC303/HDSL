@@ -215,9 +215,7 @@ public final class SupportedLocale {
 
     public String i18n(@PropertyKey(resourceBundle = "assets.lang.I18N") String key, Object... formatArgs) {
         try {
-            return String.format(getResourceBundle().getString(key), formatArgs);
-        } catch (MissingResourceException e) {
-            LOG.error("Cannot find key " + key + " in resource bundle", e);
+            return String.format(getString(key), formatArgs);
         } catch (IllegalFormatException e) {
             LOG.error("Illegal format string, key=" + key + ", args=" + Arrays.toString(formatArgs), e);
         }
@@ -226,10 +224,37 @@ public final class SupportedLocale {
     }
 
     public String i18n(@PropertyKey(resourceBundle = "assets.lang.I18N") String key) {
+        return getString(key);
+    }
+
+    /// Resolves a string from this locale's bundle, falling back to English.
+    ///
+    /// The bundles are not all the same size: the transplanted interface contributes about
+    /// four hundred strings, and only the two the launcher maintains are kept complete. A
+    /// key a bundle does not hold would otherwise be drawn as the key itself, so an entry
+    /// reading `dsh.settings.instance_defaults` appeared on the sidebar of every language
+    /// but the two — which says nothing at all to the person looking at it. English is what
+    /// the original falls back to as well, and the string it produces is at least a word.
+    ///
+    /// The key is still logged: a bundle that is missing strings is work left to do, and
+    /// silently substituting English is how it would go unnoticed.
+    ///
+    /// @param key the string's key
+    /// @return the localized string, the English one, or the key when neither bundle has it
+    private String getString(String key) {
         try {
             return getResourceBundle().getString(key);
         } catch (MissingResourceException e) {
-            LOG.error("Cannot find key " + key + " in resource bundle", e);
+            // Not logged here: the English lookup below reports the real gap once.
+        }
+
+        try {
+            String english = ResourceBundle.getBundle("assets.lang.I18N",
+                    Locale.ENGLISH, DefaultResourceBundleControl.INSTANCE).getString(key);
+            LOG.warning("No " + displayLocale + " string for " + key + "; showing the English one");
+            return english;
+        } catch (MissingResourceException e) {
+            LOG.error("No string for " + key + " in any bundle", e);
             return key;
         }
     }

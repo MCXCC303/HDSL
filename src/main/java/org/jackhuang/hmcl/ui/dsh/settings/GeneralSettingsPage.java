@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.ui.dsh.settings;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
@@ -28,6 +29,7 @@ import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.util.i18n.SupportedLocale;
 import org.jetbrains.annotations.NotNullByDefault;
 
+import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /// The "general" tab of the launcher settings page.
@@ -71,6 +73,10 @@ public final class GeneralSettingsPage extends ScrollPane {
 
     /// Builds the language row.
     ///
+    /// The choice is written to the settings file as well as handed to the string helper:
+    /// the helper keeps its answer in memory, so a language chosen here used to last until
+    /// the launcher was closed.
+    ///
     /// @return the row
     private LineSelectButton<SupportedLocale> buildLanguageRow() {
         LineSelectButton<SupportedLocale> language = new LineSelectButton<>();
@@ -81,6 +87,8 @@ public final class GeneralSettingsPage extends ScrollPane {
         language.valueProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue != null) {
                 I18n.setLocale(newValue);
+                settings().languageProperty().set(newValue);
+                SettingsManager.save();
             }
         });
         return language;

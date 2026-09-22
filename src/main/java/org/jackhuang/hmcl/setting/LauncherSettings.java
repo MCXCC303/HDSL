@@ -34,6 +34,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import org.glavo.monetfx.ColorStyle;
 import org.jackhuang.hmcl.dsh.NodeSource;
+import org.jackhuang.hmcl.util.i18n.SupportedLocale;
 import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
 import org.jackhuang.hmcl.theme.BuiltinBackground;
 import org.jackhuang.hmcl.theme.NetworkBackgroundImageCachePolicy;
@@ -409,6 +410,44 @@ public final class LauncherSettings {
 
     /// The font size used by the log view.
     private final DoubleProperty logFontSize = new SimpleDoubleProperty(12);
+
+    /// How the launcher draws text.
+    ///
+    /// Read before the toolkit starts rather than while it runs: the property it becomes
+    /// is one the renderer reads as it initialises, so the choice takes effect at the next
+    /// start — which is what the row says.
+    private final ObjectProperty<FontAntiAliasing> fontAntiAliasing =
+            new SimpleObjectProperty<>(FontAntiAliasing.AUTO);
+
+    /// Returns how the launcher draws text.
+    ///
+    /// @return the property
+    public ObjectProperty<FontAntiAliasing> fontAntiAliasingProperty() {
+        return fontAntiAliasing;
+    }
+
+    /// Returns how the launcher draws text.
+    ///
+    /// @return the choice, never `null`
+    public FontAntiAliasing fontAntiAliasing() {
+        FontAntiAliasing choice = fontAntiAliasing.get();
+        return choice == null ? FontAntiAliasing.AUTO : choice;
+    }
+
+    /// The language the interface speaks.
+    ///
+    /// Stored here rather than only in the internationalisation helper because that helper
+    /// keeps its choice in memory: without a setting to write it to, choosing a language
+    /// lasted until the launcher was closed.
+    private final ObjectProperty<SupportedLocale> language =
+            new SimpleObjectProperty<>(SupportedLocale.DEFAULT);
+
+    /// Returns the language the interface speaks.
+    ///
+    /// @return the property
+    public ObjectProperty<SupportedLocale> languageProperty() {
+        return language;
+    }
 
     /// Whether animations are disabled; `null` follows the platform setting.
     private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();

@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import org.jackhuang.hmcl.setting.LauncherSettings;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.setting.FontManager;
 import org.jackhuang.hmcl.setting.StyleSheets;
@@ -37,6 +38,8 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.dsh.MainPage;
 import org.jackhuang.hmcl.util.StringUtils;
+import org.jackhuang.hmcl.util.i18n.I18n;
+import org.jackhuang.hmcl.util.i18n.SupportedLocale;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.platform.SystemUtils;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -129,7 +132,29 @@ public final class Launcher extends Application {
     /// @param args command-line arguments, currently unused
     public static void main(String[] args) {
         setupUiScale();
+        // Before the toolkit starts: the language every page will speak, and the text
+        // rendering the renderer reads as it initialises.
+        applyStartupSettings();
         launch(Launcher.class, args);
+    }
+
+    /// Applies the settings the toolkit needs before it starts.
+    ///
+    /// Both are read here rather than from the interface for the same reason: the language
+    /// decides what every string in the first frame says, and the anti-aliasing property is
+    /// one the renderer has already read by the time a page exists. The original reads them
+    /// in its own `main` for exactly this.
+    private static void applyStartupSettings() {
+        LauncherSettings settings = SettingsManager.settings();
+        I18n.setLocale(settings.languageProperty().get() == null
+                ? SupportedLocale.DEFAULT : settings.languageProperty().get());
+
+        if (System.getProperty("prism.lcdtext") == null) {
+            String lcdText = settings.fontAntiAliasing().lcdTextProperty();
+            if (lcdText != null) {
+                System.getProperties().put("prism.lcdtext", lcdText);
+            }
+        }
     }
 
     /// Sets the interface scale the toolkit starts with.

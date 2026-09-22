@@ -329,6 +329,17 @@ public final class SettingsManager {
         @SerializedName("logFontSize")
         private @Nullable Double logFontSize;
 
+        @SerializedName("fontAntiAliasing")
+        private @Nullable String fontAntiAliasing;
+
+        /// The language the interface speaks, by the name the locale helper uses.
+        ///
+        /// The name rather than the locale: the helper resolves a name back to the
+        /// supported locale it stands for, which a bare language tag cannot do for every
+        /// variant it offers.
+        @SerializedName("language")
+        private @Nullable String language;
+
         @SerializedName("animationDisabled")
         private @Nullable Boolean animationDisabled;
 
@@ -450,6 +461,9 @@ public final class SettingsManager {
             snapshot.backgroundLoadPolicy = settings.backgroundLoadPolicyProperty().get().name();
             snapshot.logFontFamily = settings.logFontFamilyProperty().get();
             snapshot.logFontSize = settings.logFontSizeProperty().get();
+            snapshot.fontAntiAliasing = settings.fontAntiAliasing().id();
+            snapshot.language = settings.languageProperty().get() == null
+                    ? null : settings.languageProperty().get().getName();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
             snapshot.nodeSource = settings.nodeSourceProperty().get().id();
             snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
@@ -568,6 +582,14 @@ public final class SettingsManager {
             }
             if (logFontSize != null) {
                 settings.logFontSizeProperty().set(logFontSize);
+            }
+            if (fontAntiAliasing != null) {
+                settings.fontAntiAliasingProperty().set(
+                        org.jackhuang.hmcl.setting.FontAntiAliasing.of(fontAntiAliasing));
+            }
+            if (language != null) {
+                settings.languageProperty().set(
+                        org.jackhuang.hmcl.util.i18n.SupportedLocale.getLocaleByName(language));
             }
             if (animationDisabled != null) {
                 settings.animationDisabledProperty().set(animationDisabled);

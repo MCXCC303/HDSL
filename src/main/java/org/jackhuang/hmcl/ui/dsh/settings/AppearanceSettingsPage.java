@@ -595,6 +595,23 @@ public final class AppearanceSettingsPage extends ScrollPane {
         list.getContent().add(launcherRow);
 
         list.getContent().add(buildLogFontRow());
+
+        // The original keeps the anti-aliasing row in the same card, last: it is a choice
+        // about how text is drawn, which is what the rest of the card is about.
+        LineSelectButton<org.jackhuang.hmcl.setting.FontAntiAliasing> antiAliasing =
+                new LineSelectButton<>();
+        antiAliasing.setTitle(i18n("settings.launcher.font.anti_aliasing"));
+        antiAliasing.setSubtitle(i18n("settings.take_effect_after_restart"));
+        antiAliasing.setItems(List.of(org.jackhuang.hmcl.setting.FontAntiAliasing.values()));
+        antiAliasing.setNullSafeConverter(choice -> i18n(Objects
+                .requireNonNullElse(choice, org.jackhuang.hmcl.setting.FontAntiAliasing.AUTO).i18nKey()));
+        antiAliasing.setValue(settings().fontAntiAliasing());
+        antiAliasing.valueProperty().addListener((observable, was, value) -> {
+            if (value != null && value != was) {
+                settings().fontAntiAliasingProperty().set(value);
+            }
+        });
+        list.getContent().add(antiAliasing);
         return list;
     }
 
