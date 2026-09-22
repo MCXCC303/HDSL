@@ -107,6 +107,8 @@ class PageStringsTest {
             "dsh.settings.isolation.modded",
             "dsh.settings.isolation.never",
             "dsh.settings.proxy",
+            "dsh.settings.background.title",
+            "dsh.settings.background.fallback",
             "dsh.settings.download.cache",
             "dsh.settings.download.cache.default",
             "dsh.settings.download.cache.custom",

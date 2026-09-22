@@ -107,8 +107,8 @@ public final class AppearanceSettingsPage extends ScrollPane {
                 sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
                 sectionTitle(i18n("settings.launcher.appearance")),
                 buildThemeColorList(), buildFontList(), buildAnimationList(), buildWindowList(),
-                sectionTitle(i18n("dsh.settings.background")), buildBackgroundSourceList(),
-                buildBackgroundDetailList());
+                buildBackgroundSourceList(),
+                buildBackgroundFallbackList());
     }
 
     /// Builds the theme colour section.
@@ -316,6 +316,9 @@ public final class AppearanceSettingsPage extends ScrollPane {
         return list;
     }
 
+    /// The row about what happens when the background cannot be loaded.
+    private javafx.scene.Node backgroundLoadRow;
+
     /// Builds the background-source selector.
     ///
     /// @return the assembled component list
@@ -350,13 +353,44 @@ public final class AppearanceSettingsPage extends ScrollPane {
         });
 
         ComponentList list = new ComponentList();
-        list.getContent().addAll(backgroundType, loadPolicy);
-        return list;
+        this.backgroundLoadRow = loadPolicy;
+        list.getContent().add(backgroundType);
+        // The original keeps one row called 背景 that opens to show everything about it: where it
+        // comes from, the picture, the network address, the built-in one and the opacity.
+        ComponentSublist sublist = new ComponentSublist();
+        sublist.setTitle(i18n("dsh.settings.background.title"));
+        sublist.descriptionProperty().bind(javafx.beans.binding.Bindings.createStringBinding(() -> {
+            org.jackhuang.hmcl.setting.BackgroundType type = settings().backgroundTypeProperty().get();
+            return type == null ? "" : i18n("dsh.settings.background." + type.name().toLowerCase(java.util.Locale.ROOT));
+        }, settings().backgroundTypeProperty()));
+        ComponentList wrapper = new ComponentList();
+        sublist.getContent().add(list);
+        sublist.getContent().addAll(buildBackgroundDetailList().getContent());
+        wrapper.getContent().add(sublist);
+        return wrapper;
     }
 
     /// Builds the source-specific controls and the opacity slider.
     ///
     /// @return the assembled component list
+    /// Builds the row about a background that does not arrive.
+    ///
+    /// The original keeps this as a row of its own that opens: the policy inside it is the answer to
+    /// the question the row asks, and it belongs to nothing else.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildBackgroundFallbackList() {
+        ComponentSublist sublist = new ComponentSublist();
+        sublist.setTitle(i18n("dsh.settings.background.fallback"));
+        ComponentList wrapper = new ComponentList();
+        if (backgroundLoadRow != null) {
+            sublist.getContent().add(backgroundLoadRow);
+        }
+        wrapper.getContent().add(sublist);
+        return wrapper;
+    }
+
+
     private ComponentList buildBackgroundDetailList() {
         LineFileChooserButton image = new LineFileChooserButton();
         image.setTitle(i18n("dsh.settings.background.image"));
