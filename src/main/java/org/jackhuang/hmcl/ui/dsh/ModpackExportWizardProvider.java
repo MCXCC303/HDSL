@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.ui.dsh;
 
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+
 import javafx.scene.Node;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshModpacks;
@@ -52,6 +54,15 @@ public final class ModpackExportWizardProvider implements WizardProvider {
     /// The key the description is held under.
     public static final String DESCRIPTION = "modpack.description";
 
+    /// The key the kind of pack is held under.
+    public static final String FORMAT = "modpack.format";
+
+    /// The kind this launcher writes for itself.
+    public static final String FORMAT_HDSL = "hdsl";
+
+    /// The kind the community's DSH-PackForge tooling reads.
+    public static final String FORMAT_PACKFORGE = "packforge";
+
     /// The key that says whether the conversations travel too.
     public static final String SESSIONS = "modpack.sessions";
 
@@ -71,6 +82,7 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         settings.put(VERSION, "1.0");
         settings.put(AUTHOR, "");
         settings.put(DESCRIPTION, "");
+        settings.put(FORMAT, FORMAT_HDSL);
         settings.put(SESSIONS, Boolean.FALSE);
         settings.put("modpack.instance", instance.id());
     }
@@ -87,8 +99,41 @@ public final class ModpackExportWizardProvider implements WizardProvider {
 
     @Override
     public Object finish(org.jackhuang.hmcl.util.SettingsMap settings) {
-        // The last page writes the pack, because it is the page that knows where
-        // the person asked for it and what they chose to put in it.
+        // Where to write it is the last thing asked, so the wizard's own forward button is
+        // what asks: on the last step it finishes, and finishing is writing the pack.
+        boolean packforge = FORMAT_PACKFORGE.equals(
+                string(settings, FORMAT, FORMAT_HDSL));
+
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("modpack.wizard.step.initialization.save"));
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                packforge ? i18n("dsh.packforge.filter") : i18n("dsh.modpack.filter"),
+                packforge ? "*.dspack" : "*.zip"));
+
+        String name = string(settings, NAME, instance.id());
+        chooser.setInitialFileName(packforge
+                ? org.jackhuang.hmcl.dsh.DshPackForge.Options.kebab(name) + "-"
+                        + string(settings, VERSION, "1.0.0") + ".dspack"
+                : name + ".zip");
+
+        java.io.File chosen = chooser.showSaveDialog(org.jackhuang.hmcl.ui.Controllers.getStage());
+        if (chosen == null) {
+            return null;
+        }
+        java.nio.file.Path target = chosen.toPath();
+
+        if (packforge) {
+            org.jackhuang.hmcl.dsh.DshPackForge.Options options =
+                    new org.jackhuang.hmcl.dsh.DshPackForge.Options(
+                            string(settings, NAME, instance.id()),
+                            string(settings, VERSION, "1.0.0"),
+                            string(settings, NAME, instance.id()),
+                            string(settings, DESCRIPTION, ""),
+                            string(settings, AUTHOR, ""));
+            ModpackFilesPage.runPackForge(instance, target, options);
+        } else {
+            ModpackFilesPage.run(instance, target, optionsOf(settings));
+        }
         return null;
     }
 

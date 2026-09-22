@@ -59,7 +59,7 @@ public final class ModpackTypePage extends VBox implements WizardPage {
 
         Label title = new Label(i18n("modpack.export.as"));
         VBox.setMargin(title, new Insets(8, 0, 8, 12));
-        getChildren().setAll(title, createButton());
+        getChildren().setAll(title, createButton(true), createButton(false));
     }
 
     /// Builds the one option there is.
@@ -68,15 +68,22 @@ public final class ModpackTypePage extends VBox implements WizardPage {
     /// the arrow that says it leads somewhere.
     ///
     /// @return the row
-    private Node createButton() {
+    private Node createButton(boolean hdsl) {
         JFXButton button = new JFXButton();
         button.getStyleClass().add("card");
-        button.setOnAction(event -> controller.onNext());
+        button.setOnAction(event -> {
+            controller.getSettings().put(ModpackExportWizardProvider.FORMAT, hdsl
+                    ? ModpackExportWizardProvider.FORMAT_HDSL
+                    : ModpackExportWizardProvider.FORMAT_PACKFORGE);
+            controller.onNext();
+        });
         button.prefWidthProperty().bind(widthProperty());
 
         BorderPane graphic = new BorderPane();
         graphic.setMouseTransparent(true);
-        graphic.setLeft(new TwoLineListItem(i18n("dsh.modpack.type"), i18n("dsh.modpack.type.detail")));
+        graphic.setLeft(new TwoLineListItem(
+                i18n(hdsl ? "dsh.modpack.type" : "dsh.packforge.type"),
+                i18n(hdsl ? "dsh.modpack.type.detail" : "dsh.packforge.type.detail")));
 
         Node arrow = SVG.ARROW_FORWARD.createIcon();
         BorderPane.setAlignment(arrow, Pos.CENTER);

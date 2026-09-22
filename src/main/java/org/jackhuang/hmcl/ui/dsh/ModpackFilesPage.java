@@ -17,6 +17,12 @@
  */
 package org.jackhuang.hmcl.ui.dsh;
 
+import java.nio.file.Files;
+
+import org.jackhuang.hmcl.dsh.DshPackForge;
+
+import org.jackhuang.hmcl.dsh.DshModpacks;
+
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.CheckBox;
@@ -156,4 +162,37 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         return i18n("dsh.modpack.files");
     }
 
+
+    /// Writes this launcher's own kind of pack.
+    ///
+    /// @param instance the instance to write out
+    /// @param target   where to write it
+    /// @param options  what it should say and carry
+    static void run(DshInstance instance, java.nio.file.Path target, DshModpacks.Options options) {
+        ProgressDialog.run(i18n("modpack.export"),
+                progress -> DshModpacks.export(instance, target, options, progress::accept), null);
+    }
+
+    /// Writes a pack the community's tooling reads, and the digest beside it.
+    ///
+    /// A publisher writes the digest next to the pack, which is what the community's index and its
+    /// installers check against; writing it here means an exported pack is publishable without
+    /// another step.
+    ///
+    /// @param instance the instance to write out
+    /// @param target   where to write it
+    /// @param options  what it should say about itself
+    static void runPackForge(DshInstance instance, java.nio.file.Path target,
+                             DshPackForge.Options options) {
+        ProgressDialog.run(i18n("modpack.export"), progress -> {
+            DshPackForge.Result result = DshPackForge.export(instance, target, options, progress::accept);
+            try {
+                Files.writeString(target.resolveSibling(target.getFileName() + ".sha256"),
+                        result.sha256() + "  " + target.getFileName() + "\n");
+                progress.accept("Wrote " + target.getFileName() + ".sha256");
+            } catch (java.io.IOException e) {
+                progress.accept("The pack was written, but its digest was not: " + e.getMessage());
+            }
+        }, null);
+    }
 }
