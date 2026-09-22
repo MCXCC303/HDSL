@@ -100,19 +100,47 @@ public final class AppearanceSettingsPage extends ScrollPane {
         FXUtils.smoothScrolling(this);
 
         // Grouped as the original groups them: the theme pack has a section to
-        // itself, and the colours, font, animations and window belong to one
-        // section called appearance. A section per setting puts the section's
-        // name and its only row's name next to each other saying the same word.
+        // itself, and everything about how the launcher looks — the colours, the
+        // picture, how solid it is, and the window — belongs to one section called
+        // appearance, drawn as one card. The original's own appearance card is a
+        // single `ComponentList` holding all seven of its rows; splitting it into a
+        // card per row draws a seam between every pair of rows that the original
+        // does not have.
         // The sections and their order are the original's: the theme, then how the launcher looks —
         // including the picture and how solid it is — then how a background is fetched, then the
         // animations, and the fonts last.
         root.getChildren().addAll(
                 sectionTitle(i18n("dsh.settings.theme")), buildThemeList(),
-                sectionTitle(i18n("settings.launcher.appearance")),
-                buildBrightnessList(), buildThemeColorList(), buildColorStyleList(), buildBackgroundDetailList(), buildWindowList(),
+                sectionTitle(i18n("settings.launcher.appearance")), buildAppearanceList(),
                 sectionTitle(i18n("dsh.settings.background.load.section")), buildBackgroundLoadingList(),
                 sectionTitle(i18n("dsh.settings.animations")), buildAnimationList(),
                 sectionTitle(i18n("dsh.settings.font")), buildFontList());
+    }
+
+    /// Builds the appearance section.
+    ///
+    /// One card, in the original's order: how bright the interface is, what colour it
+    /// takes, how that colour becomes a palette, the picture behind it and how solid it
+    /// is, and whether the title bar and the window are transparent. The rows are built
+    /// where they belong — the colour sublist is made by the theme builder, which is
+    /// where the choices it holds are — and gathered here, so the section is one surface
+    /// instead of five.
+    ///
+    /// Each builder is asked once: a control built twice would register its listeners
+    /// twice and record every choice as two changes.
+    ///
+    /// @return the assembled component list
+    private ComponentList buildAppearanceList() {
+        // The colour sublist fills in the colour-style row it holds, so it is built first.
+        javafx.scene.Node themeColor = buildThemeColorList();
+
+        ComponentList list = new ComponentList();
+        list.getContent().addAll(buildBrightnessList().getContent());
+        list.getContent().add(themeColor);
+        list.getContent().addAll(buildColorStyleList().getContent());
+        list.getContent().addAll(buildBackgroundDetailList().getContent());
+        list.getContent().addAll(buildWindowList().getContent());
+        return list;
     }
 
     /// Builds the theme colour section.
@@ -327,7 +355,10 @@ public final class AppearanceSettingsPage extends ScrollPane {
         return list;
     }
 
-    /// Builds the theme section: theme pack and brightness mode.
+    /// Builds the theme section: the theme pack.
+    ///
+    /// Only the pack itself: the brightness mode is one of the appearance section's rows,
+    /// which is where the original keeps it.
     ///
     /// @return the assembled component list
     private ComponentList buildThemeList() {
@@ -343,26 +374,10 @@ public final class AppearanceSettingsPage extends ScrollPane {
             }
         });
 
-        LineSelectButton<String> brightness = new LineSelectButton<>();
-        brightness.setTitle(i18n("settings.launcher.brightness"));
-        brightness.setItems(BRIGHTNESS_MODES);
-        brightness.setNullSafeConverter(mode -> i18n("dsh.settings.theme.brightness." + mode));
-        brightness.setValue(settings().themeBrightnessModeProperty().get());
-        brightness.valueProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue != null) {
-                settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BRIGHTNESS_MODE);
-                settings().themeBrightnessModeProperty().set(newValue);
-            }
-        });
-
         ComponentList list = new ComponentList();
-        this.brightnessRow = brightness;
         list.getContent().add(theme);
         return list;
     }
-
-    /// The row that chooses the launcher's brightness mode.
-    private javafx.scene.Node brightnessRow;
 
     /// The row that chooses how the theme colour becomes a palette.
     private javafx.scene.Node colorStyleRow;
@@ -450,10 +465,20 @@ public final class AppearanceSettingsPage extends ScrollPane {
     ///
     /// @return the assembled component list
     private ComponentList buildBrightnessList() {
+        LineSelectButton<String> brightness = new LineSelectButton<>();
+        brightness.setTitle(i18n("settings.launcher.brightness"));
+        brightness.setItems(BRIGHTNESS_MODES);
+        brightness.setNullSafeConverter(mode -> i18n("dsh.settings.theme.brightness." + mode));
+        brightness.setValue(settings().themeBrightnessModeProperty().get());
+        brightness.valueProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue != null) {
+                settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BRIGHTNESS_MODE);
+                settings().themeBrightnessModeProperty().set(newValue);
+            }
+        });
+
         ComponentList list = new ComponentList();
-        if (brightnessRow != null) {
-            list.getContent().add(brightnessRow);
-        }
+        list.getContent().add(brightness);
         return list;
     }
 
