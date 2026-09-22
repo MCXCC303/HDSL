@@ -48,7 +48,7 @@ import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
-import org.jackhuang.hmcl.ui.construct.LineInheritableToggleButton;
+import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.NumberValidator;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -126,31 +126,36 @@ public final class InstanceSettingsPage extends ScrollPane {
 
     /// Builds the row about install scripts.
     ///
-    /// It follows the launcher until it is told otherwise, which is the shape of a
-    /// per-instance setting here: the answer for this instance is stored beside the
-    /// instance, and its absence is what "follow the launcher" means.
+    /// The same three answers the launcher offers, plus following it, which is what
+    /// an instance starts at: the launcher's answer is the default, and an instance
+    /// states its own only when it has a reason to.
     ///
     /// @return the list
     private ComponentList buildScriptsList() {
-        LineInheritableToggleButton row = new LineInheritableToggleButton();
+        // The entries are the policies with a null in front, which is what
+        // "follow the launcher" is.
+        java.util.List<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> choices = new java.util.ArrayList<>();
+        choices.add(null);
+        choices.addAll(java.util.List.of(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.AUTO,
+                org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL,
+                org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.NEVER));
+
+        LineSelectButton<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> row = new LineSelectButton<>();
         row.setTitle(i18n("dsh.settings.build_scripts.approve"));
-
-        Boolean own = DshInstanceSettings.approveBuildScripts(instance);
-        row.overriddenProperty().set(own != null);
-        row.rawValueProperty().set(own != null ? own : settings().approveBuildScriptsProperty().get());
-
-        // The row keeps its own two states; what is stored is the instance's answer,
-        // or nothing at all while it follows the launcher.
-        javafx.beans.value.ChangeListener<Boolean> store = (observable, was, value) -> {
+        row.setItems(choices);
+        row.setConverter(policy -> i18n(policy == null
+                ? "dsh.settings.build_scripts.follow"
+                : "dsh.settings.build_scripts." + policy.id()));
+        row.setValue(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.of(
+                DshInstanceSettings.buildScriptPolicy(instance)));
+        row.valueProperty().addListener((observable, was, value) -> {
             try {
-                DshInstanceSettings.setApproveBuildScripts(instance,
-                        row.overriddenProperty().get() ? row.rawValueProperty().get() : null);
+                DshInstanceSettings.setBuildScriptPolicy(instance,
+                        value == null ? null : value.id());
             } catch (DshException e) {
-                LOG.warning("Failed to store the build script setting", e);
+                LOG.warning("Failed to store the build script policy", e);
             }
-        };
-        row.overriddenProperty().addListener(store);
-        row.rawValueProperty().addListener(store);
+        });
 
         ComponentList list = new ComponentList();
         list.getContent().add(row);

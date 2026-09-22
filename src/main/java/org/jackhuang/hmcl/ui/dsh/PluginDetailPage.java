@@ -324,7 +324,7 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
         // Back to where the page was opened from once it is installed: the versions
         // it lists are about to change, and the page a person came from is where
         // the result of installing is worth seeing.
-        ProgressDialog.run(i18n("download.install"), progress ->
+        PluginInstalls.run(instance, progress ->
                         DshPluginInstaller.installSpecs(instance, List.of(finalSpec), progress::accept),
                 () -> fireEvent(new org.jackhuang.hmcl.ui.construct.PageCloseEvent()));
     }

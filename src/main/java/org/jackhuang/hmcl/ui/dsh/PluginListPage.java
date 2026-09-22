@@ -185,7 +185,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
         }
 
         Path file = chosen.toPath();
-        ProgressDialog.run(i18n("dsh.instance.plugins.add"), progress ->
+        PluginInstalls.run(instance, progress ->
                 DshLocalPlugins.install(instance, file, progress::accept), this::refresh);
     }
 

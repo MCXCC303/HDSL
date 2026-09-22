@@ -100,12 +100,13 @@ public final class LauncherSettings {
     /// Whether the window background is transparent.
     private final BooleanProperty windowTransparent = new SimpleBooleanProperty(false);
 
-    /// Whether a plugin's install scripts may run without being asked about.
+    /// What happens when a plugin wants to run an install script.
     ///
     /// An install script runs with the user's own rights and nobody has read it, which
     /// is why a package manager stops and asks. Answering is a decision, so the
-    /// launcher's default is to keep asking; an instance can override it.
-    private final BooleanProperty approveBuildScripts = new SimpleBooleanProperty(false);
+    /// launcher asks by default and an instance can be told otherwise.
+    private final ObjectProperty<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> buildScriptPolicy =
+            new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL);
 
     /// The source used to render the launcher background.
     private final ObjectProperty<@Nullable String> launcherFontFamily =
@@ -309,32 +310,21 @@ public final class LauncherSettings {
         return windowTransparent;
     }
 
-    /// Returns whether install scripts may run without being asked about.
+    /// Returns what happens when a plugin wants to run an install script.
     ///
-    /// @return the launcher's answer, for instances that do not override it
-    public BooleanProperty approveBuildScriptsProperty() {
-        return approveBuildScripts;
+    /// @return the launcher's policy, for instances that do not override it
+    public ObjectProperty<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> buildScriptPolicyProperty() {
+        return buildScriptPolicy;
     }
 
-    /// Returns whether an instance's install scripts may run without being asked.
+    /// Returns the launcher's policy.
     ///
-    /// The instance's own answer wins; without one, the launcher's applies. This is
-    /// the only place the two are combined, so the interface and the installer cannot
-    /// disagree about which one is in force.
-    ///
-    /// @param instanceId the instance
-    /// @return whether the scripts may run
-    public boolean approveBuildScriptsFor(String instanceId) {
-        org.jackhuang.hmcl.dsh.DshInstance instance =
-                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
-        if (instance != null) {
-            Boolean own = org.jackhuang.hmcl.dsh.DshInstanceSettings.approveBuildScripts(instance);
-            if (own != null) {
-                return own;
-            }
-        }
-        return approveBuildScripts.get();
+    /// @return the policy
+    public org.jackhuang.hmcl.dsh.DshBuildScriptPolicy buildScriptPolicy() {
+        return buildScriptPolicy.get() == null
+                ? org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL : buildScriptPolicy.get();
     }
+
 
     /// Returns the background source property.
     ///

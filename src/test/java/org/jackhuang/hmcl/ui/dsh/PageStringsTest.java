@@ -68,6 +68,12 @@ class PageStringsTest {
             // The build-script setting.
             "dsh.settings.build_scripts",
             "dsh.settings.build_scripts.approve",
+            "dsh.settings.build_scripts.auto",
+            "dsh.settings.build_scripts.manual",
+            "dsh.settings.build_scripts.never",
+            "dsh.settings.build_scripts.follow",
+            "dsh.settings.build_scripts.ask",
+            "dsh.instance.upgrade.missing",
             // The export wizard's steps.
             "modpack.wizard",
             "modpack.wizard.step.1.title",

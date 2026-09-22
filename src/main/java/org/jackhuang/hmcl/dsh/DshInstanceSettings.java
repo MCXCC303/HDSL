@@ -45,6 +45,33 @@ public final class DshInstanceSettings {
     private DshInstanceSettings() {
     }
 
+    /// Reads the policy this instance chose, if it chose one.
+    ///
+    /// @param instance the instance
+    /// @return the stored value, or `null` when it follows the launcher
+    public static @Nullable String buildScriptPolicy(DshInstance instance) {
+        JsonObject root = read(instance);
+        if (root == null || !root.has("buildScriptPolicy")
+                || !root.get("buildScriptPolicy").isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            return root.get("buildScriptPolicy").getAsString();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /// Records the policy this instance chose.
+    ///
+    /// @param instance the instance
+    /// @param policy   the stored value, or `null` to follow the launcher
+    /// @throws DshException when the file cannot be written
+    public static void setBuildScriptPolicy(DshInstance instance, @Nullable String policy)
+            throws DshException {
+        write(instance, "buildScriptPolicy", policy == null ? null : new com.google.gson.JsonPrimitive(policy));
+    }
+
     /// Reads whether install scripts may run without being asked about.
     ///
     /// @param instance the instance
@@ -69,15 +96,26 @@ public final class DshInstanceSettings {
     /// @throws DshException when the file cannot be written
     public static void setApproveBuildScripts(DshInstance instance, @Nullable Boolean value)
             throws DshException {
+        write(instance, "approveBuildScripts", value == null ? null : new com.google.gson.JsonPrimitive(value));
+    }
+
+    /// Writes one member of the instance's settings.
+    ///
+    /// @param instance the instance
+    /// @param name     the member
+    /// @param value    the value, or `null` to remove it
+    /// @throws DshException when the file cannot be written
+    private static void write(DshInstance instance, String name,
+                              @Nullable com.google.gson.JsonElement value) throws DshException {
         Path file = fileOf(instance);
         JsonObject root = read(instance);
         if (root == null) {
             root = new JsonObject();
         }
         if (value == null) {
-            root.remove("approveBuildScripts");
+            root.remove(name);
         } else {
-            root.addProperty("approveBuildScripts", value);
+            root.add(name, value);
         }
 
         Path staging = file.resolveSibling(FILE + ".hdsl");

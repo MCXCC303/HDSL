@@ -264,7 +264,7 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
     ///
     /// @param market the preset to install
     private void installMarket(DshPreset market) {
-        ProgressDialog.run(i18n("download.install"), progress ->
+        PluginInstalls.run(instance, progress ->
                 DshPluginInstaller.install(instance, List.of(market), progress::accept), this::refresh);
     }
 

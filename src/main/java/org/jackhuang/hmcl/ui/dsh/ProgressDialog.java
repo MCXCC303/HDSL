@@ -66,6 +66,19 @@ public final class ProgressDialog {
     /// @param onDone run on the interface thread when the work ends, whether it
     ///               succeeded or not, or `null`
     public static void run(String title, Work work, @Nullable Runnable onDone) {
+        run(title, work, onDone, null);
+    }
+
+    /// Runs one installation, letting the caller deal with a particular failure.
+    ///
+    /// @param title     the line the dialog is titled with
+    /// @param work      the work, given a sink for the package manager's output
+    /// @param onDone    run on the interface thread when the work ends, whether it
+    ///                  succeeded or not, or `null`
+    /// @param onFailure asked about the failure; returning true means it was dealt
+    ///                  with and no error is shown, or `null` to always show it
+    public static void run(String title, Work work, @Nullable Runnable onDone,
+                           @Nullable java.util.function.Predicate<Exception> onFailure) {
         DshInstallProgress progress = new DshInstallProgress();
 
         Task<Void> task = Task.runAsync(title, () -> work.run(progress::accept));
@@ -81,8 +94,10 @@ public final class ProgressDialog {
                     if (!success) {
                         Exception failure = stopped.getException();
                         LOG.warning("Failed: " + title, failure);
-                        Controllers.dialog(failure == null ? i18n("message.error") : failure.getMessage(),
-                                title, MessageType.ERROR);
+                        if (onFailure == null || failure == null || !onFailure.test(failure)) {
+                            Controllers.dialog(failure == null ? i18n("message.error") : failure.getMessage(),
+                                    title, MessageType.ERROR);
+                        }
                     }
                     if (onDone != null) {
                         onDone.run();

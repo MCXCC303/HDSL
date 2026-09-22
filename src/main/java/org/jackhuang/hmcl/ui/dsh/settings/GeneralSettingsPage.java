@@ -111,9 +111,18 @@ public final class GeneralSettingsPage extends ScrollPane {
     ///
     /// @return the list
     private ComponentList buildBuildScriptsList() {
-        LineToggleButton approve = new LineToggleButton();
+        LineSelectButton<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> approve = new LineSelectButton<>();
         approve.setTitle(i18n("dsh.settings.build_scripts.approve"));
-        approve.selectedProperty().bindBidirectional(settings().approveBuildScriptsProperty());
+        approve.setItems(java.util.List.of(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.AUTO,
+                org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL,
+                org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.NEVER));
+        approve.setConverter(policy -> i18n("dsh.settings.build_scripts." + policy.id()));
+        approve.setValue(settings().buildScriptPolicy());
+        approve.valueProperty().addListener((observable, was, value) -> {
+            if (value != null) {
+                settings().buildScriptPolicyProperty().set(value);
+            }
+        });
 
         ComponentList list = new ComponentList();
         list.getContent().add(approve);

@@ -281,17 +281,29 @@ public final class DshPluginInstaller {
             int exitCode = result.exitCode();
             if (exitCode != 0
                     && explainIgnoredBuilds(result.output(), home, instance.profile()) != null
-                    && !retried
-                    && approvalsAllowed(instance)) {
-                // Somebody has said this instance's plugins may build themselves, so
-                // the question the package manager is asking is already answered for
-                // it: say so and run the same command again, once.
+                    && !retried) {
                 List<String> waiting = DshBuildScripts.unanswered(instance);
-                if (!waiting.isEmpty()) {
+                DshBuildScriptPolicy policy = DshBuildScriptPolicy.of(instance);
+                if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.AUTO) {
+                    // This instance's plugins may build themselves, so the question
+                    // is already answered: say so and run the same command again.
                     report(onLine, "Allowing install scripts for " + String.join(", ", waiting));
                     DshBuildScripts.answer(instance, waiting, true);
                     retried = true;
                     continue;
+                }
+                if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.NEVER) {
+                    // The answer is no, so the packages are installed and their
+                    // scripts are not run: installing is not the same decision as
+                    // running what comes with it.
+                    report(onLine, "Not running install scripts for " + String.join(", ", waiting));
+                    DshBuildScripts.answer(instance, waiting, false);
+                    retried = true;
+                    continue;
+                }
+                if (!waiting.isEmpty()) {
+                    // Somebody has to decide, and only the interface can ask.
+                    throw new DshBuildScriptApprovalRequired(waiting);
                 }
             }
             if (exitCode != 0) {
@@ -312,19 +324,28 @@ public final class DshPluginInstaller {
         }
     }
 
-    /// Reports whether an instance's plugins may run their install scripts.
+    /// Thrown when an installation is waiting for somebody to allow its scripts.
     ///
-    /// Read through the launcher's settings, which are where the answer lives: the
-    /// installer does not decide it, it asks.
-    ///
-    /// @param instance the instance
-    /// @return whether the scripts may run
-    private static boolean approvalsAllowed(DshInstance instance) {
-        try {
-            return org.jackhuang.hmcl.setting.SettingsManager.settings()
-                    .approveBuildScriptsFor(instance.id());
-        } catch (RuntimeException e) {
-            return false;
+    /// The installer does not answer for a person: it reports what is waiting, and
+    /// the interface that started the installation asks.
+    public static final class DshBuildScriptApprovalRequired extends DshException {
+        /// The packages whose install scripts are waiting.
+        private final transient List<String> packages;
+
+        /// Creates the failure.
+        ///
+        /// @param packages the packages
+        DshBuildScriptApprovalRequired(List<String> packages) {
+            super("The plugin needs permission to run its install scripts: "
+                    + String.join(", ", packages));
+            this.packages = List.copyOf(packages);
+        }
+
+        /// Returns the packages whose install scripts are waiting.
+        ///
+        /// @return the package names
+        public List<String> packages() {
+            return packages;
         }
     }
 

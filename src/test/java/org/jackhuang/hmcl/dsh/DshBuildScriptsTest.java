@@ -122,19 +122,22 @@ class DshBuildScriptsTest {
                 """);
 
         // Following the launcher: the instance's file says nothing.
-        assertNull(DshInstanceSettings.approveBuildScripts(instance));
-        assertFalse(org.jackhuang.hmcl.setting.SettingsManager.settings().approveBuildScriptsFor(ID),
-                "with no answer of its own, the launcher's applies, and it starts off");
+        assertNull(DshInstanceSettings.buildScriptPolicy(instance));
+        assertEquals(DshBuildScriptPolicy.MANUAL, DshBuildScriptPolicy.of(instance),
+                "with no answer of its own, the launcher's applies, and it asks by default");
 
-        DshInstanceSettings.setApproveBuildScripts(instance, Boolean.TRUE);
-        assertEquals(Boolean.TRUE, DshInstanceSettings.approveBuildScripts(instance));
-        assertTrue(org.jackhuang.hmcl.setting.SettingsManager.settings().approveBuildScriptsFor(ID),
+        DshInstanceSettings.setBuildScriptPolicy(instance, DshBuildScriptPolicy.AUTO.id());
+        assertEquals(DshBuildScriptPolicy.AUTO, DshBuildScriptPolicy.of(instance),
                 "an instance may allow what the launcher does not");
 
-        DshInstanceSettings.setApproveBuildScripts(instance, null);
-        assertNull(DshInstanceSettings.approveBuildScripts(instance),
+        DshInstanceSettings.setBuildScriptPolicy(instance, DshBuildScriptPolicy.NEVER.id());
+        assertEquals(DshBuildScriptPolicy.NEVER, DshBuildScriptPolicy.of(instance),
+                "and may refuse them");
+
+        DshInstanceSettings.setBuildScriptPolicy(instance, null);
+        assertNull(DshInstanceSettings.buildScriptPolicy(instance),
                 "and may go back to following the launcher");
-        assertFalse(org.jackhuang.hmcl.setting.SettingsManager.settings().approveBuildScriptsFor(ID));
+        assertEquals(DshBuildScriptPolicy.MANUAL, DshBuildScriptPolicy.of(instance));
     }
 
     /// Creates an instance whose profile holds the given workspace file.
