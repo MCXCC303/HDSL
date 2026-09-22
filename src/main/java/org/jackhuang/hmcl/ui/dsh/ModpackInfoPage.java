@@ -90,9 +90,14 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         list.getContent().add(textRow(i18n("archive.version"), packVersion));
         list.getContent().add(textRow(i18n("archive.author"), author));
         javafx.scene.Node description = descriptionRow();
-        javafx.scene.layout.VBox.setVgrow(description, javafx.scene.layout.Priority.ALWAYS);
+        // A list reads the room a child should take from this property, not from the VBox helper.
+        description.getProperties().put("ComponentList.vgrow", javafx.scene.layout.Priority.ALWAYS);
+        if (description instanceof javafx.scene.layout.Region region) {
+            region.setMaxHeight(Double.MAX_VALUE);
+        }
         list.getContent().add(description);
 
+        list.setMaxHeight(Double.MAX_VALUE);
         ScrollPane scroll = new ScrollPane(list);
         scroll.setFitToWidth(true);
         VBox.setVgrow(scroll, javafx.scene.layout.Priority.ALWAYS);
