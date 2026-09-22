@@ -112,48 +112,58 @@ public final class DownloadSettingsPage extends ScrollPane {
     ///
     /// @return the list
     private ComponentList buildDownloadList() {
-        com.jfoenix.controls.JFXTextField directory = new com.jfoenix.controls.JFXTextField();
-        directory.setMinWidth(220);
-        directory.setPromptText(org.jackhuang.hmcl.dsh.DshPaths.CATALOG.toString());
-        directory.textProperty().bindBidirectional(settings().cacheDirectoryProperty());
+        // The original's rows for the same job: where the cache lives — shown, with a button that
+        // empties it and a way to choose another place — and how many downloads happen at once,
+        // which is a choice rather than a number to type.
+        javafx.scene.control.Label path = new javafx.scene.control.Label(
+                org.jackhuang.hmcl.dsh.DshPluginCatalog.cacheDirectory().toString());
+        path.setMaxWidth(260);
 
         com.jfoenix.controls.JFXButton clear = new com.jfoenix.controls.JFXButton(
                 i18n("dsh.settings.download.cache.clear"));
         clear.getStyleClass().add("jfx-button-border");
-        // Wide enough for its own label: a button squeezed to "清…" says nothing.
         clear.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
         clear.setOnAction(event -> {
             // Says what it did, because a button that quietly removes nothing looks broken.
             int removed = org.jackhuang.hmcl.dsh.DshPluginCatalog.clearCache();
             clear.setText(i18n("dsh.settings.download.cache.cleared", removed));
         });
-        javafx.scene.layout.HBox cache = new javafx.scene.layout.HBox(8, directory, clear);
+
+        com.jfoenix.controls.JFXButton choose = new com.jfoenix.controls.JFXButton();
+        choose.setGraphic(org.jackhuang.hmcl.ui.SVG.FOLDER_OPEN.createIcon(16));
+        choose.getStyleClass().add("jfx-button-border");
+        org.jackhuang.hmcl.ui.FXUtils.installFastTooltip(choose,
+                i18n("dsh.settings.download.cache.choose"));
+        choose.setOnAction(event -> {
+            javafx.stage.DirectoryChooser chooser = new javafx.stage.DirectoryChooser();
+            chooser.setTitle(i18n("dsh.settings.download.cache.choose"));
+            java.io.File chosen = chooser.showDialog(getScene() == null ? null : getScene().getWindow());
+            if (chosen != null) {
+                settings().cacheDirectoryProperty().set(chosen.getAbsolutePath());
+                path.setText(chosen.getAbsolutePath());
+            }
+        });
+
+        javafx.scene.layout.HBox cache = new javafx.scene.layout.HBox(8, path, clear, choose);
         cache.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
 
-        com.jfoenix.controls.JFXTextField threads = new com.jfoenix.controls.JFXTextField();
-        threads.setMinWidth(320);
-        threads.setPromptText(i18n("dsh.settings.proxy.concurrency.hint"));
-        threads.setText(settings().downloadConcurrencyProperty().get() == null ? ""
-                : settings().downloadConcurrencyProperty().get().toString());
-        threads.textProperty().addListener((observable, was, text) -> {
-            String value = text == null ? "" : text.trim();
-            if (value.isEmpty()) {
-                settings().downloadConcurrencyProperty().set(null);
-                return;
-            }
-            try {
-                settings().downloadConcurrencyProperty().set(Integer.valueOf(value));
-            } catch (NumberFormatException e) {
-                // Half-typed numbers are not settings: the field keeps what was typed and the
-                // setting keeps what it had.
+        // Automatic is the absence of a number, and the row says so rather than showing nothing.
+        LineSelectButton<Integer> threads = new LineSelectButton<>();
+        threads.setItems(java.util.List.of(0, 1, 2, 4, 8, 16));
+        threads.setConverter(count -> count == null || count == 0
+                ? i18n("dsh.settings.download.threads.auto") : count.toString());
+        threads.setValue(settings().downloadConcurrencyProperty().get() == null
+                ? 0 : settings().downloadConcurrencyProperty().get());
+        threads.valueProperty().addListener((observable, was, value) -> {
+            if (value != null) {
+                settings().downloadConcurrencyProperty().set(value == 0 ? null : value);
             }
         });
 
         ComponentList list = new ComponentList();
         list.getContent().add(proxyRowWithField(i18n("dsh.settings.download.cache"),
                 i18n("dsh.settings.download.cache.hint"), cache));
-        list.getContent().add(proxyRowWithField(i18n("dsh.settings.proxy.concurrency"),
-                i18n("dsh.settings.proxy.concurrency.hint"), threads));
+        list.getContent().add(threads);
         return list;
     }
 
