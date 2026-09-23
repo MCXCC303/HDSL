@@ -280,10 +280,20 @@ public final class DshLauncher {
         // An overlay adds a route; it cannot make the harness *use* one, because layers merge with
         // the user's settings on top and the overlay is the layer that loses. So the default model
         // is written where the user's own answer lives — and, when the account names no model, not
-        // written at all: the harness refuses to start on a default it cannot resolve.
-        if (account != null && account.carriesAKey()) {
+        // written at all.
+        //
+        // The provider written here is the **account's name**, which is the route name the overlay
+        // just created. It used to be the vendor's id, which stopped being the route name when routes
+        // became the person's own suppliers — and a default naming a route that does not exist is a
+        // harness that will not start.
+        //
+        // For the launcher's own vendor there is nothing to write either way: the harness knows that
+        // vendor's catalogue and picks from it, so naming a model would be naming one of a list it
+        // can already read.
+        if (account != null && account.carriesAKey()
+                && account.kind() != DshAccount.AccountKind.OFFICIAL) {
             try {
-                DshDefaultModel.apply(home, account.vendorId(), account.modelOrDefault());
+                DshDefaultModel.apply(home, account.displayName(), account.modelOrDefault());
             } catch (DshException e) {
                 // Not fatal: the route is still there and can be chosen by hand. What must not
                 // happen is a launch that does not start because a convenience could not be set.

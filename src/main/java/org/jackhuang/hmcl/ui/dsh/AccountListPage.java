@@ -124,9 +124,9 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         DshVendor primary = DshVendor.offered().get(0);
         rows.getChildren().addAll(
-                vendorItem(i18n("dsh.account.method.official"), primary.id(),
+                vendorItem(i18n("dsh.account.method.official"), null,
                         SVG.DRESSER, () -> Controllers.dialog(new AccountSettingsDialog(primary))),
-                vendorItem(i18n("account.methods.offline"), i18n("dsh.account.method.offline.hint"),
+                vendorItem(i18n("account.methods.offline"), null,
                         SVG.PERSON, () -> Controllers.dialog(AccountSettingsDialog.offline())));
 
         ScrollPane scrollPane = new ScrollPane(rows);
@@ -142,10 +142,8 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         // vendors it ships with are a fixed list, and the rest are reached by asking for one here.
         AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.account.add.vendor"), SVG.ADD_CIRCLE,
-                        () -> Controllers.dialog(new AccountSettingsDialog(null)))
-                .addNavigationDrawerItem(i18n("dsh.skin.title"), SVG.PERSON,
-                        () -> Controllers.dialog(new SkinDialog()));
-        FXUtils.setLimitHeight(actions, 40 * 2 + 12);
+                        () -> Controllers.dialog(new AccountSettingsDialog(null)));
+        FXUtils.setLimitHeight(actions, 40);
 
         setLeft(scrollPane, actions);
     }
@@ -153,34 +151,21 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// Builds one row of the add column.
     ///
     /// @param title    the row's name
-    /// @param subtitle the row's own line
+    /// @param subtitle the row's own line, or `null` for one-line rows
     /// @param icon     the row's icon
     /// @param action   what pressing it does
     /// @return the row
-    private javafx.scene.Node vendorItem(String title, String subtitle,
+    private javafx.scene.Node vendorItem(String title, @org.jetbrains.annotations.Nullable String subtitle,
                                          SVG icon, Runnable action) {
         org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
                 new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
         item.getStyleClass().add("navigation-drawer-item");
         item.setTitle(title);
-        item.setSubtitle(subtitle);
+        if (subtitle != null) {
+            item.setSubtitle(subtitle);
+        }
         item.setLeftIcon(icon);
         item.setOnAction(event -> action.run());
-        return item;
-    }
-
-    /// Builds one row of the add column.
-    ///
-    /// @param vendor the vendor
-    /// @return the row
-    private javafx.scene.Node vendorItem(DshVendor vendor) {
-        org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
-                new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
-        item.getStyleClass().add("navigation-drawer-item");
-        item.setTitle(vendor.displayName());
-        item.setSubtitle(vendor.id());
-        item.setLeftIcon(SVG.PERSON);
-        item.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(vendor)));
         return item;
     }
 

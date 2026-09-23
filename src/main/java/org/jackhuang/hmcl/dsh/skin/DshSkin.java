@@ -135,6 +135,22 @@ public final class DshSkin {
         return loadedSlim;
     }
 
+    /// Reports whether a picture describes the slim body.
+    ///
+    /// Asked of the picture rather than chosen by the person: whether a skin is slim is recorded in
+    /// its own transparent pixels, so a file already answers the question and asking again would let
+    /// the two disagree.
+    ///
+    /// @param picture the picture
+    /// @return whether the arms are three pixels wide, or `false` when it is not a skin at all
+    public static boolean slimOf(Image picture) {
+        try {
+            return new NormalizedSkin(picture).isSlim();
+        } catch (InvalidSkinException e) {
+            return false;
+        }
+    }
+
     /// Reads a picture from a file without keeping it.
     ///
     /// For a dialog that has to show what a file looks like before the person has agreed to it:
