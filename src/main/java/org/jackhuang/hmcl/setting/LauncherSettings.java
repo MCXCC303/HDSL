@@ -419,6 +419,27 @@ public final class LauncherSettings {
     private final ObjectProperty<FontAntiAliasing> fontAntiAliasing =
             new SimpleObjectProperty<>(FontAntiAliasing.AUTO);
 
+    /// The arguments a new instance is launched with, as one line.
+    ///
+    /// A default rather than a setting the launcher itself obeys: what an instance runs is its own
+    /// list, and this is what an instance that has stated nothing of its own shows and follows.
+    private final StringProperty defaultLaunchArguments = new SimpleStringProperty("");
+
+    /// Returns the arguments a new instance is launched with.
+    ///
+    /// @return the property
+    public StringProperty defaultLaunchArgumentsProperty() {
+        return defaultLaunchArguments;
+    }
+
+    /// Returns the arguments a new instance is launched with.
+    ///
+    /// @return the line, never `null`
+    public String defaultLaunchArguments() {
+        String value = defaultLaunchArguments.get();
+        return value == null ? "" : value;
+    }
+
     /// Returns how the launcher draws text.
     ///
     /// @return the property

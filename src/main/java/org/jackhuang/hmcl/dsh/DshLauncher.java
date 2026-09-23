@@ -242,21 +242,36 @@ public final class DshLauncher {
         // same one on every launch of this instance.
         int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
 
+        // What the instance runs with, as the user typed it. Its launcher flags go before the
+        // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported.
+        DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
+
         List<String> command = new ArrayList<>();
         command.add(runtime.node().toString());
         command.add(script.toString());
+        command.addAll(typed.launcherArguments());
+        // The profile is stated after the user's launcher flags, so one they named wins; when they
+        // named none this is the instance's own.
         command.add("--profile");
-        command.add(instance.profile());
-        // `--no-open` is newer than the browser surface is: an old release that does
-        // not know the flag exits rather than starting, so it is only passed to a
-        // version whose own help mentions it. The launcher opens the browser once the
-        // readiness line arrives either way.
+        command.add(typed.profile() != null ? typed.profile() : instance.profile());
+
         List<String> surfaceArguments = new ArrayList<>(surface.arguments(port));
-        if (surfaceArguments.remove("--no-open") && acceptsNoOpen(instance)) {
+        // Whether to leave the browser alone is the user's to decide once they have said anything
+        // at all about how the instance starts: a line that mentions `--no-open` gets it and one
+        // that does not gets nothing, so the harness opens the tab itself and the launcher does not
+        // add a second one. With no line typed the launcher asks the version whether it knows the
+        // flag, because passing one an old release rejects is what stops a launch outright.
+        boolean noOpen = surfaceArguments.remove("--no-open")
+                && (typed.appArguments().isEmpty()
+                        ? acceptsNoOpen(instance)
+                        : typed.asksNoOpen());
+        if (noOpen) {
             surfaceArguments.add("--no-open");
         }
         command.addAll(surfaceArguments);
-        command.addAll(instance.extraArguments());
+        // The app arguments as typed. A `--no-open` in them belongs to the app and stays where the
+        // user put it, which is why it is not filtered out here.
+        command.addAll(typed.appArguments());
 
         Map<String, String> environment = new LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());

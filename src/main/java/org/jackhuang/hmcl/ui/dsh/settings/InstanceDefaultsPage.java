@@ -28,6 +28,7 @@ import org.jackhuang.hmcl.dsh.NodeRuntimeManager;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.LineInheritableTextField;
 import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineToggleButton;
@@ -137,6 +138,16 @@ public final class InstanceDefaultsPage extends ScrollPane {
         });
         list.getContent().add(policy);
         list.getContent().add(home);
+
+        // The arguments a new instance is launched with. Beside the runtime and the home, because
+        // it is the third thing that decides what actually runs; an instance may state its own.
+        LineInheritableTextField arguments = new LineInheritableTextField(
+                i18n("dsh.settings.default_launch_args"));
+        arguments.setSubtitle(i18n("dsh.settings.launch_args.hint"));
+        arguments.setText(settings().defaultLaunchArguments());
+        arguments.textProperty().addListener((observable, was, text) ->
+                settings().defaultLaunchArgumentsProperty().set(text == null ? "" : text));
+        list.getContent().add(arguments);
 
         return list;
     }

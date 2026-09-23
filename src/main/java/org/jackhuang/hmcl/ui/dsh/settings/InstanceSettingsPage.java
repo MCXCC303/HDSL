@@ -104,6 +104,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 
         ComponentList environmentList = new ComponentList();
         environmentList.getContent().add(buildNodeRuntimeRow());
+        environmentList.getContent().add(buildLaunchArgumentsRow());
         environmentList.getContent().add(buildHomeModeRow());
 
         ComponentList portList = new ComponentList();
@@ -425,6 +426,49 @@ public final class InstanceSettingsPage extends ScrollPane {
         row.valueProperty().addListener((observable, was, value) -> {
             if (value != null && !value.equals(was)) {
                 write(instance.withNodeRuntime(value));
+            }
+        });
+        return row;
+    }
+
+    /// Builds the row for the arguments this instance is launched with.
+    ///
+    /// In the environment section, beside the runtime and the home, because it is the third thing
+    /// that decides what actually runs — and with a globe like its neighbours, since the launcher
+    /// has a default line of its own and an instance may state its own instead.
+    ///
+    /// What somebody types here is passed to the harness as it stands, with two exceptions the
+    /// launch reports rather than obeys: `--port` (an instance's port is part of its identity, and
+    /// the browser keys its stored state by it) and `DSH_HOME` (which is how one instance's state
+    /// is kept away from another's). Everything else, including which profile to boot and whether
+    /// to open a browser, is theirs to decide — see [DshLaunchArguments] for the split.
+    ///
+    /// @return the row
+    private LineInheritableTextField buildLaunchArgumentsRow() {
+        LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.launch_args"));
+        row.setSubtitle(i18n("dsh.settings.launch_args.hint"));
+
+        List<String> own = instance.extraArguments();
+        row.setOverridden(!own.isEmpty());
+        row.setText(own.isEmpty()
+                ? settings().defaultLaunchArguments() : String.join(" ", own));
+
+        row.textProperty().addListener((observable, was, text) -> {
+            if (row.isOverridden()) {
+                // Shown as one line and stored as the arguments it names, so what runs is what was
+                // typed rather than what a second parser made of it later.
+                write(instance.withLaunchOptions(
+                        org.jackhuang.hmcl.dsh.DshLaunchArguments.tokenize(text),
+                        instance.environment()));
+            }
+        });
+        row.overriddenProperty().addListener((observable, was, overridden) -> {
+            if (overridden) {
+                write(instance.withLaunchOptions(List.of(), instance.environment()));
+                row.setText("");
+            } else {
+                write(instance.withLaunchOptions(List.of(), instance.environment()));
+                row.setText(settings().defaultLaunchArguments());
             }
         });
         return row;

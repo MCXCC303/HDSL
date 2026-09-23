@@ -41,6 +41,8 @@ import javafx.util.Duration;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
+import org.jackhuang.hmcl.dsh.DshProcess;
+import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
 import org.jackhuang.hmcl.setting.GameDirectory;
@@ -389,6 +391,34 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @param instance the instance
     /// @param anchor   the button the popup is anchored to
+    /// Opens an instance's browser interface.
+    ///
+    /// The address is the instance's own, not something to be looked up: its port is settled when
+    /// it is created and never changes, so "open the interface" means the same address whether the
+    /// instance is running or not. A running one is asked for the address it actually bound —
+    /// which carries the trust token — and a stopped one is opened at the plain address, where the
+    /// browser says the site cannot be reached, which is the truthful answer to asking for a page
+    /// nobody is serving yet.
+    ///
+    /// The item is not hidden while an instance is stopped: an address that is not answering is a
+    /// different answer from a menu entry that is not there, and the second one leaves the person
+    /// wondering whether they misremembered.
+    ///
+    /// @param instance the instance
+    private void openInBrowser(DshInstance instance) {
+        java.util.Optional<DshProcess> running = DshProcessManager.find(instance.id());
+        String address = running
+                .flatMap(DshProcess::webUrl)
+                .map(java.net.URI::toString)
+                .orElseGet(() -> "http://127.0.0.1:" + instance.portOrDefault() + "/");
+        if (instance.portOrDefault() <= 0) {
+            Controllers.dialog(i18n("dsh.instance.port.auto.none"),
+                    i18n("message.error"), MessageType.ERROR);
+            return;
+        }
+        FXUtils.openLink(address);
+    }
+
     private void showMenu(DshInstance instance, JFXButton anchor) {
         AdvancedListBox menu = new AdvancedListBox();
         JFXPopup[] popupRef = new JFXPopup[1];
@@ -405,6 +435,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         menu.add(buildMenuRow(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL, () -> {
             close.run();
             Controllers.navigate(new InstancePage(instance));
+        }));
+        menu.add(buildMenuRow(i18n("dsh.instance.open_browser"), SVG.PUBLIC, () -> {
+            close.run();
+            openInBrowser(instance);
         }));
         menu.add(buildMenuRow(i18n("dsh.instance.open_home"), SVG.FOLDER_OPEN, () -> {
             close.run();

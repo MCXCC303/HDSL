@@ -68,6 +68,7 @@ public final class DshCli {
         STOP(false),
         /// Lists the Node runtimes the launcher installed.
         LIST_RUNTIMES(true),
+        PRINT_LAUNCH_ARGS(true),
         /// Lists the Node releases available for this platform.
         LIST_NODE_VERSIONS(true),
         /// Installs a Node runtime.
@@ -178,6 +179,7 @@ public final class DshCli {
                 && !args.contains("--list-running")
                 && !args.contains("--stop")
                 && !args.contains("--list-runtimes")
+                && !args.contains("--print-launch-args")
                 && !args.contains("--list-node-versions")
                 && !args.contains("--install-node")
                 && !args.contains("--uninstall-node")
@@ -239,6 +241,7 @@ public final class DshCli {
                 }
                 case "--list-running" -> command = Command.LIST_RUNNING;
                 case "--list-runtimes" -> command = Command.LIST_RUNTIMES;
+                case "--print-launch-args" -> command = Command.PRINT_LAUNCH_ARGS;
                 case "--list-node-versions" -> command = Command.LIST_NODE_VERSIONS;
                 case "--install-node" -> {
                     command = Command.INSTALL_NODE;
@@ -458,6 +461,9 @@ public final class DshCli {
                                 + "\tup " + process.uptime().toSeconds() + "s");
                     }
                     return 0;
+                }
+                case PRINT_LAUNCH_ARGS -> {
+                    return printLaunchArguments(invocation, out, err);
                 }
                 case LIST_RUNTIMES -> {
                     List<NodeRuntime> runtimes = NodeRuntimeManager.listInstalled();
@@ -878,6 +884,41 @@ public final class DshCli {
     /// @param out        the stream for normal output
     /// @param err        the stream for error output
     /// @return the process exit code
+    /// Prints what a typed argument line comes to, without launching anything.
+    ///
+    /// The split between the launcher's flags and the app's, the profile a line names, and the
+    /// arguments that are refused are all decided by reading the line, so they can be shown without
+    /// starting a process. That makes the rules checkable, which matters because a wrong split
+    /// produces a command that either fails to start or starts the wrong thing.
+    ///
+    /// @param invocation the parsed command line
+    /// @param out        where the report goes
+    /// @param err        where an error goes
+    /// @return the exit code
+    private static int printLaunchArguments(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --print-launch-args needs an instance");
+            return 1;
+        }
+        DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+        if (instance == null) {
+            err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+            return 1;
+        }
+        DshLaunchArguments.Parsed parsed =
+                DshLaunchArguments.parseArguments(instance.extraArguments());
+        out.println("instance   : " + instance.id() + " (profile " + instance.profile() + ")");
+        out.println("typed      : " + instance.extraArguments());
+        out.println("launcher   : " + parsed.launcherArguments());
+        out.println("app        : " + parsed.appArguments());
+        out.println("profile    : " + (parsed.profile() != null ? parsed.profile() : instance.profile()));
+        out.println("no-open    : " + parsed.asksNoOpen());
+        for (String refusal : parsed.refusals()) {
+            out.println("refused    : " + refusal);
+        }
+        return 0;
+    }
+
     private static int testLaunch(Invocation invocation, PrintStream out, PrintStream err) {
         if (invocation.arguments().isEmpty()) {
             err.println("error: --test-launch needs an instance");
