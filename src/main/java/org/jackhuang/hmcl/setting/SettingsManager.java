@@ -363,6 +363,12 @@ public final class SettingsManager {
         @SerializedName("accounts")
         private @Nullable java.util.List<AccountSnapshot> accounts;
 
+        /// Which account the launcher uses, by its key. Written to the snapshot because a choice with
+        /// no field here is a choice that silently reverts on the next start — the trap that lost
+        /// seventeen settings once already.
+        @SerializedName("activeAccountKey")
+        private @Nullable String activeAccountKey;
+
         /// One account as it is stored.
         ///
         /// @param vendorId the vendor's id
@@ -507,6 +513,7 @@ public final class SettingsManager {
             snapshot.logFontSize = settings.logFontSizeProperty().get();
             snapshot.fontAntiAliasing = settings.fontAntiAliasing().id();
             snapshot.defaultLaunchArguments = settings.defaultLaunchArgumentsProperty().get();
+            snapshot.activeAccountKey = settings.activeAccountKey();
             snapshot.accounts = settings.getAccounts().stream()
                     .map(account -> new AccountSnapshot(account.kind(), account.vendorId(),
                             account.apiKey(), account.baseUrl(), account.label(), account.model()))
@@ -635,6 +642,9 @@ public final class SettingsManager {
             if (fontAntiAliasing != null) {
                 settings.fontAntiAliasingProperty().set(
                         org.jackhuang.hmcl.setting.FontAntiAliasing.of(fontAntiAliasing));
+            }
+            if (activeAccountKey != null) {
+                settings.activeAccountKeyProperty().set(activeAccountKey);
             }
             if (accounts != null) {
                 for (AccountSnapshot account : accounts) {

@@ -404,16 +404,15 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// instead of an empty editor.
     /// Redraws the account entry: which account is in force, and whose face it is.
     ///
-    /// The first account the launcher holds is the one it uses, which is the same rule the accounts
-    /// page's radio button sets and the same rule an instance falls back to.
+    /// The account is **asked for by name**, not taken from the top of the list: the entry has to
+    /// follow the choice, and the choice is no longer encoded in the list's order.
     private void refreshAccountItem() {
-        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> accounts =
-                org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
-        if (accounts.isEmpty()) {
+        org.jackhuang.hmcl.dsh.DshAccount account =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
+        if (account == null) {
             accountItem.setTitle(i18n("dsh.account.none.short"));
             accountItem.setSubtitle(i18n("dsh.account.none.hint"));
         } else {
-            org.jackhuang.hmcl.dsh.DshAccount account = accounts.get(0);
             accountItem.setTitle(account.displayName());
             accountItem.setSubtitle(account.vendorId());
         }
@@ -428,13 +427,13 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// skin was never the account's to begin with, but it reads as the account's when it sits where
     /// the account's face was.
     private void drawAccountAvatar() {
-        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> accounts =
-                org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
+        org.jackhuang.hmcl.dsh.DshAccount active =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
         javafx.scene.canvas.GraphicsContext gc = accountAvatar.getGraphicsContext2D();
         gc.clearRect(0, 0, 32, 32);
 
         // Nothing to show when there is nobody to show it for.
-        if (accounts.isEmpty()) {
+        if (active == null) {
             return;
         }
 
@@ -446,7 +445,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
             return;
         }
-        String initial = accounts.get(0).displayName().substring(0, 1).toUpperCase(Locale.ROOT);
+        String initial = active.displayName().substring(0, 1).toUpperCase(Locale.ROOT);
         gc.setFill(javafx.scene.paint.Color.web("#8d8d8d"));
         gc.fillRoundRect(0, 0, 32, 32, 8, 8);
         gc.setFill(javafx.scene.paint.Color.WHITE);

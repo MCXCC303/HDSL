@@ -276,7 +276,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         HBox right = new HBox();
         right.setAlignment(Pos.CENTER_RIGHT);
-        right.getChildren().addAll(cardActions(account));
+        right.getChildren().addAll(cardActions(account, content));
         root.setRight(right);
 
         root.setCursor(Cursor.HAND);
@@ -296,14 +296,16 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// no account to upload to.
     ///
     /// @param account the account
+    /// @param content the card's two lines, which the check writes its answer onto
     /// @return the buttons
-    private java.util.List<javafx.scene.Node> cardActions(DshAccount account) {
+    private java.util.List<javafx.scene.Node> cardActions(DshAccount account,
+                                                          TwoLineListItem content) {
         java.util.List<javafx.scene.Node> buttons = new java.util.ArrayList<>();
 
         if (account.carriesAKey()) {
             com.jfoenix.controls.JFXButton check = FXUtils.newToggleButton4(SVG.REFRESH);
             FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
-            check.setOnAction(event -> check(account));
+            check.setOnAction(event -> check(account, content));
             buttons.add(check);
         }
 
@@ -359,19 +361,31 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
     }
 
-    /// Asks the vendor whether an account's key still works.
+    /// Asks the vendor whether an account's key still works, and says the answer on the card.
     ///
-    /// Off the interface thread, because it is a network call. Only a refusal means anything: a vendor
-    /// that cannot be reached has not said the key is bad, and a vendor that does not answer this
-    /// question has said nothing at all.
+    /// Off the interface thread, because it is a network call, and **on the row** rather than in a
+    /// dialog: the answer is about one account, and a modal box that has to be dismissed before the
+    /// next one can be looked at is a worse place for it than the line it belongs to. Two dialogs —
+    /// one saying "checking", one with the answer — also means two things to close, which is what the
+    /// original never asks of anybody.
+    ///
+    /// Only a refusal means anything: a vendor that cannot be reached has not said the key is bad, and
+    /// a vendor that does not answer this question has said nothing at all.
     ///
     /// @param account the account
-    private void check(DshAccount account) {
-        Controllers.dialog(i18n("dsh.account.checking"));
+    /// @param content the card's own two lines, whose second one carries the answer
+    private void check(DshAccount account, TwoLineListItem content) {
+        content.setSubtitle(i18n("dsh.account.checking"));
         java.util.concurrent.CompletableFuture
                 .supplyAsync(account::check, org.jackhuang.hmcl.task.Schedulers.io())
-                .whenComplete((result, failure) -> javafx.application.Platform.runLater(() ->
-                        Controllers.dialog(failure != null ? failure.getMessage() : result.message())));
+                .whenComplete((result, failure) -> javafx.application.Platform.runLater(() -> {
+                    // The card may be gone — the account removed while the answer was in flight — and
+                    // a row that no longer exists must not be written to.
+                    if (!SettingsManager.settings().getAccounts().contains(account)) {
+                        return;
+                    }
+                    content.setSubtitle(failure != null ? failure.getMessage() : result.message());
+                }));
     }
 
     @Override
@@ -383,24 +397,16 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
     /// Makes an account the one the launcher uses.
     ///
+    /// It is **named**, not moved. The list used to reorder itself so that the chosen account came
+    /// first, which meant looking at one and choosing it were the same gesture as far as the list was
+    /// concerned — the row somebody had just clicked jumped to the top, and every other row moved
+    /// under the pointer. What the launcher needs is an answer to "which account", and a key is that
+    /// answer without the list having to encode it.
+    ///
     /// @param account the account
     private void select(DshAccount account) {
-        java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
-        int index = -1;
-        for (int i = 0; i < accounts.size(); i++) {
-            if (accounts.get(i).matchesKey(account.key())) {
-                index = i;
-                break;
-            }
-        }
-        if (index > 0) {
-            // Moved to the front rather than flagged: the launcher's answer to "which account" is
-            // the first one it holds, and a separate pointer would be one more thing that can point
-            // at nothing.
-            accounts.remove(index);
-            accounts.add(0, account);
-            SettingsManager.save();
-        }
+        SettingsManager.settings().activeAccountKeyProperty().set(account.key());
+        SettingsManager.save();
         refreshList();
     }
 
@@ -445,8 +451,8 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// @param account the account
     /// @return whether the launcher uses it by default
     static boolean isActive(DshAccount account) {
-        java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
-        return !accounts.isEmpty() && accounts.get(0).matchesKey(account.key());
+        DshAccount active = SettingsManager.settings().activeAccount();
+        return active != null && active.matchesKey(account.key());
     }
 
     /// One row of the account list.

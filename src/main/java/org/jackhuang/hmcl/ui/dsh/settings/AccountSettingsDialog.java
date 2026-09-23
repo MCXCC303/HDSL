@@ -103,7 +103,15 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     ///
     /// @param preselected the vendor to add, or `null` to ask
     public AccountSettingsDialog(@Nullable DshVendor preselected) {
-        this(preselected, DshAccount.AccountKind.THIRD_PARTY, false);
+        // The kind follows the vendor, rather than being assumed from the fact that a vendor was
+        // named. Hardcoding `THIRD_PARTY` here is what made the launcher's own vendor behave like
+        // somebody else's: the checks that ask `kind != OFFICIAL` — whether to show the model field,
+        // whether to write a default model — never fired, because "opened from a vendor row" was
+        // being read as "is a third party".
+        this(preselected,
+                preselected != null && preselected.preferred()
+                        ? DshAccount.AccountKind.OFFICIAL : DshAccount.AccountKind.THIRD_PARTY,
+                false);
     }
 
     /// Creates a dialog that adds an offline account: a name, and nothing to check.
@@ -158,9 +166,11 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     private VBox buildForm() {
         ComponentList list = new ComponentList();
 
-        // The vendor is asked for only when the caller did not say. The page asks by offering a row
-        // per vendor, so asking again inside the dialog would be a question just answered.
-        if (preselected == null) {
+        // The vendor is asked for only when there is a vendor to ask about and the caller did not
+        // say which. The page asks by offering a row per vendor, so asking again inside the dialog
+        // would be a question just answered — and an offline account has no supplier at all, which is
+        // the whole of what it is, so offering a list of them is offering something that cannot apply.
+        if (preselected == null && !offline) {
             vendorBox.getItems().setAll(DshVendor.offered());
             vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
             vendorBox.getSelectionModel().selectFirst();

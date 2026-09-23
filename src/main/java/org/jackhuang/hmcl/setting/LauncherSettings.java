@@ -456,6 +456,53 @@ public final class LauncherSettings {
         return accounts;
     }
 
+    /// Which account the launcher uses, by its key, or empty.
+    ///
+    /// A named choice rather than a position. The list's first entry used to *be* the answer, which
+    /// meant choosing an account moved it: the list reordered itself under the pointer, and every
+    /// reader had to remember that "first" meant "in force". A key can name an account that has moved,
+    /// or been removed — in which case there is no choice, which is a state the launcher should be
+    /// able to be in rather than one it has to hide by keeping a stale row.
+    private final javafx.beans.property.StringProperty activeAccountKey =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns which account the launcher uses.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty activeAccountKeyProperty() {
+        return activeAccountKey;
+    }
+
+    /// Returns which account the launcher uses, or empty when none is chosen.
+    ///
+    /// @return the key
+    public @Nullable String activeAccountKey() {
+        String key = activeAccountKey.get();
+        return key == null || key.isEmpty() ? null : key;
+    }
+
+    /// Returns the account the launcher uses.
+    ///
+    /// A chosen account that is gone falls back to the first one, because a launcher with exactly one
+    /// account means it for everything and does not need to be told so.
+    ///
+    /// @return the account, or `null` when there are none
+    public @Nullable org.jackhuang.hmcl.dsh.DshAccount activeAccount() {
+        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> all = getAccounts();
+        if (all.isEmpty()) {
+            return null;
+        }
+        String chosen = activeAccountKey();
+        if (chosen != null) {
+            for (org.jackhuang.hmcl.dsh.DshAccount account : all) {
+                if (account.matchesKey(chosen)) {
+                    return account;
+                }
+            }
+        }
+        return all.get(0);
+    }
+
     /// Returns how the launcher draws text.
     ///
     /// @return the property
