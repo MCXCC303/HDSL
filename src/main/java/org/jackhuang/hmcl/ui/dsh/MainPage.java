@@ -137,6 +137,10 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                 .addNavigationDrawerItem(i18n("download"), SVG.DOWNLOAD,
                         () -> Controllers.navigate(getDownloadPage()))
                 .startCategory(i18n("settings.launcher.general").toUpperCase(Locale.ROOT))
+                // Accounts sit with the launcher's own settings rather than with a game: an account
+                // here is a key this machine holds, not something an instance owns.
+                .addNavigationDrawerItem(i18n("dsh.account.list"), SVG.DRESSER,
+                        () -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage()))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
                         () -> Controllers.navigate(getSettingsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
@@ -264,6 +268,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             // original does: the version is chosen there, and the wizard that
             // follows only fills in what that choice left open.
             case "create" -> Controllers.navigate(getDownloadPage());
+            case "accounts" -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;

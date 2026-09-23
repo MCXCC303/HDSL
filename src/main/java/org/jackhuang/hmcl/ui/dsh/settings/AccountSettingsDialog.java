@@ -83,8 +83,19 @@ public final class AccountSettingsDialog extends VBox {
     /// The accounts, redrawn whenever one is added or removed.
     private final ComponentList accounts = new ComponentList();
 
-    /// Creates the dialog's content.
+    /// The vendor the dialog opens on, or `null` to start at the first one offered.
+    private final @org.jetbrains.annotations.Nullable DshVendor preselected;
+
+    /// Creates the dialog's content, starting at the first vendor offered.
     public AccountSettingsDialog() {
+        this(null);
+    }
+
+    /// Creates the dialog's content.
+    ///
+    /// @param preselected the vendor to start on, or `null` for the first one offered
+    public AccountSettingsDialog(@org.jetbrains.annotations.Nullable DshVendor preselected) {
+        this.preselected = preselected;
         setSpacing(10);
         setPadding(new Insets(10));
 
@@ -159,7 +170,14 @@ public final class AccountSettingsDialog extends VBox {
     private javafx.scene.Node addForm() {
         vendorBox.getItems().setAll(DshVendor.offered());
         vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
-        vendorBox.getSelectionModel().selectFirst();
+        if (preselected != null) {
+            // The page's sidebar already asked which vendor this is for, so the dialog opens on that
+            // answer rather than asking again.
+            vendorBox.getSelectionModel().select(preselected);
+        }
+        if (vendorBox.getValue() == null) {
+            vendorBox.getSelectionModel().selectFirst();
+        }
         vendorBox.setMaxWidth(Double.MAX_VALUE);
 
         labelField.setPromptText(i18n("dsh.account.label.prompt"));
@@ -168,9 +186,10 @@ public final class AccountSettingsDialog extends VBox {
         modelField.setPromptText(i18n("dsh.account.model.prompt"));
         verdict.getStyleClass().add("desc");
 
-        // An endpoint is only needed by a vendor whose address is per account, so the box is only
-        // offered for one — a row asking for something that is not wanted is a row that makes
-        // people wonder what they were supposed to type.
+        // An endpoint is only needed by a vendor whose address is per account, so the row is only
+        // offered for one — a row asking for something that is not wanted is a row that makes people
+        // wonder what they were supposed to type. A dialog opened without a vendor is the one that
+        // may have to ask for an address at all.
         Runnable syncBaseUrl = () -> {
             DshVendor vendor = vendorBox.getValue();
             boolean needed = vendor != null && !vendor.hasBaseUrl();

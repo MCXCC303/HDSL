@@ -114,10 +114,6 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
     /// The version picker, in the position the original keeps its game version in.
     private final JFXComboBox<String> versionBox = new JFXComboBox<>();
 
-    /// Says how many plugins the filter is holding back, so a shorter list is not
-    /// mistaken for a smaller catalogue.
-    private final Label note = new Label();
-
     /// The harness version the search is filtered by, or `null` for all of them.
     private String chosenVersion;
 
@@ -272,9 +268,6 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         pane.addRow(2, new Label(i18n("addon.category")), categoryBox,
                 new Label(i18n("search.sort")), sortBox);
 
-        note.getStyleClass().add("desc");
-        pane.add(note, 0, 3, 4, 1);
-
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
         search.setOnAction(event -> search());
@@ -286,7 +279,7 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
         HBox buttons = new HBox(8, paging, search);
         buttons.setAlignment(Pos.CENTER_RIGHT);
-        pane.add(buttons, 0, 4, 4, 1);
+        pane.add(buttons, 0, 3, 4, 1);
 
         return pane;
     }

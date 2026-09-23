@@ -1,0 +1,325 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.ui.dsh;
+
+import com.jfoenix.controls.JFXListView;
+import com.jfoenix.controls.JFXRadioButton;
+import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Cursor;
+import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.input.MouseButton;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshAccount;
+import org.jackhuang.hmcl.dsh.DshVendor;
+import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import org.jackhuang.hmcl.ui.construct.ClassTitle;
+import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
+import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
+import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.ui.dsh.settings.AccountSettingsDialog;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+
+/// The accounts this launcher holds.
+///
+/// Laid out the way the original lays out its own account list, because the shape is doing real
+/// work there:
+///
+/// - On the **left**, how an account is added — what kind of thing it is, listed as the ways of
+///   getting one. The original lists Microsoft, offline, and each authentication server it has been
+///   told about; here it is the model vendors, since there is no login to perform: the harness is
+///   not a service, it is a program that talks to whichever supplier it is configured with, and the
+///   thing that stands in the place of a login is a key.
+/// - On the **right**, the accounts themselves, one card per account, each with the small set of
+///   things one does to an account: check that it still works, and remove it.
+/// - The **radio button** on each row chooses the account the launcher uses when an instance does
+///   not name one of its own. That is the original's arrangement too — its radio picks the account
+///   the game starts with — and it is why an account is a thing to choose rather than a setting to
+///   type: there is one active account, and looking at another does not change which.
+@NotNullByDefault
+public final class AccountListPage extends DecoratorAnimatedPage implements DecoratorPage {
+    /// The page state published to the window decorator.
+    private final ReadOnlyObjectWrapper<State> state =
+            new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.account.list")));
+
+    /// The card listing the accounts.
+    private final JFXListView<DshAccount> accountList = new JFXListView<>();
+
+    /// Creates the page.
+    public AccountListPage() {
+        accountList.getStyleClass().add("card-list");
+        accountList.setCellFactory(list -> new AccountListCell(accountList));
+        javafx.collections.ObservableList<DshAccount> accounts = SettingsManager.settings().getAccounts();
+        // The list follows the settings, so a dialog that adds an account redraws this page without
+        // the page having to know a dialog exists.
+        accounts.addListener((javafx.collections.ListChangeListener<DshAccount>) change ->
+                javafx.application.Platform.runLater(this::refreshList));
+        refreshList();
+
+        setLeft(buildAddSidebar());
+        setCenter(buildAccountPane());
+    }
+
+    /// Builds the left column: the ways of getting an account, one row each.
+    ///
+    /// The original's shape — a list of methods with the page's own "add" item at the foot — because
+    /// the question "how do I add an account" has one answer per kind, and a single "add" button
+    /// that then asks which kind is a question asked in the wrong order.
+    ///
+    /// @return the sidebar
+    private Region buildAddSidebar() {
+        // One row per vendor rather than a category heading per family: the vendors are a short flat
+        // list, and grouping thirteen of them would be more structure than the list has content.
+        VBox vendorBox = new VBox();
+        vendorBox.getStyleClass().add("advanced-list-box-content");
+        for (DshVendor vendor : DshVendor.offered()) {
+            org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
+                    new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
+            item.getStyleClass().add("navigation-drawer-item");
+            item.setTitle(vendor.displayName());
+            item.setSubtitle(vendor.id());
+            item.setLeftIcon(SVG.PERSON);
+            item.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(vendor)));
+            vendorBox.getChildren().add(item);
+        }
+
+        ScrollPane scrollPane = new ScrollPane(vendorBox);
+        scrollPane.setFitToWidth(true);
+        FXUtils.setLimitWidth(scrollPane, 200);
+        FXUtils.smoothScrolling(scrollPane);
+
+        AdvancedListBox actions = new AdvancedListBox()
+                .addNavigationDrawerItem(i18n("dsh.account.add.custom"), SVG.ADD_CIRCLE,
+                        () -> Controllers.dialog(new AccountSettingsDialog(null)));
+        FXUtils.setLimitHeight(actions, 40);
+
+        setLeft(scrollPane, actions);
+        return scrollPane;
+    }
+
+    /// Builds the accounts themselves.
+    ///
+    /// Wrapped the way every other page wraps its content: the original's `ComponentList` is what
+    /// gives a list its opaque surface, and a bare list would let the window's wallpaper show
+    /// through the rows.
+    ///
+    /// @return the page's centre
+    private Region buildAccountPane() {
+        StackPane pane = new StackPane();
+        pane.setPadding(new Insets(10));
+        pane.getStyleClass().add("notice-pane");
+
+        ComponentList root = new ComponentList();
+        root.getStyleClass().add("no-padding");
+        root.getContent().add(accountList);
+        // `ComponentList` wraps its children, so a VGrow set on the child lands on a node the box
+        // does not lay out. The box reads this property off the child and applies it to the wrapper.
+        ComponentList.setVgrow(accountList, Priority.ALWAYS);
+        pane.getChildren().setAll(root);
+        return pane;
+    }
+
+    @Override
+    public ReadOnlyObjectWrapper<State> stateProperty() {
+        return state;
+    }
+
+    /// Redraws the list from the settings.
+    private void refreshList() {
+        accountList.getItems().setAll(SettingsManager.settings().getAccounts());
+    }
+
+    /// Makes an account the one the launcher uses.
+    ///
+    /// @param account the account
+    private void select(DshAccount account) {
+        java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
+        int index = -1;
+        for (int i = 0; i < accounts.size(); i++) {
+            if (accounts.get(i).matchesKey(account.key())) {
+                index = i;
+                break;
+            }
+        }
+        if (index > 0) {
+            // Moved to the front rather than flagged: the launcher's answer to "which account" is
+            // the first one it holds, and a separate pointer would be one more thing that can point
+            // at nothing.
+            accounts.remove(index);
+            accounts.add(0, account);
+            SettingsManager.save();
+        }
+        accountList.refresh();
+    }
+
+    /// Removes an account, after asking.
+    ///
+    /// @param account the account
+    private void remove(DshAccount account) {
+        Controllers.confirm(i18n("dsh.account.remove.confirm", account.displayName()),
+                i18n("button.remove"), () -> {
+                    SettingsManager.settings().getAccounts().removeIf(a -> a.matchesKey(account.key()));
+                    SettingsManager.save();
+                    refreshList();
+                }, null);
+    }
+
+    /// Whether an account is the active one.
+    ///
+    /// @param account the account
+    /// @return whether the launcher uses it by default
+    static boolean isActive(DshAccount account) {
+        java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
+        return !accounts.isEmpty() && accounts.get(0).matchesKey(account.key());
+    }
+
+    /// One row of the account list.
+    ///
+    /// Built here rather than in a class of its own because it is only ever this page's row, and
+    /// because the two things it can do are both the page's business.
+    private final class AccountListCell extends org.jackhuang.hmcl.ui.construct.MDListCell<DshAccount> {
+        /// The radio button that makes this the active account.
+        private final JFXRadioButton selector = new JFXRadioButton() {
+            @Override
+            public void fire() {
+                DshAccount account = getItem();
+                if (!isDisable() && account != null) {
+                    select(account);
+                }
+            }
+        };
+
+        /// The name and what the account is.
+        private final TwoLineListItem content = new TwoLineListItem();
+
+        /// The monogram standing in for a picture.
+        private final Label monogram = new Label();
+
+        /// Creates a cell.
+        ///
+        /// @param listView the list it belongs to
+        AccountListCell(JFXListView<DshAccount> listView) {
+            super(listView);
+
+            BorderPane root = new BorderPane();
+            root.getStyleClass().add("md-list-cell");
+            root.setPadding(new Insets(8, 8, 8, 0));
+
+            selector.setMouseTransparent(false);
+            root.setLeft(selector);
+            BorderPane.setAlignment(selector, Pos.CENTER);
+
+            // A monogram rather than a picture. The original draws a skin head there because a
+            // Minecraft account has a skin; a model vendor has nothing to draw, and an invented
+            // picture would be a picture of nothing. The vendor's initial is a real answer to
+            // "which of these is which" at a glance.
+            monogram.getStyleClass().add("dsh-account-monogram");
+            monogram.setMinSize(32, 32);
+            monogram.setPrefSize(32, 32);
+            monogram.setAlignment(Pos.CENTER);
+
+            HBox centre = new HBox(8, monogram, content);
+            centre.setAlignment(Pos.CENTER_LEFT);
+            centre.setMouseTransparent(true);
+            centre.setPrefWidth(Region.USE_PREF_SIZE);
+            BorderPane.setMargin(centre, new Insets(0, 0, 0, 8));
+            BorderPane.setAlignment(content, Pos.CENTER);
+            root.setCenter(centre);
+
+            com.jfoenix.controls.JFXButton check = FXUtils.newToggleButton4(SVG.CHECK_CIRCLE);
+            FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
+            check.setOnAction(event -> check());
+
+            com.jfoenix.controls.JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
+            FXUtils.installFastTooltip(remove, i18n("button.remove"));
+            remove.setOnAction(event -> {
+                DshAccount account = getItem();
+                if (account != null) {
+                    remove(account);
+                }
+            });
+
+            HBox right = new HBox(check, remove);
+            right.setAlignment(Pos.CENTER_RIGHT);
+            root.setRight(right);
+
+            // The content goes into the container the base class lays out. Building a graphic of
+            // its own and calling `setGraphic` does not work: the base class re-sets the graphic on
+            // every update, so the row would come out blank while its radio button and buttons — the
+            // parts it adds itself — still showed.
+            getContainer().getChildren().setAll(root);
+
+            root.setCursor(Cursor.HAND);
+            root.setOnMouseClicked(event -> {
+                DshAccount account = getItem();
+                if (account != null && event.getButton() == MouseButton.PRIMARY) {
+                    select(account);
+                }
+            });
+        }
+
+        /// Asks the vendor whether the key still works.
+        ///
+        /// Off the interface thread, because it is a network call, and only a refusal means
+        /// anything: a vendor that cannot be reached has not said the key is bad.
+        private void check() {
+            DshAccount account = getItem();
+            if (account == null) {
+                return;
+            }
+            content.setSubtitle(i18n("dsh.account.checking"));
+            java.util.concurrent.CompletableFuture
+                    .supplyAsync(account::check, org.jackhuang.hmcl.task.Schedulers.io())
+                    .whenComplete((result, failure) -> javafx.application.Platform.runLater(() -> {
+                        if (failure != null) {
+                            content.setSubtitle(failure.getMessage());
+                        } else {
+                            content.setSubtitle(result.message());
+                        }
+                    }));
+        }
+
+        @Override
+        protected void updateControl(@Nullable DshAccount account, boolean empty) {
+            if (empty || account == null) {
+                return;
+            }
+            content.setTitle(account.displayName());
+            content.setSubtitle(account.vendorId() + " · " + account.maskedKey()
+                    + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault()));
+            monogram.setText(account.displayName().isEmpty()
+                    ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+            selector.setSelected(isActive(account));
+        }
+    }
+}

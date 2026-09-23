@@ -89,18 +89,18 @@ public final class DshAccountOverlay {
         yaml.append("- id: llm-pi-ai\n");
         yaml.append("  config:\n");
         yaml.append("    providers:\n");
-        yaml.append("      ").append(quote(account.vendorId())).append(":\n");
+        yaml.append("      ").append(YamlScalar.of(account.vendorId())).append(":\n");
         yaml.append("        apiKeyEnv: ").append(KEY_ENVIRONMENT_VARIABLE).append("\n");
         yaml.append("        api: ").append(api).append("\n");
         if (endpoint != null && !endpoint.isBlank()) {
-            yaml.append("        baseURL: ").append(quote(endpoint.trim())).append("\n");
+            yaml.append("        baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
         }
         yaml.append("        models:\n");
         // One placeholder model. Which models a vendor serves is its own answer, and the harness
         // discovers them from the catalogue for a vendor it knows; this entry is what makes the
         // route registrable when it does not.
         yaml.append("          - id: default\n");
-        yaml.append("            name: ").append(quote(account.displayName())).append("\n");
+        yaml.append("            name: ").append(YamlScalar.of(account.displayName())).append("\n");
 
         Path directory = directory();
         Path file = directory.resolve("account-" + instance.id() + "-"
@@ -140,19 +140,4 @@ public final class DshAccountOverlay {
         return org.jackhuang.hmcl.Metadata.HMCL_USER_HOME.resolve(DIRECTORY);
     }
 
-    /// Quotes a YAML scalar when it needs it.
-    ///
-    /// Values here are ids, names and addresses chosen by the user, so they can contain the
-    /// characters that mean something to YAML — a colon in a URL, a hash in a name. Quoting
-    /// whenever the value is not plainly safe keeps a route name from changing the document's shape.
-    ///
-    /// @param value the value
-    /// @return the scalar as YAML
-    private static String quote(String value) {
-        String text = value == null ? "" : value;
-        if (text.matches("[A-Za-z0-9._/-]+")) {
-            return text;
-        }
-        return '"' + text.replace("\\", "\\\\").replace("\"", "\\\"") + '"';
-    }
 }
