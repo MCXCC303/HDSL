@@ -200,6 +200,50 @@ class DshDefaultModelTest {
     }
 
     @Test
+    void aKeyNestedDeeperIsNotFlattened() throws Exception {
+        // `model:` one level below a `provider:` object belongs to that object. Writing a scalar
+        // over it would delete a structure the person wrote, so it is left alone and the section
+        // gets a `model:` of its own at its own level.
+        Path home = homeWith("agent-default-model:\n  provider: old\n    model: nested\n");
+
+        DshDefaultModel.apply(home, "deepseek", "deepseek-chat");
+
+        assertEquals("agent-default-model:\n  provider: deepseek\n    model: nested\n"
+                + "  model: deepseek-chat\n", Files.readString(home.resolve("settings.yaml")));
+    }
+
+    @Test
+    void aSectionNameThatMerelyStartsTheSameIsADifferentSection() throws Exception {
+        Path home = homeWith("agent-default-modelish:\n  provider: keep\n");
+
+        DshDefaultModel.apply(home, "deepseek", "deepseek-chat");
+
+        assertEquals("agent-default-modelish:\n  provider: keep\n"
+                + "agent-default-model:\n  provider: deepseek\n  model: deepseek-chat\n",
+                Files.readString(home.resolve("settings.yaml")));
+    }
+
+    @Test
+    void aFollowingSectionIsNotInvaded() throws Exception {
+        Path home = homeWith("agent-default-model:\n  provider: old\nother:\n  model: not-ours\n");
+
+        DshDefaultModel.apply(home, "deepseek", "deepseek-chat");
+
+        assertEquals("agent-default-model:\n  provider: deepseek\n  model: deepseek-chat\n"
+                + "other:\n  model: not-ours\n", Files.readString(home.resolve("settings.yaml")));
+    }
+
+    @Test
+    void aTabIndentedSectionKeepsItsTabs() throws Exception {
+        Path home = homeWith("agent-default-model:\n\tprovider: old\n\tmodel: old\n");
+
+        DshDefaultModel.apply(home, "deepseek", "deepseek-chat");
+
+        assertEquals("agent-default-model:\n\tprovider: deepseek\n\tmodel: deepseek-chat\n",
+                Files.readString(home.resolve("settings.yaml")));
+    }
+
+    @Test
     void everyResultIsParsableAsYaml() throws Exception {
         // The harness reads this file with a real parser, so a shape that merges two keys onto one
         // line is not a cosmetic problem: it is a home that will not start.

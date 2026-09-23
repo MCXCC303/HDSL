@@ -182,14 +182,21 @@ public final class DshDefaultModel {
             if (!Character.isWhitespace(line.charAt(0))) {
                 break;
             }
+            String linePad = line.substring(0, line.length() - line.stripLeading().length());
             if (pad == null) {
-                pad = line.substring(0, line.length() - line.stripLeading().length());
+                pad = linePad;
             }
-            String body = line.strip();
-            if (body.startsWith("provider:")) {
-                atProvider = i;
-            } else if (body.startsWith("model:")) {
-                atModel = i;
+            // Only the section's own children are candidates. `model:` nested one level deeper is
+            // part of some object the user wrote, and writing a scalar over it would delete that
+            // object — so a key at a different indentation is treated as one this section does not
+            // have, and a correct one is added beside it.
+            if (linePad.equals(pad)) {
+                String body = line.strip();
+                if (body.startsWith("provider:")) {
+                    atProvider = i;
+                } else if (body.startsWith("model:")) {
+                    atModel = i;
+                }
             }
             last = i;
         }
