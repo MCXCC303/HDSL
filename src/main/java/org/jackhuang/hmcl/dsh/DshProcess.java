@@ -71,11 +71,48 @@ public final class DshProcess {
 
     /// The readiness line for the browser surface, including its optional LAN suffix.
     ///
-    /// Both the token query and the trailing slash are optional. Releases before the browser-trust
-    /// fence print the address on its own and without a slash — `dsh web: http://127.0.0.1:4061` —
-    /// and that address is just as good a sign that the server is up as the later spelling is.
+    /// Three spellings are in the wild, and all three have to be read:
+    ///
+    /// ```text
+    /// dsh web: http://127.0.0.1:4061                            ← before the browser-trust fence
+    /// dsh web: http://127.0.0.1:4061/
+    /// dsh web: http://127.0.0.1:4061/?token=…                  ← with the fence
+    /// ```
+    ///
+    /// **The token is part of the address, not decoration on it.** It is the credential the browser
+    /// presents, and a version behind the fence refuses a request without one — so the capture has to
+    /// take it. It very nearly did not: the first spelling of this pattern put the query in a
+    /// *non-capturing* group, which matched the token and then threw it away, and every address the
+    /// launcher stored was one that could not authenticate. Nothing showed it while the releases in
+    /// use printed no token at all, because there was then nothing to lose.
+    ///
+    /// The trailing slash and the token are matched together (`/?` then an optional query) rather
+    /// than as two independent optionals, because that is how they occur: a bare slash with no token
+    /// is the older spelling, and a query without a slash has never been printed.
     private static final Pattern WEB_READY = Pattern.compile(
-            "^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+)/?(?:\\?token=[A-Za-z0-9_-]+)?\\s*(?:\\(LAN:.*\\))?$");
+            "^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+/?(?:\\?token=[A-Za-z0-9_-]+)?)"
+                    + "\\s*(?:\\(LAN:.*\\))?$");
+
+    /// Reads the browser address out of a readiness line.
+    ///
+    /// A method of its own so that the three spellings above can be tested without a child process:
+    /// the pattern is the whole of the parsing, and the bug it carried was invisible for exactly as
+    /// long as nothing checked the *value* it produced.
+    ///
+    /// @param line one line of child output
+    /// @return the address, or empty when the line is not a readiness line
+    static java.util.Optional<java.net.URI> parseWebUrl(String line) {
+        Matcher matcher = WEB_READY.matcher(line.trim());
+        if (!matcher.matches()) {
+            return java.util.Optional.empty();
+        }
+        try {
+            return java.util.Optional.of(new java.net.URI(matcher.group(1)));
+        } catch (URISyntaxException e) {
+            LOG.warning("DeepSeek Harness printed an unparsable URL: " + matcher.group(1), e);
+            return java.util.Optional.empty();
+        }
+    }
 
     /// How many log lines are retained for the log window.
     private static final int MAX_LOG_LINES = 2000;
@@ -362,16 +399,12 @@ public final class DshProcess {
     ///
     /// @param line one line of child output
     private void detectReadiness(String line) {
-        Matcher matcher = WEB_READY.matcher(line.trim());
-        if (!matcher.matches()) {
+        java.util.Optional<java.net.URI> parsed = parseWebUrl(line);
+        if (parsed.isEmpty()) {
             return;
         }
-        try {
-            webUrl = new URI(matcher.group(1));
-            transitionTo(State.READY);
-        } catch (URISyntaxException e) {
-            LOG.warning("DeepSeek Harness printed an unparsable URL: " + matcher.group(1), e);
-        }
+        webUrl = parsed.get();
+        transitionTo(State.READY);
     }
 
     /// Appends a line to the bounded log buffer.
