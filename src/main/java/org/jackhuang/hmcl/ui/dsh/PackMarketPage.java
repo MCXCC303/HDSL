@@ -94,6 +94,14 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
     /// How to order the results.
     private final JFXComboBox<String> sortBox = new JFXComboBox<>();
 
+    /// Which harness version to keep.
+    ///
+    /// The original's second box on the name row, which it calls the game version and fills from its
+    /// version list. Here the thing a pack pins is a **harness** version, so that is what is offered
+    /// and what the row is called: the same question — "will this run on what I have" — asked about
+    /// the only version this launcher has.
+    private final JFXComboBox<String> versionBox = new JFXComboBox<>();
+
     /// Where the page number is shown between the paging buttons.
     private final Label pageLabel = new Label();
 
@@ -160,6 +168,8 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         pane.setHgap(16);
         pane.setVgap(10);
         pane.setPadding(new Insets(10));
+        // Four columns, as the original has: a name, a box that takes what is left, another name,
+        // another such box. Two rows of them, then the paging with the buttons at the end.
 
         ColumnConstraints nameColumn = new ColumnConstraints();
         nameColumn.setMinWidth(Region.USE_PREF_SIZE);
@@ -175,6 +185,12 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         nameField.setMaxWidth(Double.MAX_VALUE);
         FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
 
+        versionBox.setMaxWidth(Double.MAX_VALUE);
+        versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
+        versionBox.getItems().setAll(i18n("download.type.all"));
+        versionBox.setValue(i18n("download.type.all"));
+        versionBox.valueProperty().addListener(observable -> search());
+
         categoryBox.setMaxWidth(Double.MAX_VALUE);
         categoryBox.setConverter(FXUtils.stringConverter(choice -> choice));
         categoryBox.getItems().setAll(i18n("download.type.all"));
@@ -187,24 +203,43 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         sortBox.setValue(i18n("addon.sort.date_created"));
         sortBox.valueProperty().addListener(observable -> search());
 
-        pane.add(new Label(i18n("modpack.name")), 0, 0);
+        // The original's own two rows, in its own order: what to look for and which version, then
+        // which category and how to order the answers.
+        pane.add(new Label(i18n("mods.name")), 0, 0);
         pane.add(nameField, 1, 0);
-        pane.add(new Label(i18n("addon.category")), 2, 0);
-        pane.add(categoryBox, 3, 0);
+        pane.add(new Label(i18n("dsh.pack.instance_version")), 2, 0);
+        pane.add(versionBox, 3, 0);
 
-        pane.add(new Label(i18n("search.sort")), 0, 1);
-        pane.add(sortBox, 1, 1);
-        pane.add(buildPaging(), 2, 1, 2, 1);
+        pane.add(new Label(i18n("addon.category")), 0, 1);
+        pane.add(categoryBox, 1, 1);
+        pane.add(new Label(i18n("search.sort")), 2, 1);
+        pane.add(sortBox, 3, 1);
 
-        // When the index was assembled, beside the button that reads it again. The original's own
-        // download page carries the same line for the same reason: a list is only as good as its
-        // age, and this is the one place that says how old it is.
+        pane.add(buildPaging(), 0, 2, 2, 1);
+
+        // The ends of the row, as the original has them: when the index was assembled, beside the
+        // button that reads it again, and the button that installs a pack somebody already has.
         JFXButton reload = new JFXButton(i18n("button.refresh"));
         reload.getStyleClass().add("dialog-accept");
         reload.setOnAction(event -> refresh());
-        HBox actions = new HBox(8, updatedLabel, reload);
+
+        JFXButton installLocal = FXUtils.newRaisedButton(i18n("install.modpack"));
+        installLocal.setOnAction(event -> Controllers.navigate(new PackInstallPage()));
+
+        // The buttons keep the width their own labels ask for, and the line about the index gives up
+        // its own instead. Left to the grid, the opposite happened: the timestamp is long and took
+        // what it wanted, and the button was drawn as "安…" — a button nobody can read is a button
+        // nobody presses.
+        for (JFXButton button : List.of(reload, installLocal)) {
+            button.setMinWidth(Region.USE_PREF_SIZE);
+        }
+        updatedLabel.setMinWidth(0);
+        HBox.setHgrow(updatedLabel, Priority.ALWAYS);
+        updatedLabel.setAlignment(Pos.CENTER_RIGHT);
+
+        HBox actions = new HBox(8, updatedLabel, reload, installLocal);
         actions.setAlignment(Pos.CENTER_RIGHT);
-        pane.add(actions, 3, 2);
+        pane.add(actions, 2, 2, 2, 1);
 
         return pane;
     }
@@ -264,8 +299,13 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
             listView.setPlaceholder(placeholder(i18n("search.no_results_found")));
             all.setAll(index.entries());
             generatedAt = index.generatedAt();
-            updatedLabel.setText(generatedAt == null ? ""
-                    : i18n("dsh.market.updated", generatedAt));
+            // The date alone: the index is assembled once a day, so the time of day says nothing a
+            // person acts on and costs the width the buttons need. The whole value is in the tooltip
+            // for anybody who does want it.
+            String shown = generatedAt == null ? null
+                    : generatedAt.length() >= 10 ? generatedAt.substring(0, 10) : generatedAt;
+            updatedLabel.setText(shown == null ? "" : i18n("dsh.market.updated", shown));
+            FXUtils.installFastTooltip(updatedLabel, generatedAt == null ? "" : generatedAt);
 
             // The categories are the ones the index actually holds, not a list invented here: the
             // collector's categories are whatever the authors' manifests said, and a fixed list would
@@ -282,6 +322,23 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
             categoryBox.getItems().setAll(categories);
             categoryBox.setValue(categories.contains(chosen) ? chosen : categories.get(0));
 
+            // The versions the index actually holds, newest first, by the same reasoning the
+            // categories are gathered: a filter that matches nothing is worse than no filter, and a
+            // fixed list of versions would go stale the day a pack pinned a new one.
+            String chosenVersion = versionBox.getValue();
+            List<String> versions = new java.util.ArrayList<>();
+            versions.add(i18n("download.type.all"));
+            index.entries().stream()
+                    .map(DshPackMarket.Entry::dshVersion)
+                    .filter(value -> value != null && !value.isBlank())
+                    .distinct()
+                    .sorted(Comparator.reverseOrder())
+                    .forEach(versions::add);
+            versionBox.getItems().setAll(versions);
+            // Kept when it is still there, so re-reading the index does not throw away what somebody
+            // was looking at.
+            versionBox.setValue(versions.contains(chosenVersion) ? chosenVersion : versions.get(0));
+
             search();
         }));
     }
@@ -295,6 +352,8 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         String needle = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase(Locale.ROOT);
         String category = categoryBox.getValue();
         boolean allCategories = category == null || category.equals(i18n("download.type.all"));
+        String version = versionBox.getValue();
+        boolean allVersions = version == null || version.equals(i18n("download.type.all"));
 
         List<DshPackMarket.Entry> matching = all.stream()
                 .filter(entry -> needle.isEmpty()
@@ -303,6 +362,7 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
                         || (entry.description() != null
                                 && entry.description().toLowerCase(Locale.ROOT).contains(needle)))
                 .filter(entry -> allCategories || category.equals(entry.category()))
+                .filter(entry -> allVersions || version.equals(entry.dshVersion()))
                 .sorted(comparator())
                 .toList();
 

@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.Locale;
@@ -30,26 +31,39 @@ import java.util.Locale;
 @NotNullByDefault
 public enum DshSurface {
     /// The browser interface. Served over local HTTP until stopped.
-    WEB("web", List.of("--no-open")),
+    WEB("web", "dsh-web-app", List.of("--no-open")),
 
     /// Answers one task and exits. Output is NDJSON when `--json` is passed.
-    HEADLESS("headless", List.of()),
+    HEADLESS("headless", "dsh-headless", List.of()),
 
     /// Speaks the Agent Client Protocol over stdio.
-    ACP("acp", List.of()),
+    ACP("acp", "dsh-acp-app", List.of()),
 
     /// Exposes the programmatic SDK over stdio.
-    SDK("sdk", List.of()),
+    SDK("sdk", "dsh-sdk-app", List.of()),
 
     /// A profile that does not match any shipped surface.
-    OTHER("", List.of());
+    OTHER("", "", List.of());
 
     private final String profileName;
+    private final String appBundle;
     private final List<String> arguments;
 
-    DshSurface(String profileName, List<String> arguments) {
+    DshSurface(String profileName, String appBundle, List<String> arguments) {
         this.profileName = profileName;
+        this.appBundle = appBundle;
         this.arguments = arguments;
+    }
+
+    /// Returns the bundle whose presence means a profile boots this surface.
+    ///
+    /// This is what a profile *is*, as opposed to what it is called: the app a profile boots is one
+    /// of its bundles, and the bundle is named by the package rather than by whoever wrote the
+    /// profile.
+    ///
+    /// @return the package name
+    public String appBundle() {
+        return appBundle;
     }
 
     /// Returns the profile template this surface boots.
@@ -108,5 +122,62 @@ public enum DshSurface {
             }
         }
         return OTHER;
+    }
+
+    /// Infers the surface from the bundles a profile layers.
+    ///
+    /// **This is the question that matters**, and asking it by name is what broke a pack. A profile
+    /// is a directory of layers, and the app it boots is one of them: an author who writes a pack
+    /// around the browser interface names their profile after the pack — `pokemon`, not `web` — and
+    /// every name-based answer about it is then wrong. The launcher treated such a profile as an
+    /// unknown surface, which meant no port, no `--no-open`, no readiness line and no browser: the
+    /// instance started perfectly and nothing appeared, which is exactly what was reported.
+    ///
+    /// The bundle is matched on its last path segment, because the same app is addressed both as
+    /// `@deepseek-ai/dsh-web-app` and as `dsh-web-app` depending on where it came from.
+    ///
+    /// @param bundles the bundle package names, in load order
+    /// @return the surface, or [DshSurface#OTHER] when none of them is an app
+    public static DshSurface ofBundles(@Nullable List<String> bundles) {
+        if (bundles == null) {
+            return OTHER;
+        }
+        for (String bundle : bundles) {
+            if (bundle == null) {
+                continue;
+            }
+            String name = bundle.substring(bundle.lastIndexOf('/') + 1).trim().toLowerCase(Locale.ROOT);
+            for (DshSurface surface : values()) {
+                if (!surface.appBundle.isEmpty() && surface.appBundle.equals(name)) {
+                    return surface;
+                }
+            }
+        }
+        return OTHER;
+    }
+
+    /// Infers the surface of an instance's profile.
+    ///
+    /// The profile's own manifest first, and its name only as a fallback. The order is the whole
+    /// point: a profile is named by whoever made it and layers what it actually boots, so the layers
+    /// answer the question and the name is a guess. The fallback still exists for a profile whose
+    /// manifest cannot be read — an instance made but never installed into, which has no bundles yet
+    /// — where the name is all there is and `web` is at least a reasonable guess.
+    ///
+    /// @param instance the instance
+    /// @return the surface
+    public static DshSurface of(DshInstance instance) {
+        try {
+            DshSurface byBundles = ofBundles(
+                    DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile()));
+            if (byBundles != OTHER) {
+                return byBundles;
+            }
+        } catch (DshException | RuntimeException e) {
+            // A profile that cannot be read is not a reason to refuse to start it.
+            org.jackhuang.hmcl.util.logging.Logger.LOG.info("Could not read the bundles of profile " + instance.profile()
+                    + "; falling back to its name: " + e.getMessage());
+        }
+        return ofProfile(instance.profile());
     }
 }

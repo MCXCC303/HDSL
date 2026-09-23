@@ -456,6 +456,34 @@ public final class DshPackInstaller {
     /// @return what was written
     /// @throws DshException when the archive cannot be read, or holds a member it may not write
     public static Landed land(Path archive, Path destination, @Nullable Path home) throws DshException {
+        return land(archive, destination, home, java.util.EnumSet.allOf(Part.class));
+    }
+
+    /// Which of a pack's three sets of files to write.
+    ///
+    /// They are separable because the specification's order interleaves them with work that is not
+    /// file copying: the pack's dependencies are installed **between** its machine files and its
+    /// overrides, so that a `cordis.patch.yml` the pack carries lands on top of whatever the
+    /// dependency install wrote. Copying all three at once cannot express that order.
+    public enum Part {
+        /// The archive root's `package.json`, lock file and workspace file.
+        MACHINE,
+        /// `overrides/`, which lands at the destination root.
+        OVERRIDES,
+        /// `home/`, which lands at the `DSH_HOME` root.
+        HOME
+    }
+
+    /// Writes the parts of a pack that were asked for.
+    ///
+    /// @param archive     the pack
+    /// @param destination where `overrides/` lands
+    /// @param home        where `home/` lands, or `null` for a pack that has none
+    /// @param parts       which sets to write
+    /// @return what was written
+    /// @throws DshException when the archive cannot be read, or holds a member it may not write
+    public static Landed land(Path archive, Path destination, @Nullable Path home,
+                              java.util.Set<Part> parts) throws DshException {
         int files = 0;
         int overrides = 0;
         int fromHome = 0;
@@ -479,12 +507,21 @@ public final class DshPackInstaller {
 
                 Path target;
                 if (name.startsWith("overrides/")) {
+                    if (!parts.contains(Part.OVERRIDES)) {
+                        continue;
+                    }
                     target = resolve(destination, name.substring("overrides/".length()));
                     overrides++;
                 } else if (name.startsWith("home/") && home != null) {
+                    if (!parts.contains(Part.HOME)) {
+                        continue;
+                    }
                     target = resolve(home, name.substring("home/".length()));
                     fromHome++;
                 } else if (isMachineFile(name)) {
+                    if (!parts.contains(Part.MACHINE)) {
+                        continue;
+                    }
                     target = resolve(destination, name);
                     machine++;
                 } else {
@@ -560,6 +597,59 @@ public final class DshPackInstaller {
     private static boolean isMachineFile(String name) {
         return name.equals("package.json") || name.equals("pnpm-lock.yaml")
                 || name.equals("pnpm-workspace.yaml");
+    }
+
+    /// Puts a recognised pack into an instance that is already at the right version.
+    ///
+    /// **The order is the specification's, and each step is in it for a reason** (§3.2.2):
+    ///
+    /// 1. the pack's own machine files — without them there is no manifest to install from;
+    /// 2. the dependency install, which is what turns a list of package names into a profile that
+    ///    boots;
+    /// 3. `overrides/` and `home/`, **last**, so a `cordis.patch.yml` the pack carries lands on top of
+    ///    whatever the dependency install wrote rather than being replaced by it. Landing the
+    ///    overrides first — which is what a single pass does — leaves the pack's own patch layer
+    ///    overwritten by its own dependencies, and the pack then behaves as though the patch were not
+    ///    there.
+    ///
+    /// @param archive the pack
+    /// @param instance the instance to fill
+    /// @param report  receives progress lines, or `null`
+    /// @return what was written
+    /// @throws DshException when the archive cannot be read, or the install fails
+    public static Landed installInto(Path archive, DshInstance instance,
+                                     @Nullable java.util.function.Consumer<String> report)
+            throws DshException {
+        Path home = instance.homeDirectory();
+        Path profiles = home.resolve("profiles").resolve(instance.profile());
+
+        Landed machine = land(archive, profiles, home, java.util.EnumSet.of(Part.MACHINE));
+        if (machine.machine() > 0) {
+            say(report, "Installing the pack's dependencies");
+        } else {
+            // A pack with no machine files leaves the profile to the harness, whose own
+            // `dsh plugin install` writes the manifest, the patch template and the package-manager
+            // settings exactly as upstream writes them. Writing them here would be reproducing
+            // upstream's file formats, which is the kind of guessing that has broken an instance
+            // before.
+            say(report, "Initializing profile " + instance.profile());
+        }
+        DshPluginInstaller.resolve(instance, report);
+
+        Landed rest = land(archive, profiles, home,
+                java.util.EnumSet.of(Part.OVERRIDES, Part.HOME));
+        return new Landed(machine.files() + rest.files(), rest.overrides(), rest.home(),
+                machine.machine());
+    }
+
+    /// Says something if anybody is listening.
+    ///
+    /// @param report where to say it, or `null`
+    /// @param line   what to say
+    private static void say(@Nullable java.util.function.Consumer<String> report, String line) {
+        if (report != null) {
+            report.accept(line);
+        }
     }
 
     /// Lists an archive's members, for a caller that wants to show what a pack holds.

@@ -267,7 +267,9 @@ public final class DshLauncher {
             }
         }
 
-        DshSurface surface = DshSurface.ofProfile(instance.profile());
+        // From what the profile boots, not from what it is called: a pack's profile is named after
+        // the pack and still boots the browser app.
+        DshSurface surface = DshSurface.of(instance);
 
         // The port is settled here rather than left to the child, and it is the
         // same one on every launch of this instance.

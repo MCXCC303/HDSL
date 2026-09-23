@@ -341,16 +341,10 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
             report.accept("Installing DeepSeek Harness " + version);
             org.jackhuang.hmcl.dsh.DshVersionManager.install(instance, version, report::accept);
 
-            Path home = instance.homeDirectory();
-            Path profiles = home.resolve("profiles").resolve(instance.profile());
-            report.accept("Writing the pack's files into " + profiles);
-
-            // The pack's `overrides/` land **after** the harness has initialized the profile, which
-            // is the order the specification asks for and the only order that works: the profile's own
-            // files are written by `dsh plugin install`, and a pack that landed first would be
-            // overwritten by them. A user's `cordis.patch.yml` in a pack therefore ends up on top,
-            // which is the point of the order.
-            DshPackInstaller.Landed landed = DshPackInstaller.land(archive, profiles, home);
+            report.accept("Writing the pack's files into "
+                    + instance.homeDirectory().resolve("profiles").resolve(instance.profile()));
+            DshPackInstaller.Landed landed = DshPackInstaller.installInto(archive, instance,
+                    report::accept);
             report.accept("Wrote " + landed.files() + " files (" + landed.overrides()
                     + " overrides, " + landed.machine() + " machine files)");
         }, () -> {

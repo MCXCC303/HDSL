@@ -232,6 +232,38 @@ class DshPackMarketTest {
     }
 
     @Test
+    void thePartsOfAPackCanBeWrittenSeparately() throws Exception {
+        // The specification's install order interleaves them with the dependency install: machine
+        // files, then `dsh plugin install`, then overrides — so that a `cordis.patch.yml` the pack
+        // carries lands on top of what its own dependencies wrote. Copying all three at once cannot
+        // express that, and landing the overrides first silently loses the pack's patch layer.
+        Path pack = container(
+                "overrides/cordis.patch.yml", "[]",
+                "package.json", "{\"name\":\"demo\"}",
+                "home/state.json", "{}");
+        Path destination = Files.createTempDirectory("profile");
+        Path home = Files.createTempDirectory("home");
+
+        DshPackInstaller.Landed machine = DshPackInstaller.land(pack, destination, home,
+                java.util.EnumSet.of(DshPackInstaller.Part.MACHINE));
+        assertEquals(1, machine.machine());
+        assertEquals(0, machine.overrides());
+        assertTrue(Files.isRegularFile(destination.resolve("package.json")));
+        assertFalse(Files.exists(destination.resolve("cordis.patch.yml")),
+                "the overrides must not be written before the dependencies are installed");
+
+        DshPackInstaller.Landed rest = DshPackInstaller.land(pack, destination, home,
+                java.util.EnumSet.of(DshPackInstaller.Part.OVERRIDES, DshPackInstaller.Part.HOME));
+        assertEquals(1, rest.overrides());
+        assertEquals(1, rest.home());
+        assertEquals(0, rest.machine());
+        assertTrue(Files.isRegularFile(destination.resolve("cordis.patch.yml")));
+        assertTrue(Files.isRegularFile(home.resolve("state.json")));
+
+        Files.deleteIfExists(pack);
+    }
+
+    @Test
     void aMemberThatClimbsOutOfTheDestinationIsRefused() throws Exception {
         // The same class of bug this project has already had once, in a session pack:
         // `sessions/../planted/x`. A name is what an attacker controls, so the check is on where the
