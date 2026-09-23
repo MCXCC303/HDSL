@@ -189,6 +189,34 @@ class DshSessionPacksTest {
     }
 
     @Test
+    void anArchiveThatClimbsOutOfTheSessionsDirectoryIsRefused() throws Exception {
+        // `restoreInto` is the path a modpack takes: it reads every session entry an archive holds
+        // rather than a list a manifest names, so nothing else stands between a member's name and
+        // the `resolve` that writes it. `sessions/../planted/session.v3.jsonl` passes the prefix
+        // test and is a legal path, so without a check the log lands in the home itself —
+        // anywhere the archive says, including outside the sessions directory.
+        DshInstance target = makeInstance(TARGET_ID);
+        // A home that already holds an uncompressed log reads uncompressed logs, so the member's
+        // name is not what refuses it: the path is.
+        Path existing = sessionDirectory(target, "--tmp-existing--",
+                "99999999-8888-7777-6666-555555555555");
+        Files.write(existing.resolve("session.v3.jsonl"), logBytes());
+
+        Path archive = Files.createTempFile("archive", ".zip");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(archive))) {
+            zip.putNextEntry(new ZipEntry("sessions/../planted/session.v3.jsonl"));
+            zip.write(logBytes());
+            zip.closeEntry();
+        }
+
+        DshSessionPacks.restoreInto(archive, target.homeDirectory(), null);
+
+        assertFalse(Files.exists(target.homeDirectory().resolve("planted")),
+                "a member that climbs out of the sessions directory is not written");
+        Files.deleteIfExists(archive);
+    }
+
+    @Test
     void somethingThatIsNotAPackIsRefused() throws Exception {
         Path notAPack = Files.createTempFile("sessions", ".zip");
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(notAPack))) {

@@ -398,7 +398,19 @@ public final class DshSessionPacks {
 
             if (name.startsWith(SESSIONS)) {
                 String[] parts = name.substring(SESSIONS.length()).split("/");
-                if (parts.length != 3) {
+                // A pack is an archive somebody may have edited, and every part of this path is
+                // interpolated into a `resolve`. A member named `sessions/../planted/session.jsonl`
+                // leaves the sessions directory and lands in the home — the prefix is matched before
+                // the path is resolved, and `..` is a legal element. Each part is checked on its own
+                // because any one of them is the one that can escape.
+                // An archive is something somebody may have edited, and every part of this path is
+                // interpolated into a `resolve`. A member named `sessions/../planted/session.jsonl`
+                // passes the prefix test and is a legal path, so it leaves the sessions directory
+                // and lands in the home — anywhere the archive says. Each part is checked on its
+                // own, because any one of them is the one that can climb out.
+                if (parts.length != 3
+                        || !safeRelative(parts[0]) || !safeRelative(parts[1]) || !safeRelative(parts[2])) {
+                    LOG.warning("Skipping " + name + " in a session pack: unsafe path");
                     continue;
                 }
                 if (wanted != null) {
@@ -437,6 +449,10 @@ public final class DshSessionPacks {
                     continue;
                 }
                 String id = file.substring("sessions/".length(), file.length() - ".json".length());
+                if (!safeRelative(id)) {
+                    LOG.warning("Skipping " + name + " in a session pack: unsafe path");
+                    continue;
+                }
                 if (!wantedIds.isEmpty() && !wantedIds.contains(id)) {
                     continue;
                 }
@@ -770,6 +786,9 @@ public final class DshSessionPacks {
     /// @return whether it is safe to resolve
     private static boolean safeRelative(String relative) {
         if (relative.isBlank() || relative.startsWith("/") || relative.contains("\\")) {
+            return false;
+        }
+        if (relative.equals(".") || relative.equals("..")) {
             return false;
         }
         for (String part : relative.split("/")) {
