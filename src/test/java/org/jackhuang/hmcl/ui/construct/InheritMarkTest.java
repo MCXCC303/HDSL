@@ -24,6 +24,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -68,6 +69,29 @@ class InheritMarkTest {
 
             row.setOverridden(false);
             assertNotSame(overridden, markOf(row), "the mark does not change back when the row follows again");
+        });
+    }
+
+    @Test
+    void aToggleRowFlipsTheValueItIsShowing() throws Exception {
+        onFxThread(() -> {
+            LineInheritableToggleButton row = new LineInheritableToggleButton();
+
+            // Following the launcher: the row shows the launcher's answer, which is off here.
+            row.setOverridden(false);
+            row.setRawValue(false);
+
+            row.fire();
+            assertTrue(row.isOverridden(), "pressing the row takes the setting over");
+            assertTrue(row.getRawValue(), "pressing a row that shows off turns it on");
+
+            // The case that did not work: the switch flipped the value it *showed*, so a second press
+            // computed the same answer again and the row could never be turned back off.
+            row.fire();
+            assertFalse(row.getRawValue(), "pressing it again turns it off");
+
+            row.fire();
+            assertTrue(row.getRawValue(), "and it keeps flipping");
         });
     }
 
