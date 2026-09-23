@@ -65,6 +65,20 @@ public final class DshAccountOverlay {
     private DshAccountOverlay() {
     }
 
+    /// The model ids that accept images, under the names the suppliers publish them as.
+    ///
+    /// Only ids **known** to be image-capable are here. Guessing the other way is worse than leaving
+    /// a model out: `read_image` would then hand an image to a supplier that cannot take one, and the
+    /// failure would arrive as a request error rather than as a tool that is simply not offered.
+    ///
+    /// `deepseek-flash` is the one that matters in practice — the vision-experimental name was routed
+    /// onto it, and it is the id the vendor's own model list returns — and `deepseek-v4-flash-vision-exp`
+    /// is its catalogue name in the harness. Both are declared image-capable by the harness's own
+    /// DeepSeek adapter.
+    private static final java.util.Set<String> IMAGE_MODELS = java.util.Set.of(
+            "deepseek-flash",
+            "deepseek-v4-flash-vision-exp");
+
     /// An account's route, described but not yet written.
     ///
     /// The two halves of writing an overlay take very different amounts of time. Saying what the
@@ -155,6 +169,18 @@ public final class DshAccountOverlay {
             for (String one : models) {
                 yaml.append("          - id: ").append(YamlScalar.of(one)).append("\n");
                 yaml.append("            name: ").append(YamlScalar.of(one)).append("\n");
+                if (IMAGE_MODELS.contains(one)) {
+                    // A capability the harness cannot fill in for itself, because this route is one it
+                    // has never heard of: `input` otherwise falls back to `["text"]`, and the harness's
+                    // `read_image` refuses to hand an image to a model that "does not declare image
+                    // input". The harness's own DeepSeek adapter declares this same model with
+                    // `inputModalities: ["text", "image"]`, so the model reached through a supplier of
+                    // the person's own is written the same way — the same model should not answer with
+                    // and without eyes depending on which account it was launched with.
+                    yaml.append("            input:\n");
+                    yaml.append("              - text\n");
+                    yaml.append("              - image\n");
+                }
             }
 
             Path directory = directory();
