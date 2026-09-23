@@ -92,7 +92,6 @@ public final class SkinDialog extends JFXDialogLayout {
     private final MultiFileItem<Source> sourceItem = new MultiFileItem<>();
 
     /// Which of the launcher's own skins, when that is the way in force.
-    private final JFXComboBox<DefaultSkin> bundledBox = new JFXComboBox<>();
 
     /// The file's name, when a file is the way in force.
     private final Label fileLabel = new Label();
@@ -174,11 +173,6 @@ public final class SkinDialog extends JFXDialogLayout {
     ///
     /// @return the middle column
     private Node buildSources() {
-        bundledBox.getItems().setAll(DefaultSkin.offered());
-        bundledBox.setConverter(FXUtils.stringConverter(skin -> i18n(skin.i18nKey())));
-        bundledBox.setMaxWidth(Double.MAX_VALUE);
-        bundledBox.valueProperty().addListener((observable, was, value) -> readPreview());
-
         sourceItem.loadChildren(List.of(
                 new MultiFileItem.Option<>(i18n("message.default"), Source.DEFAULT),
                 new MultiFileItem.Option<>(i18n("account.skin.type.steve"), Source.STEVE),
@@ -208,11 +202,6 @@ public final class SkinDialog extends JFXDialogLayout {
         modelRow.setTitle(i18n("account.skin.model"));
         modelRow.setRight(new VBox(6, wideModel, slimModel));
 
-        LinePane bundledRow = new LinePane();
-        bundledRow.setTitle(i18n("dsh.skin.bundled"));
-        bundledBox.setMinWidth(180);
-        bundledRow.setRight(bundledBox);
-
         JFXButton browse = new JFXButton();
         browse.setGraphic(SVG.FOLDER_OPEN.createIcon());
         browse.getStyleClass().add("toggle-icon4");
@@ -227,7 +216,7 @@ public final class SkinDialog extends JFXDialogLayout {
         filePane.setTitle(i18n("account.skin"));
         filePane.setRight(fileRow);
 
-        fields.getContent().addAll(modelRow, bundledRow, filePane);
+        fields.getContent().addAll(modelRow, filePane);
 
         VBox column = new VBox(fields);
         column.setMinWidth(260);
@@ -236,10 +225,14 @@ public final class SkinDialog extends JFXDialogLayout {
 
     /// Shows only the rows the current way needs.
     private void syncFields() {
-        boolean bundled = sourceItem.getSelectedData() == Source.DEFAULT;
-        // The model choice applies to both ways; the other two are each about one of them.
-        setVisible(fields.getContent().get(1), bundled);
-        setVisible(fields.getContent().get(2), !bundled);
+        boolean localFile = sourceItem.getSelectedData() == Source.LOCAL_FILE;
+
+        // The body choice is always there — it applies to all four ways, and the original keeps it
+        // visible throughout. The file rows are **only** for the way that uses a file, and they
+        // appear when it is chosen: the original's right-hand column is emptied and refilled per
+        // selection, which is why its dialog does not show a field for something not in force.
+        setVisible(fields.getContent().get(0), true);
+        setVisible(fields.getContent().get(1), localFile);
     }
 
     /// Adds or removes a row without leaving a gap where it was.
@@ -274,7 +267,6 @@ public final class SkinDialog extends JFXDialogLayout {
     /// skin as it is, and the ways of choosing are ways of changing it.
     private void populate() {
         (DshSkin.isSlim(account.key()) ? slimModel : wideModel).setSelected(true);
-        bundledBox.getSelectionModel().selectFirst();
         if (DshSkin.isSet(account.key())) {
             chosenFile = DshSkin.file(account.key());
             fileLabel.setText(chosenFile.getFileName().toString());
@@ -286,16 +278,37 @@ public final class SkinDialog extends JFXDialogLayout {
         readPreview();
     }
 
+    /// Returns the launcher's own skin the current way names.
+    ///
+    /// The three ways are the original's own three: the body's default, the wide model and the slim
+    /// one. Which picture that is is a lookup, not a question.
+    ///
+    /// @return the skin
+    private @Nullable DefaultSkin bundledSkin() {
+        Source source = sourceItem.getSelectedData();
+        // Nothing is selected yet while the dialog is being built: the body radio buttons are wired
+        // before the list has chosen anything, so their listener fires first and there is no way in
+        // force to read. Nothing to draw is the honest answer at that moment.
+        if (source == null) {
+            return null;
+        }
+        return switch (source) {
+            case STEVE -> DefaultSkin.STEVE;
+            case ALEX -> DefaultSkin.ALEX;
+            // "Default" is the wide model's own skin, which is what a body with nothing chosen wears.
+            case DEFAULT -> DefaultSkin.STEVE;
+            case LOCAL_FILE -> null;
+        };
+    }
+
     /// Reads the picture the current choices describe and puts it on the model.
     private void readPreview() {
         boolean slim = slimModel.isSelected();
-        if (sourceItem.getSelectedData() == Source.DEFAULT) {
-            DefaultSkin skin = bundledBox.getValue();
-            if (skin == null) {
-                return;
-            }
-            // A bundled pair is drawn for each body, so the body only chooses which file to read.
-            preview = skin.image(slim);
+        DefaultSkin bundled = bundledSkin();
+        if (bundled != null) {
+            // One of the launcher's own three. Each is drawn for its own body, so the body picks
+            // which file to read rather than reinterpreting a picture.
+            preview = bundled.image(slim);
             previewSlim = slim;
         } else {
             Image fromFile = chosenFile == null ? null : DshSkin.read(chosenFile);
@@ -343,12 +356,10 @@ public final class SkinDialog extends JFXDialogLayout {
     /// Saves what the dialog describes.
     private void confirm() {
         try {
-            if (sourceItem.getSelectedData() == Source.DEFAULT) {
-                DefaultSkin skin = bundledBox.getValue();
-                if (skin == null) {
-                    return;
-                }
-                DshSkin.setFromImage(account.key(), skin.image(slimModel.isSelected()), slimModel.isSelected());
+            DefaultSkin bundled = bundledSkin();
+            if (bundled != null) {
+                DshSkin.setFromImage(account.key(), bundled.image(slimModel.isSelected()),
+                        slimModel.isSelected());
             } else if (chosenFile != null) {
                 DshSkin.setFrom(account.key(), chosenFile);
             }
