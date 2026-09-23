@@ -41,9 +41,9 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.ClassTitle;
-import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
+import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.dsh.settings.AccountSettingsDialog;
 import org.jackhuang.hmcl.ui.dsh.settings.SkinDialog;
@@ -74,13 +74,31 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     private final ReadOnlyObjectWrapper<State> state =
             new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("dsh.account.list")));
 
-    /// The card listing the accounts.
-    private final JFXListView<DshAccount> accountList = new JFXListView<>();
+    /// The cards, one per account.
+    ///
+    /// A plain box rather than a `ListView`. The original's account list is a `VBox` of cards under a
+    /// scroll pane, and that is not a shortcut: a `ListView` is *one* surface with rows in it, which
+    /// is what a table is, and an account list is a handful of separate things each drawn as its own
+    /// card. Keeping both was worse still — two lists to hold in step by hand.
+    private final VBox accountCards = new VBox();
+
+    /// Redraws the cards from the settings.
+    private void refreshList() {
+        java.util.List<javafx.scene.Node> cards = new java.util.ArrayList<>();
+        for (DshAccount account : SettingsManager.settings().getAccounts()) {
+            cards.add(buildCard(account));
+        }
+        if (cards.isEmpty()) {
+            LineTextPane empty = new LineTextPane();
+            empty.setTitle(i18n("dsh.account.none"));
+            empty.setSubtitle(i18n("dsh.account.none.hint"));
+            cards.add(empty);
+        }
+        accountCards.getChildren().setAll(cards);
+    }
 
     /// Creates the page.
     public AccountListPage() {
-        accountList.getStyleClass().add("card-list");
-        accountList.setCellFactory(list -> new AccountListCell(accountList));
         javafx.collections.ObservableList<DshAccount> accounts = SettingsManager.settings().getAccounts();
         // The list follows the settings, so a dialog that adds an account redraws this page without
         // the page having to know a dialog exists.
@@ -175,24 +193,185 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
     /// Builds the accounts themselves.
     ///
-    /// Wrapped the way every other page wraps its content: the original's `ComponentList` is what
-    /// gives a list its opaque surface, and a bare list would let the window's wallpaper show
-    /// through the rows.
-    ///
     /// @return the page's centre
     private Region buildAccountPane() {
-        StackPane pane = new StackPane();
-        pane.setPadding(new Insets(10));
-        pane.getStyleClass().add("notice-pane");
+        // The original's structure, ported as it stands: a scroll pane holding a `card-list` box of
+        // cards, and **nothing behind them**.
+        //
+        // That last part is the whole of the difference the eye notices. `.card` paints
+        // `-monet-surface-container-low-transparent-80`; a plate behind the cards painting the same
+        // colour stacks with theirs and the pair comes out opaque, which is why the list read as a
+        // solid block while the original's reads as separate translucent cards. The stylesheets are
+        // not the difference — `.card` and `.card-list` are byte-identical between the two — the
+        // container is.
+        ScrollPane scroll = new ScrollPane();
+        scroll.setFitToWidth(true);
 
-        ComponentList root = new ComponentList();
-        root.getStyleClass().add("no-padding");
-        root.getContent().add(accountList);
-        // `ComponentList` wraps its children, so a VGrow set on the child lands on a node the box
-        // does not lay out. The box reads this property off the child and applies it to the wrapper.
-        ComponentList.setVgrow(accountList, Priority.ALWAYS);
-        pane.getChildren().setAll(root);
+        accountCards.getStyleClass().add("card-list");
+        accountCards.maxWidthProperty().bind(scroll.widthProperty());
+
+        // The content first, then the smooth scrolling. `smoothScrolling` subscribes to the pane's
+        // content to know what to scroll, and a pane with none throws — which is how this page came
+        // to crash on the way up: the window appeared and was gone, and nothing in a test run says a
+        // page cannot be built, because no test builds one.
+        scroll.setContent(accountCards);
+        FXUtils.smoothScrolling(scroll);
+
+        // A margin, not a background: the cards keep their distance from the window's edge without
+        // anything being painted under them.
+        StackPane pane = new StackPane(scroll);
+        pane.setPadding(new Insets(10));
         return pane;
+    }
+
+    /// Builds one account's card.
+    ///
+    /// The original's row, in its order: choose it, see its face and name, then the small set of
+    /// things one does to an account. What an account has no key for, it offers no button for — an
+    /// offline account is a name and a face, and three buttons that can only fail are not buttons.
+    ///
+    /// @param account the account
+    /// @return the card
+    private javafx.scene.Node buildCard(DshAccount account) {
+        BorderPane root = new BorderPane();
+        // The class stays `md-list-cell` because the list cell's sizing was built around it; only the
+        // *surface* is the card's, applied by the stylesheet. Putting `card` here instead changes the
+        // row's box model, and the row then measures zero and the list comes out empty.
+        root.getStyleClass().add("md-list-cell");
+        root.getStyleClass().add("dsh-account-card");
+        root.setPadding(new Insets(8, 8, 8, 0));
+
+        JFXRadioButton selector = new JFXRadioButton();
+        selector.setSelected(isActive(account));
+        selector.setMouseTransparent(true);
+        root.setLeft(selector);
+        BorderPane.setAlignment(selector, Pos.CENTER);
+
+        javafx.scene.canvas.Canvas avatar = new javafx.scene.canvas.Canvas(32, 32);
+        avatar.setMouseTransparent(true);
+        Label monogram = new Label();
+        monogram.getStyleClass().add("dsh-account-monogram");
+        monogram.setMinSize(32, 32);
+        monogram.setPrefSize(32, 32);
+        monogram.setAlignment(Pos.CENTER);
+        StackPane picture = new StackPane(avatar, monogram);
+        picture.setMinSize(32, 32);
+        picture.setPrefSize(32, 32);
+        picture.setMaxSize(32, 32);
+
+        TwoLineListItem content = new TwoLineListItem();
+        content.setTitle(account.displayName());
+        content.setSubtitle(account.carriesAKey()
+                ? account.vendorId() + " · " + account.maskedKey()
+                        + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault())
+                : i18n("account.methods.offline"));
+        drawAvatar(account, avatar, monogram);
+
+        HBox centre = new HBox(8, picture, content);
+        centre.setAlignment(Pos.CENTER_LEFT);
+        centre.setMouseTransparent(true);
+        centre.setPrefWidth(Region.USE_PREF_SIZE);
+        BorderPane.setMargin(centre, new Insets(0, 0, 0, 8));
+        root.setCenter(centre);
+
+        HBox right = new HBox();
+        right.setAlignment(Pos.CENTER_RIGHT);
+        right.getChildren().addAll(cardActions(account));
+        root.setRight(right);
+
+        root.setCursor(Cursor.HAND);
+        root.setOnMouseClicked(event -> {
+            if (event.getButton() == MouseButton.PRIMARY) {
+                select(account);
+                refreshList();
+            }
+        });
+        return root;
+    }
+
+    /// Builds the buttons an account's card offers.
+    ///
+    /// The original's order: refresh, skin, copy, delete. Its first spot is "move to portable", which
+    /// has no meaning here, and its second is "upload the skin", which here is choosing one — there is
+    /// no account to upload to.
+    ///
+    /// @param account the account
+    /// @return the buttons
+    private java.util.List<javafx.scene.Node> cardActions(DshAccount account) {
+        java.util.List<javafx.scene.Node> buttons = new java.util.ArrayList<>();
+
+        if (account.carriesAKey()) {
+            com.jfoenix.controls.JFXButton check = FXUtils.newToggleButton4(SVG.REFRESH);
+            FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
+            check.setOnAction(event -> check(account));
+            buttons.add(check);
+        }
+
+        com.jfoenix.controls.JFXButton skin = FXUtils.newToggleButton4(SVG.CHECKROOM);
+        FXUtils.installFastTooltip(skin, i18n("dsh.account.skin"));
+        skin.setOnAction(event -> Controllers.dialog(new SkinDialog()));
+        buttons.add(skin);
+
+        if (account.carriesAKey()) {
+            com.jfoenix.controls.JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
+            FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
+            changeKey.setOnAction(event -> changeKey(account));
+            buttons.add(changeKey);
+
+            com.jfoenix.controls.JFXButton copyKey = FXUtils.newToggleButton4(SVG.CONTENT_COPY);
+            FXUtils.installFastTooltip(copyKey, i18n("dsh.account.copy_key"));
+            copyKey.setOnAction(event -> FXUtils.copyText(account.apiKey()));
+            buttons.add(copyKey);
+        }
+
+        com.jfoenix.controls.JFXButton removeButton = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
+        FXUtils.installFastTooltip(removeButton, i18n("button.remove"));
+        removeButton.setOnAction(event -> remove(account));
+        buttons.add(removeButton);
+        return buttons;
+    }
+
+    /// Draws an account's face: the skin's head when one has been chosen, its initial when not.
+    ///
+    /// The skin belongs to the launcher rather than to the account, so two accounts wear the same
+    /// face — which is what the original does too, its row binding the same texture for every account.
+    ///
+    /// @param account  the account
+    /// @param avatar   where to draw the head
+    /// @param monogram where to draw the initial
+    private void drawAvatar(DshAccount account,
+                            javafx.scene.canvas.Canvas avatar, Label monogram) {
+        javafx.scene.image.Image skin = DshSkin.image();
+        monogram.setText(account.displayName().isEmpty()
+                ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+        if (skin == null) {
+            avatar.setVisible(false);
+            monogram.setVisible(true);
+            return;
+        }
+        monogram.setVisible(false);
+        avatar.setVisible(true);
+        javafx.scene.canvas.GraphicsContext gc = avatar.getGraphicsContext2D();
+        gc.clearRect(0, 0, 32, 32);
+        gc.setImageSmoothing(false);
+        double unit = 4.0;
+        gc.drawImage(skin, 8, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+        gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+    }
+
+    /// Asks the vendor whether an account's key still works.
+    ///
+    /// Off the interface thread, because it is a network call. Only a refusal means anything: a vendor
+    /// that cannot be reached has not said the key is bad, and a vendor that does not answer this
+    /// question has said nothing at all.
+    ///
+    /// @param account the account
+    private void check(DshAccount account) {
+        Controllers.dialog(i18n("dsh.account.checking"));
+        java.util.concurrent.CompletableFuture
+                .supplyAsync(account::check, org.jackhuang.hmcl.task.Schedulers.io())
+                .whenComplete((result, failure) -> javafx.application.Platform.runLater(() ->
+                        Controllers.dialog(failure != null ? failure.getMessage() : result.message())));
     }
 
     @Override
@@ -200,10 +379,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         return state;
     }
 
-    /// Redraws the list from the settings.
-    private void refreshList() {
-        accountList.getItems().setAll(SettingsManager.settings().getAccounts());
-    }
+
 
     /// Makes an account the one the launcher uses.
     ///
@@ -225,7 +401,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             accounts.add(0, account);
             SettingsManager.save();
         }
-        accountList.refresh();
+        refreshList();
     }
 
     /// Replaces an account's key, keeping everything else about it.
@@ -246,7 +422,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                                 }
                             }
                             SettingsManager.save();
-                            accountList.refresh();
+                            refreshList();
                             handler.resolve();
                         });
         Controllers.dialog(pane);
@@ -277,213 +453,5 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     ///
     /// Built here rather than in a class of its own because it is only ever this page's row, and
     /// because the two things it can do are both the page's business.
-    private final class AccountListCell extends org.jackhuang.hmcl.ui.construct.MDListCell<DshAccount> {
-        /// The radio button that makes this the active account.
-        private final JFXRadioButton selector = new JFXRadioButton() {
-            @Override
-            public void fire() {
-                DshAccount account = getItem();
-                if (!isDisable() && account != null) {
-                    select(account);
-                }
-            }
-        };
 
-        /// The name and what the account is.
-        private final TwoLineListItem content = new TwoLineListItem();
-
-        /// The monogram standing in for a picture.
-        private final Label monogram = new Label();
-
-        /// The skin drawn on its own, when one has been chosen.
-        private final javafx.scene.canvas.Canvas avatar = new javafx.scene.canvas.Canvas();
-
-        /// The buttons that need an account to have a key.
-        private final com.jfoenix.controls.JFXButton check =
-                FXUtils.newToggleButton4(SVG.REFRESH);
-        private final com.jfoenix.controls.JFXButton changeKey =
-                FXUtils.newToggleButton4(SVG.EDIT);
-        private final com.jfoenix.controls.JFXButton copyKey =
-                FXUtils.newToggleButton4(SVG.CONTENT_COPY);
-
-        /// Creates a cell.
-        ///
-        /// @param listView the list it belongs to
-        AccountListCell(JFXListView<DshAccount> listView) {
-            super(listView);
-
-            BorderPane root = new BorderPane();
-            // Each row is its own card, as the original draws its accounts. The class stays
-            // `md-list-cell` because the cell's own sizing is built around it — replacing it with
-            // `card` changes the row's box model and the cell then measures zero, which is how the
-            // rows vanished — and the card's *surface* is put on it by the stylesheet instead.
-            root.getStyleClass().add("md-list-cell");
-            root.getStyleClass().add("dsh-account-card");
-            root.setPadding(new Insets(8, 8, 8, 0));
-
-            selector.setMouseTransparent(false);
-            root.setLeft(selector);
-            BorderPane.setAlignment(selector, Pos.CENTER);
-
-            // The original draws the account's skin head here. That is now portable, so it is what
-            // this draws: a skin belongs to the person using the launcher, and seeing it beside the
-            // account is the reason to have chosen one. The monogram stays as the answer when no
-            // skin has been chosen — a vendor has nothing to draw, and an invented picture would be
-            // a picture of nothing.
-            monogram.getStyleClass().add("dsh-account-monogram");
-            monogram.setMinSize(32, 32);
-            monogram.setPrefSize(32, 32);
-            monogram.setAlignment(Pos.CENTER);
-
-            avatar.setWidth(32);
-            avatar.setHeight(32);
-            avatar.setMouseTransparent(true);
-            StackPane picture = new StackPane(avatar, monogram);
-            // Its own size, not the row's: a picture box that stretches to the row's height centres
-            // the face below the name it belongs to.
-            picture.setMinSize(32, 32);
-            picture.setPrefSize(32, 32);
-            picture.setMaxSize(32, 32);
-
-            HBox centre = new HBox(8, picture, content);
-            centre.setAlignment(Pos.CENTER_LEFT);
-            centre.setMouseTransparent(true);
-            centre.setPrefWidth(Region.USE_PREF_SIZE);
-            BorderPane.setMargin(centre, new Insets(0, 0, 0, 8));
-            BorderPane.setAlignment(content, Pos.CENTER);
-            root.setCenter(centre);
-
-            // The original's row, in its order: refresh, skin, copy, delete. Its first spot is
-            // "move to portable", which has no meaning here, and its second is "upload the skin",
-            // which here is choosing it — there is no account to upload to.
-            //
-            // What an account has no key for, it offers no button for. An offline account is a name
-            // and a face: checking a key that does not exist, changing one, or copying one would be
-            // three buttons that can only fail.
-            FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
-            check.setOnAction(event -> check());
-
-            com.jfoenix.controls.JFXButton skin = FXUtils.newToggleButton4(SVG.CHECKROOM);
-            FXUtils.installFastTooltip(skin, i18n("dsh.account.skin"));
-            skin.setOnAction(event -> Controllers.dialog(new SkinDialog()));
-
-            FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
-            changeKey.setOnAction(event -> {
-                DshAccount account = getItem();
-                if (account != null) {
-                    changeKey(account);
-                }
-            });
-
-            FXUtils.installFastTooltip(copyKey, i18n("dsh.account.copy_key"));
-            copyKey.setOnAction(event -> {
-                DshAccount account = getItem();
-                if (account != null) {
-                    FXUtils.copyText(account.apiKey());
-                }
-            });
-
-            com.jfoenix.controls.JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
-            FXUtils.installFastTooltip(remove, i18n("button.remove"));
-            remove.setOnAction(event -> {
-                DshAccount account = getItem();
-                if (account != null) {
-                    remove(account);
-                }
-            });
-
-            HBox right = new HBox(check, skin, changeKey, copyKey, remove);
-            right.setAlignment(Pos.CENTER_RIGHT);
-            root.setRight(right);
-
-            // The content goes into the container the base class lays out. Building a graphic of
-            // its own and calling `setGraphic` does not work: the base class re-sets the graphic on
-            // every update, so the row would come out blank while its radio button and buttons — the
-            // parts it adds itself — still showed.
-            getContainer().getChildren().setAll(root);
-
-            root.setCursor(Cursor.HAND);
-            root.setOnMouseClicked(event -> {
-                DshAccount account = getItem();
-                if (account != null && event.getButton() == MouseButton.PRIMARY) {
-                    select(account);
-                }
-            });
-        }
-
-        /// Draws the skin head, or leaves the monogram showing when there is no skin.
-        ///
-        /// The head is the top-left eighth of the skin — the original reads the same rectangle — and
-        /// the hat layer over it is copied as well, because that is where a skin keeps hair, a
-        /// hood, or anything else drawn above the face.
-        private void drawAvatar() {
-            javafx.scene.image.Image skin = DshSkin.image();
-            if (skin == null) {
-                avatar.setVisible(false);
-                monogram.setVisible(true);
-                return;
-            }
-            monogram.setVisible(false);
-            avatar.setVisible(true);
-
-            javafx.scene.canvas.GraphicsContext gc = avatar.getGraphicsContext2D();
-            gc.clearRect(0, 0, 32, 32);
-            gc.setImageSmoothing(false);
-            // 8x8 head at (8,8), scaled to fill 32 pixels; then the hat layer at (40,8).
-            double unit = 32.0 / 8.0;
-            gc.drawImage(skin, 8, 8, 8, 8, 0, 0, unit * 8, unit * 8);
-            gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
-        }
-
-        /// Asks the vendor whether the key still works.
-        ///
-        /// Off the interface thread, because it is a network call, and only a refusal means
-        /// anything: a vendor that cannot be reached has not said the key is bad.
-        /// Asks the vendor whether this account's key still works.
-        ///
-        /// The verdict goes on the row it belongs to, which is where the original puts a state it
-        /// has just learned about an account: beside the account, not in a dialog that covers it.
-        private void check() {
-            DshAccount account = getItem();
-            if (account == null) {
-                return;
-            }
-            content.setSubtitle(i18n("dsh.account.checking"));
-            java.util.concurrent.CompletableFuture
-                    .supplyAsync(account::check, org.jackhuang.hmcl.task.Schedulers.io())
-                    .whenComplete((result, failure) -> javafx.application.Platform.runLater(() -> {
-                        java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
-                        if (!accounts.contains(account)) {
-                            return;
-                        }
-                        content.setSubtitle(failure != null ? failure.getMessage() : result.message());
-                    }));
-        }
-
-        @Override
-        protected void updateControl(@Nullable DshAccount account, boolean empty) {
-            if (empty || account == null) {
-                return;
-            }
-            content.setTitle(account.displayName());
-            // An account with no key says what it is instead of showing an empty one: the row is a
-            // description, and "····" beside "offline" would be a description of nothing.
-            content.setSubtitle(account.carriesAKey()
-                    ? account.vendorId() + " · " + account.maskedKey()
-                            + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault())
-                    : i18n("account.methods.offline"));
-            monogram.setText(account.displayName().isEmpty()
-                    ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
-            drawAvatar();
-
-            boolean carriesAKey = account.carriesAKey();
-            check.setVisible(carriesAKey);
-            check.setManaged(carriesAKey);
-            changeKey.setVisible(carriesAKey);
-            changeKey.setManaged(carriesAKey);
-            copyKey.setVisible(carriesAKey);
-            copyKey.setManaged(carriesAKey);
-            selector.setSelected(isActive(account));
-        }
-    }
 }
