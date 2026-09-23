@@ -106,7 +106,6 @@ public final class InstanceSettingsPage extends ScrollPane {
         ComponentList environmentList = new ComponentList();
         environmentList.getContent().add(buildNodeRuntimeRow());
         environmentList.getContent().add(buildLaunchArgumentsRow());
-        environmentList.getContent().add(buildAccountRow());
         environmentList.getContent().add(buildHomeModeRow());
 
         ComponentList portList = new ComponentList();
@@ -376,24 +375,32 @@ public final class InstanceSettingsPage extends ScrollPane {
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.MANUAL,
                 org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.NEVER));
 
-        LineSelectButton<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> row = new LineSelectButton<>();
+        LineInheritableSelectButton<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> row =
+                new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.settings.build_scripts.approve"));
         row.setItems(choices);
-        // Not the null-safe wrapper: for this row null is an answer — it is what "follow
-        // the launcher" is stored as — and the wrapper would draw nothing for it.
-        row.setConverter(policy -> i18n(policy == null
-                ? "dsh.settings.build_scripts.follow"
-                : "dsh.settings.build_scripts." + policy.id()));
-        row.setValue(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.of(
-                DshInstanceSettings.buildScriptPolicy(instance)));
-        row.valueProperty().addListener((observable, was, value) -> {
+        row.setNullSafeConverter(policy -> i18n("dsh.settings.build_scripts." + policy.id()));
+
+        String own = DshInstanceSettings.buildScriptPolicy(instance);
+        row.setOverridden(own != null);
+        row.setValue(own != null ? org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.of(own)
+                : settings().buildScriptPolicy());
+
+        java.util.function.Consumer<org.jackhuang.hmcl.dsh.DshBuildScriptPolicy> store = policy -> {
             try {
                 DshInstanceSettings.setBuildScriptPolicy(instance,
-                        value == null ? null : value.id());
+                        policy == null ? null : policy.id());
             } catch (DshException e) {
                 LOG.warning("Failed to store the build script policy", e);
             }
+        };
+        row.valueProperty().addListener((observable, was, value) -> {
+            if (row.isOverridden()) {
+                store.accept(value);
+            }
         });
+        row.overriddenProperty().addListener((observable, was, isOverridden) ->
+                store.accept(isOverridden ? row.getValue() : null));
 
         ComponentList list = new ComponentList();
         list.getContent().add(row);
@@ -402,102 +409,40 @@ public final class InstanceSettingsPage extends ScrollPane {
 
     /// Builds the Node runtime row.
     ///
-    /// A choice of this instance's own, with no mark beside it: the launcher's default runtime is
-    /// what a *new* instance is given, not something an existing one keeps following, so there is
-    /// nothing here to inherit. What the row shows is what the instance runs.
+    /// Inheritable, like every other row that the global settings also answer: an instance that has
+    /// stated no runtime *follows* the launcher's default rather than being frozen at whatever it
+    /// was when the instance was made. Its mark is how that is visible — with it the row is a value
+    /// somebody chose, without it the row is the launcher's answer being shown through.
     ///
     /// @return the row
-    private LineSelectButton<String> buildNodeRuntimeRow() {
+    private LineInheritableSelectButton<String> buildNodeRuntimeRow() {
         List<String> choices = new ArrayList<>();
         choices.add(DshNodeRuntime.SYSTEM);
         for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
             choices.add(runtime.version());
         }
 
-        LineSelectButton<String> row = new LineSelectButton<>();
+        LineInheritableSelectButton<String> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.node.title"));
         row.setItems(choices);
         row.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
                 ? i18n("dsh.install.node.system")
                 : selection);
-        // A runtime that was never chosen — or that was stored as "follow the launcher" before this
-        // row lost its mark — reads as the launcher's default, which is what the instance runs.
-        String chosen = instance.nodeRuntime();
-        row.setValue(chosen == null || DshNodeRuntime.GLOBAL.equals(chosen)
-                ? settings().defaultNodeRuntimeProperty().get() : chosen);
+
+        String own = instance.nodeRuntime();
+        boolean overridden = own != null && !DshNodeRuntime.GLOBAL.equals(own);
+        row.setOverridden(overridden);
+        row.setValue(overridden ? own : settings().defaultNodeRuntimeProperty().get());
+
         row.valueProperty().addListener((observable, was, value) -> {
-            if (value != null && !value.equals(was)) {
+            if (value != null && !value.equals(was) && row.isOverridden()) {
                 write(instance.withNodeRuntime(value));
             }
         });
+        row.overriddenProperty().addListener((observable, was, isOverridden) -> write(instance
+                .withNodeRuntime(isOverridden ? row.getValue() : DshNodeRuntime.GLOBAL)));
         return row;
     }
-
-    /// Builds the row that chooses which account this instance launches with.
-    ///
-    /// An account is a key and the vendor it belongs to, and the launcher hands it to the harness
-    /// as it starts — the harness asks to be configured before it will answer anything, and a
-    /// launcher that holds a key already can spare the person that step. Which one is the
-    /// instance's own choice, because two instances may be two different accounts.
-    ///
-    /// The row offers "no account" as well: a harness that has been configured by hand, or one
-    /// whose key is meant to come from the environment, is a real arrangement and not an omission.
-    ///
-    /// @return the row
-    private javafx.scene.Node buildAccountRow() {
-        LineTextPane row = new LineTextPane();
-        row.setTitle(i18n("dsh.account.title"));
-
-        javafx.scene.control.ComboBox<String> picker = new javafx.scene.control.ComboBox<>();
-        java.util.List<DshAccount> accounts = settings().getAccounts();
-        java.util.List<String> choices = new java.util.ArrayList<>();
-        choices.add(NONE_ACCOUNT);
-        for (DshAccount account : accounts) {
-            choices.add(account.key());
-        }
-        picker.getItems().setAll(choices);
-        picker.setConverter(FXUtils.stringConverter(choice -> {
-            if (choice == null || NONE_ACCOUNT.equals(choice)) {
-                return i18n("dsh.account.none.short");
-            }
-            for (DshAccount account : settings().getAccounts()) {
-                if (account.matchesKey(choice)) {
-                    return account.displayName();
-                }
-            }
-            return choice;
-        }));
-        String chosen = DshInstanceSettings.accountKey(instance);
-        picker.setValue(chosen == null ? NONE_ACCOUNT : chosen);
-        picker.setMinWidth(240);
-        picker.valueProperty().addListener((observable, was, value) -> {
-            if (value == null || value.equals(was)) {
-                return;
-            }
-            try {
-                DshInstanceSettings.setAccountKey(instance, NONE_ACCOUNT.equals(value) ? null : value);
-            } catch (DshException e) {
-                LOG.warning("Failed to store the account choice", e);
-            }
-        });
-
-        com.jfoenix.controls.JFXButton manage = new com.jfoenix.controls.JFXButton(
-                i18n("dsh.account.manage"));
-        manage.getStyleClass().add("jfx-button-border");
-        manage.setOnAction(event -> org.jackhuang.hmcl.ui.Controllers.dialog(
-                new AccountSettingsDialog(null)));
-
-        javafx.scene.layout.HBox controls = new javafx.scene.layout.HBox(8, picker, manage);
-        controls.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
-        row.setRowTrailing(controls);
-
-        // The row is not inheritable: an account is this machine's, and the launcher-wide answer is
-        // "whichever one there is" rather than a value an instance copies.
-        return row;
-    }
-
-    /// The choice meaning "let the harness use whatever it is configured with".
-    private static final String NONE_ACCOUNT = "";
 
     /// Builds the row for the arguments this instance is launched with.
     ///
@@ -549,19 +494,23 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// after that the instance has its own answer. Where that answer points is the next row.
     ///
     /// @return the row
-    private LineSelectButton<DshHomeMode> buildHomeModeRow() {
-        LineSelectButton<DshHomeMode> row = new LineSelectButton<>();
+    private LineInheritableSelectButton<DshHomeMode> buildHomeModeRow() {
+        LineInheritableSelectButton<DshHomeMode> row = new LineInheritableSelectButton<>();
         row.setTitle(i18n("dsh.install.home"));
         row.setItems(DshHomeMode.ISOLATED, DshHomeMode.VERSION_SHARED, DshHomeMode.CUSTOM);
         row.setNullSafeConverter(mode -> i18n("dsh.instance.home."
                 + mode.name().toLowerCase(Locale.ROOT)));
-        // A policy stored as "follow the launcher" before this row lost its mark reads as the
-        // launcher's default, which is the policy such an instance is actually running under.
         DshHomeMode stored = instance.homeMode();
-        row.setValue(stored == DshHomeMode.GLOBAL
-                ? settings().defaultHomeModeProperty().get() : stored);
+        boolean overridden = stored != null && stored != DshHomeMode.GLOBAL;
+        row.setOverridden(overridden);
+        row.setValue(overridden ? stored : settings().defaultHomeModeProperty().get());
+        row.overriddenProperty().addListener((observable, was, isOverridden) -> {
+            if (!isOverridden) {
+                write(instance.withHome(DshHomeMode.GLOBAL, null));
+            }
+        });
         row.valueProperty().addListener((observable, was, mode) -> {
-            if (mode == null || mode == was) {
+            if (mode == null || mode == was || !row.isOverridden()) {
                 return;
             }
             if (mode == DshHomeMode.CUSTOM) {

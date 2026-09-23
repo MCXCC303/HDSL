@@ -2070,3 +2070,19 @@
     -fx-font-size: 14px;
     -fx-text-fill: -monet-on-surface;
 }
+
+/* The account list: one card per account, separated by space rather than by a hairline.
+   The original draws each of its accounts as its own card on a translucent surface. Only the row's
+   surface is restyled here; the list keeps the card-list padding it already had, because a rule on
+   the list cell's own box is what changed its measurements and made the rows disappear. */
+.dsh-account-card {
+    -fx-background-color: -monet-surface-container-low-transparent-80;
+    -fx-background-radius: 4;
+    -fx-border-width: 0;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.26), 10, 0.12, -1, 2);
+}
+
+.dsh-account-card-list .list-cell:filled:selected,
+.dsh-account-card-list .list-cell:filled:hover {
+    -fx-background-color: transparent;
+}

@@ -420,14 +420,25 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         drawAccountAvatar();
     }
 
-    /// Draws the skin's head on the account entry, or a monogram when no skin has been chosen.
+    /// Draws the skin's head on the account entry, or a monogram when there is none to draw.
     ///
-    /// The same two answers the account rows give, for the same reason: a skin belongs to the person
-    /// using the launcher, and a vendor has no face of its own to draw.
+    /// The skin belongs to the **launcher**, not to an account: it is chosen once and drawn beside
+    /// whatever account is in force. So when there is no account, there is nothing for it to be
+    /// beside — and drawing it anyway is how a deleted account's face stayed on the home page. The
+    /// skin was never the account's to begin with, but it reads as the account's when it sits where
+    /// the account's face was.
     private void drawAccountAvatar() {
-        javafx.scene.image.Image skin = org.jackhuang.hmcl.dsh.skin.DshSkin.image();
+        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> accounts =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
         javafx.scene.canvas.GraphicsContext gc = accountAvatar.getGraphicsContext2D();
         gc.clearRect(0, 0, 32, 32);
+
+        // Nothing to show when there is nobody to show it for.
+        if (accounts.isEmpty()) {
+            return;
+        }
+
+        javafx.scene.image.Image skin = org.jackhuang.hmcl.dsh.skin.DshSkin.image();
         if (skin != null) {
             gc.setImageSmoothing(false);
             double unit = 4.0;
@@ -435,10 +446,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
             return;
         }
-        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> accounts =
-                org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
-        String initial = accounts.isEmpty() ? "?"
-                : accounts.get(0).displayName().substring(0, 1).toUpperCase(Locale.ROOT);
+        String initial = accounts.get(0).displayName().substring(0, 1).toUpperCase(Locale.ROOT);
         gc.setFill(javafx.scene.paint.Color.web("#8d8d8d"));
         gc.fillRoundRect(0, 0, 32, 32, 8, 8);
         gc.setFill(javafx.scene.paint.Color.WHITE);

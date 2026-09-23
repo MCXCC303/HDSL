@@ -126,6 +126,19 @@ public record DshAccount(
         return DshVendor.byId(vendorId);
     }
 
+    /// Reports whether a name can be used as a route name in the harness.
+    ///
+    /// The name an account is given becomes the name of the supplier the harness is handed, so it
+    /// has to be something the harness can address: letters, digits, and the three separators a
+    /// route name is made of. A space would arrive as two arguments' worth of something the harness
+    /// cannot find, and a colon would end the YAML key early.
+    ///
+    /// @param name the name
+    /// @return whether it may be used
+    public static boolean isUsableName(@Nullable String name) {
+        return name != null && name.matches("[A-Za-z0-9][A-Za-z0-9._-]*");
+    }
+
     /// Reports whether this account has anything to hand to the harness.
     ///
     /// An offline account does not: it is a name and a face, and the launcher must not write a route

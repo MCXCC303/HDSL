@@ -75,9 +75,6 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     /// Whether this dialog adds an offline account, which is a name and nothing else.
     private final boolean offline;
 
-    /// The accounts already kept, redrawn whenever one is added or removed.
-    private final ComponentList accounts = new ComponentList();
-
     /// The vendor, when it has to be asked for.
     private final JFXComboBox<DshVendor> vendorBox = new JFXComboBox<>();
 
@@ -129,27 +126,40 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
 
         setHeading(new Label(offline
                 ? i18n("account.create.offline")
-                : i18n(preselected == null ? "dsh.account.add.custom" : "account.create")));
+                : preselected == null
+                        ? i18n("dsh.account.add.custom")
+                        // Named, because the page's row that opened this already said which vendor and
+                        // a dialog repeating only "add an account" would not say what is being added.
+                        : i18n("dsh.account.add.named", preselected.displayName())));
 
-        VBox body = new VBox(10, accounts, buildForm());
+        VBox body = new VBox(10, buildForm());
         setBody(body);
         setActions(buildActions());
-        refreshAccounts();
 
         // After the body is assembled, so that hiding the endpoint row takes it out of the layout
         // rather than leaving a gap where it was.
         javafx.application.Platform.runLater(this::syncEndpointRow);
     }
 
-    /// Builds the form for the new account.
+    /// Builds the form.
+    ///
+    /// Three shapes, and each asks for exactly what its kind needs:
+    ///
+    /// - **offline** — a name. Nothing is handed to anybody and nothing is checked, so every other
+    ///   field would be a question about something that does not exist.
+    /// - **the launcher's own vendor** — a name and a key. The endpoint and the protocol are that
+    ///   vendor's and the harness already knows them; the model is the harness's catalogue to
+    ///   describe, which is also why a model is not asked for here.
+    /// - **another vendor** — a name, a key, and the model, because the harness may not know what
+    ///   models that supplier serves and it refuses to start on a default it cannot resolve. Its
+    ///   endpoint is asked for only when the vendor does not publish one.
     ///
     /// @return the form
     private VBox buildForm() {
         ComponentList list = new ComponentList();
 
-        // The vendor is only asked for when the caller did not say. The accounts page asks by
-        // offering a row per vendor, so asking again inside the dialog would be asking a question
-        // that has just been answered.
+        // The vendor is asked for only when the caller did not say. The page asks by offering a row
+        // per vendor, so asking again inside the dialog would be a question just answered.
         if (preselected == null) {
             vendorBox.getItems().setAll(DshVendor.offered());
             vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
@@ -164,19 +174,31 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
         modelField.setPromptText(i18n("dsh.account.model.prompt"));
 
-        list.getContent().add(row(i18n("account.username"), usernameField));
-        list.getContent().add(row(i18n("dsh.account.key"), keyField));
+        list.getContent().add(row(offline ? i18n("account.character") : i18n("account.username"),
+                usernameField));
 
-        baseUrlRow.setTitle(i18n("dsh.account.base_url"));
-        baseUrlField.setMinWidth(360);
-        baseUrlRow.setRight(baseUrlField);
-        list.getContent().add(baseUrlRow);
+        if (!offline) {
+            list.getContent().add(row(i18n("dsh.account.key"), keyField));
 
-        list.getContent().add(row(i18n("dsh.account.model"), modelField));
+            baseUrlRow.setTitle(i18n("dsh.account.base_url"));
+            baseUrlField.setMinWidth(360);
+            baseUrlRow.setRight(baseUrlField);
+            list.getContent().add(baseUrlRow);
 
+            if (kind != DshAccount.AccountKind.OFFICIAL) {
+                list.getContent().add(row(i18n("dsh.account.model"), modelField));
+            }
+        }
+
+        // The verdict is a line of the form, not a second dialog on top of it: a message about what
+        // was typed belongs where it was typed.
         verdict.getStyleClass().add("desc");
+        verdict.setWrapText(true);
         list.getContent().add(verdict);
-        return new VBox(ComponentList.createComponentListTitle(i18n("dsh.account.add")), list);
+
+        // No heading over the fields: the dialog's own heading already says what is being added, and
+        // a second one saying "add an account" inside a dialog titled that is the same sentence twice.
+        return new VBox(list);
     }
 
     /// Builds the buttons.
@@ -221,92 +243,6 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         baseUrlRow.setManaged(needed);
     }
 
-    /// Redraws the list of accounts.
-    private void refreshAccounts() {
-        List<javafx.scene.Node> rows = new ArrayList<>();
-        for (DshAccount account : SettingsManager.settings().getAccounts()) {
-            rows.add(accountRow(account));
-        }
-        if (rows.isEmpty()) {
-            LineTextPane empty = new LineTextPane();
-            empty.setTitle(i18n("dsh.account.none"));
-            empty.setSubtitle(i18n("dsh.account.none.hint"));
-            rows.add(empty);
-        }
-        accounts.getContent().setAll(rows);
-    }
-
-    /// Builds the row for one account.
-    ///
-    /// The key is shown masked: the row is a record of what is configured, not a place to read a
-    /// secret back from, and a full key on screen is a key in every screenshot.
-    ///
-    /// @param account the account
-    /// @return the row
-    private javafx.scene.Node accountRow(DshAccount account) {
-        LineTextPane row = new LineTextPane();
-        row.setTitle(account.displayName());
-        row.setSubtitle(account.vendorId() + " · " + account.maskedKey()
-                + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault()));
-
-        JFXButton check = FXUtils.newToggleButton4(SVG.CHECK_CIRCLE);
-        FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
-        check.setOnAction(event -> {
-            row.setSubtitle(i18n("dsh.account.checking"));
-            CompletableFuture.supplyAsync(account::check, Schedulers.io())
-                    .whenComplete((result, failure) -> javafx.application.Platform.runLater(() ->
-                            row.setSubtitle(failure != null
-                                    ? failure.getMessage() : result.message())));
-        });
-
-        JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
-        FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
-        changeKey.setOnAction(event -> changeKey(account));
-
-        JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
-        FXUtils.installFastTooltip(remove, i18n("button.remove"));
-        remove.setOnAction(event -> {
-            SettingsManager.settings().getAccounts().removeIf(a -> a.matchesKey(account.key()));
-            SettingsManager.save();
-            refreshAccounts();
-        });
-
-        HBox actions = new HBox(4, check, changeKey, remove);
-        actions.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
-        row.setRowTrailing(actions);
-        return row;
-    }
-
-    /// Replaces an account's key, keeping everything else about it.
-    ///
-    /// What changes is the key and nothing else: the vendor, the name and the model are the
-    /// account's identity, and a key is the one part of it that expires. An account whose vendor is
-    /// no longer offered can still have its key changed, because nothing here consults the vendor
-    /// list.
-    ///
-    /// @param account the account
-    private void changeKey(DshAccount account) {
-        org.jackhuang.hmcl.ui.construct.InputDialogPane pane =
-                new org.jackhuang.hmcl.ui.construct.InputDialogPane(
-                        i18n("dsh.account.change_key"), "", (key, handler) -> {
-                            // The pane refuses an empty answer itself, so what arrives here is a key.
-                            String trimmed = key == null ? "" : key.trim();
-                            java.util.List<DshAccount> accounts =
-                                    SettingsManager.settings().getAccounts();
-                            for (int i = 0; i < accounts.size(); i++) {
-                                if (accounts.get(i).matchesKey(account.key())) {
-                                    accounts.set(i, new DshAccount(account.kind(), account.vendorId(),
-                                            trimmed, account.baseUrl(), account.label(), account.model()));
-                                    break;
-                                }
-                            }
-                            SettingsManager.save();
-                            refreshAccounts();
-                            handler.resolve();
-                        });
-        org.jackhuang.hmcl.ui.Controllers.dialog(pane);
-    }
-
     /// Checks what was typed and, if it is not refused, keeps it.
     ///
     /// The check runs off the interface thread: it is a network call, and a dialog that stops
@@ -329,8 +265,19 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
 
         DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
         String key = keyField.getText() == null ? "" : keyField.getText().trim();
+        if (username.isEmpty()) {
+            verdict.setText(i18n("dsh.account.need_username"));
+            return;
+        }
         if (vendor == null || key.isEmpty()) {
             verdict.setText(i18n("dsh.account.need_vendor_and_key"));
+            return;
+        }
+        // The name becomes the name of the supplier the harness is handed, so it has to be one the
+        // harness can address. Checked here rather than fixed up silently: a name quietly rewritten
+        // is a name the person will not find where they look for it.
+        if (!DshAccount.isUsableName(username)) {
+            verdict.setText(i18n("dsh.account.name_unusable"));
             return;
         }
         if (!vendor.looksLikeItsKey(key)) {
@@ -343,8 +290,7 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         String model = modelField.getText() == null ? "" : modelField.getText().trim();
         DshAccount candidate = new DshAccount(kind, vendor.id(), key,
                 baseUrl.isEmpty() ? null : baseUrl,
-                username.isEmpty() ? vendor.displayName() : username,
-                model.isEmpty() ? null : model);
+                username, model.isEmpty() ? null : model);
 
         // Kept without asking the vendor, which is what the person pressed the button for. The row
         // it leaves behind has a check of its own: checking is a question worth asking deliberately,

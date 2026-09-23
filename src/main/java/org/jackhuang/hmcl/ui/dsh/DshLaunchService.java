@@ -245,6 +245,21 @@ public final class DshLaunchService {
                     i18n("dsh.stop"), MessageType.WARNING);
             return;
         }
+
+        // A launcher with no account cannot launch anything, and saying so before the work starts is
+        // better than a harness that comes up unconfigured and asks the person to set a supplier up
+        // by hand. This mirrors the original, which will not start a game without an account either:
+        // the account is what everything else is done on behalf of, and there is no meaningful
+        // "nothing" to do it for.
+        //
+        // Checked here rather than in each control that offers to start, because every one of them
+        // leads to this method and a rule stated once cannot be forgotten by the next button.
+        if (org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts().isEmpty()) {
+            Controllers.dialog(i18n("dsh.launch.needs_account"),
+                    i18n("dsh.account.list"), MessageType.WARNING);
+            Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage());
+            return;
+        }
         if (!LAUNCHING.add(instance.id())) {
             return;
         }

@@ -88,7 +88,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 javafx.application.Platform.runLater(this::refreshList));
         refreshList();
 
-        setLeft(buildAddSidebar());
+        buildAddSidebar();
         setCenter(buildAccountPane());
     }
 
@@ -98,8 +98,14 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// the question "how do I add an account" has one answer per kind, and a single "add" button
     /// that then asks which kind is a question asked in the wrong order.
     ///
-    /// @return the sidebar
-    private Region buildAddSidebar() {
+    /// Builds the sidebar.
+    ///
+    /// It sets the page's left column itself rather than returning a node, because the column is
+    /// **two** nodes — the list and the foot — and a builder that returned one of them would have the
+    /// caller set that one over both. That is exactly what happened: the foot was built, added, and
+    /// then replaced by the builder's return value one line later, so it was present in the code and
+    /// nowhere on screen.
+    private void buildAddSidebar() {
         // The original's shape, which says something by its order:
         //
         //     ┌ 添加账户 ─────────────
@@ -125,6 +131,9 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         ScrollPane scrollPane = new ScrollPane(rows);
         scrollPane.setFitToWidth(true);
+        // The scrolling part takes what is left and the fixed part keeps its height, which is what
+        // puts the foot at the foot rather than directly under the last row.
+        VBox.setVgrow(scrollPane, Priority.ALWAYS);
         FXUtils.setLimitWidth(scrollPane, 200);
         FXUtils.smoothScrolling(scrollPane);
 
@@ -139,7 +148,6 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         FXUtils.setLimitHeight(actions, 40 * 2 + 12);
 
         setLeft(scrollPane, actions);
-        return scrollPane;
     }
 
     /// Builds one row of the add column.
@@ -316,7 +324,12 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             super(listView);
 
             BorderPane root = new BorderPane();
+            // Each row is its own card, as the original draws its accounts. The class stays
+            // `md-list-cell` because the cell's own sizing is built around it — replacing it with
+            // `card` changes the row's box model and the cell then measures zero, which is how the
+            // rows vanished — and the card's *surface* is put on it by the stylesheet instead.
             root.getStyleClass().add("md-list-cell");
+            root.getStyleClass().add("dsh-account-card");
             root.setPadding(new Insets(8, 8, 8, 0));
 
             selector.setMouseTransparent(false);

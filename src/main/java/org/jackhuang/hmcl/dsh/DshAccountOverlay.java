@@ -79,9 +79,18 @@ public final class DshAccountOverlay {
         String api = vendor == null ? "openai-completions" : vendor.api();
         String endpoint = account.endpoint();
 
-        // The tree the harness composes: a list of layers, each naming a plugin by id and giving the
-        // section it wants configured. A route needs all three of protocol, address and models —
-        // a hand-written route that omits any of them fails registration, which fails the launch.
+        // The route is named after the **account**, not after the vendor it borrows its settings
+        // from. That is the whole shape of this: the harness is handed a supplier of the person's
+        // own, named what they called it, speaking the protocol and living at the address of the
+        // vendor they picked. Opening the harness then shows one supplier — their supplier — with
+        // that vendor's models behind it, rather than a generic "deepseek" that could be anybody's.
+        //
+        // Which is also why the person is asked for a name that can be a route: a route name is an
+        // identifier, and a name with a space in it would arrive in the harness as something it
+        // cannot address. The dialog checks that before it gets here.
+        String route = account.displayName();
+        String model = account.modelOrDefault();
+
         StringBuilder yaml = new StringBuilder();
         yaml.append("# Written by Hello DeepSeek Launcher for one launch; removed when it ends.\n");
         yaml.append("# It carries no key: the key travels in the environment as ")
@@ -89,18 +98,23 @@ public final class DshAccountOverlay {
         yaml.append("- id: llm-pi-ai\n");
         yaml.append("  config:\n");
         yaml.append("    providers:\n");
-        yaml.append("      ").append(YamlScalar.of(account.vendorId())).append(":\n");
+        yaml.append("      ").append(YamlScalar.of(route)).append(":\n");
         yaml.append("        apiKeyEnv: ").append(KEY_ENVIRONMENT_VARIABLE).append("\n");
         yaml.append("        api: ").append(api).append("\n");
         if (endpoint != null && !endpoint.isBlank()) {
             yaml.append("        baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
         }
         yaml.append("        models:\n");
-        // One placeholder model. Which models a vendor serves is its own answer, and the harness
-        // discovers them from the catalogue for a vendor it knows; this entry is what makes the
-        // route registrable when it does not.
-        yaml.append("          - id: default\n");
-        yaml.append("            name: ").append(YamlScalar.of(account.displayName())).append("\n");
+        // One model. Which models a supplier serves is its own answer, and the harness reads that
+        // from the catalogue for a vendor it knows — but a route it has never heard of must still be
+        // registrable, and a route with no models cannot be.
+        //
+        // The id is the one the person named when the vendor is not one the harness knows; for the
+        // launcher's own vendor there is nothing to name and `default` stands in. Either way it is
+        // **a** model that exists rather than a shape the harness has to trust.
+        yaml.append("          - id: ").append(YamlScalar.of(model.isEmpty() ? "default" : model))
+                .append("\n");
+        yaml.append("            name: ").append(YamlScalar.of(route)).append("\n");
 
         Path directory = directory();
         Path file = directory.resolve("account-" + instance.id() + "-"
