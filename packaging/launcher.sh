@@ -5,8 +5,8 @@
 # itself. A zip reader finds the central directory at the end of the file, so
 # the jar stays loadable with this preamble in front of it.
 #
-# HMCL-DSH targets Linux only, so unlike HMCL's launcher this one has no
-# macOS, BSD or Windows branches: it looks for a JDK 21+ and runs the jar.
+# HMCL-DSH targets Linux and macOS, so unlike HMCL's launcher this one has no
+# BSD or Windows branches: it looks for a JDK 21+ and runs the jar.
 
 set -e
 
