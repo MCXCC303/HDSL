@@ -340,9 +340,18 @@ public final class DshLaunchService {
             } else {
                 LOG.warning("Failed to launch instance " + instance.id(), failure);
                 boolean portTaken = portOf(failure) > 0;
-                Controllers.dialog(failureMessage(instance, failure),
-                        i18n("dsh.launch.failed"),
-                        portTaken ? MessageType.WARNING : MessageType.ERROR);
+                if (portTaken) {
+                    // A port that is already taken is not a crash: it is a setting to change, and
+                    // the message already says which. The crash dialog would add a log tail about
+                    // nothing.
+                    Controllers.dialog(failureMessage(instance, failure),
+                            i18n("dsh.launch.failed"), MessageType.WARNING);
+                } else {
+                    // It never got as far as a process, so there is no output to show — but the
+                    // reason is the launcher's own and the dialog is still the place a person looks
+                    // for what to do next.
+                    DshCrashDialog.show(instance, failureMessage(instance, failure), null);
+                }
             }
         } else if (process != null) {
             if (showOutput) {
@@ -358,12 +367,13 @@ public final class DshLaunchService {
                 if (settings().openBrowserOnLaunchProperty().get()) {
                     FXUtils.openLink(url.get().toString());
                 }
-            } else if (!process.isRunning() && !process.isStopRequested()) {
-                // Stopped by the user while it was still coming up: that is what
-                // was asked for, and not a failure to report.
-                Controllers.dialog(
-                        i18n("dsh.launch.exited", process.exitCode().orElse(-1)),
-                        i18n("dsh.launch.failed"), MessageType.ERROR);
+            } else if (DshCrashDialog.isCrash(process)) {
+                // It ended before ever answering. Not the user's doing — that case is excluded by
+                // `isCrash` — so it is a failure, and the output is where the reason is.
+                DshCrashDialog.show(instance,
+                        i18n("dsh.launch.exited", process.exitCode().orElse(-1))
+                                + " " + DshCrashDialog.describe(process),
+                        process);
             }
         }
 

@@ -2107,3 +2107,25 @@
 .dsh-vendor-warning {
     -fx-text-fill: -monet-error;
 }
+
+/*******************************************************************************
+*                                                                              *
+* DSH: the dialog shown when an instance does not come up                      *
+*                                                                              *
+*******************************************************************************/
+
+/* What failed, at the top: the name and version, given more weight than the sentence under it
+   because it is the part a person scans for when several instances are in the list. */
+.dsh-crash-heading {
+    -fx-font-weight: bold;
+}
+
+/* The output tail. Monospace, because it is a stack trace and its indentation is how it is read,
+   and wrapped only by the scroll pane's own scrolling so that the columns stay where the program
+   put them. */
+.dsh-crash-log {
+    -fx-font-family: "monospace";
+    -fx-font-size: 11px;
+    -fx-text-fill: -monet-on-surface-variant;
+    -fx-padding: 8;
+}

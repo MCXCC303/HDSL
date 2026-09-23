@@ -150,6 +150,26 @@ public final class DshProcessManager {
                     // instance that was started with a key is an instance with no trace of it once
                     // it has stopped.
                     DshAccountOverlay.remove(process.plan().accountOverlay());
+                    // An instance that dies **after** it was up is the case a message box is least
+                    // able to help with and the crash dialog most: it was working a moment ago, so
+                    // the question is what it said on the way out, and the answer is in the output
+                    // the dialog carries. Reported from here rather than from the launch path
+                    // because this listener is the one place that sees every ending, whenever it
+                    // happens — a server that fell over an hour after it started never goes through
+                    // the launch path again.
+                    // `isCrash` rather than `state == FAILED`, and that distinction is the whole
+                    // reason this did not work the first time: `DshProcess` maps the exit of a
+                    // process that had been **ready** to `STOPPED` whatever its exit code, because
+                    // for its own purposes "it was up and now it is not" is the same thing either
+                    // way. So a crash after a successful start arrives here as `STOPPED`, and
+                    // testing for `FAILED` misses exactly the case this dialog was written for.
+                    if (org.jackhuang.hmcl.ui.dsh.DshCrashDialog.isCrash(process)) {
+                        javafx.application.Platform.runLater(() ->
+                                org.jackhuang.hmcl.ui.dsh.DshCrashDialog.show(
+                                        instance,
+                                        org.jackhuang.hmcl.ui.dsh.DshCrashDialog.describe(process),
+                                        process));
+                    }
                 }
             });
             return process;
