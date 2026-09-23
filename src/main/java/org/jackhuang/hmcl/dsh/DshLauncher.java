@@ -126,8 +126,22 @@ public final class DshLauncher {
     /// How long a version is given to answer a help request.
     private static final java.time.Duration PROBE_TIMEOUT = java.time.Duration.ofSeconds(5);
 
-    /// The versions whose help has been read, and whether it mentions `--no-open`.
+    /// The help that has been read, keyed by version **and profile**, and whether it mentions
+    /// `--no-open`.
+    ///
+    /// Keyed by both because the answer belongs to both: what is read is
+    /// `dsh --profile <name> --help`, and two profiles of one release accept different flags. Cached
+    /// by version alone, the first profile to be launched would answer for every other one.
     private static final Map<String, Boolean> NO_OPEN_SUPPORT = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// Returns the key the help of a version and profile is remembered under.
+    ///
+    /// @param version the version
+    /// @param profile the profile
+    /// @return the key
+    static String capabilityKey(String version, String profile) {
+        return version + "/" + profile;
+    }
 
     /// Reports whether a version's interface accepts `--no-open`.
     ///
@@ -146,7 +160,8 @@ public final class DshLauncher {
     /// @return whether the flag may be passed
     private static boolean acceptsNoOpen(DshInstance instance) {
         String version = instance.version();
-        Boolean cached = NO_OPEN_SUPPORT.get(version);
+        String key = capabilityKey(version, instance.profile());
+        Boolean cached = NO_OPEN_SUPPORT.get(key);
         if (cached != null) {
             return cached;
         }
@@ -176,7 +191,7 @@ public final class DshLauncher {
                     // returning here would ask the same question again on the next launch.
                     LOG.info("DeepSeek Harness " + version + " did not answer --help within "
                             + PROBE_TIMEOUT.toSeconds() + "s; leaving the flag out");
-                    NO_OPEN_SUPPORT.put(version, false);
+                    NO_OPEN_SUPPORT.put(key, false);
                     return false;
                 }
                 output = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
@@ -196,7 +211,7 @@ public final class DshLauncher {
             }
         }
 
-        NO_OPEN_SUPPORT.put(version, accepted);
+        NO_OPEN_SUPPORT.put(key, accepted);
         return accepted;
     }
 
