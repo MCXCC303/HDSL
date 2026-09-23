@@ -73,9 +73,12 @@ icon_file=""
 if command -v sips >/dev/null 2>&1 && sips -s format icns "${icon}" --out "${appdir}/Resources/hdsl.icns" >/dev/null 2>&1; then
     icon_file="hdsl.icns"
 else
-    cp "${icon}" "${appdir}/Resources/hdsl.png"
     echo "warning: sips is unavailable, bundle carries hdsl.png instead of hdsl.icns" >&2
 fi
+# The dock icon is passed to the JVM at startup through HDSL_DOCK_ICON (see
+# the launcher stub), so a png is always bundled beside the icns Finder uses.
+cp "${icon}" "${appdir}/Resources/hdsl.png"
+chmod 0644 "${appdir}/Resources/hdsl.png"
 
 if [ -n "${icon_file}" ]; then
     icon_key="	<key>CFBundleIconFile</key>
@@ -117,7 +120,11 @@ cat > "${appdir}/MacOS/HDSL" <<EOF
 #!/usr/bin/env bash
 # Refuse to start anywhere but the user's home, for the reason above.
 cd "\${HOME}"
-exec "\$(cd "\$(dirname "\$0")/../Java" && pwd)/${name}.sh" "\$@"
+APP_ROOT="\$(cd "\$(dirname "\$0")/.." && pwd)"
+# The launcher stub names the dock tile from this image at JVM startup; see it
+# for why the name and icon cannot wait for a window.
+export HDSL_DOCK_ICON="\${APP_ROOT}/Resources/hdsl.png"
+exec "\${APP_ROOT}/Java/${name}.sh" "\$@"
 EOF
 chmod 0755 "${appdir}/MacOS/HDSL"
 
