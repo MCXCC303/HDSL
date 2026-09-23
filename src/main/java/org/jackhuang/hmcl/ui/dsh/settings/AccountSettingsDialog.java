@@ -228,6 +228,18 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
                     // put two messages under one box.
                     name -> name == null || name.isBlank() || DshAccount.isUsableName(name.trim())));
         }
+        // Two accounts under one name are two accounts nothing downstream can tell apart: the name is
+        // what a supplier route is called, what an instance names when it chooses an account, and
+        // what a person reads in the list. The launcher's own tidying is the sharpest case — what it
+        // injected is recognised by the name it injected it under, so a second account answering to
+        // that name would make its own leftovers unreadable.
+        //
+        // Refused rather than allowed and told apart later, because there is nothing here to tell
+        // them apart **with**: an account is a name in this system, and asking a person to pick
+        // another one is a question they can answer.
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_taken"),
+                name -> name == null || name.isBlank() || !isNameTaken(name.trim())));
         FXUtils.setValidateWhileTextChanged(usernameField, true);
 
         // An offline account has no key, no endpoint and no model: it is a name and a face, and the
@@ -357,6 +369,22 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
                 ? baseUrlField.getText().trim() : "";
         keep(new DshAccount(kind, vendor.id(), key,
                 baseUrl.isEmpty() ? null : baseUrl, username, null, null));
+    }
+
+    /// Reports whether an account already answers to a name.
+    ///
+    /// Compared exactly, because exactly is how the name is used: it names a route, and two names
+    /// differing only in case are two different routes.
+    ///
+    /// @param name the name, trimmed
+    /// @return whether some account already has it
+    private static boolean isNameTaken(String name) {
+        for (DshAccount account : SettingsManager.settings().getAccounts()) {
+            if (name.equals(account.displayName())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// Stores an account and makes it the one the launcher uses.
