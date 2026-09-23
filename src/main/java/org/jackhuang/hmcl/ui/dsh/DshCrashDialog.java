@@ -138,11 +138,22 @@ public final class DshCrashDialog extends Stage {
         VBox root = new VBox();
         root.getStyleClass().add("game-crash-window");
 
-        VBox.setVgrow(details(), Priority.ALWAYS);
-        root.getChildren().setAll(banner(),
-                factsPane(),
-                details(),
-                new HBox(8, exportButton(), logButton(), helpButton()));
+        // Held in a variable, which is the whole of why the buttons were floating in the middle: the
+        // original grows its **details block** to take the space it is given, which is what pins the
+        // toolbar to the bottom. Calling a builder twice — once to set the grow and once to add the
+        // node — sets it on one node and adds a different one, so nothing grew and the toolbar sat
+        // wherever the text happened to end.
+        Node details = details();
+        VBox.setVgrow(details, Priority.ALWAYS);
+
+        HBox toolBar = new HBox();
+        toolBar.setPadding(new Insets(8));
+        toolBar.setSpacing(8);
+        toolBar.getStyleClass().add("jfx-tool-bar");
+        toolBar.getChildren().setAll(exportButton(), logButton(), helpButton());
+        VBox.setMargin(toolBar, new Insets(0, 0, 4, 0));
+
+        root.getChildren().setAll(banner(), factsPane(), details, toolBar);
 
         // The original's own three lines, and the middle one is the whole answer to "does it follow
         // the theme": the crash window is **not** styled separately. It loads the launcher's
@@ -272,6 +283,15 @@ public final class DshCrashDialog extends Stage {
         reasonPane.setFitToWidth(true);
         reasonPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         reasonPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        // A height of its own rather than "whatever is left". The original's reason block is two
+        // lines, so its layout ends well above the toolbar and the leftover height collects below
+        // it; a block that instead absorbs the slack drags the paragraph after it — and this
+        // window's paragraph is the last line of the window — down against the buttons. Bounding
+        // this keeps the shape the original has: everything from the top, a gap, then the toolbar.
+        reasonPane.setPrefHeight(120);
+        // Started at the end, because the end is where a failure says what it was: the last lines of
+        // a stack trace, and the sentence after them.
+        javafx.application.Platform.runLater(() -> reasonPane.setVvalue(1.0));
 
         // The original's own paragraph, which exists because a screenshot of a crash is a picture of
         // a stack trace that nobody can search, and because whoever is helping needs the file.
@@ -281,17 +301,29 @@ public final class DshCrashDialog extends Stage {
                 FXUtils.parseSegment(i18n("dsh.crash.feedback"), Controllers::onHyperlinkAction));
 
         pane.getChildren().setAll(folder, reasonTitle, reasonPane, feedback);
-        VBox.setVgrow(reasonPane, Priority.ALWAYS);
+
+        // **No grow here**, and that is the original's arrangement rather than an omission: it grows
+        // this whole block and nothing inside it, so the leftover height collects at the *bottom* of
+        // the block, above the toolbar. Growing the reason pane instead — which is what this did —
+        // makes the pane eat the slack and pushes the paragraph under it down to the toolbar, so the
+        // last line of the window ends up at the bottom edge with the buttons rather than under the
+        // reason it belongs to.
         return pane;
     }
 
     /// Builds the button that writes the report out, which the paragraph above points at.
     ///
     /// @return the button
-    private JFXButton exportButton() {
+    private Node exportButton() {
         JFXButton export = FXUtils.newRaisedButton(i18n("dsh.crash.export"));
+
+        // The original's own wrapper: the export reads a file and writes one, and the spinner is
+        // what says it is doing something rather than nothing.
+        javafx.scene.layout.StackPane spinner = new javafx.scene.layout.StackPane(export);
+        spinner.getStyleClass().add("small-spinner-pane");
+
         export.setOnAction(event -> export());
-        return export;
+        return spinner;
     }
 
     /// Builds the button that opens the log window.
