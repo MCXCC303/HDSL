@@ -164,8 +164,8 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         DshVendor primary = DshVendor.offered().get(0);
         rows.getChildren().addAll(
-                vendorItem(i18n("dsh.account.method.official"), null,
-                        SVG.DRESSER, () -> Controllers.dialog(new AccountSettingsDialog(primary))),
+                vendorItem(i18n("dsh.account.method.official"), null, dshMark(),
+                        () -> Controllers.dialog(new AccountSettingsDialog(primary))),
                 vendorItem(i18n("account.methods.offline"), null,
                         SVG.PERSON, () -> Controllers.dialog(AccountSettingsDialog.offline())));
 
@@ -222,6 +222,55 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// @param icon     the row's icon
     /// @param action   what pressing it does
     /// @return the row
+    /// Builds the row for the launcher's own supplier.
+    ///
+    /// Its picture is the mark of the thing an account on it is for, rather than the original's
+    /// dresser: the row is not "an account" among several, it is this supplier's, and the mark is
+    /// what says so at a glance. Drawn from the same set of pictures the instance entries use, at the
+    /// same size, so the column reads as one list.
+    ///
+    /// @param title  the row's first line
+    /// @param action what the row does
+    /// @return the row
+    private javafx.scene.Node vendorItem(String title, @org.jetbrains.annotations.Nullable String subtitle,
+                                         org.jackhuang.hmcl.ui.construct.ImageContainer graphic, Runnable action) {
+        org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
+                new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
+        item.getStyleClass().add("navigation-drawer-item");
+        item.setTitle(title);
+        if (subtitle != null) {
+            item.setSubtitle(subtitle);
+        }
+        item.setLeftGraphic(graphic);
+        item.setOnAction(event -> action.run());
+        return item;
+    }
+
+    /// Returns the harness mark, sized for a row's leading picture.
+    ///
+    /// Bound to the theme rather than chosen once, because the theme can be changed while the page is
+    /// open — and picked by it, because the mark comes in two and only one of them can be seen on a
+    /// given surface.
+    ///
+    /// @return the picture
+    private static org.jackhuang.hmcl.ui.construct.ImageContainer dshMark() {
+        org.jackhuang.hmcl.ui.construct.ImageContainer mark =
+                new org.jackhuang.hmcl.ui.construct.ImageContainer(
+                org.jackhuang.hmcl.ui.construct.AdvancedListItem.LEFT_GRAPHIC_SIZE);
+        mark.imageProperty().bind(javafx.beans.binding.Bindings.createObjectBinding(
+                AccountListPage::harnessMark, org.jackhuang.hmcl.theme.Themes.darkModeProperty()));
+        return mark;
+    }
+
+    /// Returns the harness mark for the current theme.
+    ///
+    /// @return the mark, white on a dark surface and black on a light one
+    private static javafx.scene.image.Image harnessMark() {
+        return (org.jackhuang.hmcl.theme.Themes.darkModeProperty().get()
+                ? org.jackhuang.hmcl.dsh.DshInstanceIcon.DSH_WHITE
+                : org.jackhuang.hmcl.dsh.DshInstanceIcon.DSH_BLACK).load();
+    }
+
     private javafx.scene.Node vendorItem(String title, @org.jetbrains.annotations.Nullable String subtitle,
                                          SVG icon, Runnable action) {
         org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
