@@ -467,6 +467,10 @@ public final class SettingsManager {
         @SerializedName("packMarketUrl")
         private @Nullable String packMarketUrl;
 
+        /// How much of a new instance's dependency tree is held, by the enum's own name.
+        @SerializedName("dependencyPolicy")
+        private @Nullable String dependencyPolicy;
+
         @SerializedName("cacheDirectory")
         private @Nullable String cacheDirectory;
 
@@ -562,6 +566,7 @@ public final class SettingsManager {
             snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
             snapshot.pluginCatalogUrl = settings.pluginCatalogUrlProperty().get();
             snapshot.packMarketUrl = settings.packMarketUrlProperty().get();
+            snapshot.dependencyPolicy = settings.dependencyPolicy().name();
             snapshot.cacheDirectory = settings.cacheDirectoryProperty().get();
             snapshot.cacheDirectoryCustom = settings.cacheDirectoryCustomProperty().get();
             snapshot.autoDownloadThreads = settings.autoDownloadThreadsProperty().get();
@@ -766,6 +771,16 @@ public final class SettingsManager {
             }
             if (packMarketUrl != null) {
                 settings.packMarketUrlProperty().set(packMarketUrl);
+            }
+            if (dependencyPolicy != null) {
+                // A name this launcher does not know is left at the default rather than refusing the
+                // whole settings file: a policy is a preference, and losing it costs one choice.
+                try {
+                    settings.dependencyPolicyProperty().set(
+                            org.jackhuang.hmcl.dsh.DshDependencyPolicy.valueOf(dependencyPolicy));
+                } catch (IllegalArgumentException e) {
+                    LOG.warning("Unknown dependency policy in the settings: " + dependencyPolicy);
+                }
             }
             if (pluginCatalogUrl != null) {
                 settings.pluginCatalogUrlProperty().set(pluginCatalogUrl);

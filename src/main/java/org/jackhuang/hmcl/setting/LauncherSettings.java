@@ -147,6 +147,37 @@ public final class LauncherSettings {
         return packMarketUrl;
     }
 
+    /// How much of a new instance's dependency tree is held to the versions the harness declares.
+    ///
+    /// Read when a harness is installed, and only then: an instance already on disk keeps the tree it
+    /// was installed with, so changing this decides what the **next** install does rather than
+    /// rewriting what is there. That is the honest behaviour — the alternative would be reinstalling
+    /// a working instance because somebody opened a settings page.
+    ///
+    /// Defaults to [org.jackhuang.hmcl.dsh.DshDependencyPolicy#CORE_PINNED], and that default is the
+    /// point of the setting: the harness's own ranges let a package the launcher never chose arrive
+    /// underneath it, which has twice stopped an instance from starting. Shipping "whatever resolves"
+    /// as the default would be shipping that.
+    private final javafx.beans.property.ObjectProperty<org.jackhuang.hmcl.dsh.DshDependencyPolicy>
+            dependencyPolicy = new javafx.beans.property.SimpleObjectProperty<>(
+                    org.jackhuang.hmcl.dsh.DshDependencyPolicy.CORE_PINNED);
+
+    /// Returns how much of a new instance's dependency tree is held.
+    ///
+    /// @return the property
+    public javafx.beans.property.ObjectProperty<org.jackhuang.hmcl.dsh.DshDependencyPolicy>
+            dependencyPolicyProperty() {
+        return dependencyPolicy;
+    }
+
+    /// Returns how much of a new instance's dependency tree is held.
+    ///
+    /// @return the policy
+    public org.jackhuang.hmcl.dsh.DshDependencyPolicy dependencyPolicy() {
+        var value = dependencyPolicy.get();
+        return value == null ? org.jackhuang.hmcl.dsh.DshDependencyPolicy.CORE_PINNED : value;
+    }
+
     /// Whether a new instance keeps its own home.
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshIsolationPolicy> isolationPolicy =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshIsolationPolicy.WITH_PLUGINS);

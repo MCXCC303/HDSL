@@ -27,6 +27,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests the manifest an install is described by.
@@ -51,7 +54,8 @@ class DshManifestTest {
     /// @throws DshException when the manifest cannot be written
     @Test
     void pinsTheLauncherExactly() throws IOException, DshException {
-        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1");
+        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null,
+                DshDependencyPolicy.LATEST);
 
         JsonObject manifest = JsonParser.parseString(
                 Files.readString(prefix.resolve("package.json"))).getAsJsonObject();
@@ -71,7 +75,8 @@ class DshManifestTest {
     /// @throws IOException when the file cannot be read back
     @Test
     void pinsTheBootLibraryWherePnpmReadsIt() throws IOException, DshException {
-        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1");
+        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null,
+                DshDependencyPolicy.LATEST);
 
         Path workspace = prefix.resolve("pnpm-workspace.yaml");
         assertTrue(Files.isRegularFile(workspace),
@@ -87,9 +92,85 @@ class DshManifestTest {
     /// @throws IOException when the file cannot be read back
     @Test
     void writesTheBootLibraryItIsGiven() throws IOException, DshException {
-        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.5-rc.2");
+        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.5-rc.2", null,
+                DshDependencyPolicy.LATEST);
 
         assertTrue(Files.readString(prefix.resolve("pnpm-workspace.yaml")).contains("0.1.5-rc.2"),
                 "the override should say what was asked for, not the launcher's own version");
+    }
+
+    /// npm answers about a specifier with an array, and that is what has to be read.
+    ///
+    /// Captured verbatim from `npm view @deepseek-ai/dsh@0.1.5-alpha.2 dependencies --json`, because
+    /// the shape is the whole point: the first version of this read only the object form, found
+    /// nothing in the array, and would have applied the policy to precisely nothing.
+    @Test
+    void theDependenciesAreReadFromTheShapeNpmActuallyAnswersWith() {
+        String answer = "[{\"commander\":\"^15.0.0\","
+                + "\"@deepseek-ai/cordis\":\"^4.0.2\","
+                + "\"@deepseek-ai/cordis-plugin-loader\":\"^1.0.3\"}]";
+
+        com.google.gson.JsonObject declared = DshVersionManager.declaredDependencies(answer);
+
+        assertNotNull(declared, "an array of one object is npm's answer for a named version");
+        assertEquals("^4.0.2", declared.get("\u0040deepseek-ai/cordis").getAsString());
+        assertEquals("4.0.2", DshVersionManager.floorOf(
+                declared.get("\u0040deepseek-ai/cordis").getAsString()));
+    }
+
+    /// A package that declares nothing, and an answer that is not JSON, both say "nothing to hold".
+    @Test
+    void anAnswerWithNoDependenciesIsNotAnError() {
+        assertNull(DshVersionManager.declaredDependencies("[]"));
+        assertNull(DshVersionManager.declaredDependencies("null"));
+        assertNull(DshVersionManager.declaredDependencies("not json"));
+    }
+
+    /// Only the ranges that have a floor are read; the rest are left alone.
+    ///
+    /// A range whose floor this cannot name must not be guessed at, and a dependency with no override
+    /// simply resolves freely — which is the policy's own answer for anything it does not hold.
+    @Test
+    void aFloorIsReadFromTheRangesThatHaveOne() {
+        assertEquals("4.0.2", DshVersionManager.floorOf("^4.0.2"));
+        assertEquals("1.0.3", DshVersionManager.floorOf("~1.0.3"));
+        assertEquals("2.0.0", DshVersionManager.floorOf(">=2.0.0"));
+        assertEquals("0.1.5-alpha.2", DshVersionManager.floorOf("0.1.5-alpha.2"),
+                "an exact version is its own floor");
+        assertEquals("0.1.5-alpha.2", DshVersionManager.floorOf("^0.1.5-alpha.2"),
+                "a prerelease floor is still a floor");
+    }
+
+    /// What cannot be read is not guessed at.
+    @Test
+    void aRangeWithNoReadableFloorIsLeftAlone() {
+        assertNull(DshVersionManager.floorOf("*"));
+        assertNull(DshVersionManager.floorOf("latest"));
+        assertNull(DshVersionManager.floorOf(">=1.0.0 <2.0.0"));
+        assertNull(DshVersionManager.floorOf("github:owner/repo#sha"));
+        assertNull(DshVersionManager.floorOf("workspace:*"));
+        assertNull(DshVersionManager.floorOf(""));
+        assertNull(DshVersionManager.floorOf(null));
+    }
+
+    /// The default holds the vendor's own packages and nothing else.
+    ///
+    /// The plugin framework and the harness's libraries are published together in lockstep and have
+    /// broken a launch twice between them; a pack's own plugins are the author's business and are
+    /// left free.
+    @Test
+    void theDefaultPolicyHoldsOnlyTheVendorsOwnPackages() {
+        DshDependencyPolicy policy = DshDependencyPolicy.CORE_PINNED;
+
+        assertTrue(policy.pins("\u0040deepseek-ai/cordis"));
+        assertTrue(policy.pins("\u0040deepseek-ai/cordis-plugin-loader"));
+        assertTrue(policy.pins("\u0040deepseek-ai/dsh-app-boot"));
+        assertFalse(policy.pins("dsh-wildmon"));
+        assertFalse(policy.pins("\u0040hellosz/dsh-pets"));
+
+        assertFalse(DshDependencyPolicy.LATEST.pins("\u0040deepseek-ai/cordis"),
+                "following upstream holds nothing");
+        assertTrue(DshDependencyPolicy.LOCKED.pins("\u0040hellosz/dsh-pets"),
+                "the strictest policy holds everything declared");
     }
 }

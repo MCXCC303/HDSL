@@ -60,15 +60,43 @@ public final class GeneralSettingsPage extends ScrollPane {
         general.getContent().add(buildLanguageRow());
         general.getContent().add(buildStorageRow());
 
+        // What installing a pack does, in a card of its own. The original gives a group of settings
+        // that decide one thing its own heading, and these decide how a pack's dependencies are
+        // resolved — which belongs to the general tab because it is a launcher-wide preference and
+        // not a property of any one instance.
+        ComponentList packs = new ComponentList();
+        packs.getContent().add(buildDependencyPolicyRow());
+
         VBox root = new VBox(
                 ComponentList.createComponentListTitle(i18n("settings.launcher.general")),
-                general);
+                general,
+                ComponentList.createComponentListTitle(i18n("dsh.settings.pack_install")),
+                packs);
         root.getStyleClass().add("card-list");
         setContent(root);
 
         // Must run after the content is installed: smooth scrolling binds to
         // the content node and fails on a null content.
         FXUtils.smoothScrolling(this);
+    }
+
+    /// Builds the row that decides how a pack's dependencies are resolved.
+    ///
+    /// @return the row
+    private LineSelectButton<org.jackhuang.hmcl.dsh.DshDependencyPolicy> buildDependencyPolicyRow() {
+        LineSelectButton<org.jackhuang.hmcl.dsh.DshDependencyPolicy> row = new LineSelectButton<>();
+        row.setTitle(i18n("dsh.settings.dependency_policy"));
+        row.setItems(org.jackhuang.hmcl.dsh.DshDependencyPolicy.values());
+        row.setNullSafeConverter(policy -> i18n(
+                "dsh.settings.dependency_policy." + policy.name().toLowerCase(java.util.Locale.ROOT)));
+        row.setValue(settings().dependencyPolicy());
+        row.valueProperty().addListener((observable, was, value) -> {
+            if (value != null && value != was) {
+                settings().dependencyPolicyProperty().set(value);
+                SettingsManager.save();
+            }
+        });
+        return row;
     }
 
     /// Builds the language row.

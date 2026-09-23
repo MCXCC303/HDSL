@@ -30,7 +30,9 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
@@ -186,12 +188,17 @@ public final class DshVersionManager {
     /// @param version     the DeepSeek Harness version
     /// @param appBoot     the application boot library version to hold it to
     /// @throws DshException when the manifest cannot be written
-    static void writeManifest(Path prefix, String version, String appBoot) throws DshException {
+    static void writeManifest(Path prefix, String version, String appBoot,
+                              @Nullable DshNodeRuntime runtime, DshDependencyPolicy policy)
+            throws DshException {
         JsonObject dependencies = new JsonObject();
         dependencies.addProperty(PACKAGE_NAME, version);
 
         JsonObject overrides = new JsonObject();
         overrides.addProperty(APP_BOOT_PACKAGE, appBoot);
+        for (Map.Entry<String, String> held : heldDependencies(runtime, version, appBoot, policy).entrySet()) {
+            overrides.addProperty(held.getKey(), held.getValue());
+        }
 
         JsonObject manifest = new JsonObject();
         manifest.addProperty("private", true);
@@ -204,17 +211,130 @@ public final class DshVersionManager {
         // left the pinning silently not applied, and a runtime came out with the
         // launcher at one version and its boot library at another — a pairing that
         // fails at import rather than degrading. The tests cover the pair.
-        String workspace = "overrides:\n"
-                + "  '" + APP_BOOT_PACKAGE + "': " + appBoot + "\n";
+        StringBuilder workspace = new StringBuilder("overrides:\n")
+                .append("  '").append(APP_BOOT_PACKAGE).append("': ").append(appBoot).append('\n');
+        for (Map.Entry<String, String> held : heldDependencies(runtime, version, appBoot, policy).entrySet()) {
+            workspace.append("  '").append(held.getKey()).append("': ")
+                    .append(held.getValue()).append('\n');
+        }
 
         try {
             Files.createDirectories(prefix);
             var gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
             Files.writeString(prefix.resolve("package.json"), gson.toJson(manifest));
-            Files.writeString(prefix.resolve("pnpm-workspace.yaml"), workspace);
+            Files.writeString(prefix.resolve("pnpm-workspace.yaml"), workspace.toString());
         } catch (IOException e) {
             throw new DshException("Failed to write the manifest for " + version, e);
         }
+    }
+
+    /// Returns the dependencies to hold to the versions the harness declares.
+    ///
+    /// The declared value is a range — `^4.0.2` — and its **floor** is the version the author built
+    /// against: a caret asks for that version or anything newer that claims compatibility, and
+    /// "anything newer" is what has twice broken a launch. So the floor is read out and written as an
+    /// override, which is not a guess about what works but a statement of what the package itself
+    /// says it was written for.
+    ///
+    /// Read from the **published manifests** rather than from disk: this runs before `pnpm install`,
+    /// when the harness's own `package.json` is not on the machine yet. Both packages that take part
+    /// in the pairing are asked — the harness, and the boot library it is held to — because each
+    /// declares part of the tree and the boot library is where the plugin framework is named.
+    ///
+    /// **A failure here must not fail the install.** A registry that cannot be reached, or a range
+    /// this does not recognise, leaves that dependency to resolve freely — which is exactly the
+    /// behaviour of [DshDependencyPolicy#LATEST] and better than refusing to install at all.
+    ///
+    /// @param runtime the runtime whose npm reads the registry
+    /// @param version the harness version
+    /// @param appBoot the boot library version
+    /// @param policy  how much of the tree to hold
+    /// @return the name-to-version overrides
+    private static Map<String, String> heldDependencies(@Nullable DshNodeRuntime runtime, String version,
+                                                        String appBoot, DshDependencyPolicy policy) {
+        Map<String, String> held = new LinkedHashMap<>();
+        // No runtime means no npm, which means no registry to read the declarations from. Nothing is
+        // held, which is the same answer as `LATEST` and better than refusing to install.
+        if (policy == DshDependencyPolicy.LATEST || runtime == null) {
+            return held;
+        }
+        for (String asked : List.of(PACKAGE_NAME + "@" + version, APP_BOOT_PACKAGE + "@" + appBoot)) {
+            try {
+                JsonObject declared = declaredDependencies(
+                        runNpmView(runtime.npm(), asked, "dependencies").text());
+                if (declared == null) {
+                    continue;
+                }
+                for (Map.Entry<String, JsonElement> entry : declared.entrySet()) {
+                    String name = entry.getKey();
+                    // First answer wins: the harness's own declaration is the one that matters, and
+                    // the boot library is asked second only for what the harness did not name.
+                    if (!policy.pins(name) || held.containsKey(name)
+                            || !entry.getValue().isJsonPrimitive()) {
+                        continue;
+                    }
+                    String floor = floorOf(entry.getValue().getAsString());
+                    if (floor != null) {
+                        held.put(name, floor);
+                    }
+                }
+            } catch (DshException | RuntimeException e) {
+                LOG.warning("Could not read what " + asked + " declares; leaving its dependencies "
+                        + "to resolve freely", e);
+            }
+        }
+        return held;
+    }
+
+    /// Reads a `dependencies` object out of what npm answered.
+    ///
+    /// npm answers a question about a **version specifier** with an array — one entry per version it
+    /// matched — even when the specifier names exactly one, so `npm view pkg@1.2.3 dependencies
+    /// --json` gives `[{…}]` rather than `{…}`. Reading only the object shape therefore found
+    /// nothing, silently: the policy would have been offered, selected, saved, and applied to
+    /// nothing at all. Hence a method of its own with the real shape written down, and a test that
+    /// feeds it the real answer.
+    ///
+    /// A primitive is npm's answer for a package that declares no dependencies at all.
+    ///
+    /// @param json npm's answer
+    /// @return the dependencies, or `null` when there are none to read
+    static @Nullable JsonObject declaredDependencies(@Nullable String json) {
+        JsonElement parsed = parseJson(json);
+        if (parsed == null || parsed.isJsonNull()) {
+            return null;
+        }
+        if (parsed.isJsonObject()) {
+            return parsed.getAsJsonObject();
+        }
+        if (parsed.isJsonArray()) {
+            for (JsonElement element : parsed.getAsJsonArray()) {
+                if (element.isJsonObject()) {
+                    return element.getAsJsonObject();
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Reads the floor out of a declared version range.
+    ///
+    /// Only the shapes that have a floor are answered: `4.0.2`, `^4.0.2`, `~4.0.2` and `>=4.0.2`.
+    /// Anything else — `*`, `latest`, a tag, a git address, a compound range — is answered with
+    /// `null` and left alone, because a range whose floor this cannot name is one it must not guess
+    /// at.
+    ///
+    /// @param range the declared range
+    /// @return the version, or `null`
+    static @Nullable String floorOf(@Nullable String range) {
+        String text = range == null ? "" : range.trim();
+        for (String prefix : List.of("^", "~", ">=")) {
+            if (text.startsWith(prefix)) {
+                text = text.substring(prefix.length()).trim();
+                break;
+            }
+        }
+        return text.matches("\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?") ? text : null;
     }
 
     /// The directory an instance's copy is staged in while it is installed.
@@ -280,7 +400,8 @@ public final class DshVersionManager {
             throw new DshException("pnpm was not found on PATH; changing the boot library requires it");
         }
 
-        writeManifest(target, instance.version(), appBoot);
+        writeManifest(target, instance.version(), appBoot, runtime,
+                org.jackhuang.hmcl.setting.SettingsManager.settings().dependencyPolicy());
 
         List<String> command = buildInstallCommand(runtime, target);
 
@@ -439,7 +560,8 @@ public final class DshVersionManager {
         // Pinning the launcher to its exact version and holding the application
         // boot library to the same one keeps a tree consistent. The override is
         // the value the create page offers, and it defaults to the matching one.
-        writeManifest(staging, version, version);
+        writeManifest(staging, version, version, runtime,
+                org.jackhuang.hmcl.setting.SettingsManager.settings().dependencyPolicy());
 
         List<String> command = buildInstallCommand(runtime, staging);
 
