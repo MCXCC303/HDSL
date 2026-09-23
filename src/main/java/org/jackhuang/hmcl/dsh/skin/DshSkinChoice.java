@@ -36,11 +36,13 @@ import java.util.Locale;
 /// @param type         how the skin was chosen
 /// @param textureModel which body it is drawn on
 /// @param localSkinPath the file, for [#Type.LOCAL_FILE]
+/// @param localCapePath the cape's file, for [#Type.LOCAL_FILE]
 @NotNullByDefault
 public record DshSkinChoice(
         Type type,
         TextureModel textureModel,
-        @Nullable String localSkinPath) {
+        @Nullable String localSkinPath,
+        @Nullable String localCapePath) {
 
     /// How a skin was chosen.
     ///
@@ -75,9 +77,14 @@ public record DshSkinChoice(
     }
 
     /// Which body a skin is drawn on.
+    ///
+    /// The names are the original's own — `default` and `slim` — rather than `wide` and `slim`,
+    /// because they are not only stored names: they are the tail of the interface's i18n keys
+    /// (`account.skin.model.default` reads "Classic", `account.skin.model.slim` reads "Slim"), and a
+    /// different name here means a different label there.
     public enum TextureModel {
-        /// Four pixels wide, the older of the two.
-        WIDE("wide"),
+        /// Four pixels wide, the older of the two, and what the original calls the default.
+        WIDE("default"),
         /// Three pixels wide.
         SLIM("slim");
 
@@ -99,7 +106,7 @@ public record DshSkinChoice(
 
     /// The skin an account wears before anything is chosen.
     public static final DshSkinChoice DEFAULT =
-            new DshSkinChoice(Type.DEFAULT, TextureModel.WIDE, null);
+            new DshSkinChoice(Type.DEFAULT, TextureModel.WIDE, null, null);
 
     /// Returns the body, never `null`.
     ///

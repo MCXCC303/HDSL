@@ -322,7 +322,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         com.jfoenix.controls.JFXButton skin = FXUtils.newToggleButton4(SVG.CHECKROOM);
         FXUtils.installFastTooltip(skin, i18n("dsh.account.skin"));
-        skin.setOnAction(event -> Controllers.dialog(new SkinDialog(account)));
+        skin.setOnAction(event -> Controllers.dialog(new SkinDialog(account, this::refreshList)));
         buttons.add(skin);
 
         if (account.carriesAKey()) {
@@ -346,8 +346,12 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
     /// Draws an account's face: the skin's head when one has been chosen, its initial when not.
     ///
-    /// The skin belongs to the launcher rather than to the account, so two accounts wear the same
-    /// face — which is what the original does too, its row binding the same texture for every account.
+    /// The skin belongs to the **account**, so two accounts wear different faces — which is what the
+    /// original does too. Where this departs from it is an account that has chosen nothing: the
+    /// original draws the default picture that account's identity selects, and this draws the name's
+    /// first letter instead. That is deliberate — a list of faces nobody chose is harder to read
+    /// than a list of names — and the default picture is still what the chooser previews for such an
+    /// account, so the two do not disagree about what the account would look like.
     ///
     /// @param account  the account
     /// @param avatar   where to draw the head

@@ -382,7 +382,8 @@ public final class SettingsManager {
                 @Nullable String model,
                 @Nullable String skinType,
                 @Nullable String skinModel,
-                @Nullable String skinPath) {
+                @Nullable String skinPath,
+                @Nullable String skinCapePath) {
         }
 
         /// The language the interface speaks, by the name the locale helper uses.
@@ -522,7 +523,8 @@ public final class SettingsManager {
                             account.apiKey(), account.baseUrl(), account.label(), account.model(),
                             account.skinOrDefault().type().name(),
                             account.skinOrDefault().model().modelName,
-                            account.skinOrDefault().localSkinPath()))
+                            account.skinOrDefault().localSkinPath(),
+                            account.skinOrDefault().localCapePath()))
                     .toList();
             snapshot.language = settings.languageProperty().get() == null
                     ? null : settings.languageProperty().get().getName();
@@ -661,13 +663,18 @@ public final class SettingsManager {
                             account.vendorId(), account.apiKey(), account.baseUrl(),
                             account.label(), account.model(),
                             new org.jackhuang.hmcl.dsh.skin.DshSkinChoice(
-                                    org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type.valueOf(
-                                            account.skinType() == null
-                                                    ? org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type.DEFAULT.name()
-                                                    : account.skinType()),
+                                    // Read through the forgiving reader rather than the enum's own:
+                                    // a name this launcher does not know — a file written by a later
+                                    // version, or one edited by hand — must not stop the whole
+                                    // settings file from loading.
+                                    java.util.Objects.requireNonNullElse(
+                                            org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type
+                                                    .fromStorage(account.skinType()),
+                                            org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type.DEFAULT),
                                     org.jackhuang.hmcl.dsh.skin.DshSkinChoice.TextureModel
                                             .fromStorage(account.skinModel()),
-                                    account.skinPath())));
+                                    account.skinPath(),
+                                    account.skinCapePath())));
                 }
             }
             if (defaultLaunchArguments != null) {

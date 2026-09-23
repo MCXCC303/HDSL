@@ -29,6 +29,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -150,9 +151,10 @@ class DshSkinTest {
     @Test
     void theBundledSkinsArePresentAndReadable() throws Exception {
         // Read without the toolkit: the file has to be in the jar, and a missing one would only
-        // show up as a blank model in one dialog.
+        // show up as a blank model in one dialog. All nine are checked, on both bodies, because all
+        // eighteen are reachable — the account's own identity decides which one is drawn.
         for (org.jackhuang.hmcl.dsh.skin.DefaultSkin skin
-                : org.jackhuang.hmcl.dsh.skin.DefaultSkin.offered()) {
+                : org.jackhuang.hmcl.dsh.skin.DefaultSkin.values()) {
             for (boolean slim : new boolean[]{false, true}) {
                 String path = "/assets/img/skin/" + (slim ? "slim/" : "wide/")
                         + skin.name().toLowerCase(java.util.Locale.ROOT) + ".png";
@@ -162,6 +164,65 @@ class DshSkinTest {
                 }
             }
         }
+    }
+
+    @Test
+    void everyAccountHasItsOwnDefaultSkin() {
+        // The original's rule, and the reason "nothing chosen" is still a face: one of nine skins on
+        // one of two bodies, picked by the account's identity. Both halves are checked — that a
+        // picture always comes back, and that the two bodies are both reachable, since a rule that
+        // only ever returned the wide one would look right for most accounts.
+        java.util.Set<Object> seen = new java.util.HashSet<>();
+        boolean sawSlim = false;
+        boolean sawWide = false;
+
+        for (String key : java.util.List.of(
+                "official|MCXCC", "third-party|alpha", "third-party|beta", "offline|gamma",
+                "offline|delta", "official|", "x", "")) {
+            java.util.UUID uuid = org.jackhuang.hmcl.dsh.skin.DshSkin.uuidOf(key);
+            org.jackhuang.hmcl.dsh.skin.DefaultSkin.Chosen chosen =
+                    org.jackhuang.hmcl.dsh.skin.DefaultSkin.forUuid(uuid);
+
+            assertTrue(chosen.image() != null, "the account " + key + " must have a default skin");
+            assertEquals(64, (int) chosen.image().getWidth());
+            assertEquals(64, (int) chosen.image().getHeight());
+            assertSame(chosen.image(),
+                    org.jackhuang.hmcl.dsh.skin.DefaultSkin.forUuid(uuid).image(),
+                    "the same account must keep the same face");
+
+            sawSlim |= chosen.slim();
+            sawWide |= !chosen.slim();
+            seen.add(chosen.image());
+        }
+
+        assertTrue(sawSlim, "some accounts must be given the slim body");
+        assertTrue(sawWide, "some accounts must be given the wide body");
+        assertTrue(seen.size() > 1, "two accounts must not always look alike");
+    }
+
+    @Test
+    void theModelIsNeverHandedAPreNormalisedAtlas() throws Exception {
+        // `SkinCanvas.updateSkin` does nothing at all unless the picture reports no requested size,
+        // which is how the renderer tells a picture that was decoded from one that was assembled.
+        // A WritableImage — which is what normalising produces — always reports the size it was
+        // made with, so handing the model a normalised atlas draws nothing: the shape is left white
+        // and no error is raised anywhere. Both halves are pinned, because the bug is invisible.
+        javafx.scene.image.Image bundled =
+                org.jackhuang.hmcl.dsh.skin.DefaultSkin.STEVE.image(false);
+        assertTrue(bundled != null, "the bundled skins must be readable");
+        assertEquals(0, (int) bundled.getRequestedWidth(),
+                "a bundled skin must reach the model as it was read");
+
+        assertEquals(0, (int) DshSkin.defaultImage("offline|somebody").getRequestedWidth(),
+                "an account's default skin must reach the model as it was read");
+
+        Path file = Files.createTempFile("skin", ".png");
+        writePng(file, 64, 64, 0xFF445566);
+        javafx.scene.image.Image normalised = new NormalizedSkin(
+                new javafx.scene.image.Image(Files.newInputStream(file))).getNormalizedTexture();
+        assertFalse(normalised.getRequestedWidth() == 0,
+                "a normalised atlas reports a size, which is why the model must not be given one");
+        Files.deleteIfExists(file);
     }
 
     @Test

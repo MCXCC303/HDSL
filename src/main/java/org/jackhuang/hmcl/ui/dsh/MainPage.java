@@ -294,7 +294,8 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                     Controllers.dialog(i18n("dsh.launch.needs_account"),
                             i18n("dsh.account.list"), org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
                 } else {
-                    Controllers.dialog(new org.jackhuang.hmcl.ui.dsh.settings.SkinDialog(chosen));
+                    Controllers.dialog(new org.jackhuang.hmcl.ui.dsh.settings.SkinDialog(
+                            chosen, this::refreshAccountItem));
                 }
             }
             case "settings" -> Controllers.navigate(getSettingsPage());
