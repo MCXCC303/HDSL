@@ -222,8 +222,33 @@ public final class SettingsManager {
                 Files.createDirectories(parent);
             }
             JsonUtils.writeToJsonFile(SETTINGS_PATH, Snapshot.of(settings()));
+            restrictPermissions();
         } catch (IOException e) {
             LOG.warning("Failed to save launcher settings to " + SETTINGS_PATH, e);
+        }
+    }
+
+    /// Makes the settings file readable only by its owner.
+    ///
+    /// The file holds the accounts' API keys, and the harness keeps its own credentials in a file
+    /// with the same restriction for the same reason. A default `umask` writes it `0644`, which on a
+    /// machine with more than one person on it is a key given away — and the key is not a preference
+    /// that can be reset, it is a credential that bills somebody.
+    ///
+    /// A filesystem that cannot express the mode (Windows, some mounts) fails here and is ignored:
+    /// the key still works, and refusing to save settings over an unavailable permission bit would
+    /// be trading the whole file for a hardening step.
+    private static void restrictPermissions() {
+        try {
+            java.nio.file.attribute.PosixFileAttributeView view = Files.getFileAttributeView(
+                    SETTINGS_PATH, java.nio.file.attribute.PosixFileAttributeView.class);
+            if (view != null) {
+                view.setPermissions(java.util.EnumSet.of(
+                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+            }
+        } catch (IOException | UnsupportedOperationException e) {
+            LOG.info("Could not restrict the permissions of " + SETTINGS_PATH, e);
         }
     }
 
