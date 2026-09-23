@@ -212,6 +212,32 @@ public final class DshAccountOverlay {
         return Optional.of(overlay.write());
     }
 
+    /// Removes overlays a previous launch of an instance left behind.
+    ///
+    /// An overlay is removed when its process ends, which is every ending except one: a launcher
+    /// killed outright never runs the listener that does it. What is left names no secret and
+    /// nothing reads it again — a launch writes a file with a new name — so this is tidiness. It is
+    /// done anyway, because the file names the person's supplier and an account is not something to
+    /// keep lying about in a directory nobody looks at.
+    ///
+    /// @param instanceId the instance about to be launched
+    public static void removeStale(String instanceId) {
+        Path directory = directory();
+        if (!Files.isDirectory(directory)) {
+            return;
+        }
+        String prefix = "account-" + instanceId + "-";
+        try (java.util.stream.Stream<Path> files = Files.list(directory)) {
+            files.filter(file -> {
+                String name = file.getFileName().toString();
+                return name.startsWith(prefix) && name.endsWith(".yml");
+            }).forEach(DshAccountOverlay::remove);
+        } catch (IOException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.info(
+                    "Could not look through " + directory + " for old overlays", e);
+        }
+    }
+
     /// Removes an overlay.
     ///
     /// Failure is logged and ignored: the file is in the launcher's own directory and a few hundred
@@ -234,7 +260,7 @@ public final class DshAccountOverlay {
     /// Returns where overlays are written.
     ///
     /// @return the directory, which may not exist
-    private static Path directory() {
+    static Path directory() {
         return org.jackhuang.hmcl.Metadata.HMCL_USER_HOME.resolve(DIRECTORY);
     }
 

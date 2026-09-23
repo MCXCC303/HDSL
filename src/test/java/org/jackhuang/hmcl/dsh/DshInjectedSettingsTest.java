@@ -1,0 +1,246 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.dsh;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/// The two shapes a launch leaves in a home's own settings, and the note that puts them back.
+///
+/// What is being protected here is a file the launcher does not own. The harness writes it while it
+/// runs, the person edits it, and every line that is not one of the launcher's own has to come out
+/// of an edit exactly as it went in — which is why the edits are tested on their own, not only
+/// through a launch.
+class DshInjectedSettingsTest {
+    @TempDir
+    private Path home;
+
+    /// A settings file with a person's own answers in it, and nothing of the launcher's.
+    private static final String THEIRS = """
+            ui-onboarding:
+              welcomeNoticeVersion: 2026-08-13.1
+            agent-default-model:
+              provider: deepseek
+              model: deepseek-v4-pro
+            llm-pi-ai:
+              providers:
+                deepseek:
+                  models:
+                    - id: deepseek-v4-pro
+            """;
+
+    /// What the harness leaves behind after a launch built the route `MCXCC` and the person used it:
+    /// a default model naming that route, and a route block listing models with nothing else.
+    private static final String AFTER_A_LAUNCH = """
+            ui-onboarding:
+              welcomeNoticeVersion: 2026-08-13.1
+            agent-default-model:
+              provider: MCXCC
+              model: deepseek-flash
+            llm-pi-ai:
+              providers:
+                deepseek:
+                  models:
+                    - id: deepseek-v4-pro
+                MCXCC:
+                  models:
+                    - id: deepseek-flash
+                      name: DeepSeek-V4.1-Flash
+                      contextWindow: 1048576
+            """;
+
+    private DshInstance instance() {
+        return new DshInstance("test", "0.1.6-alpha.2", "web", home.toString(), "system",
+                DshHomeMode.CUSTOM, home.toString(), List.of(), Map.of(), null, null, null, 0, 0L);
+    }
+
+    private Path settings() {
+        return home.resolve("settings.yaml");
+    }
+
+    private String read() throws IOException {
+        return Files.readString(settings());
+    }
+
+    private void write(String text) throws IOException {
+        Files.writeString(settings(), text);
+    }
+
+    private Path note() {
+        return home.resolve(".hdsl-injected.json");
+    }
+
+    // ---- The line surgery, on its own -----------------------------------------------------------
+
+    @Test
+    void aSectionIsFoundAndCanBeTakenAway() {
+        assertEquals("agent-default-model:\n  provider: deepseek\n  model: deepseek-v4-pro\n",
+                DshInjectedSettings.sectionBlock(THEIRS, "agent-default-model"));
+
+        String without = DshInjectedSettings.withSectionBlock(THEIRS, "agent-default-model", null);
+        assertFalse(without.contains("agent-default-model"));
+        // Everything else is still there, and so is the order it was in.
+        assertTrue(without.contains("welcomeNoticeVersion: 2026-08-13.1"));
+        assertTrue(without.contains("deepseek-v4-pro"));
+        assertTrue(without.indexOf("ui-onboarding") < without.indexOf("llm-pi-ai"));
+    }
+
+    @Test
+    void aSectionNamedLikeAnotherIsNotIt() {
+        // `agent-default-modelish` is a different key, and the writer and the reader must agree.
+        assertNull(DshInjectedSettings.sectionBlock("agent-default-modelish:\n  provider: x\n",
+                "agent-default-model"));
+    }
+
+    @Test
+    void aRouteIsFoundAndCanBeTakenAwayWithoutItsNeighbours() {
+        String route = DshInjectedSettings.routeBlock(AFTER_A_LAUNCH, "llm-pi-ai", "providers", "MCXCC");
+        assertNotNull(route);
+        assertTrue(route.startsWith("    MCXCC:"));
+        assertTrue(route.contains("contextWindow: 1048576"));
+
+        String without = DshInjectedSettings.withRouteBlock(AFTER_A_LAUNCH, "llm-pi-ai", "providers",
+                "MCXCC", null);
+        // The route is gone from the supplier list — the default model below still names it, which is
+        // the other half of the cleanup and not this function's to do.
+        assertNull(DshInjectedSettings.routeBlock(without, "llm-pi-ai", "providers", "MCXCC"));
+        assertFalse(without.contains("DeepSeek-V4.1-Flash"), without);
+        // The other route under the same key is untouched, nesting and all.
+        assertTrue(without.contains("    deepseek:\n      models:\n        - id: deepseek-v4-pro\n"));
+        assertTrue(without.contains("ui-onboarding:"));
+    }
+
+    @Test
+    void aRouteThatIsNotThereChangesNothing() {
+        assertEquals(THEIRS, DshInjectedSettings.withRouteBlock(THEIRS, "llm-pi-ai", "providers",
+                "MCXCC", null));
+    }
+
+    @Test
+    void aScalarIsReadThroughQuotesAndComments() {
+        String block = "  provider: \"MCXCC\"  # the one I picked\n  model: deepseek-flash\n";
+        assertEquals("MCXCC", DshInjectedSettings.scalarOf(block, "provider"));
+        assertEquals("deepseek-flash", DshInjectedSettings.scalarOf(block, "model"));
+        assertNull(DshInjectedSettings.scalarOf(block, "absent"));
+    }
+
+    // ---- A launch, and the note it leaves --------------------------------------------------------
+
+    @Test
+    void aLaunchPutsBackTheRouteTheHarnessAdoptedAndTheModelItNamed() throws Exception {
+        write(THEIRS);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        assertTrue(Files.isRegularFile(note()));
+
+        // The launch runs; the harness adopts the route and starts on it.
+        write(AFTER_A_LAUNCH);
+
+        assertTrue(DshInjectedSettings.settle(instance()));
+        // The route the launcher caused is gone, the person's own is not, and their default model is
+        // back — a route the launcher no longer builds must not be the one a later launch starts on.
+        assertEquals(THEIRS, read());
+        assertFalse(Files.exists(note()));
+    }
+
+    @Test
+    void aDefaultModelThePersonMovedIsLeftAlone() throws Exception {
+        write(THEIRS);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+
+        // While the harness was up the person pointed it at something of their own.
+        write(AFTER_A_LAUNCH.replace("provider: MCXCC", "provider: deepseek"));
+        DshInjectedSettings.settle(instance());
+
+        String after = read();
+        assertTrue(after.contains("provider: deepseek"), after);
+        // The adopted route still goes: it appeared under this launcher's watch and it is not usable
+        // without the patch that made it.
+        assertFalse(after.contains("MCXCC"), after);
+    }
+
+    @Test
+    void aNoteLeftByAKilledLaunchIsHonouredByTheNextOneWhateverItIs() throws Exception {
+        write(THEIRS);
+        // A launch with a key, killed before it could tidy up: the note stays, the settings keep
+        // what the harness wrote.
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        write(AFTER_A_LAUNCH);
+
+        // The next launch has no account at all — which is the whole point: it still cleans up, so a
+        // launch that wanted no supplier does not start on the last one's.
+        assertTrue(DshInjectedSettings.settle(instance()));
+        assertEquals(THEIRS, read());
+
+        // And settling twice is settling once.
+        assertFalse(DshInjectedSettings.settle(instance()));
+        assertEquals(THEIRS, read());
+    }
+
+    @Test
+    void aLaunchThatLeftNoNoteChangesNothing() throws Exception {
+        write(THEIRS);
+        assertFalse(DshInjectedSettings.settle(instance()));
+        assertEquals(THEIRS, read());
+    }
+
+    @Test
+    void aHomeWithNoSettingsIsNoTrouble() throws Exception {
+        // Nothing to capture and nothing to put back, but a note either way — a launch notes what it
+        // disturbs, and a home with no file is one where it disturbs nothing.
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        assertTrue(Files.isRegularFile(note()));
+        assertFalse(DshInjectedSettings.settle(instance()));
+        assertFalse(Files.exists(note()));
+    }
+
+    @Test
+    void aRouteThatWasAlreadyThereIsLeftAsTheHarnessHasIt() throws Exception {
+        // A route of the same name already existed before this launch, so whatever is in it now is
+        // not this launcher's to remove: an edit made since would be lost.
+        write(AFTER_A_LAUNCH);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        write(AFTER_A_LAUNCH.replace("DeepSeek-V4.1-Flash", "renamed by the person"));
+
+        DshInjectedSettings.settle(instance());
+        assertTrue(read().contains("renamed by the person"), read());
+    }
+
+    @Test
+    void theNoteNamesTheLaunchItBelongsTo() throws Exception {
+        write(THEIRS);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        String json = Files.readString(note());
+        assertTrue(json.contains("\"route\": \"MCXCC\""), json);
+        assertTrue(json.contains("\"account\": \"deepseek|MCXCC\""), json);
+        // It carries no key of its own: the note is about configuration, and a key on disk is what
+        // the environment variable exists to avoid.
+        assertFalse(json.contains("sk-"));
+    }
+}

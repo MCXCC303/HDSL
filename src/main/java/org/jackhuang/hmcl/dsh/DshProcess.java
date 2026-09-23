@@ -234,6 +234,14 @@ public final class DshProcess {
             // good: a few hundred bytes in the launcher's directory that nothing will ever look at
             // again. Removing it is the same cleanup the listener would have done.
             DshAccountOverlay.remove(plan.accountOverlay());
+            // The note the launch wrote goes with it, and putting back what the launch disturbed is
+            // part of the same cleanup.
+            try {
+                DshInjectedSettings.settle(plan.instance());
+            } catch (DshException settleFailure) {
+                LOG.info("Could not put back what the failed launch of " + plan.instance().id()
+                        + " left in its settings", settleFailure);
+            }
             throw e;
         }
     }

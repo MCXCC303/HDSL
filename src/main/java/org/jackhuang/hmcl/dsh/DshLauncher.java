@@ -293,6 +293,25 @@ public final class DshLauncher {
         // same one on every launch of this instance.
         int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
 
+        // Anything a launch that was killed before it could tidy up left behind, put back first. The
+        // overlay is a file of this launcher's and the note beside it is what says the last launch
+        // never got to its own cleanup, so both are dealt with here — **before** this launch decides
+        // what to inject, and whatever kind of launch this is: one with no account tidies up after
+        // one that had a key, which is what keeps a supplier out of a launch that wants none.
+        try {
+            DshInjectedSettings.settle(instance);
+        } catch (DshException e) {
+            LOG.warning("Could not put back what the last launch of " + instance.id()
+                    + " left in its settings", e);
+        }
+        DshAccountOverlay.removeStale(instance.id());
+
+        // What this launch is about to disturb, noted before it does. Written here, beside the
+        // overlay, because both live exactly as long as the launch does.
+        if (account != null && account.carriesAKey()) {
+            DshInjectedSettings.capture(instance, account.displayName(), account.key());
+        }
+
         // The account, as an overlay the harness applies over its composed tree. Written here and
         // removed when the instance stops, so nothing of the user's own configuration is changed.
         // A caller that described it already — so it could say so while the supplier is asked — gets

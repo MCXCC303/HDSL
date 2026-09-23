@@ -150,6 +150,16 @@ public final class DshProcessManager {
                     // instance that was started with a key is an instance with no trace of it once
                     // it has stopped.
                     DshAccountOverlay.remove(process.plan().accountOverlay());
+                    // And whatever this launch put into the home's own settings goes back to what it
+                    // was, so the next launch — of any kind, with an account or with none — starts
+                    // on the person's own configuration rather than on this launch's leftovers.
+                    try {
+                        DshInjectedSettings.settle(process.plan().instance());
+                    } catch (DshException e) {
+                        org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                                "Could not put back what the launch of " + process.plan().instance().id()
+                                        + " left in its settings", e);
+                    }
                     // An instance that dies **after** it was up is the case a message box is least
                     // able to help with and the crash dialog most: it was working a moment ago, so
                     // the question is what it said on the way out, and the answer is in the output

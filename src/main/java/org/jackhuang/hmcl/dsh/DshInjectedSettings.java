@@ -1,0 +1,501 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.dsh;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
+/// What a launch put into a home's own `settings.yaml`, and what was there before it.
+///
+/// The account overlay is a **patch**, and a patch is the lower layer: it says what the harness is
+/// offered, not what it uses. The harness keeps its own answers in `settings.yaml` — the default
+/// model it was told to use, and the model list it adopted for a route it had never heard of — and
+/// those answers outlive the process. So a launch with a key leaves two things behind in a file that
+/// is not the launcher's:
+///
+/// - `agent-default-model.provider` naming the route the launcher built, which the launcher wrote
+///   itself for a supplier of the person's own;
+/// - `llm-pi-ai.providers.<route>`, which the harness writes when the person edits that supplier,
+///   and which is a **half** route once the patch is gone — models with no address and no key.
+///
+/// Left alone, the next launch with no account starts on that half route instead of on the harness's
+/// own supplier and its own question for a key. Which is why a launch **stashes** what it is about
+/// to disturb, and why both the end of that launch and the beginning of the next one put it back.
+///
+/// **Putting back means restoring, not deleting.** Whatever was there before the launch is what
+/// returns; content that was not there and is now is taken away. A value the person changed while
+/// the harness was up is theirs and is left exactly as they left it — only the two shapes above are
+/// touched at all, and the default model only while it still names the route this launch built.
+@NotNullByDefault
+public final class DshInjectedSettings {
+    private DshInjectedSettings() {
+    }
+
+    /// The harness's own settings, in the home it is given.
+    private static final String FILE = "settings.yaml";
+
+    /// The section holding the model the harness starts on.
+    private static final String DEFAULT_MODEL = "agent-default-model";
+
+    /// The note recording what a launch disturbed, written beside the settings it is about.
+    private static final String NOTE = ".hdsl-injected.json";
+
+    /// The section the harness keeps suppliers in, and the key under it.
+    private static final String PROVIDERS = "llm-pi-ai";
+    private static final String PROVIDERS_KEY = "providers";
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    /// What was in a home's settings before a launch, kept until that launch is over.
+    ///
+    /// @param instance     the instance the launch was for
+    /// @param route        the supplier route the launch built
+    /// @param account      the account's key, or `null`
+    /// @param defaultModel the `agent-default-model` block as it was, or `null` when there was none
+    /// @param provider     the route's block under `providers` as it was, or `null` when there was none
+    /// @param writtenAt    when the launch started, for a person reading the file
+    public record Stash(String instance, String route, @Nullable String account,
+                        @Nullable String defaultModel, @Nullable String provider,
+                        String writtenAt) {
+    }
+
+    /// Records what a launch is about to disturb, before it disturbs it.
+    ///
+    /// @param instance the instance being launched
+    /// @param route    the supplier route this launch builds
+    /// @param account  the account's key, or `null`
+    /// @throws DshException when the note cannot be written
+    public static void capture(DshInstance instance, String route, @Nullable String account)
+            throws DshException {
+        Path settings = settingsOf(instance);
+        String text = read(settings);
+        Stash stash = new Stash(instance.id(), route, account,
+                sectionBlock(text, DEFAULT_MODEL),
+                routeBlock(text, PROVIDERS, PROVIDERS_KEY, route),
+                Instant.now().toString());
+        write(noteOf(instance), GSON.toJson(stash));
+    }
+
+    /// Puts back what a launch disturbed, and forgets it did.
+    ///
+    /// Called before a launch — a note left behind is a launch that was killed before it could tidy
+    /// up — and again when one ends. Both callers do the same thing, so an instance that was killed
+    /// outright is cleaned by the next launch of any kind, **including one with no account at all**.
+    ///
+    /// Doing nothing is the normal answer: most launches leave no note because most launches have
+    /// nothing to put back.
+    ///
+    /// @param instance the instance about to be, or no longer being, launched
+    /// @return whether the settings were changed
+    /// @throws DshException when the settings cannot be read or written
+    public static boolean settle(DshInstance instance) throws DshException {
+        Path note = noteOf(instance);
+        if (!Files.isRegularFile(note)) {
+            return false;
+        }
+        Stash stash = readStash(note);
+        if (stash == null) {
+            // A note that cannot be read is a note that cannot be honoured. Leaving it would fail
+            // the launch it is checked by for ever, so it goes.
+            delete(note);
+            return false;
+        }
+
+        Path settings = settingsOf(instance);
+        String text = read(settings);
+        if (text.isEmpty()) {
+            delete(note);
+            return false;
+        }
+        String updated = text;
+
+        // The route was not there before the launch and is there now: it appeared under this
+        // launcher's watch, so it goes. A route that **was** there is left exactly as it is — the
+        // launcher never wrote that block, so what is in it is the harness's or the person's, and
+        // putting an old copy back could only lose an edit made since.
+        if (stash.provider() == null) {
+            updated = withRouteBlock(updated, PROVIDERS, PROVIDERS_KEY, stash.route(), null);
+        }
+
+        // The default model is the launcher's own writing, and only while it still names the route
+        // this launcher built: one the person has since pointed somewhere else is their answer.
+        String current = sectionBlock(updated, DEFAULT_MODEL);
+        if (current != null && Objects.equals(scalarOf(current, "provider"), stash.route())) {
+            updated = withSectionBlock(updated, DEFAULT_MODEL, stash.defaultModel());
+        }
+
+        if (!updated.equals(text)) {
+            write(settings, updated);
+        }
+        delete(note);
+        return !updated.equals(text);
+    }
+
+    /// Returns where a home's note lives: beside the file it describes.
+    ///
+    /// Not in the launcher's own directory, because what a note is about is **this home's** settings
+    /// — a home that is moved, copied or deleted takes its settings and its note together, and a
+    /// home that never had anything injected never grows one.
+    ///
+    /// @param instance the instance
+    /// @return the file, which may not exist
+    private static Path noteOf(DshInstance instance) throws DshException {
+        return settingsOf(instance).resolveSibling(NOTE);
+    }
+
+    private static Path settingsOf(DshInstance instance) throws DshException {
+        return instance.homeDirectory().resolve(FILE);
+    }
+
+    private static @Nullable Stash readStash(Path note) {
+        try {
+            JsonObject json = JsonParser.parseString(Files.readString(note, StandardCharsets.UTF_8))
+                    .getAsJsonObject();
+            return new Stash(string(json, "instance"), string(json, "route"), nullableString(json, "account"),
+                    nullableString(json, "defaultModel"), nullableString(json, "provider"),
+                    string(json, "writtenAt"));
+        } catch (IOException | RuntimeException e) {
+            LOG.warning("Could not read " + note, e);
+            return null;
+        }
+    }
+
+    private static String string(JsonObject json, String key) {
+        return json.has(key) && !json.get(key).isJsonNull() ? json.get(key).getAsString() : "";
+    }
+
+    private static @Nullable String nullableString(JsonObject json, String key) {
+        return json.has(key) && !json.get(key).isJsonNull() ? json.get(key).getAsString() : null;
+    }
+
+    private static String read(Path file) throws DshException {
+        if (!Files.isRegularFile(file)) {
+            return "";
+        }
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new DshException("Could not read " + file, e);
+        }
+    }
+
+    /// Writes a file the harness may be reading, the way the harness writes it: beside the file and
+    /// then into place, so an interrupted write cannot leave the settings truncated.
+    ///
+    /// @param file the file to write
+    /// @param text what to put in it
+    /// @throws DshException when it cannot be written
+    private static void write(Path file, String text) throws DshException {
+        try {
+            Files.createDirectories(file.getParent());
+            Path staging = file.resolveSibling(file.getFileName() + ".hdsl-injecting");
+            Files.writeString(staging, text, StandardCharsets.UTF_8);
+            try {
+                Files.move(staging, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+                Files.move(staging, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            throw new DshException("Could not write " + file, e);
+        }
+    }
+
+    private static void delete(Path file) {
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            LOG.info("Could not remove " + file, e);
+        }
+    }
+
+    // ---- The file, edited a line at a time ------------------------------------------------------
+    //
+    // The harness reads this file and writes it itself while it runs, so it is never re-emitted from
+    // a parse: every edit is a splice of whole lines, and everything not named here — comments,
+    // order, formatting — survives untouched.
+
+    /// Returns a top-level section's lines, or `null` when the file has none.
+    ///
+    /// @param text the file
+    /// @param name the key, without its colon
+    /// @return the block, ending in a newline
+    static @Nullable String sectionBlock(String text, String name) {
+        List<String> lines = lines(text);
+        for (int i = 0; i < lines.size(); i++) {
+            if (indentOf(lines.get(i)) == 0 && isKey(lines.get(i), name)) {
+                return join(lines, i, endOfBlock(lines, i));
+            }
+        }
+        return null;
+    }
+
+    /// Replaces a top-level section with the given lines, or takes it away.
+    ///
+    /// @param text  the file
+    /// @param name  the key, without its colon
+    /// @param block the lines to put in its place, or `null` to remove the section
+    /// @return the file
+    static String withSectionBlock(String text, String name, @Nullable String block) {
+        List<String> lines = lines(text);
+        for (int i = 0; i < lines.size(); i++) {
+            if (indentOf(lines.get(i)) == 0 && isKey(lines.get(i), name)) {
+                return splice(lines, i, endOfBlock(lines, i), block);
+            }
+        }
+        if (block == null) {
+            return text;
+        }
+        // Not there: a section that belongs at the end, after whatever the file already has.
+        String base = text.isEmpty() || text.endsWith("\n") ? text : text + "\n";
+        return base + block;
+    }
+
+    /// Returns a route's block under a nested key, or `null` when the file has none.
+    ///
+    /// @param text  the file
+    /// @param owner the top-level key holding the suppliers
+    /// @param key   the key under it holding the routes
+    /// @param route the route's name
+    /// @return the block, ending in a newline
+    static @Nullable String routeBlock(String text, String owner, String key, String route) {
+        List<String> lines = lines(text);
+        int ownerAt = keyAt(lines, 0, lines.size(), 0, owner);
+        if (ownerAt < 0) {
+            return null;
+        }
+        int ownerEnd = endOfBlock(lines, ownerAt);
+        int keyAt = nestedKeyAt(lines, ownerAt + 1, ownerEnd, indentOf(lines.get(ownerAt)), key);
+        if (keyAt < 0) {
+            return null;
+        }
+        int keyEnd = endOfBlock(lines, keyAt);
+        int routeAt = nestedKeyAt(lines, keyAt + 1, keyEnd, indentOf(lines.get(keyAt)), route);
+        return routeAt < 0 ? null : join(lines, routeAt, endOfBlock(lines, routeAt));
+    }
+
+    /// Replaces a route's block with the given lines, or takes it away.
+    ///
+    /// @param text  the file
+    /// @param owner the top-level key holding the suppliers
+    /// @param key   the key under it holding the routes
+    /// @param route the route's name
+    /// @param block the lines to put in its place, or `null` to remove the route
+    /// @return the file
+    static String withRouteBlock(String text, String owner, String key, String route,
+                                 @Nullable String block) {
+        List<String> lines = lines(text);
+        int ownerAt = keyAt(lines, 0, lines.size(), 0, owner);
+        if (ownerAt < 0) {
+            return text;
+        }
+        int ownerEnd = endOfBlock(lines, ownerAt);
+        int keyAt = nestedKeyAt(lines, ownerAt + 1, ownerEnd, indentOf(lines.get(ownerAt)), key);
+        if (keyAt < 0) {
+            return text;
+        }
+        int keyEnd = endOfBlock(lines, keyAt);
+        int routeAt = nestedKeyAt(lines, keyAt + 1, keyEnd, indentOf(lines.get(keyAt)), route);
+        return routeAt < 0 ? text : splice(lines, routeAt, endOfBlock(lines, routeAt), block);
+    }
+
+    /// Returns the value of a `key: value` line inside a block, or `null`.
+    ///
+    /// @param block the block's lines
+    /// @param name  the key
+    /// @return the value, unquoted
+    static @Nullable String scalarOf(String block, String name) {
+        for (String line : lines(block)) {
+            if (isKey(line.trim(), name)) {
+                String value = line.trim().substring(name.length() + 1).trim();
+                int comment = commentAt(value);
+                if (comment >= 0) {
+                    value = value.substring(0, comment).trim();
+                }
+                if (value.length() >= 2 && (value.charAt(0) == '"' || value.charAt(0) == '\'')
+                        && value.charAt(value.length() - 1) == value.charAt(0)) {
+                    value = value.substring(1, value.length() - 1);
+                }
+                return value.isEmpty() ? null : value;
+            }
+        }
+        return null;
+    }
+
+    /// Finds a key's line inside a range, at exactly the indentation given.
+    ///
+    /// @param lines  the file's lines
+    /// @param from   the first line to look at
+    /// @param to     the line to stop before
+    /// @param indent the indentation wanted
+    /// @param name   the key, without its colon
+    /// @return the line's index, or `-1`
+    private static int keyAt(List<String> lines, int from, int to, int indent, String name) {
+        for (int i = from; i < to && i < lines.size(); i++) {
+            if (!lines.get(i).isBlank() && indentOf(lines.get(i)) == indent
+                    && isKey(lines.get(i).trim(), name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /// Finds a key's line inside a range, at any indentation deeper than its parent's.
+    ///
+    /// The indentation is not known in advance — a `providers:` may be written at two spaces or at
+    /// four — so what is looked for is a key deeper than the block that should hold it, which is
+    /// what nesting means in this file.
+    ///
+    /// @param lines        the file's lines
+    /// @param from         the first line to look at
+    /// @param to           the line to stop before
+    /// @param parentIndent the indentation of the block that should hold the key
+    /// @param name         the key, without its colon
+    /// @return the line's index, or `-1`
+    private static int nestedKeyAt(List<String> lines, int from, int to, int parentIndent, String name) {
+        for (int i = from; i < to && i < lines.size(); i++) {
+            if (!lines.get(i).isBlank() && indentOf(lines.get(i)) > parentIndent
+                    && isKey(lines.get(i).trim(), name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /// Reports whether a trimmed line opens the given key.
+    ///
+    /// `providers:` opens `providers`; `providers-x:` does not.
+    ///
+    /// @param trimmed the line, without its indentation
+    /// @param name    the key
+    /// @return whether it opens that key
+    private static boolean isKey(String trimmed, String name) {
+        if (!trimmed.startsWith(name + ":")) {
+            return false;
+        }
+        return trimmed.length() == name.length() + 1
+                || Character.isWhitespace(trimmed.charAt(name.length() + 1));
+    }
+
+    /// Returns where a comment starts in a value, or `-1`.
+    ///
+    /// @param value the text after a colon
+    /// @return the index of the `#`, or `-1`
+    private static int commentAt(String value) {
+        char quote = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (quote != 0) {
+                if (c == quote) {
+                    quote = 0;
+                }
+                continue;
+            }
+            if (c == '"' || c == '\'') {
+                quote = c;
+            } else if (c == '#' && (i == 0 || Character.isWhitespace(value.charAt(i - 1)))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /// Returns where a block ends: the first following line that is not blank and not indented
+    /// further than the block's own opening line.
+    ///
+    /// @param lines the file's lines
+    /// @param start the opening line
+    /// @return the first line after the block
+    private static int endOfBlock(List<String> lines, int start) {
+        int indent = indentOf(lines.get(start));
+        int i = start + 1;
+        for (; i < lines.size(); i++) {
+            String line = lines.get(i);
+            if (line.isBlank()) {
+                continue;
+            }
+            if (indentOf(line) <= indent) {
+                break;
+            }
+        }
+        return i;
+    }
+
+    private static int indentOf(String line) {
+        int i = 0;
+        while (i < line.length() && Character.isWhitespace(line.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
+    private static List<String> lines(String text) {
+        return new ArrayList<>(List.of(text.split("\n", -1)));
+    }
+
+    private static String join(List<String> lines, int from, int to) {
+        StringBuilder block = new StringBuilder();
+        for (int i = from; i < to && i < lines.size(); i++) {
+            block.append(lines.get(i)).append('\n');
+        }
+        return block.toString();
+    }
+
+    /// Replaces the lines in `[from, to)` with the given block's lines.
+    ///
+    /// @param lines the file's lines
+    /// @param from  the first line to replace
+    /// @param to    the line to stop before
+    /// @param block the replacement, or `null` to remove the range
+    /// @return the file
+    private static String splice(List<String> lines, int from, int to, @Nullable String block) {
+        List<String> result = new ArrayList<>(lines.subList(0, from));
+        if (block != null) {
+            result.addAll(lines(block));
+            // A block always ends in a newline, which the split turns into a trailing empty line.
+            if (!result.isEmpty() && result.get(result.size() - 1).isEmpty()) {
+                result.remove(result.size() - 1);
+            }
+        }
+        result.addAll(lines.subList(Math.min(to, lines.size()), lines.size()));
+        // A file that ended in a newline still does. Removing a block that ran to the end of the file
+        // takes the last, empty line with it, and a settings file that stops mid-line is not one the
+        // harness should have to read.
+        if (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()
+                && (result.isEmpty() || !result.get(result.size() - 1).isEmpty())) {
+            result.add("");
+        }
+        return String.join("\n", result);
+    }
+
+}
