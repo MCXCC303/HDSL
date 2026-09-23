@@ -335,6 +335,19 @@ public final class SettingsManager {
         @SerializedName("defaultLaunchArguments")
         private @Nullable String defaultLaunchArguments;
 
+        @SerializedName("accounts")
+        private @Nullable java.util.List<AccountSnapshot> accounts;
+
+        /// One account as it is stored.
+        ///
+        /// @param vendorId the vendor's id
+        /// @param apiKey   the key
+        /// @param baseUrl  the endpoint, for a vendor whose address is per account
+        /// @param label    what the person calls it
+        private record AccountSnapshot(String vendorId, String apiKey,
+                                       @Nullable String baseUrl, @Nullable String label) {
+        }
+
         /// The language the interface speaks, by the name the locale helper uses.
         ///
         /// The name rather than the locale: the helper resolves a name back to the
@@ -466,6 +479,10 @@ public final class SettingsManager {
             snapshot.logFontSize = settings.logFontSizeProperty().get();
             snapshot.fontAntiAliasing = settings.fontAntiAliasing().id();
             snapshot.defaultLaunchArguments = settings.defaultLaunchArgumentsProperty().get();
+            snapshot.accounts = settings.getAccounts().stream()
+                    .map(account -> new AccountSnapshot(account.vendorId(), account.apiKey(),
+                            account.baseUrl(), account.label()))
+                    .toList();
             snapshot.language = settings.languageProperty().get() == null
                     ? null : settings.languageProperty().get().getName();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
@@ -590,6 +607,12 @@ public final class SettingsManager {
             if (fontAntiAliasing != null) {
                 settings.fontAntiAliasingProperty().set(
                         org.jackhuang.hmcl.setting.FontAntiAliasing.of(fontAntiAliasing));
+            }
+            if (accounts != null) {
+                for (AccountSnapshot account : accounts) {
+                    settings.getAccounts().add(new org.jackhuang.hmcl.dsh.DshAccount(
+                            account.vendorId(), account.apiKey(), account.baseUrl(), account.label()));
+                }
             }
             if (defaultLaunchArguments != null) {
                 settings.defaultLaunchArgumentsProperty().set(defaultLaunchArguments);

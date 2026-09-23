@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Files;
@@ -63,7 +64,10 @@ public final class DshLauncher {
             Path workingDirectory,
             @Unmodifiable Map<String, String> environment,
             Path homeDirectory,
-            int port) {
+            int port,
+            /// The account overlay this launch wrote, or `null` when there was none. Removed when
+            /// the instance stops: it belongs to one launch, not to the instance.
+            @Nullable Path accountOverlay) {
 
         /// Returns the port the browser surface binds.
         ///
@@ -211,6 +215,18 @@ public final class DshLauncher {
     /// @throws DshException when the pinned version or runtime is missing, the
     ///                       entry script is absent, or the workspace cannot be created
     public static LaunchPlan plan(DshInstance instance) throws DshException {
+        return plan(instance, null);
+    }
+
+    /// Builds the launch plan for an instance, with an account if one was chosen.
+    ///
+    /// @param instance the instance to launch
+    /// @param account  the account to hand the harness, or `null` for none
+    /// @return the launch plan
+    /// @throws DshException when the pinned version or runtime is missing, the
+    ///                       entry script is absent, or the workspace cannot be created
+    public static LaunchPlan plan(DshInstance instance, @Nullable DshAccount account)
+            throws DshException {
         DshNodeRuntime runtime = resolveRuntime(instance);
         // The instance runs its own copy, so there is nothing to look up: either
         // its copy is there or the instance is not ready to run.
@@ -242,6 +258,10 @@ public final class DshLauncher {
         // same one on every launch of this instance.
         int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
 
+        // The account, as an overlay the harness applies over its composed tree. Written here and
+        // removed when the instance stops, so nothing of the user's own configuration is changed.
+        java.util.Optional<Path> accountOverlay = DshAccountOverlay.write(instance, account);
+
         // What the instance runs with, as the user typed it. Its launcher flags go before the
         // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported.
         DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
@@ -250,6 +270,12 @@ public final class DshLauncher {
         command.add(runtime.node().toString());
         command.add(script.toString());
         command.addAll(typed.launcherArguments());
+        // The overlay comes after the user's own launcher flags, so a `--patch` of theirs still
+        // applies first and their line keeps its meaning.
+        accountOverlay.ifPresent(patch -> {
+            command.add("--patch");
+            command.add(patch.toString());
+        });
         // The profile is stated after the user's launcher flags, so one they named wins; when they
         // named none this is the instance's own.
         command.add("--profile");
@@ -275,11 +301,16 @@ public final class DshLauncher {
 
         Map<String, String> environment = new LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());
+        // The key travels here and nowhere else: an inherited variable is the highest-precedence
+        // source the harness reads, and it is gone when the process is.
+        if (account != null && account.apiKey() != null && !account.apiKey().isBlank()) {
+            environment.put(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, account.apiKey().trim());
+        }
         environment.putAll(runtime.pathEnvironment());
         environment.putAll(DshEnvironment.of(instance));
 
         LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,
-                Map.copyOf(environment), home, port);
+                Map.copyOf(environment), home, port, accountOverlay.orElse(null));
     }
 }

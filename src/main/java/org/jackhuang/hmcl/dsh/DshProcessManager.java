@@ -91,6 +91,17 @@ public final class DshProcessManager {
     /// @throws DshException when the instance is still stopping, the runtime is
     ///                       missing, or the process cannot start
     public static DshProcess launch(DshInstance instance) throws DshException {
+        return launch(instance, null);
+    }
+
+    /// Launches an instance with an account.
+    ///
+    /// @param instance the instance
+    /// @param account  the account to hand the harness, or `null` for none
+    /// @return the process
+    /// @throws DshException when it cannot be started
+    public static DshProcess launch(DshInstance instance, @Nullable DshAccount account)
+            throws DshException {
         synchronized (LAUNCH_LOCK) {
             DshProcess existing = RUNNING.get(instance.id());
             if (existing != null) {
@@ -111,11 +122,15 @@ public final class DshProcessManager {
 
             // The runtime is resolved inside the launcher, so an instance pinned
             // to a managed Node runtime is honoured here too.
-            DshProcess process = DshProcess.start(instance);
+            DshProcess process = DshProcess.start(instance, account);
             RUNNING.put(instance.id(), process);
             process.setStateListener(state -> {
                 if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
                     RUNNING.remove(instance.id(), process);
+                    // The account overlay belonged to this launch. Removing it here means an
+                    // instance that was started with a key is an instance with no trace of it once
+                    // it has stopped.
+                    DshAccountOverlay.remove(process.plan().accountOverlay());
                 }
             });
             return process;

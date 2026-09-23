@@ -440,6 +440,22 @@ public final class LauncherSettings {
         return value == null ? "" : value;
     }
 
+    /// The accounts this machine has been given.
+    ///
+    /// A DeepSeek Harness account is a key and the vendor it belongs to; the original stores logins
+    /// it performs on the user's behalf, and this stands in the same place. Kept in the launcher's
+    /// own settings — which already holds this machine's proxy password — and never written into an
+    /// instance, a profile or a pack.
+    private final javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshAccount> accounts =
+            javafx.collections.FXCollections.observableArrayList();
+
+    /// Returns the accounts.
+    ///
+    /// @return the list
+    public javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshAccount> getAccounts() {
+        return accounts;
+    }
+
     /// Returns how the launcher draws text.
     ///
     /// @return the property
