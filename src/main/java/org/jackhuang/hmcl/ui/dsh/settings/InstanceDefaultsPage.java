@@ -28,7 +28,6 @@ import org.jackhuang.hmcl.dsh.NodeRuntimeManager;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.LineInheritableTextField;
 import org.jackhuang.hmcl.ui.construct.LinePane;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineToggleButton;
@@ -140,13 +139,29 @@ public final class InstanceDefaultsPage extends ScrollPane {
         list.getContent().add(home);
 
         // The arguments a new instance is launched with. Beside the runtime and the home, because
-        // it is the third thing that decides what actually runs; an instance may state its own.
-        LineInheritableTextField arguments = new LineInheritableTextField(
-                i18n("dsh.settings.default_launch_args"));
-        arguments.setSubtitle(i18n("dsh.settings.launch_args.hint"));
-        arguments.setText(settings().defaultLaunchArguments());
-        arguments.textProperty().addListener((observable, was, text) ->
+        // it is the third thing that decides what actually runs.
+        //
+        // A plain row with a field on it, **not** an inheritable one — and that is the whole point of
+        // this row rather than a detail. The inheritable rows carry a globe beside the name, and the
+        // globe means "this follows the launcher until you say otherwise"; there is nothing above
+        // this row to follow, because this row *is* the launcher's answer. A globe here would be
+        // offering to inherit the setting from itself.
+        //
+        // It has no subtitle for the same reason: the line it used to carry describes an instance
+        // overriding the launcher, which is a sentence about the page next door. What this row does
+        // is what its own name already says.
+        LinePane arguments = new LinePane();
+        arguments.setTitle(i18n("dsh.settings.default_launch_args"));
+
+        // The launcher's own text field, not JavaFX's: every other row on this page wears the
+        // launcher's field surface, and the stock control is a white box in the middle of a dark
+        // page — which is exactly what a first attempt at this looked like.
+        com.jfoenix.controls.JFXTextField field = new com.jfoenix.controls.JFXTextField();
+        field.setMinWidth(420);
+        field.setText(settings().defaultLaunchArguments());
+        field.textProperty().addListener((observable, was, text) ->
                 settings().defaultLaunchArgumentsProperty().set(text == null ? "" : text));
+        arguments.setRight(field);
         list.getContent().add(arguments);
 
         return list;

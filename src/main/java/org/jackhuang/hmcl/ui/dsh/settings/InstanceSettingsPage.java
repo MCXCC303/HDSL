@@ -459,7 +459,10 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// @return the row
     private LineInheritableTextField buildLaunchArgumentsRow() {
         LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.launch_args"));
-        row.setSubtitle(i18n("dsh.settings.launch_args.hint"));
+        // No subtitle. The line it used to carry — "overrides the arguments the launcher sets
+        // automatically" — describes the *relationship* to the row on the global page, which is what
+        // the globe beside the name already says, and says it in one glance rather than one line.
+        // Two ways of saying "this follows the launcher, or does not" on one row was one too many.
 
         List<String> own = instance.extraArguments();
         row.setOverridden(!own.isEmpty());
