@@ -220,7 +220,8 @@ public final class DshLaunchService {
         DshProcess[] started = new DshProcess[1];
         Task<DshProcess> launch = Task.supplyAsync(() -> {
             try {
-                DshProcess process = DshProcessManager.launch(instance);
+                DshProcess process = DshProcessManager.launch(instance,
+                        org.jackhuang.hmcl.dsh.DshAccount.forInstance(instance));
                 started[0] = process;
                 awaitReady(process);
                 return process;

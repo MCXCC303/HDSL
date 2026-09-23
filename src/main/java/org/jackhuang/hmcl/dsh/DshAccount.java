@@ -58,6 +58,25 @@ public record DshAccount(
         return DshVendor.byId(vendorId);
     }
 
+    /// Returns the key that names this account.
+    ///
+    /// The vendor id and the label together: a vendor may be used twice with two keys, and the
+    /// label is what tells them apart. Stored on an instance to say which account it launches with,
+    /// so it has to survive being written to a file and read back.
+    ///
+    /// @return the key
+    public String key() {
+        return vendorId + (label == null || label.isBlank() ? "" : "|" + label.trim());
+    }
+
+    /// Reports whether this account is the one a key names.
+    ///
+    /// @param key the key, or `null`
+    /// @return whether they are the same account
+    public boolean matchesKey(@Nullable String key) {
+        return key != null && key.equals(key());
+    }
+
     /// Returns the endpoint to talk to.
     ///
     /// The account's own address wins, so an account can point at a gateway the launcher has never
@@ -159,6 +178,41 @@ public record DshAccount(
             return new Check(Outcome.UNREACHABLE, "检查被中断");
         } catch (RuntimeException e) {
             return new Check(Outcome.UNREACHABLE, "地址无效：" + e.getMessage());
+        }
+    }
+
+    /// Returns the account an instance launches with.
+    ///
+    /// The instance's own choice wins, and when it has none the first account the launcher holds is
+    /// used: a person with one account means it for everything, and making them repeat that per
+    /// instance would be asking a question with one answer.
+    ///
+    /// @param instance the instance
+    /// @return the account, or `null` when there is none to use
+    public static @Nullable DshAccount forInstance(DshInstance instance) {
+        try {
+            java.util.List<DshAccount> accounts =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
+            if (accounts.isEmpty()) {
+                return null;
+            }
+            String chosen = DshInstanceSettings.accountKey(instance);
+            if (chosen != null) {
+                for (DshAccount account : accounts) {
+                    if (account.matchesKey(chosen)) {
+                        return account;
+                    }
+                }
+                // The account it named is gone. Falling back to another would launch with a key
+                // nobody chose, so it launches with none and says so.
+                org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                        "Instance " + instance.id() + " names an account that no longer exists: " + chosen);
+                return null;
+            }
+            return accounts.get(0);
+        } catch (RuntimeException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.warning("Could not read the accounts", e);
+            return null;
         }
     }
 

@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.ui.dsh.settings;
 import javafx.geometry.Insets;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import java.util.List;
@@ -105,6 +106,7 @@ public final class InstanceSettingsPage extends ScrollPane {
         ComponentList environmentList = new ComponentList();
         environmentList.getContent().add(buildNodeRuntimeRow());
         environmentList.getContent().add(buildLaunchArgumentsRow());
+        environmentList.getContent().add(buildAccountRow());
         environmentList.getContent().add(buildHomeModeRow());
 
         ComponentList portList = new ComponentList();
@@ -430,6 +432,72 @@ public final class InstanceSettingsPage extends ScrollPane {
         });
         return row;
     }
+
+    /// Builds the row that chooses which account this instance launches with.
+    ///
+    /// An account is a key and the vendor it belongs to, and the launcher hands it to the harness
+    /// as it starts — the harness asks to be configured before it will answer anything, and a
+    /// launcher that holds a key already can spare the person that step. Which one is the
+    /// instance's own choice, because two instances may be two different accounts.
+    ///
+    /// The row offers "no account" as well: a harness that has been configured by hand, or one
+    /// whose key is meant to come from the environment, is a real arrangement and not an omission.
+    ///
+    /// @return the row
+    private javafx.scene.Node buildAccountRow() {
+        LineTextPane row = new LineTextPane();
+        row.setTitle(i18n("dsh.account.title"));
+
+        javafx.scene.control.ComboBox<String> picker = new javafx.scene.control.ComboBox<>();
+        java.util.List<DshAccount> accounts = settings().getAccounts();
+        java.util.List<String> choices = new java.util.ArrayList<>();
+        choices.add(NONE_ACCOUNT);
+        for (DshAccount account : accounts) {
+            choices.add(account.key());
+        }
+        picker.getItems().setAll(choices);
+        picker.setConverter(FXUtils.stringConverter(choice -> {
+            if (choice == null || NONE_ACCOUNT.equals(choice)) {
+                return i18n("dsh.account.none.short");
+            }
+            for (DshAccount account : settings().getAccounts()) {
+                if (account.matchesKey(choice)) {
+                    return account.displayName();
+                }
+            }
+            return choice;
+        }));
+        String chosen = DshInstanceSettings.accountKey(instance);
+        picker.setValue(chosen == null ? NONE_ACCOUNT : chosen);
+        picker.setMinWidth(240);
+        picker.valueProperty().addListener((observable, was, value) -> {
+            if (value == null || value.equals(was)) {
+                return;
+            }
+            try {
+                DshInstanceSettings.setAccountKey(instance, NONE_ACCOUNT.equals(value) ? null : value);
+            } catch (DshException e) {
+                LOG.warning("Failed to store the account choice", e);
+            }
+        });
+
+        com.jfoenix.controls.JFXButton manage = new com.jfoenix.controls.JFXButton(
+                i18n("dsh.account.manage"));
+        manage.getStyleClass().add("jfx-button-border");
+        manage.setOnAction(event -> org.jackhuang.hmcl.ui.Controllers.dialog(
+                new AccountSettingsDialog()));
+
+        javafx.scene.layout.HBox controls = new javafx.scene.layout.HBox(8, picker, manage);
+        controls.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        row.setRowTrailing(controls);
+
+        // The row is not inheritable: an account is this machine's, and the launcher-wide answer is
+        // "whichever one there is" rather than a value an instance copies.
+        return row;
+    }
+
+    /// The choice meaning "let the harness use whatever it is configured with".
+    private static final String NONE_ACCOUNT = "";
 
     /// Builds the row for the arguments this instance is launched with.
     ///

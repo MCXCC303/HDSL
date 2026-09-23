@@ -157,6 +157,23 @@ public final class DshInstanceSettings {
         write(instance, "debugLog", value == null ? null : new com.google.gson.JsonPrimitive(value));
     }
 
+    /// Reads which account this instance launches with.
+    ///
+    /// @param instance the instance
+    /// @return the account's vendor id and label, or `null` to launch with no account
+    public static @Nullable String accountKey(DshInstance instance) {
+        return stringOf(instance, "accountKey");
+    }
+
+    /// Records which account this instance launches with.
+    ///
+    /// @param instance the instance
+    /// @param key      the account's key, or `null` for none
+    /// @throws DshException when the file cannot be written
+    public static void setAccountKey(DshInstance instance, @Nullable String key) throws DshException {
+        write(instance, "accountKey", key == null ? null : new com.google.gson.JsonPrimitive(key));
+    }
+
     /// Reads whether this instance has an environment of its own.
     ///
     /// The instance file cannot say so: its `environment` member is never absent once read, because
