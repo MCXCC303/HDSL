@@ -34,6 +34,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshVendor;
+import org.jackhuang.hmcl.dsh.skin.DshSkin;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -45,6 +46,7 @@ import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.dsh.settings.AccountSettingsDialog;
+import org.jackhuang.hmcl.ui.dsh.settings.SkinDialog;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -118,10 +120,15 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         FXUtils.setLimitWidth(scrollPane, 200);
         FXUtils.smoothScrolling(scrollPane);
 
+        // The foot of the sidebar, as in the original: the things that are about accounts as a
+        // whole rather than about one of them. A skin is one of those — it is what the launcher
+        // draws beside every account, not something an account owns.
         AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.account.add.custom"), SVG.ADD_CIRCLE,
-                        () -> Controllers.dialog(new AccountSettingsDialog(null)));
-        FXUtils.setLimitHeight(actions, 40);
+                        () -> Controllers.dialog(new AccountSettingsDialog(null)))
+                .addNavigationDrawerItem(i18n("dsh.skin.title"), SVG.PERSON,
+                        () -> Controllers.dialog(new SkinDialog()));
+        FXUtils.setLimitHeight(actions, 40 * 2 + 12);
 
         setLeft(scrollPane, actions);
         return scrollPane;
@@ -225,6 +232,9 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         /// The monogram standing in for a picture.
         private final Label monogram = new Label();
 
+        /// The skin drawn on its own, when one has been chosen.
+        private final javafx.scene.canvas.Canvas avatar = new javafx.scene.canvas.Canvas();
+
         /// Creates a cell.
         ///
         /// @param listView the list it belongs to
@@ -239,16 +249,27 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             root.setLeft(selector);
             BorderPane.setAlignment(selector, Pos.CENTER);
 
-            // A monogram rather than a picture. The original draws a skin head there because a
-            // Minecraft account has a skin; a model vendor has nothing to draw, and an invented
-            // picture would be a picture of nothing. The vendor's initial is a real answer to
-            // "which of these is which" at a glance.
+            // The original draws the account's skin head here. That is now portable, so it is what
+            // this draws: a skin belongs to the person using the launcher, and seeing it beside the
+            // account is the reason to have chosen one. The monogram stays as the answer when no
+            // skin has been chosen — a vendor has nothing to draw, and an invented picture would be
+            // a picture of nothing.
             monogram.getStyleClass().add("dsh-account-monogram");
             monogram.setMinSize(32, 32);
             monogram.setPrefSize(32, 32);
             monogram.setAlignment(Pos.CENTER);
 
-            HBox centre = new HBox(8, monogram, content);
+            avatar.setWidth(32);
+            avatar.setHeight(32);
+            avatar.setMouseTransparent(true);
+            StackPane picture = new StackPane(avatar, monogram);
+            // Its own size, not the row's: a picture box that stretches to the row's height centres
+            // the face below the name it belongs to.
+            picture.setMinSize(32, 32);
+            picture.setPrefSize(32, 32);
+            picture.setMaxSize(32, 32);
+
+            HBox centre = new HBox(8, picture, content);
             centre.setAlignment(Pos.CENTER_LEFT);
             centre.setMouseTransparent(true);
             centre.setPrefWidth(Region.USE_PREF_SIZE);
@@ -288,6 +309,30 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             });
         }
 
+        /// Draws the skin head, or leaves the monogram showing when there is no skin.
+        ///
+        /// The head is the top-left eighth of the skin — the original reads the same rectangle — and
+        /// the hat layer over it is copied as well, because that is where a skin keeps hair, a
+        /// hood, or anything else drawn above the face.
+        private void drawAvatar() {
+            javafx.scene.image.Image skin = DshSkin.image();
+            if (skin == null) {
+                avatar.setVisible(false);
+                monogram.setVisible(true);
+                return;
+            }
+            monogram.setVisible(false);
+            avatar.setVisible(true);
+
+            javafx.scene.canvas.GraphicsContext gc = avatar.getGraphicsContext2D();
+            gc.clearRect(0, 0, 32, 32);
+            gc.setImageSmoothing(false);
+            // 8x8 head at (8,8), scaled to fill 32 pixels; then the hat layer at (40,8).
+            double unit = 32.0 / 8.0;
+            gc.drawImage(skin, 8, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+            gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+        }
+
         /// Asks the vendor whether the key still works.
         ///
         /// Off the interface thread, because it is a network call, and only a refusal means
@@ -319,6 +364,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                     + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault()));
             monogram.setText(account.displayName().isEmpty()
                     ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
+            drawAvatar();
             selector.setSelected(isActive(account));
         }
     }

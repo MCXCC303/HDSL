@@ -269,6 +269,8 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             // follows only fills in what that choice left open.
             case "create" -> Controllers.navigate(getDownloadPage());
             case "accounts" -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage());
+            case "skin" -> Controllers.dialog(
+                    new org.jackhuang.hmcl.ui.dsh.settings.SkinDialog());
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
