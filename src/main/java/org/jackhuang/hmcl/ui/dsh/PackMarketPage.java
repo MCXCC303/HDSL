@@ -39,6 +39,7 @@ import org.jackhuang.hmcl.dsh.DshPackMarket;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
@@ -417,14 +418,18 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 
     /// One row of the results.
     ///
-    /// A row is the pack and nothing else: its name, what it says about itself, and the facts the
-    /// index carries. The description is on the second line and the tags carry the rest, which is the
-    /// same division the plugin market's rows use — there is no icon, because the ecosystem publishes
-    /// none and a made-up one would be a picture of nothing.
+    /// The original's row shape, which is the plugin market's too: a picture at the left, then the
+    /// name, the description on a second line, and the facts as tags. The picture is the author's
+    /// avatar — see [`Entry#iconUrl`] — because the index has no icon field and a made-up one would
+    /// be a picture of nothing. It is fetched once per author and kept, and a cell that cannot get
+    /// one keeps the space and shows nothing rather than shifting the row.
     @NotNullByDefault
     private final class PackCell extends MDListCell<DshPackMarket.Entry> {
         /// The pack's name, description and tags.
         private final TwoLineListItem content = new TwoLineListItem();
+
+        /// The author's avatar, or an empty box of the same size.
+        private final ImageContainer icon = new ImageContainer(32);
 
         /// Creates the cell.
         ///
@@ -454,17 +459,84 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
                 content.addTag(entry.updatedAt());
             }
 
+            // Cleared first: a cell that has scrolled from one pack to another must not wear the
+            // previous author's face while the new one is being fetched.
+            icon.setImage(null);
+            String url = entry.iconUrl();
+            if (url != null) {
+                javafx.scene.image.Image cached = ICONS.get(url);
+                if (cached != null) {
+                    icon.setImage(cached);
+                } else {
+                    loadIcon(url, loaded -> {
+                        // The cell may have been reused while the fetch was in flight, and a picture
+                        // of the wrong pack is worse than none.
+                        if (getItem() == entry) {
+                            icon.setImage(loaded);
+                        }
+                    });
+                }
+            }
+
             HBox row = new HBox(8);
             row.setPadding(new Insets(8));
             row.setAlignment(Pos.CENTER_LEFT);
             row.setCursor(javafx.scene.Cursor.HAND);
             HBox.setHgrow(content, Priority.ALWAYS);
-            row.getChildren().add(content);
+            row.getChildren().addAll(icon, content);
             getContainer().getChildren().setAll(row);
             if (!getContainer().getStyleClass().contains("card-no-padding")) {
                 getContainer().getStyleClass().add("card-no-padding");
             }
         }
+    }
+
+    /// The avatars already fetched, by address.
+    ///
+    /// Kept for the life of the page and shared by every cell: a list of three packs by one author
+    /// must not be three requests, and a cell scrolled off and back must not be a fourth. `null` is
+    /// not stored — a failed fetch is simply not remembered, so the next row that wants it tries
+    /// again rather than being stuck with the network's bad minute.
+    private static final java.util.Map<String, javafx.scene.image.Image> ICONS =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// Fetches an avatar and hands it over on the interface thread.
+    ///
+    /// @param url      the address
+    /// @param onLoaded what to do with it
+    private static void loadIcon(String url, java.util.function.Consumer<javafx.scene.image.Image> onLoaded) {
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                java.net.http.HttpRequest request = java.net.http.HttpRequest
+                        .newBuilder(java.net.URI.create(url))
+                        .timeout(java.time.Duration.ofSeconds(15))
+                        .GET()
+                        .build();
+                try (java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(java.time.Duration.ofSeconds(10))
+                        .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+                        .build()) {
+                    java.net.http.HttpResponse<byte[]> response = client.send(request,
+                            java.net.http.HttpResponse.BodyHandlers.ofByteArray());
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        return null;
+                    }
+                    javafx.scene.image.Image image = new javafx.scene.image.Image(
+                            new java.io.ByteArrayInputStream(response.body()));
+                    return image.isError() || image.getWidth() <= 0 ? null : image;
+                }
+            } catch (java.io.IOException | InterruptedException | RuntimeException e) {
+                if (e instanceof InterruptedException) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            }
+        }, Schedulers.io()).thenAccept(image -> Platform.runLater(() -> {
+            if (image != null) {
+                ICONS.put(url, image);
+                onLoaded.accept(image);
+            }
+        }));
     }
 
     /// Writes a size the way a person reads one.

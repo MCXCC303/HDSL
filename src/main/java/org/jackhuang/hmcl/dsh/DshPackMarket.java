@@ -138,6 +138,25 @@ public final class DshPackMarket {
             return "dshhome".equalsIgnoreCase(type);
         }
 
+        /// Returns where this pack's icon is, or `null` when there is none to be had.
+        ///
+        /// The index carries no icon and neither does a manifest — the specification has no field for
+        /// one — so the picture is the **author's GitHub avatar**, which is the one image the
+        /// ecosystem already publishes about a pack. Every entry has an `owner`, and GitHub serves
+        /// `<owner>.png` for it, so this is derived rather than invented: it is a real picture of the
+        /// person who made the pack, not a placeholder pretending to be the pack's own logo.
+        ///
+        /// A pack whose author has no avatar, or whose avatar cannot be fetched, is drawn without
+        /// one — the row keeps the space so the list stays aligned, and shows nothing in it.
+        ///
+        /// @return the address
+        public @Nullable String iconUrl() {
+            if (owner == null || owner.isBlank()) {
+                return null;
+            }
+            return "https://github.com/" + owner.trim() + ".png?size=64";
+        }
+
         /// Returns the version line shown under the title.
         ///
         /// @return the author, version, and harness version, as many as are known
