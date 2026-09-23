@@ -69,7 +69,7 @@ jobs:
         echo "" >> RELEASE_NOTE
         echo "| File | SHA-256 |" >> RELEASE_NOTE
         echo "| --- | --- |" >> RELEASE_NOTE
-        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip"; do
+        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
           echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | \`$(cut -d' ' -f1 < "build/libs/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
         done
         cat RELEASE_NOTE
@@ -95,13 +95,20 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # The macOS bundle embeds the host's JavaFX platform, so it is built where
-  # it runs rather than beside the Linux packages. It uploads into the release
-  # the Linux job created, which is what the `needs` is for.
+  # it runs rather than beside the Linux packages — once per Mac arch, with
+  # macos-latest covering Apple Silicon and macos-26-intel covering Intel.
+  # Each uploads into the release the Linux job created, which is what the
+  # `needs` is for; the file names carry the arch, so the two uploads never
+  # meet.
   release-mac:
 
     needs: release
 
-    runs-on: macos-15
+    strategy:
+      matrix:
+        os: [macos-latest, macos-26-intel]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
