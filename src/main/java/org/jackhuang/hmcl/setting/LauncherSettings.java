@@ -132,6 +132,21 @@ public final class LauncherSettings {
         return pluginCatalogUrl;
     }
 
+    /// Where the modpack market's index is read from, or empty for the one the ecosystem publishes.
+    ///
+    /// The same three-source arrangement the plugin catalogue has, and for the same reason: the market
+    /// and the catalogue are both on GitHub Pages, so the network that cannot reach one cannot reach
+    /// the other, and both need a way to be pointed somewhere else.
+    private final javafx.beans.property.StringProperty packMarketUrl =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns where the modpack market's index is read from.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty packMarketUrlProperty() {
+        return packMarketUrl;
+    }
+
     /// Whether a new instance keeps its own home.
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshIsolationPolicy> isolationPolicy =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshIsolationPolicy.WITH_PLUGINS);

@@ -100,6 +100,14 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// The tab showing the community's plugins.
     private final TabHeader.Tab<PluginMarketPage> marketTab = new TabHeader.Tab<>("dshDownloadPlugins");
 
+    /// The tab showing the community's modpacks.
+    ///
+    /// A tab of its own rather than a section of the plugin market, because the two are different
+    /// kinds of thing: a plugin is installed *into* an instance and a pack *brings* one. The
+    /// original separates them the same way, its content tab listing packs, mods and resource packs
+    /// as separate pages.
+    private final TabHeader.Tab<PackMarketPage> packTab = new TabHeader.Tab<>("dshDownloadPacks");
+
     /// The pane the two tabs are shown in.
     private final TransitionPane tabs = new TransitionPane();
 
@@ -155,7 +163,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
                 // and texture packs this launcher has no counterpart of.
                 .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, marketTab, i18n("dsh.download.plugins"),
-                        SVG.EXTENSION, SVG.EXTENSION_FILL);
+                        SVG.EXTENSION, SVG.EXTENSION_FILL)
+                .addNavigationDrawerTab(tab, packTab, i18n("dsh.download.packs"),
+                        SVG.ARCHIVE, SVG.ARCHIVE_FILL);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
@@ -214,7 +224,8 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
         versionsTab.setNodeSupplier(() -> layout);
         marketTab.setNodeSupplier(PluginMarketPage::new);
-        tab.getTabs().setAll(versionsTab, marketTab);
+        packTab.setNodeSupplier(PackMarketPage::new);
+        tab.getTabs().setAll(versionsTab, marketTab, packTab);
         tab.select(versionsTab, false);
 
         setCenter(tabs);

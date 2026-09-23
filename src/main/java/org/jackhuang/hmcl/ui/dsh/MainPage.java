@@ -192,6 +192,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         ticker.play();
 
         refresh();
+        instance = this;
     }
 
     /// Redraws the page for the folder that just published its instances.
@@ -372,6 +373,24 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     @Override
     public ReadOnlyObjectProperty<State> stateProperty() {
         return state.getReadOnlyProperty();
+    }
+
+    /// The page the launcher made at startup.
+    ///
+    /// Held because it is made **once** (`Launcher`) and several pages need to reach it — to open the
+    /// instance list after an installation, among other things. A second one would be a second
+    /// sidebar with its own idea of what is selected.
+    private static @org.jetbrains.annotations.Nullable MainPage instance;
+
+    /// Returns the page the launcher made at startup.
+    ///
+    /// @return the page
+    public static MainPage instance() {
+        MainPage page = instance;
+        if (page == null) {
+            throw new IllegalStateException("The main page has not been made yet");
+        }
+        return page;
     }
 
     /// Redraws the page for the instance it currently acts on.

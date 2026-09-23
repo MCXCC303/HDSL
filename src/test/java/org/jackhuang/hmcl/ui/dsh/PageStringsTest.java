@@ -242,6 +242,34 @@ class PageStringsTest {
         }
     }
 
+    @Test
+    void aPlaceholderIsWrittenTheWayTheFormatterReadsIt() throws IOException {
+        // The launcher formats a translated string with `String.format`, so a placeholder is `%s` or
+        // `%d` and **never** `{0}`. A brace survives formatting untouched, which means it is not an
+        // error anywhere: the interface simply shows the placeholder, and a line meant to read
+        // "assembled 2026-09-23" reads "assembled {0}" instead. Nine of these were written before
+        // this test existed, in three features, and none of them failed anything.
+        java.util.regex.Pattern braces = java.util.regex.Pattern.compile("\\{\\d+}");
+        List<String> wrong = new java.util.ArrayList<>();
+
+        for (String bundle : BUNDLES) {
+            Properties strings = load(bundle);
+            for (String key : strings.stringPropertyNames()) {
+                if (!key.startsWith(OWN_PREFIX)) {
+                    continue;
+                }
+                String value = strings.getProperty(key, "");
+                if (braces.matcher(value).find()) {
+                    wrong.add(bundle + " " + key + " = " + value);
+                }
+            }
+        }
+
+        assertTrue(wrong.isEmpty(),
+                "these strings use a placeholder the formatter does not read, so the interface "
+                        + "shows it verbatim:\n  " + String.join("\n  ", wrong));
+    }
+
     /// Reports how much of this launcher's own text each other language carries.
     ///
     /// **Not an assertion, and deliberately so.** This used to fail when a language was behind, on

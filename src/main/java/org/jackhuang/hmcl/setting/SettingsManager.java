@@ -463,6 +463,10 @@ public final class SettingsManager {
         @SerializedName("pluginCatalogUrl")
         private @Nullable String pluginCatalogUrl;
 
+        /// Where the modpack market's index is read from, or absent for the published one.
+        @SerializedName("packMarketUrl")
+        private @Nullable String packMarketUrl;
+
         @SerializedName("cacheDirectory")
         private @Nullable String cacheDirectory;
 
@@ -557,6 +561,7 @@ public final class SettingsManager {
             snapshot.postExitCommand = settings.postExitCommandProperty().get();
             snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
             snapshot.pluginCatalogUrl = settings.pluginCatalogUrlProperty().get();
+            snapshot.packMarketUrl = settings.packMarketUrlProperty().get();
             snapshot.cacheDirectory = settings.cacheDirectoryProperty().get();
             snapshot.cacheDirectoryCustom = settings.cacheDirectoryCustomProperty().get();
             snapshot.autoDownloadThreads = settings.autoDownloadThreadsProperty().get();
@@ -758,6 +763,9 @@ public final class SettingsManager {
             }
             if (globalEnvironment != null) {
                 settings.globalEnvironmentProperty().set(new java.util.LinkedHashMap<>(globalEnvironment));
+            }
+            if (packMarketUrl != null) {
+                settings.packMarketUrlProperty().set(packMarketUrl);
             }
             if (pluginCatalogUrl != null) {
                 settings.pluginCatalogUrlProperty().set(pluginCatalogUrl);
