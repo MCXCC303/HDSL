@@ -89,9 +89,6 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     /// The endpoint, for a vendor whose address is per account.
     private final JFXTextField baseUrlField = new JFXTextField();
 
-    /// The model the harness should start with.
-    private final JFXTextField modelField = new JFXTextField();
-
     /// The form, kept so a row of it can be taken away.
     private javafx.scene.layout.GridPane form;
 
@@ -210,7 +207,6 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
                 ? "account.methods.offline.name.special_characters" : "dsh.account.label.prompt"));
         keyField.setPromptText(i18n("dsh.account.key.prompt"));
         baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
-        modelField.setPromptText(i18n("dsh.account.model.prompt"));
 
         grid.add(new Label(offline ? i18n("account.character") : i18n("account.username")), 0, row);
         grid.add(usernameField, 1, row);
@@ -255,13 +251,16 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
             endpointRow = row;
             row++;
 
-            // The harness knows its own vendor's catalogue and picks from it, so a model is asked for
-            // only of a supplier it has never heard of.
-            if (kind != DshAccount.AccountKind.OFFICIAL) {
-                grid.add(new Label(i18n("dsh.account.model")), 0, row);
-                grid.add(modelField, 1, row);
-                row++;
-            }
+            // No model field, for either kind of supplier.
+            //
+            // A model list is the vendor's to state and it changes quickly, so neither the person nor
+            // the launcher should be writing one down: the launcher asks the vendor at every launch
+            // and writes what it answers. Asking here would produce a list that is wrong within weeks
+            // at best, and — because a route the harness does not know cannot have its list filled in
+            // from the catalogue — a wrong list is not corrected by anything.
+            //
+            // The launcher's own vendor was already exempt from this question; the exemption is now
+            // the rule.
         }
 
         // The verdict takes no room until there is something to say. A label with no text still asks
@@ -356,10 +355,8 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         // Read only when the row is showing: a field that is not offered is not an answer.
         String baseUrl = baseUrlField.isVisible() && baseUrlField.getText() != null
                 ? baseUrlField.getText().trim() : "";
-        String model = modelField.getText() == null ? "" : modelField.getText().trim();
         keep(new DshAccount(kind, vendor.id(), key,
-                baseUrl.isEmpty() ? null : baseUrl,
-                username, model.isEmpty() ? null : model, null));
+                baseUrl.isEmpty() ? null : baseUrl, username, null, null));
     }
 
     /// Stores an account and makes it the one the launcher uses.

@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 
 /// The account an instance is launched with, as a patch overlay.
@@ -105,16 +106,34 @@ public final class DshAccountOverlay {
             yaml.append("        baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
         }
         yaml.append("        models:\n");
-        // One model. Which models a supplier serves is its own answer, and the harness reads that
-        // from the catalogue for a vendor it knows — but a route it has never heard of must still be
-        // registrable, and a route with no models cannot be.
+        // Which models this route serves, **asked of the vendor every launch and never remembered**.
         //
-        // The id is the one the person named when the vendor is not one the harness knows; for the
-        // launcher's own vendor there is nothing to name and `default` stands in. Either way it is
-        // **a** model that exists rather than a shape the harness has to trust.
-        yaml.append("          - id: ").append(YamlScalar.of(model.isEmpty() ? "default" : model))
-                .append("\n");
-        yaml.append("            name: ").append(YamlScalar.of(route)).append("\n");
+        // Both halves of that matter. A route the launcher writes is not in the harness's catalogue,
+        // so the harness will not fill this in the way it does for a vendor it knows — and a route
+        // with no models cannot be registered at all — so asking is the only source, not a
+        // convenience. And a list is the vendor's to state and it changes often: one written down
+        // once, by the person or by a launcher that cached it, goes stale in both directions, showing
+        // models that are gone and hiding the ones that arrived.
+        //
+        // What this replaced was inventing a model called `default` whenever no model had been named
+        // — which was every official account, since the form does not ask those for one. The result
+        // was a supplier whose only model was called `default`: not a model any vendor serves, and
+        // not one a request can be made against.
+        //
+        // A model stored on the account survives as a fallback for a vendor that cannot be reached at
+        // this moment — something has to be written, and a name this account used before guesses
+        // better than `default` does. It is a fallback, not a source; nothing asks for it any more.
+        List<String> models = new java.util.ArrayList<>(account.fetchModels());
+        if (models.isEmpty() && !model.isEmpty()) {
+            models.add(model);
+        }
+        if (models.isEmpty()) {
+            models.add("default");
+        }
+        for (String served : models) {
+            yaml.append("          - id: ").append(YamlScalar.of(served)).append("\n");
+            yaml.append("            name: ").append(YamlScalar.of(served)).append("\n");
+        }
 
         Path directory = directory();
         Path file = directory.resolve("account-" + instance.id() + "-"

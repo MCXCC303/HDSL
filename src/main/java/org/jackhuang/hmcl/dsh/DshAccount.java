@@ -361,6 +361,103 @@ public record DshAccount(
         return status == 200 || status == 401 || status == 403;
     }
 
+    /// Asks the vendor which models it serves.
+    ///
+    /// The same call the key check makes — the one endpoint every OpenAI-compatible service has — but
+    /// the answer is read instead of the status. The launcher needs it because a **route it writes
+    /// itself is not in the harness's catalogue**, so the harness cannot fill in that route's model
+    /// list the way it does for a vendor it knows; a route with no models cannot be registered at
+    /// all, so the list has to come from somewhere. Asking the vendor is the same place the harness
+    /// would have got it.
+    ///
+    /// **Failure is not an error here.** A launch must not depend on a supplier answering: a network
+    /// that cannot reach it today may reach it tomorrow, and the caller falls back to a name it can
+    /// at least register. Only a 2xx with a readable list is an answer; everything else is "no
+    /// answer", which is why this returns a list rather than throwing.
+    ///
+    /// @return the model ids the vendor named, in the order it named them, or empty
+    public List<String> fetchModels() {
+        String address = endpoint();
+        if (address == null || address.isBlank()) {
+            return List.of();
+        }
+        DshVendor vendor = vendor();
+        String api = vendor == null ? "openai-completions" : vendor.api();
+        String url = address.replaceAll("/+$", "") + "/models";
+
+        try {
+            HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(TIMEOUT)
+                    .header("Accept", "application/json")
+                    .GET();
+            if ("anthropic-messages".equals(api)) {
+                request.header("x-api-key", apiKey == null ? "" : apiKey.trim());
+                request.header("anthropic-version", "2023-06-01");
+            } else {
+                request.header("Authorization", "Bearer " + (apiKey == null ? "" : apiKey.trim()));
+            }
+
+            try (HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(TIMEOUT)
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build()) {
+                HttpResponse<String> response = client.send(request.build(),
+                        HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    return List.of();
+                }
+                return readModelIds(response.body());
+            }
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            org.jackhuang.hmcl.util.logging.Logger.LOG.info("Could not read the model list of " + url + ": " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    /// Reads model ids out of what a `/models` endpoint answered.
+    ///
+    /// The shape is the one OpenAI-compatible services share — `{"data":[{"id":…},…]}` — and it is
+    /// read defensively because "compatible" is a claim rather than a promise: a service that answers
+    /// something else is a service whose list this cannot use, and saying so by returning nothing is
+    /// better than writing a model the harness will fail to find.
+    ///
+    /// @param body the answer
+    /// @return the ids, or empty when the body is not a model list
+    static List<String> readModelIds(@Nullable String body) {
+        if (body == null || body.isBlank()) {
+            return List.of();
+        }
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) {
+                return List.of();
+            }
+            com.google.gson.JsonElement data = parsed.getAsJsonObject().get("data");
+            if (data == null || !data.isJsonArray()) {
+                return List.of();
+            }
+            List<String> ids = new java.util.ArrayList<>();
+            for (com.google.gson.JsonElement element : data.getAsJsonArray()) {
+                if (!element.isJsonObject()) {
+                    continue;
+                }
+                com.google.gson.JsonElement id = element.getAsJsonObject().get("id");
+                if (id != null && id.isJsonPrimitive()) {
+                    String text = id.getAsString();
+                    if (!text.isBlank() && !ids.contains(text)) {
+                        ids.add(text);
+                    }
+                }
+            }
+            return List.copyOf(ids);
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
     /// Returns the account an instance launches with.
     ///
     /// The instance's own choice wins, and when it has none the first account the launcher holds is
