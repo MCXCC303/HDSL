@@ -132,16 +132,39 @@ public final class DshLaunchArguments {
                 refusals.add(token + " — DSH_HOME 由启动器为每个实例指定，不能在这里改");
                 continue;
             }
-            if (MANAGED_FLAGS.contains(token)) {
-                refusals.add(token + " — 端口由启动器为实例保留，不能在这里改");
-                // Skip the value too, so it does not land in the app's arguments on its own.
-                skipValue = true;
+
+            // A flag may carry its value with `=` instead of a following word — `--port=1234` is the
+            // same request as `--port 1234` — so the name is what is matched, not the whole token.
+            // Matching the whole token let `--port=1234` through as an app argument, where it
+            // overrode the port the launcher had reserved: the one thing this refuses to allow.
+            String name = token;
+            String inlineValue = null;
+            if (token.startsWith("--")) {
+                int equals = token.indexOf('=');
+                if (equals > 0) {
+                    name = token.substring(0, equals);
+                    inlineValue = token.substring(equals + 1);
+                }
+            }
+
+            if (MANAGED_FLAGS.contains(name)) {
+                refusals.add(name + " — 端口由启动器为实例保留，不能在这里改");
+                // Skip the value too, so it does not land in the app's arguments on its own. With
+                // `=` the value was on the same token and is simply dropped with it.
+                skipValue = inlineValue == null;
                 continue;
             }
-            if (LAUNCHER_FLAGS.contains(token)) {
+            if (LAUNCHER_FLAGS.contains(name)) {
+                if (inlineValue != null) {
+                    launcher.add(token);
+                    if ("--profile".equals(name)) {
+                        profile = inlineValue;
+                    }
+                    continue;
+                }
                 launcher.add(token);
-                pendingLauncherValue = VALUE_FLAGS.contains(token);
-                if ("--profile".equals(token)) {
+                pendingLauncherValue = VALUE_FLAGS.contains(name);
+                if ("--profile".equals(name)) {
                     pendingProfile = true;
                 }
                 continue;
