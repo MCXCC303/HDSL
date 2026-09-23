@@ -369,9 +369,11 @@ public final class SettingsManager {
         /// @param apiKey   the key
         /// @param baseUrl  the endpoint, for a vendor whose address is per account
         /// @param label    what the person calls it
-        private record AccountSnapshot(String vendorId, String apiKey,
-                                       @Nullable String baseUrl, @Nullable String label,
-                                       @Nullable String model) {
+        private record AccountSnapshot(
+                @Nullable org.jackhuang.hmcl.dsh.DshAccount.AccountKind kind,
+                String vendorId, String apiKey,
+                @Nullable String baseUrl, @Nullable String label,
+                @Nullable String model) {
         }
 
         /// The language the interface speaks, by the name the locale helper uses.
@@ -506,8 +508,8 @@ public final class SettingsManager {
             snapshot.fontAntiAliasing = settings.fontAntiAliasing().id();
             snapshot.defaultLaunchArguments = settings.defaultLaunchArgumentsProperty().get();
             snapshot.accounts = settings.getAccounts().stream()
-                    .map(account -> new AccountSnapshot(account.vendorId(), account.apiKey(),
-                            account.baseUrl(), account.label(), account.model()))
+                    .map(account -> new AccountSnapshot(account.kind(), account.vendorId(),
+                            account.apiKey(), account.baseUrl(), account.label(), account.model()))
                     .toList();
             snapshot.language = settings.languageProperty().get() == null
                     ? null : settings.languageProperty().get().getName();
@@ -637,6 +639,9 @@ public final class SettingsManager {
             if (accounts != null) {
                 for (AccountSnapshot account : accounts) {
                     settings.getAccounts().add(new org.jackhuang.hmcl.dsh.DshAccount(
+                            account.kind() == null
+                                    ? org.jackhuang.hmcl.dsh.DshAccount.AccountKind.THIRD_PARTY
+                                    : account.kind(),
                             account.vendorId(), account.apiKey(), account.baseUrl(),
                             account.label(), account.model()));
                 }

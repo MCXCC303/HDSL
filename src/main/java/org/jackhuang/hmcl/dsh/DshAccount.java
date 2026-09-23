@@ -43,6 +43,16 @@ import java.util.List;
 /// @param baseUrl   the endpoint, for a vendor whose address is per account; empty otherwise
 /// @param label     what the person calls this account, for telling two of them apart
 public record DshAccount(
+        /// Which kind of account this is.
+        ///
+        /// A kind rather than a flag, because the two answer different questions. An **official** or
+        /// **third-party** account is a key: the launcher hands it to the harness so the harness can
+        /// talk to a supplier, and it is worth checking that the key still works before a launch. An
+        /// **offline** account is a name and a face: nothing is handed to anybody, nothing is
+        /// checked, and what it is for is being able to launch the harness the way it was configured
+        /// by hand — which is a real arrangement and not an omission, the same way the original's
+        /// offline mode lets somebody play without a login.
+        AccountKind kind,
         String vendorId,
         String apiKey,
         @Nullable String baseUrl,
@@ -54,14 +64,56 @@ public record DshAccount(
         /// so a name invented here would turn a convenience into a launch that fails.
         @Nullable String model) {
 
-    /// Creates an account with no model named.
+    /// Which kind of account this is.
+    ///
+    /// The names are pinned rather than left to the enum's own spelling, because they are written to
+    /// a file: a rename in the code would otherwise be a rename of the stored format, and every
+    /// account on disk would stop being readable. `THIRD_PARTY` is `third-party` for the same reason
+    /// it is not `thirdParty` — the file is read by people as well as by this program.
+    public enum AccountKind {
+        /// The vendor the harness itself is built around, added as the leading choice.
+        @com.google.gson.annotations.SerializedName("official")
+        OFFICIAL,
+
+        /// A supplier somebody asked for by name.
+        @com.google.gson.annotations.SerializedName("third-party")
+        THIRD_PARTY,
+
+        /// A name and a skin, with nothing handed to the harness and nothing checked.
+        @com.google.gson.annotations.SerializedName("offline")
+        OFFLINE
+    }
+
+    /// Creates an official or third-party account with no model named.
     ///
     /// @param vendorId the vendor's id
     /// @param apiKey   the key
     /// @param baseUrl  the endpoint, or `null`
     /// @param label    what the person calls it, or `null`
     public DshAccount(String vendorId, String apiKey, @Nullable String baseUrl, @Nullable String label) {
-        this(vendorId, apiKey, baseUrl, label, null);
+        this(vendorId.equals(DshVendor.offered().get(0).id())
+                        ? AccountKind.OFFICIAL : AccountKind.THIRD_PARTY,
+                vendorId, apiKey, baseUrl, label, null);
+    }
+
+    /// Creates an account of a stated kind, naming no model.
+    ///
+    /// @param kind     the kind
+    /// @param vendorId the vendor's id
+    /// @param apiKey   the key
+    /// @param baseUrl  the endpoint, or `null`
+    /// @param label    what the person calls it, or `null`
+    public DshAccount(AccountKind kind, String vendorId, String apiKey,
+                      @Nullable String baseUrl, @Nullable String label) {
+        this(kind, vendorId, apiKey, baseUrl, label, null);
+    }
+
+    /// Creates an offline account: a name, and nothing to check or hand over.
+    ///
+    /// @param label the name
+    /// @return the account
+    public static DshAccount offline(String label) {
+        return new DshAccount(AccountKind.OFFLINE, "offline", "", null, label, null);
     }
 
     /// How long a key check is given.
@@ -72,6 +124,17 @@ public record DshAccount(
     /// @return the vendor, or `null` when the id names one this launcher does not offer
     public @Nullable DshVendor vendor() {
         return DshVendor.byId(vendorId);
+    }
+
+    /// Reports whether this account has anything to hand to the harness.
+    ///
+    /// An offline account does not: it is a name and a face, and the launcher must not write a route
+    /// for it, must not set a default model for it, and must not put a key in the child's
+    /// environment. Everything that touches the harness asks this first.
+    ///
+    /// @return whether a key travels with this account
+    public boolean carriesAKey() {
+        return kind != AccountKind.OFFLINE && apiKey != null && !apiKey.isBlank();
     }
 
     /// Returns the key that names this account.

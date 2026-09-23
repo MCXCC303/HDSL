@@ -935,9 +935,13 @@ public final class DshCli {
             // launch goes wrong the first question is which of those decided the flags. Reading it
             // off the process table afterwards is not always possible — the child exits, or the
             // tooling cannot see another process's arguments.
-            out.println("command: " + DshLauncher.plan(instance).commandLine());
+            // Built once and handed on. Building it is what writes the account's overlay, so building
+            // a second one — which is what printing and then launching used to do — leaves the first
+            // one behind for good.
+            DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
+            out.println("command: " + plan.commandLine());
 
-            DshProcess process = DshProcessManager.launch(instance);
+            DshProcess process = DshProcessManager.launch(instance, null, plan);
             for (int i = 0; i < 120 && process.state() == DshProcess.State.STARTING; i++) {
                 Thread.sleep(500);
                 if (!process.isRunning()) {
@@ -1107,9 +1111,10 @@ public final class DshCli {
         // own help, the instance's settings and the launcher's defaults, and when a launch goes
         // wrong the first question is which of those decided the flags. Reading it off the process
         // table afterwards is not always possible.
-        out.println("command: " + DshLauncher.plan(instance).commandLine());
+        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
+        out.println("command: " + plan.commandLine());
 
-        DshProcess process = DshProcessManager.launch(instance);
+        DshProcess process = DshProcessManager.launch(instance, null, plan);
         process.setLogSink(line -> System.out.println("[" + instance.id() + "] " + line));
 
         long deadline = System.currentTimeMillis() + java.time.Duration.ofSeconds(90).toMillis();

@@ -103,37 +103,36 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         // The original's shape, which says something by its order:
         //
         //     ┌ 添加账户 ─────────────
-        //     │  Microsoft          ← the one the launcher is built around
+        //     │  微软账户            ← the one the launcher is built around
         //     │  离线模式            ← the one that needs nothing
         //     │  LittleSkin     ×   ← the others, each removable
         //     └ ...
         //     + 添加认证服务器          ← pinned at the foot
         //
-        // The first row is the vendor this launcher exists for, and the rest are the others. The
-        // distinguishing is not decoration: the harness's own vendor is the one that works with
-        // nothing configured, and the ones below are arrangements somebody has to know they want.
-        VBox vendorBox = new VBox();
-        vendorBox.getStyleClass().add("advanced-list-box-content");
+        // The first row is the vendor this launcher exists for, the second needs nothing at all,
+        // and the third *opens* the list of the rest rather than being it: thirteen vendors down the
+        // side of the window is a list nobody reads, and the one a person wants is usually the first
+        // or the second row.
+        VBox rows = new VBox();
+        rows.getStyleClass().add("advanced-list-box-content");
 
         DshVendor primary = DshVendor.offered().get(0);
-        vendorBox.getChildren().add(vendorItem(primary));
-        for (DshVendor vendor : DshVendor.offered()) {
-            if (vendor != primary) {
-                vendorBox.getChildren().add(vendorItem(vendor));
-            }
-        }
+        rows.getChildren().addAll(
+                vendorItem(i18n("dsh.account.method.official"), primary.id(),
+                        SVG.DRESSER, () -> Controllers.dialog(new AccountSettingsDialog(primary))),
+                vendorItem(i18n("account.methods.offline"), i18n("dsh.account.method.offline.hint"),
+                        SVG.PERSON, () -> Controllers.dialog(AccountSettingsDialog.offline())));
 
-        ScrollPane scrollPane = new ScrollPane(vendorBox);
+        ScrollPane scrollPane = new ScrollPane(rows);
         scrollPane.setFitToWidth(true);
         FXUtils.setLimitWidth(scrollPane, 200);
         FXUtils.smoothScrolling(scrollPane);
 
-        // The foot, as in the original: the things that are about accounts as a whole rather than
-        // about one of them. The original's is "add an authentication server"; this launcher's is
-        // the same idea — the vendors are a fixed list it ships with, and a name of one's own is
-        // reached by asking for it here.
+        // The foot, as in the original: what is about accounts as a whole rather than about one.
+        // The original's is "add an authentication server"; this launcher's is the same idea — the
+        // vendors it ships with are a fixed list, and the rest are reached by asking for one here.
         AdvancedListBox actions = new AdvancedListBox()
-                .addNavigationDrawerItem(i18n("dsh.account.add.custom"), SVG.ADD_CIRCLE,
+                .addNavigationDrawerItem(i18n("dsh.account.add.vendor"), SVG.ADD_CIRCLE,
                         () -> Controllers.dialog(new AccountSettingsDialog(null)))
                 .addNavigationDrawerItem(i18n("dsh.skin.title"), SVG.PERSON,
                         () -> Controllers.dialog(new SkinDialog()));
@@ -141,6 +140,25 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         setLeft(scrollPane, actions);
         return scrollPane;
+    }
+
+    /// Builds one row of the add column.
+    ///
+    /// @param title    the row's name
+    /// @param subtitle the row's own line
+    /// @param icon     the row's icon
+    /// @param action   what pressing it does
+    /// @return the row
+    private javafx.scene.Node vendorItem(String title, String subtitle,
+                                         SVG icon, Runnable action) {
+        org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
+                new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
+        item.getStyleClass().add("navigation-drawer-item");
+        item.setTitle(title);
+        item.setSubtitle(subtitle);
+        item.setLeftIcon(icon);
+        item.setOnAction(event -> action.run());
+        return item;
     }
 
     /// Builds one row of the add column.
@@ -225,8 +243,8 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                             java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
                             for (int i = 0; i < accounts.size(); i++) {
                                 if (accounts.get(i).matchesKey(account.key())) {
-                                    accounts.set(i, new DshAccount(account.vendorId(), trimmed,
-                                            account.baseUrl(), account.label(), account.model()));
+                                    accounts.set(i, new DshAccount(account.kind(), account.vendorId(),
+                                            trimmed, account.baseUrl(), account.label(), account.model()));
                                     break;
                                 }
                             }
@@ -283,6 +301,14 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         /// The skin drawn on its own, when one has been chosen.
         private final javafx.scene.canvas.Canvas avatar = new javafx.scene.canvas.Canvas();
 
+        /// The buttons that need an account to have a key.
+        private final com.jfoenix.controls.JFXButton check =
+                FXUtils.newToggleButton4(SVG.REFRESH);
+        private final com.jfoenix.controls.JFXButton changeKey =
+                FXUtils.newToggleButton4(SVG.EDIT);
+        private final com.jfoenix.controls.JFXButton copyKey =
+                FXUtils.newToggleButton4(SVG.CONTENT_COPY);
+
         /// Creates a cell.
         ///
         /// @param listView the list it belongs to
@@ -325,19 +351,33 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             BorderPane.setAlignment(content, Pos.CENTER);
             root.setCenter(centre);
 
-            com.jfoenix.controls.JFXButton check = FXUtils.newToggleButton4(SVG.CHECK_CIRCLE);
+            // The original's row, in its order: refresh, skin, copy, delete. Its first spot is
+            // "move to portable", which has no meaning here, and its second is "upload the skin",
+            // which here is choosing it — there is no account to upload to.
+            //
+            // What an account has no key for, it offers no button for. An offline account is a name
+            // and a face: checking a key that does not exist, changing one, or copying one would be
+            // three buttons that can only fail.
             FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
             check.setOnAction(event -> check());
 
-            // The original's second spot on a row is "move to portable"; this launcher's is "change
-            // the key", because a key is the one part of an account that expires and the vendor,
-            // the name and the model are its identity.
-            com.jfoenix.controls.JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
+            com.jfoenix.controls.JFXButton skin = FXUtils.newToggleButton4(SVG.CHECKROOM);
+            FXUtils.installFastTooltip(skin, i18n("dsh.account.skin"));
+            skin.setOnAction(event -> Controllers.dialog(new SkinDialog()));
+
             FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
             changeKey.setOnAction(event -> {
                 DshAccount account = getItem();
                 if (account != null) {
                     changeKey(account);
+                }
+            });
+
+            FXUtils.installFastTooltip(copyKey, i18n("dsh.account.copy_key"));
+            copyKey.setOnAction(event -> {
+                DshAccount account = getItem();
+                if (account != null) {
+                    FXUtils.copyText(account.apiKey());
                 }
             });
 
@@ -350,7 +390,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 }
             });
 
-            HBox right = new HBox(check, changeKey, remove);
+            HBox right = new HBox(check, skin, changeKey, copyKey, remove);
             right.setAlignment(Pos.CENTER_RIGHT);
             root.setRight(right);
 
@@ -397,6 +437,10 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         ///
         /// Off the interface thread, because it is a network call, and only a refusal means
         /// anything: a vendor that cannot be reached has not said the key is bad.
+        /// Asks the vendor whether this account's key still works.
+        ///
+        /// The verdict goes on the row it belongs to, which is where the original puts a state it
+        /// has just learned about an account: beside the account, not in a dialog that covers it.
         private void check() {
             DshAccount account = getItem();
             if (account == null) {
@@ -406,11 +450,11 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             java.util.concurrent.CompletableFuture
                     .supplyAsync(account::check, org.jackhuang.hmcl.task.Schedulers.io())
                     .whenComplete((result, failure) -> javafx.application.Platform.runLater(() -> {
-                        if (failure != null) {
-                            content.setSubtitle(failure.getMessage());
-                        } else {
-                            content.setSubtitle(result.message());
+                        java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
+                        if (!accounts.contains(account)) {
+                            return;
                         }
+                        content.setSubtitle(failure != null ? failure.getMessage() : result.message());
                     }));
         }
 
@@ -420,11 +464,23 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 return;
             }
             content.setTitle(account.displayName());
-            content.setSubtitle(account.vendorId() + " · " + account.maskedKey()
-                    + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault()));
+            // An account with no key says what it is instead of showing an empty one: the row is a
+            // description, and "····" beside "offline" would be a description of nothing.
+            content.setSubtitle(account.carriesAKey()
+                    ? account.vendorId() + " · " + account.maskedKey()
+                            + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault())
+                    : i18n("account.methods.offline"));
             monogram.setText(account.displayName().isEmpty()
                     ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
             drawAvatar();
+
+            boolean carriesAKey = account.carriesAKey();
+            check.setVisible(carriesAKey);
+            check.setManaged(carriesAKey);
+            changeKey.setVisible(carriesAKey);
+            changeKey.setManaged(carriesAKey);
+            copyKey.setVisible(carriesAKey);
+            copyKey.setManaged(carriesAKey);
             selector.setSelected(isActive(account));
         }
     }

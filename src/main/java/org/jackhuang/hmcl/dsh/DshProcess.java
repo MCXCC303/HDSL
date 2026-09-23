@@ -166,6 +166,17 @@ public final class DshProcess {
     /// @throws DshException when it cannot be started
     public static DshProcess start(DshInstance instance, @Nullable DshAccount account)
             throws DshException {
+        return startPrepared(instance, DshLauncher.plan(instance, account));
+    }
+
+    /// Starts an instance from a plan that has already been built.
+    ///
+    /// @param instance the instance
+    /// @param plan     the plan
+    /// @return the started process
+    /// @throws DshException when it cannot be started
+    public static DshProcess startPrepared(DshInstance instance, DshLauncher.LaunchPlan plan)
+            throws DshException {
         // An instance may answer for itself about debug lines, so the switch is applied here
         // rather than once at startup: what is written while this instance runs is what its
         // own answer says.
@@ -176,7 +187,6 @@ public final class DshProcess {
         DshCustomCommands.run(instance,
                 org.jackhuang.hmcl.setting.SettingsManager.settings().preLaunchCommandFor(instance.id()),
                 "pre-launch", null);
-        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, account);
         LOG.info("Launching instance " + instance.id() + ": " + plan.commandLine());
         try {
             return new DshProcess(plan);

@@ -69,6 +69,12 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     /// The vendor being added, or `null` when the dialog has to ask.
     private final @Nullable DshVendor preselected;
 
+    /// Which kind of account this dialog adds.
+    private final DshAccount.AccountKind kind;
+
+    /// Whether this dialog adds an offline account, which is a name and nothing else.
+    private final boolean offline;
+
     /// The accounts already kept, redrawn whenever one is added or removed.
     private final ComponentList accounts = new ComponentList();
 
@@ -100,10 +106,30 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     ///
     /// @param preselected the vendor to add, or `null` to ask
     public AccountSettingsDialog(@Nullable DshVendor preselected) {
-        this.preselected = preselected;
+        this(preselected, DshAccount.AccountKind.THIRD_PARTY, false);
+    }
 
-        setHeading(new Label(i18n(preselected == null
-                ? "dsh.account.add.custom" : "account.create")));
+    /// Creates a dialog that adds an offline account: a name, and nothing to check.
+    ///
+    /// @return the dialog
+    public static AccountSettingsDialog offline() {
+        return new AccountSettingsDialog(null, DshAccount.AccountKind.OFFLINE, true);
+    }
+
+    /// Creates the dialog.
+    ///
+    /// @param preselected the vendor to add, or `null` to ask
+    /// @param kind        which kind of account this adds
+    /// @param offline     whether it adds an offline account
+    private AccountSettingsDialog(@Nullable DshVendor preselected,
+                                  DshAccount.AccountKind kind, boolean offline) {
+        this.preselected = preselected;
+        this.kind = kind;
+        this.offline = offline;
+
+        setHeading(new Label(offline
+                ? i18n("account.create.offline")
+                : i18n(preselected == null ? "dsh.account.add.custom" : "account.create")));
 
         VBox body = new VBox(10, accounts, buildForm());
         setBody(body);
@@ -269,8 +295,8 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
                                     SettingsManager.settings().getAccounts();
                             for (int i = 0; i < accounts.size(); i++) {
                                 if (accounts.get(i).matchesKey(account.key())) {
-                                    accounts.set(i, new DshAccount(account.vendorId(), trimmed,
-                                            account.baseUrl(), account.label(), account.model()));
+                                    accounts.set(i, new DshAccount(account.kind(), account.vendorId(),
+                                            trimmed, account.baseUrl(), account.label(), account.model()));
                                     break;
                                 }
                             }
@@ -286,9 +312,23 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     /// The check runs off the interface thread: it is a network call, and a dialog that stops
     /// responding while a supplier is asked a question is a dialog that looks broken.
     private void addAccount() {
+        String username = usernameField.getText() == null ? "" : usernameField.getText().trim();
+
+        if (offline) {
+            // Nothing to check and nothing to hand over. The name is required only because a row with
+            // no name would be a row nobody could tell from another.
+            if (username.isEmpty()) {
+                verdict.setText(i18n("dsh.account.need_username"));
+                return;
+            }
+            SettingsManager.settings().getAccounts().add(DshAccount.offline(username));
+            SettingsManager.save();
+            fireEvent(new DialogCloseEvent());
+            return;
+        }
+
         DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
         String key = keyField.getText() == null ? "" : keyField.getText().trim();
-        String username = usernameField.getText() == null ? "" : usernameField.getText().trim();
         if (vendor == null || key.isEmpty()) {
             verdict.setText(i18n("dsh.account.need_vendor_and_key"));
             return;
@@ -301,7 +341,7 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         String baseUrl = baseUrlRow.isVisible() && baseUrlField.getText() != null
                 ? baseUrlField.getText().trim() : "";
         String model = modelField.getText() == null ? "" : modelField.getText().trim();
-        DshAccount candidate = new DshAccount(vendor.id(), key,
+        DshAccount candidate = new DshAccount(kind, vendor.id(), key,
                 baseUrl.isEmpty() ? null : baseUrl,
                 username.isEmpty() ? vendor.displayName() : username,
                 model.isEmpty() ? null : model);

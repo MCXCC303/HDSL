@@ -281,7 +281,7 @@ public final class DshLauncher {
         // the user's settings on top and the overlay is the layer that loses. So the default model
         // is written where the user's own answer lives — and, when the account names no model, not
         // written at all: the harness refuses to start on a default it cannot resolve.
-        if (account != null) {
+        if (account != null && account.carriesAKey()) {
             try {
                 DshDefaultModel.apply(home, account.vendorId(), account.modelOrDefault());
             } catch (DshException e) {
@@ -332,7 +332,7 @@ public final class DshLauncher {
         environment.put("DSH_HOME", home.toString());
         // The key travels here and nowhere else: an inherited variable is the highest-precedence
         // source the harness reads, and it is gone when the process is.
-        if (account != null && account.apiKey() != null && !account.apiKey().isBlank()) {
+        if (account != null && account.carriesAKey()) {
             environment.put(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, account.apiKey().trim());
         }
         environment.putAll(runtime.pathEnvironment());

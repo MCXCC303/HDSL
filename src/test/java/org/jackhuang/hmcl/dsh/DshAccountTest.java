@@ -72,7 +72,45 @@ class DshAccountTest {
     @Test
     void aModelIsWhateverWasNamedOrNothing() {
         assertEquals("", new DshAccount("deepseek", "k", null, null).modelOrDefault());
-        assertEquals("qwen3:32b", new DshAccount("deepseek", "k", null, null, "qwen3:32b").modelOrDefault());
+        assertEquals("qwen3:32b", new DshAccount(DshAccount.AccountKind.OFFICIAL,
+                "deepseek", "k", null, null, "qwen3:32b").modelOrDefault());
+    }
+
+    @Test
+    void onlyAnAccountWithAKeyHandsOneOver() {
+        // This is what every launch step asks before writing a route, setting a default model or
+        // putting anything in the child's environment. An offline account is a name and a face, and
+        // a launcher that handed its empty key over would point the harness at a supplier that
+        // cannot answer.
+        assertTrue(new DshAccount("deepseek", "sk-real", null, null).carriesAKey());
+        assertTrue(new DshAccount(DshAccount.AccountKind.THIRD_PARTY,
+                "openai", "sk-real", null, null).carriesAKey());
+        assertFalse(DshAccount.offline("MCXCC").carriesAKey());
+        assertFalse(new DshAccount(DshAccount.AccountKind.OFFICIAL,
+                "deepseek", "", null, null).carriesAKey());
+        assertFalse(new DshAccount(DshAccount.AccountKind.OFFICIAL,
+                "deepseek", "   ", null, null).carriesAKey());
+    }
+
+    @Test
+    void theKindFollowsWhichVendorItIs() {
+        // The four-argument constructor is the one the old code and the dialog's plain path use, and
+        // it must not quietly call everything third-party: the vendor the launcher is built around is
+        // the official one, and that is what decides which row of the page opened the dialog.
+        assertEquals(DshAccount.AccountKind.OFFICIAL,
+                new DshAccount("deepseek", "k", null, null).kind());
+        assertEquals(DshAccount.AccountKind.THIRD_PARTY,
+                new DshAccount("openrouter", "k", null, null).kind());
+        assertEquals(DshAccount.AccountKind.OFFLINE, DshAccount.offline("me").kind());
+    }
+
+    @Test
+    void anOfflineAccountIsNamedAndNothingElse() {
+        DshAccount offline = DshAccount.offline("MCXCC");
+        assertEquals("MCXCC", offline.displayName());
+        assertEquals("offline", offline.vendorId());
+        assertNull(offline.vendor(), "an offline account has no supplier to look up");
+        assertNull(offline.endpoint());
     }
 
     @Test

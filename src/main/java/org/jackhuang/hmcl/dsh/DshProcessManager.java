@@ -102,6 +102,23 @@ public final class DshProcessManager {
     /// @throws DshException when it cannot be started
     public static DshProcess launch(DshInstance instance, @Nullable DshAccount account)
             throws DshException {
+        return launch(instance, account, null);
+    }
+
+    /// Launches an instance from a plan that has already been built.
+    ///
+    /// Building a plan is not free of consequence: it writes the account's overlay. A caller that
+    /// built one — to print what was about to run, which is what the command line interface does —
+    /// must be able to hand that same plan over rather than have a second one built, because the
+    /// second build writes a second overlay and the first is never removed by anybody.
+    ///
+    /// @param instance the instance
+    /// @param account  the account, or `null` for none
+    /// @param prepared the plan to use, or `null` to build one
+    /// @return the process
+    /// @throws DshException when it cannot be started
+    public static DshProcess launch(DshInstance instance, @Nullable DshAccount account,
+                                    @Nullable DshLauncher.LaunchPlan prepared) throws DshException {
         synchronized (LAUNCH_LOCK) {
             DshProcess existing = RUNNING.get(instance.id());
             if (existing != null) {
@@ -122,7 +139,9 @@ public final class DshProcessManager {
 
             // The runtime is resolved inside the launcher, so an instance pinned
             // to a managed Node runtime is honoured here too.
-            DshProcess process = DshProcess.start(instance, account);
+            DshProcess process = prepared == null
+                    ? DshProcess.start(instance, account)
+                    : DshProcess.startPrepared(instance, prepared);
             RUNNING.put(instance.id(), process);
             process.setStateListener(state -> {
                 if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {

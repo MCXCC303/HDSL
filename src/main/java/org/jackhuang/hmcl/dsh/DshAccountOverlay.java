@@ -72,7 +72,7 @@ public final class DshAccountOverlay {
     /// @throws DshException when the file cannot be written
     public static Optional<Path> write(DshInstance instance, @Nullable DshAccount account)
             throws DshException {
-        if (account == null || account.apiKey() == null || account.apiKey().isBlank()) {
+        if (account == null || !account.carriesAKey()) {
             return Optional.empty();
         }
         DshVendor vendor = account.vendor();

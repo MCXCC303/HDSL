@@ -77,6 +77,48 @@ public final class DshLaunchService {
     /// user would be told the launch failed at the moment they cancelled it.
     private static final java.util.Set<String> CANCELLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    /// Asks the vendor whether the account's key still works, before the launcher relies on it.
+    ///
+    /// The original does the same thing at the same moment, and for the same reason: a launch that
+    /// gets as far as starting the game and *then* discovers the credential is dead has spent the
+    /// whole startup on a failure it could have named in a second. Its step is a login; this one is a
+    /// model list, which is the smallest call that answers the same question.
+    ///
+    /// Two of the three outcomes let the launch continue, and that is deliberate:
+    ///
+    /// - **valid** — nothing to say.
+    /// - **unknown** — the vendor could not be reached, or does not answer this question. A network
+    ///   that cannot reach a supplier today may reach it in a minute, and refusing to start because a
+    ///   *check* failed would make the launcher less able than the harness it launches. It is logged.
+    /// - **rejected** — the vendor said no. This is the one worth stopping for, and it stops with a
+    ///   message naming whose key, so the person knows which row to fix.
+    ///
+    /// An account that carries no key is not checked at all — there is nothing to check — which is
+    /// exactly what offline mode is.
+    ///
+    /// @param instance the instance being launched
+    /// @param account  the account it will launch with, or `null`
+    /// @throws java.util.concurrent.CompletionException when the vendor refused the key
+    private static void checkAccount(DshInstance instance,
+                                     @Nullable org.jackhuang.hmcl.dsh.DshAccount account) {
+        if (account == null || !account.carriesAKey()) {
+            return;
+        }
+        org.jackhuang.hmcl.dsh.DshAccount.Check result = account.check();
+        switch (result.outcome()) {
+            case VALID -> LOG.info("The account " + account.displayName() + " is valid");
+            case UNREACHABLE, UNKNOWN -> LOG.warning("Could not confirm the account "
+                    + account.displayName() + " before launching " + instance.id() + ": "
+                    + result.message());
+            case REJECTED -> {
+                LOG.warning("The account " + account.displayName() + " was refused: " + result.message());
+                throw new java.util.concurrent.CompletionException(
+                        new DshException(i18n("dsh.account.rejected.before_launch",
+                                account.displayName(), result.message())));
+            }
+        }
+    }
+
     /// Reports whether an instance is currently being launched.
     ///
     /// @param instanceId the instance id
@@ -220,8 +262,10 @@ public final class DshLaunchService {
         DshProcess[] started = new DshProcess[1];
         Task<DshProcess> launch = Task.supplyAsync(() -> {
             try {
-                DshProcess process = DshProcessManager.launch(instance,
-                        org.jackhuang.hmcl.dsh.DshAccount.forInstance(instance));
+                org.jackhuang.hmcl.dsh.DshAccount account =
+                        org.jackhuang.hmcl.dsh.DshAccount.forInstance(instance);
+                checkAccount(instance, account);
+                DshProcess process = DshProcessManager.launch(instance, account);
                 started[0] = process;
                 awaitReady(process);
                 return process;
