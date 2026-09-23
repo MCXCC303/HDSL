@@ -46,7 +46,23 @@ public record DshAccount(
         String vendorId,
         String apiKey,
         @Nullable String baseUrl,
-        @Nullable String label) {
+        @Nullable String label,
+        /// The model the harness should start with on this account's route, or empty.
+        ///
+        /// Empty is a real answer and the default one: which model a route offers is the vendor's
+        /// catalogue to describe, and the harness refuses to start on a default it cannot resolve,
+        /// so a name invented here would turn a convenience into a launch that fails.
+        @Nullable String model) {
+
+    /// Creates an account with no model named.
+    ///
+    /// @param vendorId the vendor's id
+    /// @param apiKey   the key
+    /// @param baseUrl  the endpoint, or `null`
+    /// @param label    what the person calls it, or `null`
+    public DshAccount(String vendorId, String apiKey, @Nullable String baseUrl, @Nullable String label) {
+        this(vendorId, apiKey, baseUrl, label, null);
+    }
 
     /// How long a key check is given.
     private static final Duration TIMEOUT = Duration.ofSeconds(20);
@@ -67,6 +83,13 @@ public record DshAccount(
     /// @return the key
     public String key() {
         return vendorId + (label == null || label.isBlank() ? "" : "|" + label.trim());
+    }
+
+    /// Returns the model this account names, or empty.
+    ///
+    /// @return the model id
+    public String modelOrDefault() {
+        return model == null ? "" : model.trim();
     }
 
     /// Reports whether this account is the one a key names.

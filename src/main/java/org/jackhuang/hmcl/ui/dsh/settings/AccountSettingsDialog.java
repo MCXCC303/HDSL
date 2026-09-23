@@ -71,6 +71,9 @@ public final class AccountSettingsDialog extends VBox {
     /// The endpoint, for a vendor whose address is per account.
     private final JFXTextField baseUrlField = new JFXTextField();
 
+    /// The model the harness should start with, or empty to leave the choice alone.
+    private final JFXTextField modelField = new JFXTextField();
+
     /// Where the verdict on a key is shown.
     private final Label verdict = new Label();
 
@@ -118,7 +121,8 @@ public final class AccountSettingsDialog extends VBox {
     private javafx.scene.Node accountRow(DshAccount account) {
         LineTextPane row = new LineTextPane();
         row.setTitle(account.displayName());
-        row.setSubtitle(account.vendorId() + " · " + account.maskedKey());
+        row.setSubtitle(account.vendorId() + " · " + account.maskedKey()
+                + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault()));
 
         JFXButton check = FXUtils.newToggleButton4(SVG.CHECK_CIRCLE);
         FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
@@ -161,6 +165,7 @@ public final class AccountSettingsDialog extends VBox {
         labelField.setPromptText(i18n("dsh.account.label.prompt"));
         keyField.setPromptText(i18n("dsh.account.key.prompt"));
         baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
+        modelField.setPromptText(i18n("dsh.account.model.prompt"));
         verdict.getStyleClass().add("desc");
 
         // An endpoint is only needed by a vendor whose address is per account, so the box is only
@@ -191,6 +196,7 @@ public final class AccountSettingsDialog extends VBox {
         list.getContent().add(labelled(i18n("dsh.account.label"), labelField));
         list.getContent().add(labelled(i18n("dsh.account.key"), keyField));
         list.getContent().add(baseUrlRow);
+        list.getContent().add(labelled(i18n("dsh.account.model"), modelField));
         list.getContent().add(verdict);
         list.getContent().add(buttons);
         return list;
@@ -230,8 +236,10 @@ public final class AccountSettingsDialog extends VBox {
         String baseUrl = baseUrlField.isVisible() && baseUrlField.getText() != null
                 ? baseUrlField.getText().trim() : "";
         String label = labelField.getText() == null ? "" : labelField.getText().trim();
+        String model = modelField.getText() == null ? "" : modelField.getText().trim();
         DshAccount candidate = new DshAccount(vendor.id(), key,
-                baseUrl.isEmpty() ? null : baseUrl, label.isEmpty() ? null : label);
+                baseUrl.isEmpty() ? null : baseUrl, label.isEmpty() ? null : label,
+                model.isEmpty() ? null : model);
 
         verdict.setText(i18n("dsh.account.checking"));
         java.util.concurrent.CompletableFuture
@@ -252,6 +260,7 @@ public final class AccountSettingsDialog extends VBox {
                     SettingsManager.save();
                     keyField.clear();
                     labelField.clear();
+                    modelField.clear();
                     refresh();
                 }));
     }

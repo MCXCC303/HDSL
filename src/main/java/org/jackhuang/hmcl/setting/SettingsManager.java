@@ -345,7 +345,8 @@ public final class SettingsManager {
         /// @param baseUrl  the endpoint, for a vendor whose address is per account
         /// @param label    what the person calls it
         private record AccountSnapshot(String vendorId, String apiKey,
-                                       @Nullable String baseUrl, @Nullable String label) {
+                                       @Nullable String baseUrl, @Nullable String label,
+                                       @Nullable String model) {
         }
 
         /// The language the interface speaks, by the name the locale helper uses.
@@ -481,7 +482,7 @@ public final class SettingsManager {
             snapshot.defaultLaunchArguments = settings.defaultLaunchArgumentsProperty().get();
             snapshot.accounts = settings.getAccounts().stream()
                     .map(account -> new AccountSnapshot(account.vendorId(), account.apiKey(),
-                            account.baseUrl(), account.label()))
+                            account.baseUrl(), account.label(), account.model()))
                     .toList();
             snapshot.language = settings.languageProperty().get() == null
                     ? null : settings.languageProperty().get().getName();
@@ -611,7 +612,8 @@ public final class SettingsManager {
             if (accounts != null) {
                 for (AccountSnapshot account : accounts) {
                     settings.getAccounts().add(new org.jackhuang.hmcl.dsh.DshAccount(
-                            account.vendorId(), account.apiKey(), account.baseUrl(), account.label()));
+                            account.vendorId(), account.apiKey(), account.baseUrl(),
+                            account.label(), account.model()));
                 }
             }
             if (defaultLaunchArguments != null) {

@@ -262,6 +262,20 @@ public final class DshLauncher {
         // removed when the instance stops, so nothing of the user's own configuration is changed.
         java.util.Optional<Path> accountOverlay = DshAccountOverlay.write(instance, account);
 
+        // An overlay adds a route; it cannot make the harness *use* one, because layers merge with
+        // the user's settings on top and the overlay is the layer that loses. So the default model
+        // is written where the user's own answer lives — and, when the account names no model, not
+        // written at all: the harness refuses to start on a default it cannot resolve.
+        if (account != null) {
+            try {
+                DshDefaultModel.apply(home, account.vendorId(), account.modelOrDefault());
+            } catch (DshException e) {
+                // Not fatal: the route is still there and can be chosen by hand. What must not
+                // happen is a launch that does not start because a convenience could not be set.
+                LOG.warning("Could not set the default model for " + instance.id(), e);
+            }
+        }
+
         // What the instance runs with, as the user typed it. Its launcher flags go before the
         // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported.
         DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
