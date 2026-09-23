@@ -302,6 +302,65 @@ public record DshAccount(
         }
     }
 
+    /// Asks an address whether anything is listening, without a key.
+    ///
+    /// This is what tells a person who pasted an address that is not in the catalogue whether they
+    /// have found a supplier or mistyped a hostname. What is asked is the same `/models` call the key
+    /// check makes, minus the key — it is the one endpoint every OpenAI-compatible service has, and
+    /// the answer is readable whether or not it is allowed:
+    ///
+    /// - **200** — a model list came back, so this is a supplier and it is even answering openly.
+    /// - **401** or **403** — it answered, and it wants a key. That is the ordinary case, and a
+    ///   supplier rather than a mistake.
+    /// - **anything else** — it answered, but not as a model service. A 404 means the address is a
+    ///   web server with no API under it, and a 5xx means something is there and unwell; neither is
+    ///   something to write a route for.
+    /// - **no answer at all** — nothing is listening, the name does not resolve, or the network
+    ///   cannot reach it. The distinction from the above is the point: an unreachable address has
+    ///   not said "no", and reporting it as a bad address would be reporting the network's fault as
+    ///   the person's.
+    ///
+    /// @param baseUrl the address, without `/models`
+    /// @return the status it answered with, or `-1` when it did not answer
+    public static int probe(String baseUrl) {
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return -1;
+        }
+        String url = baseUrl.trim().replaceAll("/+$", "") + "/models";
+        try {
+            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(TIMEOUT)
+                    .header("Accept", "application/json")
+                    .GET()
+                    .build();
+            try (HttpClient client = HttpClient.newBuilder()
+                    .connectTimeout(TIMEOUT)
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .build()) {
+                return client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode();
+            }
+        } catch (IOException e) {
+            String why = e.getMessage() == null || e.getMessage().isBlank()
+                    ? e.getClass().getSimpleName() : e.getMessage();
+            org.jackhuang.hmcl.util.logging.Logger.LOG.info("Nothing answered at " + url + ": " + why);
+            return -1;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return -1;
+        } catch (RuntimeException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.info("Not an address: " + baseUrl);
+            return -1;
+        }
+    }
+
+    /// Reports whether a status means something is serving a model API there.
+    ///
+    /// @param status what [#probe] returned
+    /// @return whether it is a supplier
+    public static boolean statusLooksLikeASupplier(int status) {
+        return status == 200 || status == 401 || status == 403;
+    }
+
     /// Returns the account an instance launches with.
     ///
     /// The instance's own choice wins, and when it has none the first account the launcher holds is

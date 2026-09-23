@@ -46,6 +46,7 @@ import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.dsh.settings.AccountSettingsDialog;
+import org.jackhuang.hmcl.ui.dsh.settings.AddVendorDialog;
 import org.jackhuang.hmcl.ui.dsh.settings.SkinDialog;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -104,6 +105,11 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         // the page having to know a dialog exists.
         accounts.addListener((javafx.collections.ListChangeListener<DshAccount>) change ->
                 javafx.application.Platform.runLater(this::refreshList));
+        // The suppliers too: one added by address is a new row in the add column, and this page is
+        // the only thing that draws them.
+        SettingsManager.settings().getCustomVendors().addListener(
+                (javafx.collections.ListChangeListener<DshVendor>) change ->
+                        javafx.application.Platform.runLater(this::rebuildSidebar));
         refreshList();
 
         buildAddSidebar();
@@ -123,6 +129,15 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// caller set that one over both. That is exactly what happened: the foot was built, added, and
     /// then replaced by the builder's return value one line later, so it was present in the code and
     /// nowhere on screen.
+    /// Rebuilds the add column.
+    ///
+    /// It sets the page's left column again rather than patching a row in, because that column *is*
+    /// the list of suppliers: a supplier added while the page is open changes it, and one row
+    /// appended to a box that the page no longer reads from would not appear.
+    private void rebuildSidebar() {
+        buildAddSidebar();
+    }
+
     private void buildAddSidebar() {
         // The original's shape, which says something by its order:
         //
@@ -140,12 +155,27 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         VBox rows = new VBox();
         rows.getStyleClass().add("advanced-list-box-content");
 
+        // The column is headed, and the heading is not decoration: it is what tells a person that
+        // these are ways of *adding* an account rather than the accounts themselves — which, on a page
+        // whose centre is a list of accounts, is the one thing about this column that is not obvious.
+        // The original heads its own with `ClassTitle(account.create.toUpperCase())`.
+        rows.getChildren().add(new org.jackhuang.hmcl.ui.construct.ClassTitle(
+                i18n("account.create").toUpperCase(java.util.Locale.ROOT)));
+
         DshVendor primary = DshVendor.offered().get(0);
         rows.getChildren().addAll(
                 vendorItem(i18n("dsh.account.method.official"), null,
                         SVG.DRESSER, () -> Controllers.dialog(new AccountSettingsDialog(primary))),
                 vendorItem(i18n("account.methods.offline"), null,
                         SVG.PERSON, () -> Controllers.dialog(AccountSettingsDialog.offline())));
+
+        // The suppliers somebody added by address, after the two the launcher leads with. They are
+        // rows of this column rather than a list of their own, because that is what they are: another
+        // way of adding an account. The original draws its added auth servers the same way — the same
+        // icon as the leading row, and a close button to take the row away again.
+        for (DshVendor vendor : SettingsManager.settings().getCustomVendors()) {
+            rows.getChildren().add(addedVendorItem(vendor));
+        }
 
         // The original's shape, node for node:
         //
@@ -174,8 +204,12 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
         addVendor.getStyleClass().add("navigation-drawer-item");
         addVendor.setTitle(i18n("dsh.account.add.vendor"));
+        // The original's own subtitle on this row, and the original's own string for it: this adds an
+        // external provider rather than one of the launcher's built-in ways, which is what "外置登录"
+        // says and what pressing the row to find out would otherwise be needed for.
+        addVendor.setSubtitle(i18n("account.methods.authlib_injector"));
         addVendor.setLeftIcon(SVG.ADD_CIRCLE);
-        addVendor.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(null)));
+        addVendor.setOnAction(event -> Controllers.dialog(new AddVendorDialog()));
         VBox.setMargin(addVendor, new Insets(0, 0, 12, 0));
 
         setLeft(scrollPane, addVendor);
@@ -199,6 +233,31 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         }
         item.setLeftIcon(icon);
         item.setOnAction(event -> action.run());
+        return item;
+    }
+
+    /// Builds one row for a supplier somebody added by address.
+    ///
+    /// The original's own shape for its added auth servers: the same icon as the row the launcher
+    /// leads with, the supplier's own name, and a close button that takes it away. The close button
+    /// is the half that matters — an address typed once and disliked is otherwise in the column for
+    /// good, with nothing on screen that says where it came from.
+    ///
+    /// @param vendor the supplier
+    /// @return the row
+    private javafx.scene.Node addedVendorItem(DshVendor vendor) {
+        org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
+                new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
+        item.getStyleClass().add("navigation-drawer-item");
+        item.setTitle(vendor.displayName());
+        item.setSubtitle(vendor.id());
+        item.setLeftIcon(SVG.DRESSER);
+        item.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(vendor)));
+        item.setRightAction(SVG.CLOSE, () -> {
+            SettingsManager.settings().getCustomVendors().removeIf(
+                    existing -> existing.id().equalsIgnoreCase(vendor.id()));
+            SettingsManager.save();
+        });
         return item;
     }
 
@@ -260,12 +319,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         javafx.scene.canvas.Canvas avatar = new javafx.scene.canvas.Canvas(32, 32);
         avatar.setMouseTransparent(true);
-        Label monogram = new Label();
-        monogram.getStyleClass().add("dsh-account-monogram");
-        monogram.setMinSize(32, 32);
-        monogram.setPrefSize(32, 32);
-        monogram.setAlignment(Pos.CENTER);
-        StackPane picture = new StackPane(avatar, monogram);
+        StackPane picture = new StackPane(avatar);
         picture.setMinSize(32, 32);
         picture.setPrefSize(32, 32);
         picture.setMaxSize(32, 32);
@@ -276,7 +330,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 ? account.vendorId() + " · " + account.maskedKey()
                         + (account.modelOrDefault().isEmpty() ? "" : " · " + account.modelOrDefault())
                 : i18n("account.methods.offline"));
-        drawAvatar(account, avatar, monogram);
+        drawAvatar(account, avatar);
 
         HBox centre = new HBox(8, picture, content);
         centre.setAlignment(Pos.CENTER_LEFT);
@@ -302,9 +356,16 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
     /// Builds the buttons an account's card offers.
     ///
-    /// The original's order: refresh, skin, copy, delete. Its first spot is "move to portable", which
-    /// has no meaning here, and its second is "upload the skin", which here is choosing one — there is
-    /// no account to upload to.
+    /// **All of them, always.** The original adds every button to the row and disables the ones that
+    /// cannot act on this account (`btnRefresh.setDisable(true)`,
+    /// `btnUpload.disableProperty().bind(...)`), so an offline account shows the same five buttons as
+    /// any other with three of them greyed. Leaving them out instead — which is what this did — makes
+    /// the row change shape from account to account and reads as features that are missing rather
+    /// than as actions that do not apply.
+    ///
+    /// The order is the original's: refresh, skin, then the key's own pair, then remove. Its first
+    /// spot is "move to portable", which has no meaning here, and its second is "upload the skin",
+    /// which here is choosing one — there is no account to upload to.
     ///
     /// @param account the account
     /// @param content the card's two lines, which the check writes its answer onto
@@ -312,30 +373,30 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     private java.util.List<javafx.scene.Node> cardActions(DshAccount account,
                                                           TwoLineListItem content) {
         java.util.List<javafx.scene.Node> buttons = new java.util.ArrayList<>();
+        boolean hasKey = account.carriesAKey();
 
-        if (account.carriesAKey()) {
-            com.jfoenix.controls.JFXButton check = FXUtils.newToggleButton4(SVG.REFRESH);
-            FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
-            check.setOnAction(event -> check(account, content));
-            buttons.add(check);
-        }
+        com.jfoenix.controls.JFXButton check = FXUtils.newToggleButton4(SVG.REFRESH);
+        FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
+        check.setOnAction(event -> check(account, content));
+        check.setDisable(!hasKey);
+        buttons.add(check);
 
         com.jfoenix.controls.JFXButton skin = FXUtils.newToggleButton4(SVG.CHECKROOM);
         FXUtils.installFastTooltip(skin, i18n("dsh.account.skin"));
         skin.setOnAction(event -> Controllers.dialog(new SkinDialog(account, this::refreshList)));
         buttons.add(skin);
 
-        if (account.carriesAKey()) {
-            com.jfoenix.controls.JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
-            FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
-            changeKey.setOnAction(event -> changeKey(account));
-            buttons.add(changeKey);
+        com.jfoenix.controls.JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
+        FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
+        changeKey.setOnAction(event -> changeKey(account));
+        changeKey.setDisable(!hasKey);
+        buttons.add(changeKey);
 
-            com.jfoenix.controls.JFXButton copyKey = FXUtils.newToggleButton4(SVG.CONTENT_COPY);
-            FXUtils.installFastTooltip(copyKey, i18n("dsh.account.copy_key"));
-            copyKey.setOnAction(event -> FXUtils.copyText(account.apiKey()));
-            buttons.add(copyKey);
-        }
+        com.jfoenix.controls.JFXButton copyKey = FXUtils.newToggleButton4(SVG.CONTENT_COPY);
+        FXUtils.installFastTooltip(copyKey, i18n("dsh.account.copy_key"));
+        copyKey.setOnAction(event -> FXUtils.copyText(account.apiKey()));
+        copyKey.setDisable(!hasKey);
+        buttons.add(copyKey);
 
         com.jfoenix.controls.JFXButton removeButton = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
         FXUtils.installFastTooltip(removeButton, i18n("button.remove"));
@@ -344,37 +405,19 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         return buttons;
     }
 
-    /// Draws an account's face: the skin's head when one has been chosen, its initial when not.
+    /// Draws an account's face.
     ///
-    /// The skin belongs to the **account**, so two accounts wear different faces — which is what the
-    /// original does too. Where this departs from it is an account that has chosen nothing: the
-    /// original draws the default picture that account's identity selects, and this draws the name's
-    /// first letter instead. That is deliberate — a list of faces nobody chose is harder to read
-    /// than a list of names — and the default picture is still what the chooser previews for such an
-    /// account, so the two do not disagree about what the account would look like.
+    /// Every account has one. The original's list draws `TexturesLoader.getDefaultSkin(uuid)` for
+    /// every row, so an account that has chosen nothing is drawn wearing the picture its own
+    /// identity selects rather than replaced by a letter — which is what this did, and what was
+    /// asked to be changed.
     ///
-    /// @param account  the account
-    /// @param avatar   where to draw the head
-    /// @param monogram where to draw the initial
-    private void drawAvatar(DshAccount account,
-                            javafx.scene.canvas.Canvas avatar, Label monogram) {
-        javafx.scene.image.Image skin = DshSkin.image(account.key());
-        monogram.setText(account.displayName().isEmpty()
-                ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
-        if (skin == null) {
-            avatar.setVisible(false);
-            monogram.setVisible(true);
-            return;
-        }
-        monogram.setVisible(false);
-        avatar.setVisible(true);
-        javafx.scene.canvas.GraphicsContext gc = avatar.getGraphicsContext2D();
-        gc.clearRect(0, 0, 32, 32);
-        gc.setImageSmoothing(false);
-        double unit = 4.0;
-        gc.drawImage(skin, 8, 8, 8, 8, 0, 0, unit * 8, unit * 8);
-        gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+    /// @param account the account
+    /// @param avatar  where to draw the head
+    private void drawAvatar(DshAccount account, javafx.scene.canvas.Canvas avatar) {
+        AccountAvatar.draw(avatar, DshSkin.headImage(account.key()));
     }
+
 
     /// Asks the vendor whether an account's key still works, and says the answer on the card.
     ///

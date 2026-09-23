@@ -456,6 +456,42 @@ public final class LauncherSettings {
         return accounts;
     }
 
+    /// The suppliers this machine has been told about, beside the ones the launcher offers.
+    ///
+    /// A person pastes the address of a service that is not in the dropdown — an aggregator of their
+    /// own, a gateway inside their network — and it joins the list of ways to add an account, so the
+    /// next account on it is two fields rather than the same address typed again. Kept here rather
+    /// than in a file of its own because there is no more to one than the four things the harness
+    /// needs in order to route it.
+    private final javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshVendor> customVendors =
+            javafx.collections.FXCollections.observableArrayList();
+
+    /// Returns the suppliers this machine has been told about.
+    ///
+    /// @return the list
+    public javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshVendor> getCustomVendors() {
+        return customVendors;
+    }
+
+    /// Returns every supplier the interface should offer: the launcher's own, then the added ones.
+    ///
+    /// The launcher's own lead, because they are the ones that need nothing typed. An added supplier
+    /// whose id one of them already uses is left out: two rows for one supplier, one of which cannot
+    /// be told from the other, is worse than ignoring the second.
+    ///
+    /// @return the list
+    public java.util.List<org.jackhuang.hmcl.dsh.DshVendor> allVendors() {
+        java.util.List<org.jackhuang.hmcl.dsh.DshVendor> all =
+                new java.util.ArrayList<>(org.jackhuang.hmcl.dsh.DshVendor.offered());
+        for (org.jackhuang.hmcl.dsh.DshVendor vendor : customVendors) {
+            boolean known = all.stream().anyMatch(known0 -> known0.id().equalsIgnoreCase(vendor.id()));
+            if (!known) {
+                all.add(vendor);
+            }
+        }
+        return java.util.List.copyOf(all);
+    }
+
     /// Which account the launcher uses, by its key, or empty.
     ///
     /// A named choice rather than a position. The list's first entry used to *be* the answer, which

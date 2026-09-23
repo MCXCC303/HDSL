@@ -216,13 +216,39 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         grid.add(usernameField, 1, row);
         row++;
 
+        // The original's own arrangement for telling somebody a field is wrong: validators on the
+        // field plus `setValidateWhileTextChanged`, which paints the underline red and prints the
+        // message under the box **as it is typed**. Doing the same checks only when the button is
+        // pressed — which is what this did — means a person fills in four fields and is told about
+        // the first one afterwards.
+        //
+        // The name is required of both kinds of account. A name that the harness cannot address is
+        // refused on the name field too, rather than as a verdict: it is a fact about that field.
+        usernameField.setValidators(new org.jackhuang.hmcl.ui.construct.RequiredValidator());
+        if (!offline) {
+            usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                    i18n("dsh.account.name_unusable"),
+                    // Empty is the required validator's business; answering for it here too would
+                    // put two messages under one box.
+                    name -> name == null || name.isBlank() || DshAccount.isUsableName(name.trim())));
+        }
+        FXUtils.setValidateWhileTextChanged(usernameField, true);
+
         // An offline account has no key, no endpoint and no model: it is a name and a face, and the
         // fields that would describe a supplier are not merely optional here — they would be asking
         // about something that does not exist.
         if (!offline) {
+            keyField.setValidators(new org.jackhuang.hmcl.ui.construct.RequiredValidator());
+            FXUtils.setValidateWhileTextChanged(keyField, true);
+
             grid.add(new Label(i18n("dsh.account.key")), 0, row);
             grid.add(keyField, 1, row);
             row++;
+
+            // Nullable: a vendor that publishes its own address does not need one here, and an empty
+            // box that is allowed to be empty must not be painted red for being empty.
+            baseUrlField.setValidators(new org.jackhuang.hmcl.ui.construct.URLValidator(true));
+            FXUtils.setValidateWhileTextChanged(baseUrlField, true);
 
             grid.add(new Label(i18n("dsh.account.base_url")), 0, row);
             grid.add(baseUrlField, 1, row);
@@ -269,21 +295,6 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         return actions;
     }
 
-    /// Builds a row of a name and its box.
-    ///
-    /// @param title the name
-    /// @param field the box
-    /// @return the row
-    private LinePane row(String title, javafx.scene.Node field) {
-        LinePane pane = new LinePane();
-        pane.setTitle(title);
-        if (field instanceof Region region) {
-            region.setMinWidth(360);
-        }
-        pane.setRight(field);
-        return pane;
-    }
-
     /// Takes the endpoint row away for a vendor that publishes its own address.
     private void syncEndpointRow() {
         if (form == null || endpointRow < 0) {
@@ -305,41 +316,38 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
 
     /// Checks what was typed and, if it is not refused, keeps it.
     ///
+    /// The per-field checks have already been made, and said so, while the fields were being filled
+    /// in. Asking them once more here is what puts the marks back for somebody who pressed the button
+    /// anyway, and it is the original's own arrangement: it validates its fields, returns silently if
+    /// any of them is wrong, and keeps its own message label for what a single field cannot answer.
+    ///
     /// The check runs off the interface thread: it is a network call, and a dialog that stops
     /// responding while a supplier is asked a question is a dialog that looks broken.
     private void addAccount() {
+        if (!usernameField.validate()) {
+            return;
+        }
         String username = usernameField.getText() == null ? "" : usernameField.getText().trim();
 
         if (offline) {
             // Nothing to check and nothing to hand over. The name is required only because a row with
-            // no name would be a row nobody could tell from another.
-            if (username.isEmpty()) {
-                verdict.setText(i18n("dsh.account.need_username"));
-                return;
-            }
-            SettingsManager.settings().getAccounts().add(DshAccount.offline(username));
-            SettingsManager.save();
-            fireEvent(new DialogCloseEvent());
+            // no name would be a row nobody could tell from another, and the field says so itself.
+            keep(DshAccount.offline(username));
+            return;
+        }
+
+        if (!keyField.validate()) {
             return;
         }
 
         DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
-        String key = keyField.getText() == null ? "" : keyField.getText().trim();
-        if (username.isEmpty()) {
-            verdict.setText(i18n("dsh.account.need_username"));
-            return;
-        }
-        if (vendor == null || key.isEmpty()) {
+        if (vendor == null) {
             verdict.setText(i18n("dsh.account.need_vendor_and_key"));
             return;
         }
-        // The name becomes the name of the supplier the harness is handed, so it has to be one the
-        // harness can address. Checked here rather than fixed up silently: a name quietly rewritten
-        // is a name the person will not find where they look for it.
-        if (!DshAccount.isUsableName(username)) {
-            verdict.setText(i18n("dsh.account.name_unusable"));
-            return;
-        }
+        String key = keyField.getText() == null ? "" : keyField.getText().trim();
+        // Left as a verdict rather than moved onto the key field: this is a question about the pair,
+        // and its answer names the vendor, which a field's own message cannot do.
         if (!vendor.looksLikeItsKey(key)) {
             verdict.setText(i18n("dsh.account.key_looks_wrong", vendor.displayName()));
             return;
@@ -349,14 +357,21 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         String baseUrl = baseUrlField.isVisible() && baseUrlField.getText() != null
                 ? baseUrlField.getText().trim() : "";
         String model = modelField.getText() == null ? "" : modelField.getText().trim();
-        DshAccount candidate = new DshAccount(kind, vendor.id(), key,
+        keep(new DshAccount(kind, vendor.id(), key,
                 baseUrl.isEmpty() ? null : baseUrl,
-                username, model.isEmpty() ? null : model, null);
+                username, model.isEmpty() ? null : model, null));
+    }
 
-        // Kept without asking the vendor, which is what the person pressed the button for. The row
-        // it leaves behind has a check of its own: checking is a question worth asking deliberately,
-        // at a moment when the answer is useful, rather than a gate in front of the door.
-        SettingsManager.settings().getAccounts().add(candidate);
+    /// Stores an account and makes it the one the launcher uses.
+    ///
+    /// Both halves are the original's. It selects the account it has just made
+    /// (`Accounts.setSelectedAccount`), and the home page reads that selection — so an account added
+    /// and left unselected is an account the person does not get, which is what happened here.
+    ///
+    /// @param account the account
+    private void keep(DshAccount account) {
+        SettingsManager.settings().getAccounts().add(account);
+        SettingsManager.settings().activeAccountKeyProperty().set(account.key());
         SettingsManager.save();
         fireEvent(new DialogCloseEvent());
     }

@@ -2086,3 +2086,24 @@
 .dsh-account-card-list .list-cell:filled:hover {
     -fx-background-color: transparent;
 }
+
+/*******************************************************************************
+*                                                                              *
+* DSH: adding a supplier by address                                            *
+*                                                                              *
+*******************************************************************************/
+
+/* The two panes of the add-supplier dialog. The address pane is the original's own
+   (`AddAuthlibInjectorServerPane`): a plain text field with the warning under it, no frame.
+   The confirm pane needs the same 15-pixel inset the original gives it, so the first row of
+   values does not sit against the heading. */
+.dsh-vendor-confirm {
+    -fx-padding: 15 0 0 0;
+}
+
+/* A warning rather than a red validator message: the address itself may be perfectly well
+   formed and the service simply not be there, which is not something the field can say. The
+   original colours its own `account.injector.http` warning with `-monet-error`. */
+.dsh-vendor-warning {
+    -fx-text-fill: -monet-error;
+}

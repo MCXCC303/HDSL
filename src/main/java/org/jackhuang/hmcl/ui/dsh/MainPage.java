@@ -175,6 +175,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstance.addListener((observable, was, now) -> refresh());
         GameDirectoryManager.registerVersionsListener(this::onRepositoryChanged);
 
+        // The account too, and for the same reason. This page is made **once**, at startup
+        // (`Launcher`), so `refresh()` runs when it is built and on navigation — and the account is
+        // chosen on another page, which this one then never hears about. Somebody who adds or picks
+        // an account and comes back here would still be shown the old one, which is exactly what was
+        // reported. Observing both the choice and the list covers both ways it can change: picking a
+        // different account, and adding one.
+        org.jackhuang.hmcl.setting.SettingsManager.settings()
+                .activeAccountKeyProperty().addListener((observable, was, now) -> refreshAccountItem());
+        org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts()
+                .addListener((javafx.collections.ListChangeListener<org.jackhuang.hmcl.dsh.DshAccount>)
+                        change -> javafx.application.Platform.runLater(this::refreshAccountItem));
+
         ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshActionState()));
         ticker.setCycleCount(Animation.INDEFINITE);
         ticker.play();
@@ -440,28 +452,17 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     private void drawAccountAvatar() {
         org.jackhuang.hmcl.dsh.DshAccount active =
                 org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
-        javafx.scene.canvas.GraphicsContext gc = accountAvatar.getGraphicsContext2D();
-        gc.clearRect(0, 0, 32, 32);
+        accountAvatar.getGraphicsContext2D().clearRect(0, 0, 32, 32);
 
         // Nothing to show when there is nobody to show it for.
         if (active == null) {
             return;
         }
 
-        javafx.scene.image.Image skin = org.jackhuang.hmcl.dsh.skin.DshSkin.image(active.key());
-        if (skin != null) {
-            gc.setImageSmoothing(false);
-            double unit = 4.0;
-            gc.drawImage(skin, 8, 8, 8, 8, 0, 0, unit * 8, unit * 8);
-            gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
-            return;
-        }
-        String initial = active.displayName().substring(0, 1).toUpperCase(Locale.ROOT);
-        gc.setFill(javafx.scene.paint.Color.web("#8d8d8d"));
-        gc.fillRoundRect(0, 0, 32, 32, 8, 8);
-        gc.setFill(javafx.scene.paint.Color.WHITE);
-        gc.setFont(javafx.scene.text.Font.font(16));
-        gc.fillText(initial, 10, 23);
+        // The account's own face, whether or not one has been chosen: an account with no skin wears
+        // the picture its identity selects, as it does in the original's own sidebar.
+        AccountAvatar.draw(accountAvatar,
+                org.jackhuang.hmcl.dsh.skin.DshSkin.headImage(active.key()));
     }
 
     private void openCurrentInstance() {

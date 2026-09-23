@@ -363,6 +363,9 @@ public final class SettingsManager {
         @SerializedName("accounts")
         private @Nullable java.util.List<AccountSnapshot> accounts;
 
+        /// The suppliers added by address, in the order they were added.
+        private @Nullable java.util.List<VendorSnapshot> vendors;
+
         /// Which account the launcher uses, by its key. Written to the snapshot because a choice with
         /// no field here is a choice that silently reverts on the next start — the trap that lost
         /// seventeen settings once already.
@@ -384,6 +387,15 @@ public final class SettingsManager {
                 @Nullable String skinModel,
                 @Nullable String skinPath,
                 @Nullable String skinCapePath) {
+        }
+
+        /// A supplier somebody added by address.
+        ///
+        /// All five fields, because all five are what the harness needs to route it: the id becomes
+        /// the route name, the address is where the calls go, the protocol is what the route
+        /// declares, and the variable is where the key is read from.
+        private record VendorSnapshot(
+                String id, String displayName, String apiKeyEnv, String api, String baseUrl) {
         }
 
         /// The language the interface speaks, by the name the locale helper uses.
@@ -525,6 +537,10 @@ public final class SettingsManager {
                             account.skinOrDefault().model().modelName,
                             account.skinOrDefault().localSkinPath(),
                             account.skinOrDefault().localCapePath()))
+                    .toList();
+            snapshot.vendors = settings.getCustomVendors().stream()
+                    .map(vendor -> new VendorSnapshot(vendor.id(), vendor.displayName(),
+                            vendor.apiKeyEnv(), vendor.api(), vendor.baseUrl()))
                     .toList();
             snapshot.language = settings.languageProperty().get() == null
                     ? null : settings.languageProperty().get().getName();
@@ -675,6 +691,22 @@ public final class SettingsManager {
                                             .fromStorage(account.skinModel()),
                                     account.skinPath(),
                                     account.skinCapePath())));
+                }
+            }
+            if (vendors != null) {
+                for (VendorSnapshot vendor : vendors) {
+                    // A supplier with no address cannot be routed, so a row that has lost one — a
+                    // hand-edited file, or a version that wrote it differently — is dropped rather
+                    // than offered as something that cannot work.
+                    if (vendor.id() == null || vendor.baseUrl() == null || vendor.baseUrl().isBlank()) {
+                        continue;
+                    }
+                    settings.getCustomVendors().add(new org.jackhuang.hmcl.dsh.DshVendor(
+                            vendor.id(),
+                            vendor.displayName() == null ? vendor.id() : vendor.displayName(),
+                            vendor.apiKeyEnv() == null ? "" : vendor.apiKeyEnv(),
+                            vendor.api() == null ? org.jackhuang.hmcl.dsh.DshVendor.APIS.get(0) : vendor.api(),
+                            vendor.baseUrl(), false));
                 }
             }
             if (defaultLaunchArguments != null) {

@@ -160,22 +160,19 @@ public final class DshSkin {
         }
     }
 
-    /// Reads the skin, from cache when it has already been read.
+    /// Returns the atlas an account's head is cut out of.
     ///
-    /// @return the normalized skin, or `null` when none has been chosen
-    public static @Nullable Image image(String accountKey) {
-        Loaded skin = load(accountKey);
-        return skin.fromDisk() ? skin.normalized() : null;
-    }
-
-    /// Returns the skin as read, for the 2D head drawn beside an account's name.
+    /// The **normalised** atlas, which is what a head can be cut out of. Never `null`: an account
+    /// that has chosen nothing wears the picture its own identity selects, exactly as in the
+    /// original, whose account list draws `TexturesLoader.getDefaultSkin(uuid)` for every row. Only
+    /// the last resort — a bundled file missing from the jar — comes back as the flat picture.
     ///
-    /// The **normalised** atlas, which is what a head can be cut out of, and `null` when nothing has
-    /// been chosen. This is not what the turning model is given: see [#canvasImage].
+    /// This is not what the turning model is given: see [#canvasImage].
     ///
-    /// @return the decoded image, or `null` when none has been chosen
-    public static @Nullable Image previewImage(String accountKey) {
-        return load(accountKey).source();
+    /// @param accountKey the account's key
+    /// @return the atlas, never `null`
+    public static Image headImage(String accountKey) {
+        return load(accountKey).normalized();
     }
 
     /// Returns the picture the turning model is given.

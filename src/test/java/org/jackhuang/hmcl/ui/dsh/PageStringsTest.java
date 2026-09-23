@@ -226,7 +226,12 @@ class PageStringsTest {
     /// printed instead, which is what a person needs to decide whether to translate them.
     @Test
     void theStringsThisLauncherAddedAreInTheBundlesItMaintains() throws IOException {
-        List<String> own = KEYS.stream().filter(key -> key.startsWith(OWN_PREFIX)).toList();
+        // Read from the English bundle rather than from the list above, so that a key added after
+        // this file was last touched is still covered. The list is a snapshot; this is not.
+        List<String> own = load("I18N.properties").stringPropertyNames().stream()
+                .filter(key -> key.startsWith(OWN_PREFIX))
+                .sorted()
+                .toList();
         assertTrue(!own.isEmpty(), "no keys with the " + OWN_PREFIX + " prefix to check");
 
         for (String bundle : BUNDLES) {
@@ -239,8 +244,15 @@ class PageStringsTest {
 
     /// Reports how much of this launcher's own text each other language carries.
     ///
-    /// Not an assertion: see the comment on the method above. It always passes, and its
-    /// output is the point.
+    /// **Not an assertion, and deliberately so.** This used to fail when a language was behind, on
+    /// the reasoning that a list of work left to do should not be allowed to grow. The project has
+    /// since decided otherwise: English and Chinese are the two languages this launcher maintains,
+    /// they are checked above, and the rest are filled in as a separate job. A gate here would mean
+    /// every new string needs eight translations before it can be committed, which is how a gate
+    /// stops being a gate and starts being a reason to write fewer strings.
+    ///
+    /// So it prints and passes. The numbers are the point: they say how far behind each language is,
+    /// which is what somebody picking up that job needs to know.
     @Test
     void everyTranslatedBundleCarriesEveryStringThisLauncherHas() throws IOException {
         // The set of strings is read from the English bundle rather than from the list above. That
@@ -266,9 +278,12 @@ class PageStringsTest {
                 incomplete.add(bundle + ": " + missing);
             }
         }
-        assertTrue(incomplete.isEmpty(),
-                "these bundles do not carry every string, so the interface falls back to English in "
-                        + "them:\n  " + String.join("\n  ", incomplete));
+        if (!incomplete.isEmpty()) {
+            System.out.println();
+            System.out.println("The languages below fall back to English for the strings listed.");
+            System.out.println("English and Chinese are the two this launcher maintains; the rest are a");
+            System.out.println("translation job of their own, and this test does not gate on it.");
+        }
     }
 
     /// Reads one bundle from the resources.

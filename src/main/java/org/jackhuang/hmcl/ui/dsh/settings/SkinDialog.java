@@ -157,6 +157,13 @@ public final class SkinDialog extends JFXDialogLayout {
     /// The ways of choosing and the fields, 20 apart.
     private final HBox body = new HBox(20);
 
+    /// Keeps the preview's listener alive, which a weak listener cannot do for itself.
+    ///
+    /// Assigned and never read: what matters is that something points at it. See the note where it
+    /// is set.
+    @SuppressWarnings("unused")
+    private final javafx.beans.InvalidationListener previewBinding;
+
     /// Creates the dialog.
     ///
     /// @param account the account whose skin is being changed
@@ -241,7 +248,15 @@ public final class SkinDialog extends JFXDialogLayout {
 
         // The original watches all four and redraws on any of them, which is what makes typing a
         // path show the picture without a button to press.
-        FXUtils.observeWeak(this::loadPreview,
+        //
+        // The returned listener is **kept**, and that is not tidiness. `observeWeak` registers a
+        // listener that holds its real listener weakly, so that a page's own listener does not keep
+        // the page alive — and it hands the strong one back for exactly this reason. Dropping the
+        // return value leaves nothing pointing at it, the collector takes it, and from the next
+        // collection on the preview silently stops following the fields. It still draws once,
+        // because `observeWeak` runs the body before it returns, which is what made this look like
+        // "the preview works" while choosing a file did nothing.
+        previewBinding = FXUtils.observeWeak(this::loadPreview,
                 skinItem.selectedDataProperty(), modelBox.valueProperty(),
                 skinSelector.valueProperty(), capeSelector.valueProperty());
 

@@ -106,12 +106,165 @@ public record DshVendor(
         if (id == null) {
             return null;
         }
-        for (DshVendor vendor : OFFERED) {
+        for (DshVendor vendor : offered()) {
             if (vendor.id.equalsIgnoreCase(id.trim())) {
                 return vendor;
             }
         }
         return null;
+    }
+
+    /// Returns the whole catalogue the harness ships, not only the ones offered.
+    ///
+    /// [`offered`] is a short list chosen for a dropdown; this is all thirty-seven, and it is what a
+    /// base URL is looked up in. The two are different questions — "what should be easy to pick" and
+    /// "what does this address belong to" — and answering the second with the first would mean a
+    /// person who pastes a perfectly good Kimi endpoint is told it is not a provider.
+    ///
+    /// Read from `assets/dsh-providers.txt` rather than written out in Java, so that re-reading the
+    /// harness's own catalogue is a diff of one data file.
+    ///
+    /// @return the catalogue, in id order
+    public static List<DshVendor> catalogue() {
+        List<DshVendor> known = CATALOGUE;
+        return known != null ? known : List.of();
+    }
+
+    /// Finds the provider an address belongs to.
+    ///
+    /// Compared by **host**, not by the whole string: an endpoint is written with or without a
+    /// trailing slash, with or without `/v1`, and both spellings are the same service. The host is
+    /// the part that identifies it, and matching on more than that would fail on exactly the
+    /// variations people type. A provider that publishes no address of its own is never found this
+    /// way, which is correct — there is nothing to compare against.
+    ///
+    /// @param url the address
+    /// @return the provider, or `null` when the address belongs to none of them
+    public static @Nullable DshVendor byBaseUrl(@Nullable String url) {
+        String host = hostOf(url);
+        if (host == null) {
+            return null;
+        }
+        for (DshVendor vendor : catalogue()) {
+            if (host.equals(hostOf(vendor.baseUrl))) {
+                return vendor;
+            }
+        }
+        // The offered list may name an address the catalogue types differently; it wins because it
+        // carries the name this launcher shows.
+        for (DshVendor vendor : offered()) {
+            if (host.equals(hostOf(vendor.baseUrl))) {
+                return vendor;
+            }
+        }
+        return null;
+    }
+
+    /// Returns the host of an address, or `null` when there is not one.
+    ///
+    /// @param url the address
+    /// @return the lowercase host
+    public static @Nullable String hostOf(@Nullable String url) {
+        if (url == null || url.isBlank()) {
+            return null;
+        }
+        try {
+            String host = java.net.URI.create(url.trim()).getHost();
+            return host == null ? null : host.toLowerCase(Locale.ROOT);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /// Makes a vendor for a provider the catalogue does not hold.
+    ///
+    /// The key's variable name and the protocol cannot be discovered — no service publishes the name
+    /// of the environment variable a launcher should use — so both are derived from the id the same
+    /// way the harness's own catalogue derives them, and the address is the one that answered.
+    ///
+    /// @param id      the id, which is also the route name
+    /// @param name    what the person called it
+    /// @param baseUrl the address
+    /// @return the vendor
+    public static DshVendor discovered(String id, String name, String baseUrl) {
+        return new DshVendor(id, name, id.toUpperCase(Locale.ROOT).replace('-', '_') + "_API_KEY",
+                APIS.get(0), baseUrl, false);
+    }
+
+    /// Report whether an id may be used as a route name.
+    ///
+    /// The id becomes the name of the route the harness is handed, so it has to be something the
+    /// harness can address. Same rule as an account's name, and for the same reason.
+    ///
+    /// @param id the id
+    /// @return whether it may be used
+    public static boolean isUsableId(@Nullable String id) {
+        return id != null && id.matches("[a-z0-9][a-z0-9._-]*");
+    }
+
+    /// The catalogue, read once.
+    private static @Nullable List<DshVendor> CATALOGUE;
+
+    static {
+        CATALOGUE = readCatalogue();
+    }
+
+    /// Reads the catalogue from the launcher's own resources.
+    ///
+    /// A line that cannot be read is skipped rather than fatal: a catalogue is a convenience, and a
+    /// launcher that will not start because one line of it is malformed is worse than one that
+    /// offers thirty-six providers instead of thirty-seven.
+    ///
+    /// @return the catalogue
+    private static List<DshVendor> readCatalogue() {
+        List<DshVendor> vendors = new java.util.ArrayList<>();
+        try (java.io.InputStream stream = DshVendor.class
+                .getResourceAsStream("/assets/dsh-providers.txt")) {
+            if (stream == null) {
+                org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                        "No provider catalogue in the jar; only the offered vendors will be known");
+                return List.of();
+            }
+            for (String line : new String(stream.readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8).split("\n")) {
+                String trimmed = line.trim();
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) {
+                    continue;
+                }
+                String[] parts = trimmed.split("\\|", -1);
+                if (parts.length != 4 || parts[0].isEmpty()) {
+                    continue;
+                }
+                vendors.add(new DshVendor(parts[0], readableName(parts[0]), parts[3], parts[2],
+                        parts[1].isEmpty() ? null : parts[1], false));
+            }
+        } catch (java.io.IOException | RuntimeException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.warning("Could not read the provider catalogue", e);
+            return List.of();
+        }
+        return List.copyOf(vendors);
+    }
+
+    /// Turns an id into something readable to show for it.
+    ///
+    /// The catalogue gives ids and no display names, and the id is what the interface has to show
+    /// anyway — it is the name a route is written with. Only the shape is tidied: `zai-coding-cn`
+    /// reads better as `Zai Coding Cn` than as itself, and the id is still shown beside it.
+    ///
+    /// @param id the id
+    /// @return the name to display
+    private static String readableName(String id) {
+        StringBuilder name = new StringBuilder();
+        for (String word : id.split("-")) {
+            if (word.isEmpty()) {
+                continue;
+            }
+            if (!name.isEmpty()) {
+                name.append(' ');
+            }
+            name.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return name.toString();
     }
 
     /// Reports whether the endpoint is one a key can be checked against.
