@@ -117,13 +117,13 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         chooser.setTitle(i18n("modpack.wizard.step.initialization.save"));
         chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
                 packforge ? i18n("dsh.packforge.filter") : i18n("dsh.modpack.filter"),
-                packforge ? "*.dspack" : "*.zip"));
+                packforge ? "*.dspack" : "*" + org.jackhuang.hmcl.dsh.DshModpacks.FILE_EXTENSION));
 
         String name = string(settings, NAME, instance.id());
         chooser.setInitialFileName(packforge
                 ? org.jackhuang.hmcl.dsh.DshPackForge.Options.kebab(name) + "-"
                         + string(settings, VERSION, "1.0.0") + ".dspack"
-                : name + ".zip");
+                : name + org.jackhuang.hmcl.dsh.DshModpacks.FILE_EXTENSION);
 
         java.io.File chosen = chooser.showSaveDialog(org.jackhuang.hmcl.ui.Controllers.getStage());
         if (chosen == null) {

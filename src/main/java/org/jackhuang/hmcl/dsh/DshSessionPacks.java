@@ -80,6 +80,17 @@ public final class DshSessionPacks {
     /// What a pack says it is, so that it is not mistaken for anything else.
     public static final String FORMAT = "hdsl-session-pack";
 
+    /// The file extension a session pack is written with.
+    ///
+    /// `sspack` reads as "session pack", and a name of its own is what keeps a session pack from
+    /// looking like any other archive — it is a record of conversations, not a set of files.
+    ///
+    /// @see DshModpacks#FILE_EXTENSION for why a launcher's own packs do not use `.zip`
+    public static final String FILE_EXTENSION = ".sspack";
+
+    /// The extensions an import accepts, for the reason [DshModpacks#ACCEPTED_EXTENSIONS] gives.
+    public static final java.util.List<String> ACCEPTED_EXTENSIONS = java.util.List.of(".sspack", ".zip");
+
     /// The pack format's version.
     public static final int FORMAT_VERSION = 1;
 

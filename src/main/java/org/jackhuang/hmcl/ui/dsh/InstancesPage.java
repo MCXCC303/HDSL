@@ -493,8 +493,12 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     private void installModpack() {
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
         chooser.setTitle(i18n("install.modpack"));
+        // Both spellings, because a pack written before the extension existed is a `.zip` and is
+        // still a pack: what it is comes from its manifest, not from its name.
         chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.modpack.filter"), "*.zip"));
+                i18n("dsh.modpack.filter"),
+                org.jackhuang.hmcl.dsh.DshModpacks.ACCEPTED_EXTENSIONS.stream()
+                        .map(extension -> "*" + extension).toList()));
         java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
         if (chosen == null) {
             return;

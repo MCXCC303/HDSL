@@ -214,8 +214,9 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
         chooser.setTitle(i18n("dsh.session.pack.export"));
         chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.session.pack.filter"), "*.zip"));
-        chooser.setInitialFileName("hdsl-sessions-" + instance.id() + "-" + java.time.LocalDate.now() + ".zip");
+                i18n("dsh.session.pack.filter"), "*" + DshSessionPacks.FILE_EXTENSION));
+        chooser.setInitialFileName("hdsl-sessions-" + instance.id() + "-"
+                + java.time.LocalDate.now() + DshSessionPacks.FILE_EXTENSION);
         java.io.File chosen = chooser.showSaveDialog(Controllers.getStage());
         if (chosen == null) {
             return;
@@ -231,7 +232,9 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
         chooser.setTitle(i18n("dsh.session.pack.import"));
         chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.session.pack.filter"), "*.zip"));
+                i18n("dsh.session.pack.filter"),
+                DshSessionPacks.ACCEPTED_EXTENSIONS.stream()
+                        .map(extension -> "*" + extension).toList()));
         java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
         if (chosen == null) {
             return;

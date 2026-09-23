@@ -76,6 +76,23 @@ public final class DshModpacks {
     /// What a pack says it is.
     public static final String FORMAT = "hdsl-modpack";
 
+    /// The file extension this launcher's own packs are written with.
+    ///
+    /// The container is a plain ZIP, so `.zip` opened it — and told nobody anything. A pack written
+    /// by this launcher is a different thing from an archive somebody zipped by hand, and the name
+    /// is the only place that can say so before anything is unzipped: it is what a file manager
+    /// shows, what a browser offers to download, and what somebody types into the import box.
+    ///
+    /// `.dspack` is the community's and stays theirs; this is the launcher's own format.
+    public static final String FILE_EXTENSION = ".hdslp";
+
+    /// The extensions an import accepts.
+    ///
+    /// `.zip` is kept because packs written before the extension existed are `.zip`, and refusing
+    /// them would be refusing the user's own files to make a naming point. What a file *is* is
+    /// decided by its manifest, which both spellings carry.
+    public static final java.util.List<String> ACCEPTED_EXTENSIONS = java.util.List.of(".hdslp", ".zip");
+
     /// The format's version.
     public static final int FORMAT_VERSION = 1;
 
