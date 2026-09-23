@@ -159,22 +159,39 @@ appimagetool="${APPIMAGETOOL:-}"
 if [ -z "${appimagetool}" ]; then
     appimagetool="$(command -v appimagetool || true)"
 fi
-[ -n "${appimagetool}" ] || { echo "error: appimagetool not found; set APPIMAGETOOL" >&2; exit 1; }
 
-echo "== AppImage =="
-# ARCH is normally read from the host; naming it keeps the artifact's name stable
-# on a runner whose uname says something else.
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "${appimagetool}" \
-    --no-appstream \
-    "${appdir}" "${out_dir}/HDSL-${version}-x86_64.AppImage"
+# The AppImage is the one artifact that needs a tool this repository does not carry, and its absence
+# must not cost the others: a release whose checksums were never written because a download failed is
+# worse than a release with one artifact fewer, which is what the caller is told about here. The CI
+# job fetches the tool before running this, so it is the local run that skips.
+if [ -n "${appimagetool}" ]; then
+    echo "== AppImage =="
+    # ARCH is normally read from the host; naming it keeps the artifact's name stable
+    # on a runner whose uname says something else.
+    ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "${appimagetool}" \
+        --no-appstream \
+        "${appdir}" "${out_dir}/HDSL-${version}-x86_64.AppImage"
+else
+    echo "== AppImage skipped: appimagetool not found (set APPIMAGETOOL to build it) =="
+fi
 
 # ------------------------------------------------------------- the sums -------
 # One checksum file per artifact, as HMCL publishes them, so a download can be
 # verified without a table.
+# The `.deb` is written by Gradle rather than by this script, so it is summed here too: one loop that
+# knows every artifact is easier to keep honest than two that each know some of them.
 for artifact in "${out_dir}/${name}-linux-x64.tar.zst" \
                 "${out_dir}/${desktop_id}-${version}-1-x86_64.pkg.tar.zst" \
+                "${out_dir}/${name}.deb" \
                 "${out_dir}/HDSL-${version}-x86_64.AppImage"; do
-    ( cd "${out_dir}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
+    # Skipped when the artifact is not there, and any stale sum is removed with it: a checksum file
+    # for a file that does not exist is worse than no checksum file, because it looks like an answer.
+    if [ -f "${artifact}" ]; then
+        ( cd "${out_dir}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
+    else
+        rm -f "${artifact}.sha256"
+        echo "no checksum for $(basename "${artifact}"): it was not built"
+    fi
 done
 
-ls -l "${out_dir}"/*.tar.zst "${out_dir}"/*.AppImage
+ls -l "${out_dir}"/*.tar.zst "${out_dir}"/*.pkg.tar.zst "${out_dir}"/HDSL-*.AppImage 2>/dev/null || true
