@@ -24,7 +24,9 @@ import com.jfoenix.controls.JFXTextField;
 import com.jfoenix.controls.JFXDialogLayout;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
+import javafx.geometry.Pos;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshVendor;
@@ -90,8 +92,11 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     /// The model the harness should start with.
     private final JFXTextField modelField = new JFXTextField();
 
-    /// The row holding the endpoint, kept so it can be taken away.
-    private final LinePane baseUrlRow = new LinePane();
+    /// The form, kept so a row of it can be taken away.
+    private javafx.scene.layout.GridPane form;
+
+    /// The grid row holding the endpoint, or `-1` when there is none.
+    private int endpointRow = -1;
 
     /// Where the verdict on a key is shown.
     private final Label verdict = new Label();
@@ -163,52 +168,86 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
     ///   endpoint is asked for only when the vendor does not publish one.
     ///
     /// @return the form
-    private VBox buildForm() {
-        ComponentList list = new ComponentList();
+    private javafx.scene.Node buildForm() {
+        // The original's form, ported as it stands: a `GridPane` of two columns, the name in one and
+        // the box in the other, with `vgap` 22 and `hgap` 15.
+        //
+        // I had built it out of `LinePane` rows instead, and that is what the two complaints about
+        // this form are: a `LinePane` puts the box on the *right* of a wide surface, so the fields
+        // did not line up with the original's, and the row I added for the verdict kept its height
+        // even with nothing in it — which is the empty strip under the fields.
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setVgap(22);
+        grid.setHgap(15);
+        grid.setAlignment(Pos.CENTER);
 
-        // The vendor is asked for only when there is a vendor to ask about and the caller did not
-        // say which. The page asks by offering a row per vendor, so asking again inside the dialog
-        // would be a question just answered — and an offline account has no supplier at all, which is
-        // the whole of what it is, so offering a list of them is offering something that cannot apply.
+        javafx.scene.layout.ColumnConstraints nameColumn = new javafx.scene.layout.ColumnConstraints();
+        nameColumn.setMinWidth(Region.USE_PREF_SIZE);
+        grid.getColumnConstraints().add(nameColumn);
+        javafx.scene.layout.ColumnConstraints fieldColumn = new javafx.scene.layout.ColumnConstraints();
+        fieldColumn.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().add(fieldColumn);
+
+        int row = 0;
+
+        // The vendor is asked for only when there is a vendor to ask about and the caller did not say
+        // which. An offline account has no supplier at all, which is the whole of what it is, so
+        // offering a list of them is offering something that cannot apply.
         if (preselected == null && !offline) {
             vendorBox.getItems().setAll(DshVendor.offered());
             vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
             vendorBox.getSelectionModel().selectFirst();
             vendorBox.setMaxWidth(Double.MAX_VALUE);
             vendorBox.valueProperty().addListener(observable -> syncEndpointRow());
-            list.getContent().add(row(i18n("dsh.account.vendor"), vendorBox));
+            grid.add(new Label(i18n("dsh.account.vendor")), 0, row);
+            grid.add(vendorBox, 1, row);
+            row++;
         }
 
-        usernameField.setPromptText(i18n("dsh.account.label.prompt"));
+        // The offline hint is the original's own `account.username.placeholder`, which every bundle
+        // already carries: it says the name is a role name rather than an account's.
+        usernameField.setPromptText(i18n(offline
+                ? "account.methods.offline.name.special_characters" : "dsh.account.label.prompt"));
         keyField.setPromptText(i18n("dsh.account.key.prompt"));
         baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
         modelField.setPromptText(i18n("dsh.account.model.prompt"));
 
-        list.getContent().add(row(offline ? i18n("account.character") : i18n("account.username"),
-                usernameField));
+        grid.add(new Label(offline ? i18n("account.character") : i18n("account.username")), 0, row);
+        grid.add(usernameField, 1, row);
+        row++;
 
+        // An offline account has no key, no endpoint and no model: it is a name and a face, and the
+        // fields that would describe a supplier are not merely optional here — they would be asking
+        // about something that does not exist.
         if (!offline) {
-            list.getContent().add(row(i18n("dsh.account.key"), keyField));
+            grid.add(new Label(i18n("dsh.account.key")), 0, row);
+            grid.add(keyField, 1, row);
+            row++;
 
-            baseUrlRow.setTitle(i18n("dsh.account.base_url"));
-            baseUrlField.setMinWidth(360);
-            baseUrlRow.setRight(baseUrlField);
-            list.getContent().add(baseUrlRow);
+            grid.add(new Label(i18n("dsh.account.base_url")), 0, row);
+            grid.add(baseUrlField, 1, row);
+            endpointRow = row;
+            row++;
 
+            // The harness knows its own vendor's catalogue and picks from it, so a model is asked for
+            // only of a supplier it has never heard of.
             if (kind != DshAccount.AccountKind.OFFICIAL) {
-                list.getContent().add(row(i18n("dsh.account.model"), modelField));
+                grid.add(new Label(i18n("dsh.account.model")), 0, row);
+                grid.add(modelField, 1, row);
+                row++;
             }
         }
 
-        // The verdict is a line of the form, not a second dialog on top of it: a message about what
-        // was typed belongs where it was typed.
+        // The verdict takes no room until there is something to say. A label with no text still asks
+        // for the height of a line, which is exactly the empty strip that was there before.
         verdict.getStyleClass().add("desc");
         verdict.setWrapText(true);
-        list.getContent().add(verdict);
+        verdict.managedProperty().bind(verdict.textProperty().isNotEmpty());
+        verdict.visibleProperty().bind(verdict.textProperty().isNotEmpty());
+        grid.add(verdict, 0, row, 2, 1);
 
-        // No heading over the fields: the dialog's own heading already says what is being added, and
-        // a second one saying "add an account" inside a dialog titled that is the same sentence twice.
-        return new VBox(list);
+        form = grid;
+        return grid;
     }
 
     /// Builds the buttons.
@@ -247,10 +286,21 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
 
     /// Takes the endpoint row away for a vendor that publishes its own address.
     private void syncEndpointRow() {
+        if (form == null || endpointRow < 0) {
+            return;
+        }
         DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
         boolean needed = vendor == null || !vendor.hasBaseUrl();
-        baseUrlRow.setVisible(needed);
-        baseUrlRow.setManaged(needed);
+        // Both cells of the row, and the row itself stops taking space once they are gone — a grid
+        // row whose children are unmanaged collapses, which is what keeps the form from growing a gap
+        // where a field used to be.
+        for (javafx.scene.Node node : form.getChildren()) {
+            if (javafx.scene.layout.GridPane.getRowIndex(node) != null
+                    && javafx.scene.layout.GridPane.getRowIndex(node) == endpointRow) {
+                node.setVisible(needed);
+                node.setManaged(needed);
+            }
+        }
     }
 
     /// Checks what was typed and, if it is not refused, keeps it.
@@ -295,7 +345,8 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
             return;
         }
 
-        String baseUrl = baseUrlRow.isVisible() && baseUrlField.getText() != null
+        // Read only when the row is showing: a field that is not offered is not an answer.
+        String baseUrl = baseUrlField.isVisible() && baseUrlField.getText() != null
                 ? baseUrlField.getText().trim() : "";
         String model = modelField.getText() == null ? "" : modelField.getText().trim();
         DshAccount candidate = new DshAccount(kind, vendor.id(), key,
