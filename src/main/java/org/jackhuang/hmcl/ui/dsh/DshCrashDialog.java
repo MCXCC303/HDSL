@@ -24,9 +24,6 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.ColumnConstraints;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -41,6 +38,10 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.LogLine;
 import org.jackhuang.hmcl.ui.LogWindow;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.setting.StyleSheets;
+import org.jackhuang.hmcl.theme.Themes;
+import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.platform.Platform;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -134,16 +135,23 @@ public final class DshCrashDialog extends Stage {
         setTitle(i18n("dsh.crash.title"));
         FXUtils.setIcon(this);
 
-        BorderPane root = new BorderPane();
-        root.setTop(banner());
-        root.setCenter(body());
+        VBox root = new VBox();
+        root.getStyleClass().add("game-crash-window");
 
-        HBox bar = new HBox(8, exportButton(), logButton(), helpButton());
-        bar.setAlignment(Pos.CENTER_LEFT);
-        bar.setPadding(new Insets(10));
-        root.setBottom(bar);
+        VBox.setVgrow(details(), Priority.ALWAYS);
+        root.getChildren().setAll(banner(),
+                factsPane(),
+                details(),
+                new HBox(8, exportButton(), logButton(), helpButton()));
 
-        setScene(new Scene(root, 760, 560));
+        // The original's own three lines, and the middle one is the whole answer to "does it follow
+        // the theme": the crash window is **not** styled separately. It loads the launcher's
+        // stylesheets like every other window, so it takes the theme colour, the brightness mode and
+        // the font that are in force — and the classes below are the ones the transplanted
+        // stylesheet already carries rules for, which is why none of this needed new CSS.
+        setScene(new Scene(root, 800, 480));
+        StyleSheets.init(getScene());
+        Themes.applyNativeDarkMode(this);
     }
 
     /// Shows the window for an instance whose process ended badly.
@@ -164,139 +172,117 @@ public final class DshCrashDialog extends Stage {
     ///
     /// @return the banner
     private Node banner() {
-        Label label = new Label(banner);
-        label.setWrapText(true);
-        label.getStyleClass().add("dsh-crash-banner");
-        label.setPadding(new Insets(12));
-        label.setMaxWidth(Double.MAX_VALUE);
-        return label;
-    }
+        Label title = new Label(banner);
+        HBox.setHgrow(title, Priority.ALWAYS);
 
-    /// Builds everything under the banner.
-    ///
-    /// @return the body
-    private Node body() {
-        VBox box = new VBox(12);
-        box.setPadding(new Insets(12));
-
-        box.getChildren().addAll(facts(), section(i18n("dsh.crash.instance_path"),
-                instanceDirectory()), reasonSection());
-
-        // Laid out as the original lays its own out: names across the top with their values under
-        // them, because that reads as a description of one thing rather than as a table.
-
-        ScrollPane scroll = new ScrollPane(box);
-        scroll.setFitToWidth(true);
-        return scroll;
+        HBox pane = new HBox(title);
+        pane.setAlignment(Pos.CENTER);
+        // The original's own three classes, which is what makes this the accent-coloured bar: it is
+        // the launcher's *second toolbar*, not a bar invented for this window.
+        pane.getStyleClass().addAll("jfx-tool-bar-second", "depth-1", "padding-8");
+        return pane;
     }
 
     /// Builds the block of names with their values under them.
     ///
-    /// The original lays these out **across** rather than down — a name, and its value on the line
-    /// below — which reads as a description of one thing rather than as a table of many. The first
-    /// row is what the launcher and the machine are, and the second is what the instance is, which is
-    /// the same division the original makes between its own facts and the game's.
+    /// The original's own row of `TwoLineListItem`s: a name, and its value on the line below, laid
+    /// **across** rather than down — which reads as a description of one thing rather than as a
+    /// table of many. The first row is what the launcher and the machine are, and the second is what
+    /// the instance is, which is the same division the original makes between its own facts and the
+    /// game's.
     ///
     /// @return the block
-    private Node facts() {
-        Platform platform = Platform.SYSTEM_PLATFORM;
-        GridPane grid = new GridPane();
-        grid.setHgap(24);
-        grid.setVgap(4);
+    private Node factsPane() {
+        HBox pane = new HBox(8);
+        pane.setPadding(new Insets(8));
+        pane.setAlignment(Pos.CENTER_LEFT);
 
-        String[][] top = {
-                {i18n("launcher"), Metadata.TITLE},
-                {i18n("dsh.crash.instance_name"), instance.id()},
-                {i18n("dsh.pack.field.dsh"), instance.version()},
-                {i18n("system.operating_system"), org.jackhuang.hmcl.util.platform.OperatingSystem.SYSTEM_NAME},
-                {i18n("system.architecture"), platform.getArchitecture().getDisplayName()},
-        };
-        for (int i = 0; i < top.length; i++) {
-            grid.add(name(top[i][0]), i, 0);
-            grid.add(value(top[i][1]), i, 1);
-        }
+        pane.getChildren().addAll(
+                fact(i18n("launcher"), Metadata.TITLE),
+                fact(i18n("dsh.crash.instance_name"), instance.id()),
+                fact(i18n("dsh.pack.field.dsh"), instance.version()),
+                fact(i18n("system.operating_system"), OperatingSystem.SYSTEM_NAME),
+                fact(i18n("system.architecture"), Platform.SYSTEM_PLATFORM.getArchitecture().getDisplayName()));
 
-        String[][] bottom = {
-                {i18n("dsh.pack.field.profile"), instance.profile()},
-                {i18n("dsh.crash.home_mode"),
-                        i18n("dsh.crash.home_" + instance.homeMode().name().toLowerCase(Locale.ROOT))},
-                {i18n("dsh.crash.port"),
-                        process == null ? "-" : Integer.toString(process.plan().port())},
-                {i18n("dsh.crash.uptime"), process == null ? "-" : duration(process)},
-                {i18n("dsh.crash.exit_code"),
+        HBox second = new HBox(8);
+        second.setPadding(new Insets(0, 8, 8, 8));
+        second.setAlignment(Pos.CENTER_LEFT);
+        second.getChildren().addAll(
+                fact(i18n("dsh.pack.field.profile"), instance.profile()),
+                fact(i18n("dsh.crash.home_mode"),
+                        i18n("dsh.crash.home_" + instance.homeMode().name().toLowerCase(Locale.ROOT))),
+                fact(i18n("dsh.crash.port"),
+                        process == null ? "-" : Integer.toString(process.plan().port())),
+                fact(i18n("dsh.crash.uptime"), process == null ? "-" : duration(process)),
+                fact(i18n("dsh.crash.exit_code"),
                         process == null || process.exitCode().isEmpty()
-                                ? "-" : Integer.toString(process.exitCode().get())},
-        };
-        for (int i = 0; i < bottom.length; i++) {
-            grid.add(name(bottom[i][0]), i, 3);
-            grid.add(value(bottom[i][1]), i, 4);
-        }
-        return grid;
+                                ? "-" : Integer.toString(process.exitCode().get())));
+
+        VBox both = new VBox(pane, second);
+        return both;
     }
 
-    /// Builds a name in the facts block.
+    /// Builds one name-and-value pair, as the original builds each of its own.
     ///
-    /// @param text the name
-    /// @return the label
-    private static Label name(String text) {
-        Label label = new Label(text);
-        label.getStyleClass().add("dsh-crash-name");
-        return label;
-    }
-
-    /// Builds a value in the facts block.
-    ///
-    /// @param text the value
-    /// @return the label
-    private static Label value(String text) {
-        Label label = new Label(text);
-        label.getStyleClass().add("dsh-crash-value");
-        return label;
-    }
-
-    /// Builds a named section with one value under it.
-    ///
-    /// @param title the section's name
+    /// @param name  the name
     /// @param value the value
-    /// @return the section
-    private static Node section(String title, String value) {
-        VBox box = new VBox(2);
-        box.getChildren().addAll(name(title), value(value));
-        return box;
+    /// @return the row
+    private static TwoLineListItem fact(String name, String value) {
+        TwoLineListItem item = new TwoLineListItem();
+        // The original's own class for these, which is what gives the name its dimmer, smaller
+        // treatment and the value its brighter one.
+        item.getStyleClass().setAll("two-line-item-second-large");
+        item.setTitle(name);
+        item.setSubtitle(value);
+        return item;
     }
 
-    /// Builds the reason section: the heading, the sentence, the output, and the paragraph.
+    /// Builds the block under the facts: where the instance lives, and why it stopped.
     ///
-    /// @return the section
-    private Node reasonSection() {
-        VBox box = new VBox(6);
-        box.getChildren().add(name(i18n("game.crash.reason")));
+    /// The original's own arrangement — the folder, then the reason under its own heading, then the
+    /// paragraph — with one addition, the tail of the output, which the original does not need
+    /// because its analyser has already read the log and named the cause.
+    ///
+    /// @return the block
+    private Node details() {
+        VBox pane = new VBox(8);
+        pane.setPadding(new Insets(8));
 
-        Label why = value(reason);
-        why.setWrapText(true);
-        box.getChildren().add(why);
+        TwoLineListItem folder = fact(i18n("dsh.crash.instance_path"), instanceDirectory());
 
+        Label reasonTitle = new Label(i18n("game.crash.reason"));
+        reasonTitle.getStyleClass().add("two-line-item-second-large-title");
+
+        // The original's own flow and class: `crash-reason-text-flow` is what the transplanted
+        // stylesheet colours, and a `Text` inside it is how the theme reaches the text.
+        TextFlow reasonFlow = new TextFlow(new javafx.scene.text.Text(reason));
+        reasonFlow.getStyleClass().add("crash-reason-text-flow");
+
+        VBox reasonBox = new VBox(6, reasonFlow);
         String tail = tail();
         if (!tail.isEmpty()) {
             Label output = new Label(tail);
             output.getStyleClass().add("dsh-crash-log");
-            // Not wrapped: a stack trace's indentation is how it is read, and a wrapped one is a
-            // paragraph that no longer looks like one.
+            // Not wrapped: a stack trace's indentation is how it is read.
             output.setWrapText(false);
-            ScrollPane scroll = new ScrollPane(output);
-            scroll.setFitToWidth(false);
-            scroll.setPrefHeight(180);
-            scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-            box.getChildren().add(scroll);
+            reasonBox.getChildren().add(output);
         }
+
+        ScrollPane reasonPane = new ScrollPane(reasonBox);
+        reasonPane.setFitToWidth(true);
+        reasonPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        reasonPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
 
         // The original's own paragraph, which exists because a screenshot of a crash is a picture of
         // a stack trace that nobody can search, and because whoever is helping needs the file.
         TextFlow feedback = new TextFlow();
+        feedback.getStyleClass().add("crash-reason-text-flow");
         feedback.getChildren().addAll(
                 FXUtils.parseSegment(i18n("dsh.crash.feedback"), Controllers::onHyperlinkAction));
-        box.getChildren().add(feedback);
-        return box;
+
+        pane.getChildren().setAll(folder, reasonTitle, reasonPane, feedback);
+        VBox.setVgrow(reasonPane, Priority.ALWAYS);
+        return pane;
     }
 
     /// Builds the button that writes the report out, which the paragraph above points at.
