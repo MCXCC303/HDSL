@@ -242,14 +242,33 @@ class PageStringsTest {
     /// Not an assertion: see the comment on the method above. It always passes, and its
     /// output is the point.
     @Test
-    void reportsHowMuchOfThisLaunchersTextEachLanguageCarries() throws IOException {
-        List<String> own = KEYS.stream().filter(key -> key.startsWith(OWN_PREFIX)).toList();
+    void everyTranslatedBundleCarriesEveryStringThisLauncherHas() throws IOException {
+        // The set of strings is read from the English bundle rather than from the list above. That
+        // list is a snapshot, and a snapshot is exactly what a check on "is everything translated"
+        // must not be: it was written by hand, so it says nothing about the keys added after it was
+        // written. It silently reported full coverage while forty-six strings were missing from
+        // every language — the ones the account and skin features had just introduced.
+        Properties english = load("I18N.properties");
+        List<String> own = english.stringPropertyNames().stream()
+                .filter(key -> key.startsWith(OWN_PREFIX))
+                .sorted()
+                .toList();
+        assertTrue(!own.isEmpty(), "no keys with the " + OWN_PREFIX + " prefix to check");
+
+        List<String> incomplete = new java.util.ArrayList<>();
         for (String bundle : TRANSLATED_BUNDLES) {
             Properties strings = load(bundle);
-            long present = own.stream().filter(strings::containsKey).count();
-            System.out.println(String.format("%-28s %3d / %3d of this launcher's strings",
-                    bundle, present, own.size()));
+            List<String> missing = own.stream().filter(key -> !strings.containsKey(key)).toList();
+            System.out.println(String.format("%-28s %3d / %3d of this launcher's strings%s",
+                    bundle, own.size() - missing.size(), own.size(),
+                    missing.isEmpty() ? "" : "   missing " + missing.size()));
+            if (!missing.isEmpty()) {
+                incomplete.add(bundle + ": " + missing);
+            }
         }
+        assertTrue(incomplete.isEmpty(),
+                "these bundles do not carry every string, so the interface falls back to English in "
+                        + "them:\n  " + String.join("\n  ", incomplete));
     }
 
     /// Reads one bundle from the resources.
