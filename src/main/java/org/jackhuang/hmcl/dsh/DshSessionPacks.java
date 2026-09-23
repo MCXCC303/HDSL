@@ -569,6 +569,11 @@ public final class DshSessionPacks {
     private static @Nullable Set<String> referencedAttachments(Path home, List<DshSession> sessions) {
         Path zstd = org.jackhuang.hmcl.util.platform.SystemUtils.which("zstd");
         if (zstd == null) {
+            // Without a decompressor the referenced ids of a compressed log cannot be read, and a
+            // log that cannot be read is not a log with no attachments. Returning null says "not
+            // known", which the caller answers by carrying the whole store — the safe direction,
+            // because a pack that carries too much still restores, and one that carries too little
+            // loses pictures with nothing to say so.
             LOG.info("zstd is not installed, so a session pack carries the whole attachment store");
             return null;
         }
@@ -576,18 +581,27 @@ public final class DshSessionPacks {
         Set<String> ids = new LinkedHashSet<>();
         for (DshSession session : sessions) {
             for (Path log : logsOf(session.directory())) {
-                if (!log.getFileName().toString().endsWith(".zstd")) {
-                    continue;
-                }
+                // A home may hold either spelling — the harness decides per root — and this used to
+                // read only the compressed one. An uncompressed log was skipped, so the ids it named
+                // were never collected and its attachments were left out of the pack **silently**:
+                // the export reported success and the pictures were simply gone at the other end.
+                // Which spelling a log has says nothing about whether it names attachments.
+                boolean compressed = log.getFileName().toString().endsWith(".zstd");
                 try {
-                    List<String> output = new ArrayList<>();
-                    int exit = DshCommand.run(List.of(zstd.toString(), "-d", "-c", log.toString()),
-                            null, output::add).exitCode();
-                    if (exit != 0) {
-                        LOG.warning("zstd could not read " + log + ", so the whole store is carried");
-                        return null;
+                    String text;
+                    if (compressed) {
+                        List<String> output = new ArrayList<>();
+                        int exit = DshCommand.run(List.of(zstd.toString(), "-d", "-c", log.toString()),
+                                null, output::add).exitCode();
+                        if (exit != 0) {
+                            LOG.warning("zstd could not read " + log + ", so the whole store is carried");
+                            return null;
+                        }
+                        text = String.join("\n", output);
+                    } else {
+                        text = Files.readString(log, java.nio.charset.StandardCharsets.UTF_8);
                     }
-                    Matcher matcher = OBJECT_ID.matcher(String.join("\n", output));
+                    Matcher matcher = OBJECT_ID.matcher(text);
                     while (matcher.find()) {
                         ids.add(matcher.group());
                     }
