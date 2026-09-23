@@ -65,20 +65,121 @@ public final class DshAccountOverlay {
     private DshAccountOverlay() {
     }
 
-    /// Writes the overlay for an account.
+    /// An account's route, described but not yet written.
+    ///
+    /// The two halves of writing an overlay take very different amounts of time. Saying what the
+    /// supplier is called and where it lives costs nothing; asking it which models it serves is a
+    /// request over the network, and is the whole of the wait. Keeping the two apart is what lets a
+    /// launch show them as separate steps rather than one long silence.
+    public static final class Prepared {
+        private final DshInstance instance;
+        private final String route;
+        private final String api;
+        private final String fallbackModel;
+        private final @Nullable String endpoint;
+        private @Nullable List<String> served;
+
+        private Prepared(DshInstance instance, String route, String api, String fallbackModel,
+                         @Nullable String endpoint) {
+            this.instance = instance;
+            this.route = route;
+            this.api = api;
+            this.fallbackModel = fallbackModel;
+            this.endpoint = endpoint;
+        }
+
+        /// The route the harness will know this supplier by.
+        public String route() {
+            return route;
+        }
+
+        /// Asks the supplier which models it serves — the one slow step, and the only thing here
+        /// that touches the network.
+        ///
+        /// **Asked every launch and never remembered.** A list is the vendor's to state and it
+        /// changes often: one written down once, by the person or by a launcher that cached it, goes
+        /// stale in both directions, showing models that are gone and hiding the ones that arrived.
+        /// And a route the launcher writes is not in the harness's catalogue, so the harness will not
+        /// fill this in either — while a route with no models cannot be registered at all — so asking
+        /// is the only source, not a convenience.
+        ///
+        /// @param account the account whose supplier is asked
+        public void resolveModels(DshAccount account) {
+            this.served = account.fetchModels();
+        }
+
+        /// Writes the overlay.
+        ///
+        /// @return the file to pass to `--patch`
+        /// @throws DshException when the file cannot be written
+        public Path write() throws DshException {
+            String model = fallbackModel;
+            StringBuilder yaml = new StringBuilder();
+            yaml.append("# Written by Hello DeepSeek Launcher for one launch; removed when it ends.\n");
+            yaml.append("# It carries no key: the key travels in the environment as ")
+                    .append(KEY_ENVIRONMENT_VARIABLE).append(".\n");
+            yaml.append("- id: llm-pi-ai\n");
+            yaml.append("  config:\n");
+            yaml.append("    providers:\n");
+            yaml.append("      ").append(YamlScalar.of(route)).append(":\n");
+            yaml.append("        apiKeyEnv: ").append(KEY_ENVIRONMENT_VARIABLE).append("\n");
+            yaml.append("        api: ").append(api).append("\n");
+            if (endpoint != null && !endpoint.isBlank()) {
+                yaml.append("        baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
+            }
+            yaml.append("        models:\n");
+            // Which models this route serves, **asked of the vendor every launch and never remembered**.
+            //
+            // Both halves of that matter. A route the launcher writes is not in the harness's catalogue,
+            // so the harness will not fill this in the way it does for a vendor it knows — and a route
+            // with no models cannot be registered at all — so asking is the only source, not a
+            // convenience. And a list is the vendor's to state and it changes often: one written down
+            // once, by the person or by a launcher that cached it, goes stale in both directions, showing
+            // models that are gone and hiding the ones that arrived.
+            //
+            // What this replaced was inventing a model called `default` whenever no model had been named
+            // — which was every official account, since the form does not ask those for one. The result
+            // was a supplier whose only model was called `default`: not a model any vendor serves, and
+            // not one a request can be made against.
+            //
+            // A model stored on the account survives as a fallback for a vendor that cannot be reached at
+            // this moment — something has to be written, and a name this account used before guesses
+            // better than `default` does. It is a fallback, not a source; nothing asks for it any more.
+            List<String> models = new java.util.ArrayList<>(served == null ? List.of() : served);
+            if (models.isEmpty() && !model.isEmpty()) {
+                models.add(model);
+            }
+            if (models.isEmpty()) {
+                models.add("default");
+            }
+            for (String one : models) {
+                yaml.append("          - id: ").append(YamlScalar.of(one)).append("\n");
+                yaml.append("            name: ").append(YamlScalar.of(one)).append("\n");
+            }
+
+            Path directory = directory();
+            Path file = directory.resolve("account-" + instance.id() + "-"
+                    + Long.toHexString(System.nanoTime()) + ".yml");
+            try {
+                Files.createDirectories(directory);
+                Files.writeString(file, yaml.toString(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new DshException("Failed to write the account overlay " + file, e);
+            }
+            return file;
+        }
+    }
+
+    /// Describes an account's route, without asking the supplier anything.
     ///
     /// @param instance the instance being launched
     /// @param account  the account, or `null` for none
-    /// @return the file to pass to `--patch`, or empty when there is nothing to add
-    /// @throws DshException when the file cannot be written
-    public static Optional<Path> write(DshInstance instance, @Nullable DshAccount account)
-            throws DshException {
+    /// @return what to write, or empty when there is nothing to add
+    public static Optional<Prepared> prepare(DshInstance instance, @Nullable DshAccount account) {
         if (account == null || !account.carriesAKey()) {
             return Optional.empty();
         }
         DshVendor vendor = account.vendor();
-        String api = vendor == null ? "openai-completions" : vendor.api();
-        String endpoint = account.endpoint();
 
         // The route is named after the **account**, not after the vendor it borrows its settings
         // from. That is the whole shape of this: the harness is handed a supplier of the person's
@@ -89,62 +190,26 @@ public final class DshAccountOverlay {
         // Which is also why the person is asked for a name that can be a route: a route name is an
         // identifier, and a name with a space in it would arrive in the harness as something it
         // cannot address. The dialog checks that before it gets here.
-        String route = account.displayName();
-        String model = account.modelOrDefault();
+        return Optional.of(new Prepared(instance, account.displayName(),
+                vendor == null ? "openai-completions" : vendor.api(),
+                account.modelOrDefault(), account.endpoint()));
+    }
 
-        StringBuilder yaml = new StringBuilder();
-        yaml.append("# Written by Hello DeepSeek Launcher for one launch; removed when it ends.\n");
-        yaml.append("# It carries no key: the key travels in the environment as ")
-                .append(KEY_ENVIRONMENT_VARIABLE).append(".\n");
-        yaml.append("- id: llm-pi-ai\n");
-        yaml.append("  config:\n");
-        yaml.append("    providers:\n");
-        yaml.append("      ").append(YamlScalar.of(route)).append(":\n");
-        yaml.append("        apiKeyEnv: ").append(KEY_ENVIRONMENT_VARIABLE).append("\n");
-        yaml.append("        api: ").append(api).append("\n");
-        if (endpoint != null && !endpoint.isBlank()) {
-            yaml.append("        baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
+    /// Writes the overlay for an account, asking its supplier for the models on the way.
+    ///
+    /// @param instance the instance being launched
+    /// @param account  the account, or `null` for none
+    /// @return the file to pass to `--patch`, or empty when there is nothing to add
+    /// @throws DshException when the file cannot be written
+    public static Optional<Path> write(DshInstance instance, @Nullable DshAccount account)
+            throws DshException {
+        Optional<Prepared> prepared = prepare(instance, account);
+        if (prepared.isEmpty()) {
+            return Optional.empty();
         }
-        yaml.append("        models:\n");
-        // Which models this route serves, **asked of the vendor every launch and never remembered**.
-        //
-        // Both halves of that matter. A route the launcher writes is not in the harness's catalogue,
-        // so the harness will not fill this in the way it does for a vendor it knows — and a route
-        // with no models cannot be registered at all — so asking is the only source, not a
-        // convenience. And a list is the vendor's to state and it changes often: one written down
-        // once, by the person or by a launcher that cached it, goes stale in both directions, showing
-        // models that are gone and hiding the ones that arrived.
-        //
-        // What this replaced was inventing a model called `default` whenever no model had been named
-        // — which was every official account, since the form does not ask those for one. The result
-        // was a supplier whose only model was called `default`: not a model any vendor serves, and
-        // not one a request can be made against.
-        //
-        // A model stored on the account survives as a fallback for a vendor that cannot be reached at
-        // this moment — something has to be written, and a name this account used before guesses
-        // better than `default` does. It is a fallback, not a source; nothing asks for it any more.
-        List<String> models = new java.util.ArrayList<>(account.fetchModels());
-        if (models.isEmpty() && !model.isEmpty()) {
-            models.add(model);
-        }
-        if (models.isEmpty()) {
-            models.add("default");
-        }
-        for (String served : models) {
-            yaml.append("          - id: ").append(YamlScalar.of(served)).append("\n");
-            yaml.append("            name: ").append(YamlScalar.of(served)).append("\n");
-        }
-
-        Path directory = directory();
-        Path file = directory.resolve("account-" + instance.id() + "-"
-                + Long.toHexString(System.nanoTime()) + ".yml");
-        try {
-            Files.createDirectories(directory);
-            Files.writeString(file, yaml.toString(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new DshException("Failed to write the account overlay " + file, e);
-        }
-        return Optional.of(file);
+        Prepared overlay = prepared.get();
+        overlay.resolveModels(account);
+        return Optional.of(overlay.write());
     }
 
     /// Removes an overlay.

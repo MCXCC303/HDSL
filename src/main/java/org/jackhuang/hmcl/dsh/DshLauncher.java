@@ -242,6 +242,24 @@ public final class DshLauncher {
     ///                       entry script is absent, or the workspace cannot be created
     public static LaunchPlan plan(DshInstance instance, @Nullable DshAccount account)
             throws DshException {
+        return plan(instance, account, null);
+    }
+
+    /// Builds the launch plan for an instance, with an account whose overlay is already described.
+    ///
+    /// A caller that has to show the person what it is doing — the launch dialog, which names each
+    /// step as it happens — describes the account itself, asks the supplier for its models, and hands
+    /// the result here. A caller with nothing to show passes `null` and the overlay is written here.
+    ///
+    /// @param instance  the instance to launch
+    /// @param account   the account to hand the harness, or `null` for none
+    /// @param prepared  the described overlay, or `null` to write it in this call
+    /// @return the launch plan
+    /// @throws DshException when the pinned version or runtime is missing, the
+    ///                       entry script is absent, or the workspace cannot be created
+    public static LaunchPlan plan(DshInstance instance, @Nullable DshAccount account,
+                                  @Nullable DshAccountOverlay.Prepared prepared)
+            throws DshException {
         DshNodeRuntime runtime = resolveRuntime(instance);
         // The instance runs its own copy, so there is nothing to look up: either
         // its copy is there or the instance is not ready to run.
@@ -277,7 +295,11 @@ public final class DshLauncher {
 
         // The account, as an overlay the harness applies over its composed tree. Written here and
         // removed when the instance stops, so nothing of the user's own configuration is changed.
-        java.util.Optional<Path> accountOverlay = DshAccountOverlay.write(instance, account);
+        // A caller that described it already — so it could say so while the supplier is asked — gets
+        // its own copy written instead of a second one being made.
+        java.util.Optional<Path> accountOverlay = prepared != null
+                ? java.util.Optional.of(prepared.write())
+                : DshAccountOverlay.write(instance, account);
 
         // An overlay adds a route; it cannot make the harness *use* one, because layers merge with
         // the user's settings on top and the overlay is the layer that loses. So the default model

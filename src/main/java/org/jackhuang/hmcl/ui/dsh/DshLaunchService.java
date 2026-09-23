@@ -17,8 +17,11 @@
  */
 package org.jackhuang.hmcl.ui.dsh;
 
+import org.jackhuang.hmcl.dsh.DshAccount;
+import org.jackhuang.hmcl.dsh.DshAccountOverlay;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshLauncher;
 import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
@@ -26,6 +29,7 @@ import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
+import org.jackhuang.hmcl.util.function.ExceptionalRunnable;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
@@ -270,28 +274,53 @@ public final class DshLaunchService {
         // label reads a meaningless "0 B/s". The launch becomes a task so the
         // pane has something to show, and the pane closes itself when the task
         // stops.
-        // Held rather than looked up again when the launch ends: an instance that
-        // dies before it is ready is no longer a process the manager reports, so
-        // asking it for one is how a failed launch came to say nothing at all —
-        // no log window, no dialog, nothing to look at.
+        //
+        // A launch is four steps, and each is named as it happens rather than the
+        // whole thing sitting under one title: the account is described, its
+        // supplier is asked which models it serves, the child is started, and it
+        // is waited for. The list marks a stage running when the task carrying it
+        // becomes ready and done when that task finishes, so each step needs a
+        // task of its own — which is also why asking the supplier was moved out of
+        // writing the overlay: while it is out there on the network is exactly when
+        // there is something worth saying.
+        //
+        // The process is held rather than looked up again when the launch ends: an
+        // instance that dies before it is ready is no longer a process the manager
+        // reports, so asking it for one is how a failed launch came to say nothing
+        // at all — no log window, no dialog, nothing to look at.
         DshProcess[] started = new DshProcess[1];
-        Task<DshProcess> launch = Task.supplyAsync(() -> {
-            try {
-                org.jackhuang.hmcl.dsh.DshAccount account =
-                        org.jackhuang.hmcl.dsh.DshAccount.forInstance(instance);
-                checkAccount(instance, account);
-                DshProcess process = DshProcessManager.launch(instance, account);
-                started[0] = process;
-                awaitReady(process);
-                return process;
-            } catch (DshException e) {
-                throw new CompletionException(e);
+        DshAccount[] chosen = new DshAccount[1];
+        DshAccountOverlay.Prepared[] overlay = new DshAccountOverlay.Prepared[1];
+
+        // Each step names the step that runs before it, and the last one carries the hint list — so
+        // the executor is handed the end of the chain and works backwards through it.
+        //
+        // Backwards is what makes the list move. The executor runs a task's *dependents* before the
+        // task and its *dependencies* after, and a task is reported finished only once everything
+        // hung off it has finished too. Chained forwards through `getDependencies`, every step would
+        // still be running when the last one started, and all four rows would turn done together at
+        // the end. Chained backwards, each step is finished — and its row marked done — before the
+        // next one begins, which is what a person watching expects to see.
+        Task<Void> account = new StageTask("dsh.launch.stage.account", null, () -> {
+            chosen[0] = DshAccount.forInstance(instance);
+            checkAccount(instance, chosen[0]);
+            overlay[0] = DshAccountOverlay.prepare(instance, chosen[0]).orElse(null);
+        });
+        Task<Void> models = new StageTask("dsh.launch.stage.models", account, () -> {
+            if (overlay[0] != null) {
+                overlay[0].resolveModels(chosen[0]);
             }
-        }).setName(i18n("dsh.launch.launching", instance.id()))
-                // The pane's list renders stage hints, not tasks, so a task with
-                // none leaves the dialog an empty box. One stage is what this
-                // launch has: start the child and wait for it to say it is ready.
-                .withStagesHints("dsh.launch.stage.starting");
+        });
+        Task<Void> starting = new StageTask("dsh.launch.stage.starting", models, () -> {
+            DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, chosen[0], overlay[0]);
+            started[0] = DshProcessManager.launch(instance, chosen[0], plan);
+        });
+        Task<Void> ready = new StageTask("dsh.launch.stage.ready", starting,
+                () -> awaitReady(started[0]));
+
+        Task<Void> launch = ready.withStagesHints(
+                "dsh.launch.stage.account", "dsh.launch.stage.models",
+                "dsh.launch.stage.starting", "dsh.launch.stage.ready");
 
         TaskExecutor executor = launch.executor();
         executor.addTaskListener(new TaskListener() {
@@ -508,6 +537,48 @@ public final class DshLaunchService {
             } catch (DshException e) {
                 LOG.warning("Failed to record the port of " + process.plan().instance().id(), e);
             }
+        }
+    }
+
+    /// One step of a launch, named in the progress dialog's stage list.
+    ///
+    /// A task cannot be given a stage from outside: `setStage` is not public, and the stage has to be
+    /// settled before the task runs, because the list begins a stage when the task carrying it
+    /// becomes ready and finishes it when that task ends. So a step that is to appear in the list has
+    /// to be a task of its own — which is the whole of what this class adds.
+    ///
+    /// Nothing is named and nothing is of showable significance: a task that is both also draws a
+    /// line of its own in the same list — and, unnamed, that line reads as this class's own name —
+    /// while the stage rows already say what is happening.
+    private static final class StageTask extends Task<Void> {
+        private final ExceptionalRunnable<?> work;
+        private final @Nullable Task<?> before;
+
+        /// @param stage  the stage this step marks, as an i18n key
+        /// @param before the step that runs before this one, or `null` for the first
+        /// @param work   what the step does
+        private StageTask(String stage, @Nullable Task<?> before, ExceptionalRunnable<?> work) {
+            this.work = work;
+            this.before = before;
+            setStage(stage);
+            setSignificance(Task.TaskSignificance.MINOR);
+            setExecutor(Schedulers.defaultScheduler());
+        }
+
+        @Override
+        public void execute() throws Exception {
+            work.run();
+            setResult(null);
+        }
+
+        /// The step that runs before this one. It goes in `getDependents`, which the executor runs
+        /// ahead of the task — the name reads backwards, and HMCL's own `allOf` puts the tasks it
+        /// runs first there too.
+        @Override
+        public java.util.Collection<? extends Task<?>> getDependents() {
+            return before == null
+                    ? java.util.Collections.emptySet()
+                    : java.util.Collections.singleton(before);
         }
     }
 }
