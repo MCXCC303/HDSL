@@ -460,9 +460,13 @@ public record DshAccount(
 
     /// Returns the account an instance launches with.
     ///
-    /// The instance's own choice wins, and when it has none the first account the launcher holds is
-    /// used: a person with one account means it for everything, and making them repeat that per
-    /// instance would be asking a question with one answer.
+    /// The instance's own choice wins; then the account the person selected on the accounts page;
+    /// then the first one the launcher holds. A person with one account means it for everything, and
+    /// making them repeat that per instance would be asking a question with one answer.
+    ///
+    /// The selection is read here because it is the whole of what choosing an account does. It used
+    /// to stop at the list's first entry, which made "use the offline account" a choice that changed
+    /// nothing: the launch went on using whichever account happened to be stored first, key and all.
     ///
     /// @param instance the instance
     /// @return the account, or `null` when there is none to use
@@ -486,7 +490,9 @@ public record DshAccount(
                         "Instance " + instance.id() + " names an account that no longer exists: " + chosen);
                 return null;
             }
-            return accounts.get(0);
+            DshAccount selected =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
+            return selected != null ? selected : accounts.get(0);
         } catch (RuntimeException e) {
             org.jackhuang.hmcl.util.logging.Logger.LOG.warning("Could not read the accounts", e);
             return null;

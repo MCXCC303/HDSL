@@ -145,6 +145,17 @@ class DshAccountTest {
     }
 
     @Test
+    void aSuppliersOwnNameIsSpokenFor() {
+        // An account under a supplier's name would make a route the launcher would later take away
+        // believing it had made it, so the name is refused where accounts are made.
+        assertTrue(DshVendor.answersTo("deepseek", vendor -> true));
+        assertTrue(DshVendor.answersTo("  OpenCode ", vendor -> true), "trimmed, and without case");
+        assertFalse(DshVendor.answersTo("MCXCC", vendor -> true));
+        assertFalse(DshVendor.answersTo("", vendor -> true));
+        assertFalse(DshVendor.answersTo(null, vendor -> true));
+    }
+
+    @Test
     void theVendorsOwnVendorComesFirst() {
         assertEquals("deepseek", DshVendor.offered().get(0).id(),
                 "the harness's own vendor is the one the list leads with");

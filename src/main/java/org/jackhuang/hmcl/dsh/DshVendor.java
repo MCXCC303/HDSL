@@ -130,6 +130,36 @@ public record DshVendor(
         return known != null ? known : List.of();
     }
 
+    /// Reports whether a name is one a supplier already answers to.
+    ///
+    /// A route is named after its account, so an account carrying a supplier's own name would build a
+    /// route the harness already serves under that name — and the launcher's own tidying, which takes
+    /// away the routes it made, would take that one away with them.
+    ///
+    /// Compared without case: what is refused is a **name**, and `DeepSeek` and `deepseek` are one
+    /// supplier to anybody reading them.
+    ///
+    /// @param name  the name to test, or `null`
+    /// @param match which suppliers count
+    /// @return whether one of them already answers to it
+    public static boolean answersTo(@Nullable String name, java.util.function.Predicate<DshVendor> match) {
+        if (name == null || name.isBlank()) {
+            return false;
+        }
+        String trimmed = name.trim();
+        for (DshVendor vendor : offered()) {
+            if (vendor.id().equalsIgnoreCase(trimmed) && match.test(vendor)) {
+                return true;
+            }
+        }
+        for (DshVendor vendor : catalogue()) {
+            if (vendor.id().equalsIgnoreCase(trimmed) && match.test(vendor)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// Finds the provider an address belongs to.
     ///
     /// Compared by **host**, not by the whole string: an endpoint is written with or without a

@@ -232,6 +232,66 @@ class DshInjectedSettingsTest {
         assertTrue(read().contains("renamed by the person"), read());
     }
 
+    // ---- The ledger, and the routes it lets the launcher recognise as its own -------------------
+
+    @Test
+    void aLaunchRemembersTheRouteItBuiltLongAfterTheLaunchIsOver() throws Exception {
+        write(THEIRS);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        assertTrue(Files.readString(home.resolve(".hdsl-injected-routes.json")).contains("MCXCC"));
+
+        // The launch ends and its note is honoured; the ledger is what is left.
+        write(AFTER_A_LAUNCH);
+        DshInjectedSettings.settle(instance());
+        assertFalse(Files.exists(note()));
+        assertTrue(Files.readString(home.resolve(".hdsl-injected-routes.json")).contains("MCXCC"));
+    }
+
+    @Test
+    void aRouteTheLauncherBuiltBeforeIsTakenAwayWithoutBeingAsked() throws Exception {
+        // The case this exists for: a home carrying a route from a launch that left no note — one
+        // killed before it wrote one, or one from before there were notes. The settings say the
+        // route is there; only the ledger says who put it there.
+        write(AFTER_A_LAUNCH);
+        Files.writeString(home.resolve(".hdsl-injected-routes.json"), "{\"routes\":[\"MCXCC\"]}");
+
+        assertTrue(DshInjectedSettings.clean(instance(), List.of(), null));
+        String after = read();
+        assertFalse(after.contains("MCXCC"), after);
+        assertTrue(after.contains("deepseek-v4-pro"), after);
+        assertFalse(after.contains("agent-default-model"), after);
+    }
+
+    @Test
+    void aDefaultModelThatNamesARouteThisLaunchWillNotBuildIsTakenAway() throws Exception {
+        write(AFTER_A_LAUNCH);
+        assertTrue(DshInjectedSettings.clean(instance(), List.of("MCXCC"), null));
+        String after = read();
+        // The pointer named a supplier this launch makes none of, so it goes with it.
+        assertFalse(after.contains("agent-default-model"), after);
+        assertFalse(after.contains("MCXCC"), after);
+    }
+
+    @Test
+    void aDefaultModelNamingTheRouteBeingBuiltIsLeftForTheLaunchToUse() throws Exception {
+        write(AFTER_A_LAUNCH);
+        // The route this launch is about to build is the one the pointer names: it will be good again
+        // in a moment, so it stays.
+        assertTrue(DshInjectedSettings.clean(instance(), List.of("MCXCC"), "MCXCC"));
+        String after = read();
+        assertTrue(after.contains("agent-default-model"), after);
+        assertTrue(after.contains("provider: MCXCC"), after);
+        // The stale model list still goes: this launch's route comes from its own patch.
+        assertFalse(after.contains("DeepSeek-V4.1-Flash"), after);
+    }
+
+    @Test
+    void aSupplierOfThePersonsOwnIsNeverTouched() throws Exception {
+        write(THEIRS);
+        assertFalse(DshInjectedSettings.clean(instance(), List.of("MCXCC"), null));
+        assertEquals(THEIRS, read());
+    }
+
     @Test
     void theNoteNamesTheLaunchItBelongsTo() throws Exception {
         write(THEIRS);

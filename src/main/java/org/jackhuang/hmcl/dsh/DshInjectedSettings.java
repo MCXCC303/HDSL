@@ -70,11 +70,26 @@ public final class DshInjectedSettings {
     /// The note recording what a launch disturbed, written beside the settings it is about.
     private static final String NOTE = ".hdsl-injected.json";
 
+    /// Where the ledger of routes this home has had built for it is written.
+    private static final String LEDGER = ".hdsl-injected-routes.json";
+
+    /// Every route this home has had built for it, kept long after the launch that built it.
+    ///
+    /// A note answers "what did the launch that is over disturb?" and is gone once it has been
+    /// answered. That leaves the launcher unable to recognise its own work the moment a note is
+    /// missing — a launch killed before it wrote one, a home carried over from before there were
+    /// notes at all — and a route it cannot recognise is a route it will not take away. This is the
+    /// part that does not go: a name per line, no secrets, and the answer to "did I make this?".
+
     /// The section the harness keeps suppliers in, and the key under it.
     private static final String PROVIDERS = "llm-pi-ai";
     private static final String PROVIDERS_KEY = "providers";
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    /// The ledger's own shape: one list, so a person reading it sees names and nothing else.
+    private record Ledger(List<String> routes) {
+    }
 
     /// What was in a home's settings before a launch, kept until that launch is over.
     ///
@@ -104,6 +119,85 @@ public final class DshInjectedSettings {
                 routeBlock(text, PROVIDERS, PROVIDERS_KEY, route),
                 Instant.now().toString());
         write(noteOf(instance), GSON.toJson(stash));
+
+        java.util.LinkedHashSet<String> routes = new java.util.LinkedHashSet<>(routesOf(instance));
+        if (routes.add(route)) {
+            write(ledgerOf(instance), GSON.toJson(new Ledger(List.copyOf(routes))));
+        }
+    }
+
+    /// Takes away the routes this launcher made, and a default model that names one of them.
+    ///
+    /// Run at the start of every launch, before that launch decides what to make of its own, and
+    /// **without asking**: these are the launcher's own doings, not the person's, and a route that is
+    /// left is a route the harness will offer with no address and no key behind it — which is how a
+    /// launch that wanted no supplier came to start on the last one's.
+    ///
+    /// Two things say what is the launcher's:
+    ///
+    /// - the ledger, which is what it has actually built for this home;
+    /// - the names of the accounts that carry a key, because those are the names it builds routes
+    ///   under, and because a home may hold work from before there was a ledger.
+    ///
+    /// A default model naming one of those routes is taken away too — unless it names the route this
+    /// very launch is about to build, which is a pointer that will be good again in a moment. A model
+    /// the person chose for a supplier of their own is not in either set and is never touched.
+    ///
+    /// @param instance      the instance about to be launched
+    /// @param accountRoutes the routes the launcher's accounts are named after
+    /// @param injecting     the route this launch will build, or `null` when it builds none
+    /// @return whether the settings were changed
+    /// @throws DshException when the settings cannot be read or written
+    public static boolean clean(DshInstance instance, java.util.Collection<String> accountRoutes,
+                                @Nullable String injecting) throws DshException {
+        java.util.LinkedHashSet<String> ours = new java.util.LinkedHashSet<>(routesOf(instance));
+        ours.addAll(accountRoutes);
+        ours.removeIf(route -> route == null || route.isBlank());
+        if (ours.isEmpty()) {
+            return false;
+        }
+        Path settings = settingsOf(instance);
+        String text = read(settings);
+        if (text.isEmpty()) {
+            return false;
+        }
+        String updated = text;
+        for (String route : ours) {
+            updated = withRouteBlock(updated, PROVIDERS, PROVIDERS_KEY, route, null);
+        }
+        String current = sectionBlock(updated, DEFAULT_MODEL);
+        String named = current == null ? null : scalarOf(current, "provider");
+        if (named != null && ours.contains(named) && !named.equals(injecting)) {
+            updated = withSectionBlock(updated, DEFAULT_MODEL, null);
+        }
+        if (updated.equals(text)) {
+            return false;
+        }
+        write(settings, updated);
+        return true;
+    }
+
+    /// Returns the routes this home has had built for it.
+    ///
+    /// @param instance the instance
+    /// @return the routes, in the order they were first built
+    /// @throws DshException when the home cannot be resolved
+    private static List<String> routesOf(DshInstance instance) throws DshException {
+        Path ledger = ledgerOf(instance);
+        if (!Files.isRegularFile(ledger)) {
+            return List.of();
+        }
+        try {
+            Ledger read = GSON.fromJson(Files.readString(ledger, StandardCharsets.UTF_8), Ledger.class);
+            return read == null || read.routes() == null ? List.of() : read.routes();
+        } catch (IOException | RuntimeException e) {
+            LOG.warning("Could not read " + ledger, e);
+            return List.of();
+        }
+    }
+
+    private static Path ledgerOf(DshInstance instance) throws DshException {
+        return settingsOf(instance).resolveSibling(LEDGER);
     }
 
     /// Puts back what a launch disturbed, and forgets it did.

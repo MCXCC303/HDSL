@@ -240,6 +240,26 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
                 i18n("dsh.account.name_taken"),
                 name -> name == null || name.isBlank() || !isNameTaken(name.trim())));
+
+        // A name a supplier already answers to is refused as well. Routes are named after accounts, so
+        // an account called `deepseek` would build a route under a name the harness already serves —
+        // and the launcher's own tidying, which takes away the routes it made, would take that one
+        // with them. This is the only place it can be prevented: once such an account exists, every
+        // later launch is a launch that might delete a supplier nobody asked it to touch.
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_reserved_deepseek"),
+                name -> !DshVendor.answersTo(name,
+                        vendor -> "deepseek".equalsIgnoreCase(vendor.id()))));
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_reserved_openai"),
+                name -> !DshVendor.answersTo(name,
+                        vendor -> vendor.id().toLowerCase(java.util.Locale.ROOT).contains("openai"))));
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_reserved_other"),
+                name -> !DshVendor.answersTo(name, vendor -> {
+                    String id = vendor.id().toLowerCase(java.util.Locale.ROOT);
+                    return !id.contains("openai") && !id.equals("deepseek");
+                })));
         FXUtils.setValidateWhileTextChanged(usernameField, true);
 
         // An offline account has no key, no endpoint and no model: it is a name and a face, and the

@@ -298,8 +298,23 @@ public final class DshLauncher {
         // never got to its own cleanup, so both are dealt with here — **before** this launch decides
         // what to inject, and whatever kind of launch this is: one with no account tidies up after
         // one that had a key, which is what keeps a supplier out of a launch that wants none.
+        // Every name the launcher builds routes under: the accounts that carry a key, which are the
+        // ones it makes a supplier for.
+        java.util.List<String> accountRoutes = new java.util.ArrayList<>();
+        for (DshAccount known : org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts()) {
+            if (known.carriesAKey()) {
+                accountRoutes.add(known.displayName());
+            }
+        }
+        // And the route this launch itself will build, if it builds one.
+        String injecting = account != null && account.carriesAKey() ? account.displayName() : null;
+
         try {
             DshInjectedSettings.settle(instance);
+            // Then the launcher's own work from launches that are long over, taken away without
+            // asking: a route left behind is a supplier the harness offers with nothing behind it,
+            // and a launch that wants no supplier must not inherit one.
+            DshInjectedSettings.clean(instance, accountRoutes, injecting);
         } catch (DshException e) {
             LOG.warning("Could not put back what the last launch of " + instance.id()
                     + " left in its settings", e);
