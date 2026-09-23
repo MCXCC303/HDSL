@@ -325,6 +325,16 @@ public final class DshLauncher {
         // overlay, because both live exactly as long as the launch does.
         if (account != null && account.carriesAKey()) {
             DshInjectedSettings.capture(instance, account.displayName(), account.key());
+            // Then the profile object, so the route is one the harness's own models page can see and
+            // edit while it runs. The note written just above is what takes it away again — which is
+            // why this comes second and not before.
+            try {
+                DshInjectedSettings.publish(instance, account.displayName(),
+                        DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE);
+            } catch (DshException e) {
+                // Not fatal: the route still works, it is only not on that page.
+                LOG.warning("Could not make " + account.displayName() + " visible on the models page", e);
+            }
         }
 
         // The account, as an overlay the harness applies over its composed tree. Written here and

@@ -292,6 +292,59 @@ class DshInjectedSettingsTest {
         assertEquals(THEIRS, read());
     }
 
+    // ---- What makes a route show up on the harness's own models page ----------------------------
+
+    @Test
+    void aLaunchedRouteIsMadeVisibleToTheSettingsPage() throws Exception {
+        write(THEIRS);
+        assertTrue(DshInjectedSettings.publish(instance(), "MCXCC", "HDSL_LAUNCH_API_KEY"));
+
+        String after = read();
+        // The profile object is what the page's row is chosen by, and the credential reference is
+        // what stops it asking for a key that is already there.
+        assertTrue(after.contains("    MCXCC:\n      apiKeyEnv: HDSL_LAUNCH_API_KEY\n"), after);
+        // And nothing else is said: the route itself is the overlay's to describe.
+        assertFalse(after.contains("baseURL"), after);
+        assertFalse(after.contains("MCXCC:\n      models:"), after);
+        // The person's own answers are still there, where they were.
+        assertTrue(after.contains("agent-default-model:"), after);
+        assertTrue(after.contains("    deepseek:"), after);
+    }
+
+    @Test
+    void aPublishedRouteGoesAwayWithTheLaunchThatPublishedIt() throws Exception {
+        // The whole arrangement: note first, then the profile, then the launch. The note is what
+        // remembers the file without it, so the cleanup needs no second mechanism.
+        write(THEIRS);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.publish(instance(), "MCXCC", "HDSL_LAUNCH_API_KEY");
+        assertTrue(read().contains("MCXCC"));
+
+        assertTrue(DshInjectedSettings.settle(instance()));
+        assertEquals(THEIRS, read());
+    }
+
+    @Test
+    void aHomeWithNoSupplierSectionGrowsOne() throws Exception {
+        write("ui-onboarding:\n  welcomeNoticeVersion: 2026-08-13.1\n");
+        DshInjectedSettings.publish(instance(), "MCXCC", "HDSL_LAUNCH_API_KEY");
+
+        String after = read();
+        // Whatever the file was missing is made, and nested the way the harness writes it.
+        assertTrue(after.contains("llm-pi-ai:\n  providers:\n    MCXCC:\n      apiKeyEnv: HDSL_LAUNCH_API_KEY\n"),
+                after);
+        assertTrue(after.endsWith("\n"), "a settings file ends in a newline");
+    }
+
+    @Test
+    void aPublishedRouteIsAlsoTakenAwayByTheNextLaunch() throws Exception {
+        write(THEIRS);
+        DshInjectedSettings.publish(instance(), "MCXCC", "HDSL_LAUNCH_API_KEY");
+        // No note: the launcher was killed before it wrote one, or this is a home from before notes.
+        assertTrue(DshInjectedSettings.clean(instance(), List.of(), "MCXCC"));
+        assertEquals(THEIRS, read());
+    }
+
     @Test
     void theNoteNamesTheLaunchItBelongsTo() throws Exception {
         write(THEIRS);

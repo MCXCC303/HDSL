@@ -152,6 +152,11 @@ public final class DshInjectedSettings {
                                 @Nullable String injecting) throws DshException {
         java.util.LinkedHashSet<String> ours = new java.util.LinkedHashSet<>(routesOf(instance));
         ours.addAll(accountRoutes);
+        if (injecting != null) {
+            // The route this launch is about to build is the launcher's by definition, ledger or no
+            // ledger: anything already sitting under that name is this launcher's earlier work.
+            ours.add(injecting);
+        }
         ours.removeIf(route -> route == null || route.isBlank());
         if (ours.isEmpty()) {
             return false;
@@ -198,6 +203,37 @@ public final class DshInjectedSettings {
 
     private static Path ledgerOf(DshInstance instance) throws DshException {
         return settingsOf(instance).resolveSibling(LEDGER);
+    }
+
+    /// Makes a route visible to the harness's own configuration surfaces, for as long as it runs.
+    ///
+    /// An overlay is a **lower** layer, and the models page lists what the **settings** layer
+    /// configures. A route that exists only in the overlay is live and usable and appears nowhere on
+    /// that page: the live routes it does not know are appended with no settings path at all, and
+    /// every group the page draws is chosen by that path — so the row exists in the data and is
+    /// never rendered. Writing the profile object is what puts it in the list, editable, while the
+    /// launch lasts; the note this launch has already written is what takes it away again.
+    ///
+    /// **Only the profile object and the credential reference.** What the route *is* — protocol,
+    /// address, models — is the overlay's to say, and repeating it here would be a second copy of the
+    /// same fact, which is one copy more than the cleanup can keep straight.
+    ///
+    /// @param instance  the instance being launched
+    /// @param route     the route this launch built
+    /// @param apiKeyEnv the environment variable its key travels in
+    /// @return whether the settings were changed
+    /// @throws DshException when the settings cannot be read or written
+    public static boolean publish(DshInstance instance, String route, String apiKeyEnv)
+            throws DshException {
+        Path settings = settingsOf(instance);
+        String text = read(settings);
+        String block = YamlScalar.of(route) + ":\n  apiKeyEnv: " + YamlScalar.of(apiKeyEnv) + "\n";
+        String updated = withRouteBlock(text, PROVIDERS, PROVIDERS_KEY, route, block);
+        if (updated.equals(text)) {
+            return false;
+        }
+        write(settings, updated);
+        return true;
     }
 
     /// Puts back what a launch disturbed, and forgets it did.
@@ -411,16 +447,63 @@ public final class DshInjectedSettings {
         List<String> lines = lines(text);
         int ownerAt = keyAt(lines, 0, lines.size(), 0, owner);
         if (ownerAt < 0) {
-            return text;
+            if (block == null) {
+                return text;
+            }
+            String base = text.isEmpty() || text.endsWith("\n") ? text : text + "\n";
+            return base + owner + ":\n  " + key + ":\n" + indent(block, 4);
         }
+        int ownerIndent = indentOf(lines.get(ownerAt));
         int ownerEnd = endOfBlock(lines, ownerAt);
-        int keyAt = nestedKeyAt(lines, ownerAt + 1, ownerEnd, indentOf(lines.get(ownerAt)), key);
+        int keyAt = nestedKeyAt(lines, ownerAt + 1, ownerEnd, ownerIndent, key);
         if (keyAt < 0) {
-            return text;
+            if (block == null) {
+                return text;
+            }
+            String grown = " ".repeat(ownerIndent + 2) + key + ":\n" + indent(block, ownerIndent + 4);
+            return String.join("\n", insertAfter(lines, ownerAt, grown));
         }
         int keyEnd = endOfBlock(lines, keyAt);
         int routeAt = nestedKeyAt(lines, keyAt + 1, keyEnd, indentOf(lines.get(keyAt)), route);
-        return routeAt < 0 ? text : splice(lines, routeAt, endOfBlock(lines, routeAt), block);
+        if (routeAt < 0) {
+            // Nothing to replace: a block with something in it is a profile being added, and a route
+            // the file has never held goes in as the first child of the routes it belongs to.
+            return block == null
+                    ? text
+                    : String.join("\n", insertAfter(lines, keyAt, indent(block, indentOf(lines.get(keyAt)) + 2)));
+        }
+        return splice(lines, routeAt, endOfBlock(lines, routeAt), block);
+    }
+
+    /// Returns the lines with a block inserted after one of them.
+    ///
+    /// @param lines the file's lines
+    /// @param after the line to insert after
+    /// @param block the block's lines
+    /// @return the file's lines
+    private static List<String> insertAfter(List<String> lines, int after, String block) {
+        List<String> result = new ArrayList<>(lines.subList(0, after + 1));
+        List<String> inserted = lines(block);
+        if (!inserted.isEmpty() && inserted.get(inserted.size() - 1).isEmpty()) {
+            inserted.remove(inserted.size() - 1);
+        }
+        result.addAll(inserted);
+        result.addAll(lines.subList(after + 1, lines.size()));
+        return result;
+    }
+
+    /// Returns a block's lines, each indented by the given number of spaces.
+    ///
+    /// @param block  the block
+    /// @param spaces the indentation
+    /// @return the indented block
+    private static String indent(String block, int spaces) {
+        String padding = " ".repeat(spaces);
+        StringBuilder indented = new StringBuilder();
+        for (String line : lines(block)) {
+            indented.append(line.isBlank() ? line : padding + line).append('\n');
+        }
+        return indented.toString();
     }
 
     /// Returns the value of a `key: value` line inside a block, or `null`.
