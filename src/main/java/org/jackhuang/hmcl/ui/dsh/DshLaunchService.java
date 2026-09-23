@@ -350,7 +350,8 @@ public final class DshLaunchService {
                     // It never got as far as a process, so there is no output to show — but the
                     // reason is the launcher's own and the dialog is still the place a person looks
                     // for what to do next.
-                    DshCrashDialog.show(instance, failureMessage(instance, failure), null);
+                    DshCrashDialog.show(instance, i18n("launch.failed.cannot_create_jvm"),
+                            failureMessage(instance, failure), null);
                 }
             }
         } else if (process != null) {
@@ -370,10 +371,8 @@ public final class DshLaunchService {
             } else if (DshCrashDialog.isCrash(process)) {
                 // It ended before ever answering. Not the user's doing — that case is excluded by
                 // `isCrash` — so it is a failure, and the output is where the reason is.
-                DshCrashDialog.show(instance,
-                        i18n("dsh.launch.exited", process.exitCode().orElse(-1))
-                                + " " + DshCrashDialog.describe(process),
-                        process);
+                DshCrashDialog.show(instance, DshCrashDialog.bannerOf(process),
+                        DshCrashDialog.describe(process), process);
             }
         }
 

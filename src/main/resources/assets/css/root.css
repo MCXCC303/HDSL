@@ -2129,3 +2129,34 @@
     -fx-text-fill: -monet-on-surface-variant;
     -fx-padding: 8;
 }
+
+/* The banner across the top of the crash window: the original's own first line, on the accent
+   surface, because it is the one sentence that has to be read before anything else is. */
+.dsh-crash-banner {
+    -fx-background-color: -monet-primary-container;
+    -fx-text-fill: -monet-on-primary-container;
+    -fx-font-size: 14px;
+}
+
+/* A name in the facts block, with its value under it. Dimmer and smaller than the value, which is
+   how the original draws the pair: the name is what you are looking for, the value is what you
+   came for. */
+.dsh-crash-name {
+    -fx-text-fill: -monet-on-surface-variant;
+    -fx-font-size: 11px;
+}
+
+/* A value in the facts block. */
+.dsh-crash-value {
+    -fx-text-fill: -monet-on-surface;
+}
+
+/* The output tail: monospace, because it is a stack trace and its indentation is how it is read. */
+.dsh-crash-log {
+    -fx-font-family: "monospace";
+    -fx-font-size: 11px;
+    -fx-text-fill: -monet-on-surface-variant;
+    -fx-padding: 8;
+    -fx-background-color: -monet-surface-container-high;
+    -fx-background-radius: 4;
+}

@@ -167,6 +167,7 @@ public final class DshProcessManager {
                         javafx.application.Platform.runLater(() ->
                                 org.jackhuang.hmcl.ui.dsh.DshCrashDialog.show(
                                         instance,
+                                        org.jackhuang.hmcl.ui.dsh.DshCrashDialog.bannerOf(process),
                                         org.jackhuang.hmcl.ui.dsh.DshCrashDialog.describe(process),
                                         process));
                     }
