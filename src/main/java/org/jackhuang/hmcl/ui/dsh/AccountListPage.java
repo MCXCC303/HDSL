@@ -143,6 +143,10 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.account.add.vendor"), SVG.ADD_CIRCLE,
                         () -> Controllers.dialog(new AccountSettingsDialog(null)));
+        // Room under the foot. The row is forty high but its text sits near the bottom of that, so a
+        // column that ends exactly at the window's edge cuts the descenders — which is what "被裁断
+        // 一部分" is: the row is laid out, and its last few pixels are below the visible area.
+        VBox.setMargin(actions, new Insets(0, 0, 8, 0));
         FXUtils.setLimitHeight(actions, 40);
 
         setLeft(scrollPane, actions);
