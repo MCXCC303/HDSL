@@ -178,7 +178,17 @@ public final class DshProcess {
                 "pre-launch", null);
         DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, account);
         LOG.info("Launching instance " + instance.id() + ": " + plan.commandLine());
-        return new DshProcess(plan);
+        try {
+            return new DshProcess(plan);
+        } catch (DshException | RuntimeException e) {
+            // The plan wrote an account overlay, and the only thing that removes one is the state
+            // listener of a process that got as far as being registered. A launch that fails here —
+            // the process cannot be started, the workspace is gone — would leave the file behind for
+            // good: a few hundred bytes in the launcher's directory that nothing will ever look at
+            // again. Removing it is the same cleanup the listener would have done.
+            DshAccountOverlay.remove(plan.accountOverlay());
+            throw e;
+        }
     }
 
     /// Returns the instance this process runs.
