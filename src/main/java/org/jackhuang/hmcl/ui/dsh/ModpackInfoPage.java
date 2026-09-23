@@ -66,6 +66,12 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
     /// What it is for.
     private final SimpleStringProperty description = new SimpleStringProperty();
 
+    /// The prefix a pack's own downloads hang off, or empty.
+    private final SimpleStringProperty url = new SimpleStringProperty();
+
+    /// Where the pack came from, or empty.
+    private final SimpleStringProperty referenceUrl = new SimpleStringProperty();
+
     /// Creates the page.
     ///
     /// @param controller the wizard controller
@@ -80,6 +86,8 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         packVersion.set(string(ModpackExportWizardProvider.VERSION, "1.0"));
         author.set(string(ModpackExportWizardProvider.AUTHOR, ""));
         description.set(string(ModpackExportWizardProvider.DESCRIPTION, ""));
+        url.set(string(ModpackExportWizardProvider.URL, ""));
+        referenceUrl.set(string(ModpackExportWizardProvider.REFERENCE_URL, ""));
 
         setSpacing(10);
         setPadding(new Insets(10));
@@ -89,6 +97,12 @@ public final class ModpackInfoPage extends VBox implements WizardPage {
         list.getContent().add(textRow(i18n("modpack.name"), name));
         list.getContent().add(textRow(i18n("archive.version"), packVersion));
         list.getContent().add(textRow(i18n("archive.author"), author));
+        // The original's two origin rows, in its order: where the pack's files are published, and
+        // where the pack itself is announced. Both are optional, and both are written into the
+        // manifest — a pack that says where it came from can be checked against that place, and a
+        // market that collects packs reads the download prefix.
+        list.getContent().add(textRow(i18n("modpack.export.url"), url));
+        list.getContent().add(textRow(i18n("modpack.export.reference_url"), referenceUrl));
         // The description row is the height of its own block, like every other row. It used to be
         // given the card's leftover height and told to take it, and since the card was told to fill
         // the scroll pane, every extra pixel of window became another pixel of text area: the row
