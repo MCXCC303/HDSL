@@ -226,25 +226,8 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
                         + "而必须先装好一个才能安装它");
             }
             String id = uniqueId(container.text("name"));
-            String profile = container.profileName("pack");
-
-            report.accept("Creating instance " + id + " at " + version);
-            // Isolated, because that is what installing a pack means: it brings its own plugins, and
-            // putting them into a home something else is already using is how one pack's dependencies
-            // end up in another pack's profile.
-            DshInstance instance = DshInstanceManager.create(id, version, profile,
-                    Path.of(System.getProperty("user.home")),
-                    org.jackhuang.hmcl.dsh.DshHomeMode.ISOLATED, null, List.of(), Map.of());
-
-            report.accept("Installing DeepSeek Harness " + version);
-            DshVersionManager.install(instance, version, report::accept);
-
-            report.accept("Writing the pack's files into "
-                    + instance.homeDirectory().resolve("profiles").resolve(instance.profile()));
-            DshPackInstaller.Landed landed = DshPackInstaller.installInto(archive, instance,
+            DshPackInstaller.installNew(archive, id, container.profileName("pack"), version,
                     report::accept);
-            report.accept("Wrote " + landed.files() + " files (" + landed.overrides()
-                    + " overrides, " + landed.machine() + " machine files)");
         }, () -> Controllers.navigate(MainPage.instance().getInstancesPage()));
     }
 

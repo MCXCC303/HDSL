@@ -328,25 +328,7 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
                         + "needs, and one must be installed before it can be", null);
             }
 
-            DshInstance instance = DshInstanceManager.find(id);
-            if (instance == null) {
-                report.accept("Creating instance " + id + " at " + version);
-                // Isolated by default, which is the whole point of installing a pack: the pack brings
-                // its own plugins, and putting them into a home something else is already using is how
-                // one pack's dependencies end up in another pack's profile.
-                instance = DshInstanceManager.create(id, version, profile,
-                        java.nio.file.Path.of(System.getProperty("user.home")),
-                        org.jackhuang.hmcl.dsh.DshHomeMode.ISOLATED, null, List.of(), java.util.Map.of());
-            }
-            report.accept("Installing DeepSeek Harness " + version);
-            org.jackhuang.hmcl.dsh.DshVersionManager.install(instance, version, report::accept);
-
-            report.accept("Writing the pack's files into "
-                    + instance.homeDirectory().resolve("profiles").resolve(instance.profile()));
-            DshPackInstaller.Landed landed = DshPackInstaller.installInto(archive, instance,
-                    report::accept);
-            report.accept("Wrote " + landed.files() + " files (" + landed.overrides()
-                    + " overrides, " + landed.machine() + " machine files)");
+            DshPackInstaller.installNew(archive, id, profile, version, report::accept);
         }, () -> {
             // Land on the instance list, which is where the thing that was just made is. The
             // original does the same after installing a modpack: the installation is over, and what

@@ -652,6 +652,55 @@ public final class DshPackInstaller {
         }
     }
 
+    /// Makes an instance for a pack and installs it into that instance.
+    ///
+    /// **One method rather than a sequence each caller repeats**, and the reason is a failure that was
+    /// left on somebody's disk: the instance is created before the harness can be installed into it —
+    /// it has to be, because the runtime goes inside it — so a failure between the two leaves an
+    /// instance that is in the list and cannot start. The wizard has always cleaned that up; the two
+    /// pages that install a pack from the market and from a file each wrote their own sequence and
+    /// neither did, so a failed install left `pokemon` sitting in the list with no harness in it.
+    ///
+    /// A sequence written twice is a sequence fixed once, so it is written here once instead.
+    ///
+    /// @param archive the verified pack
+    /// @param id      the instance id, which the caller has already made unique
+    /// @param profile the profile the pack wants
+    /// @param version the harness version the pack pins
+    /// @param report  receives progress lines, or `null`
+    /// @return the instance, filled in
+    /// @throws DshException when the harness or the pack cannot be installed
+    public static DshInstance installNew(Path archive, String id, String profile, String version,
+                                         @Nullable java.util.function.Consumer<String> report)
+            throws DshException {
+        DshInstance instance = DshInstanceManager.create(id, version, profile,
+                Path.of(System.getProperty("user.home")),
+                org.jackhuang.hmcl.dsh.DshHomeMode.ISOLATED, null, List.of(), java.util.Map.of());
+        try {
+            say(report, "Installing DeepSeek Harness " + version);
+            DshVersionManager.install(instance, version, report);
+
+            say(report, "Writing the pack's files into "
+                    + instance.homeDirectory().resolve("profiles").resolve(instance.profile()));
+            installInto(archive, instance, report);
+            return instance;
+        } catch (DshException | RuntimeException failed) {
+            // What was made for this attempt goes away with it. A half-made instance is worse than no
+            // instance: it appears in the list, it can be launched, and it fails for a reason that is
+            // no longer on screen.
+            org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                    "Could not install the pack into " + id + "; removing the instance made for it", failed);
+            DshVersionManager.discardPartial(instance);
+            try {
+                DshInstanceManager.delete(id);
+            } catch (DshException | RuntimeException cleanupFailure) {
+                org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                        "Could not remove the half-made instance " + id, cleanupFailure);
+            }
+            throw failed;
+        }
+    }
+
     /// Lists an archive's members, for a caller that wants to show what a pack holds.
     ///
     /// @param archive the file

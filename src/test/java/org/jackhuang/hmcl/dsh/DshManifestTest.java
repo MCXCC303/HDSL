@@ -99,6 +99,27 @@ class DshManifestTest {
                 "the override should say what was asked for, not the launcher's own version");
     }
 
+    /// The boot library is named once, even though the policy also holds it.
+    ///
+    /// It is one of the vendor's packages, so a policy that holds those names it — and the file then
+    /// carried `'@deepseek-ai/dsh-app-boot'` twice. pnpm refuses the whole workspace with
+    /// `duplicated mapping key`, which is a launcher that cannot install at all. The two are
+    /// therefore combined into one map before either file is written, and the caller's choice wins.
+    @Test
+    void theBootLibraryIsNamedOnceEvenWhenThePolicyAlsoHoldsIt() {
+        java.util.Map<String, String> held = new java.util.LinkedHashMap<>();
+        held.put("\u0040deepseek-ai/cordis", "4.0.2");
+        held.put("\u0040deepseek-ai/dsh-app-boot", "0.1.6-alpha.1");
+
+        java.util.Map<String, String> overrides = DshVersionManager.mergeOverrides(
+                "0.1.5-alpha.2", held);
+
+        assertEquals(2, overrides.size(), "two packages, and no key written twice");
+        assertEquals("0.1.5-alpha.2", overrides.get("\u0040deepseek-ai/dsh-app-boot"),
+                "the version the caller chose is the one that stands");
+        assertEquals("4.0.2", overrides.get("\u0040deepseek-ai/cordis"));
+    }
+
     /// npm answers about a specifier with an array, and that is what has to be read.
     ///
     /// Captured verbatim from `npm view @deepseek-ai/dsh@0.1.5-alpha.2 dependencies --json`, because

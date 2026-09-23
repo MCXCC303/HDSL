@@ -194,11 +194,12 @@ public final class DshVersionManager {
         JsonObject dependencies = new JsonObject();
         dependencies.addProperty(PACKAGE_NAME, version);
 
-        JsonObject overrides = new JsonObject();
-        overrides.addProperty(APP_BOOT_PACKAGE, appBoot);
-        for (Map.Entry<String, String> held : heldDependencies(runtime, version, appBoot, policy).entrySet()) {
-            overrides.addProperty(held.getKey(), held.getValue());
-        }
+        // One map, and both files are written from it. Two computations — one per file — is how the
+        // same key came to be written twice: the boot library is put in explicitly *and* it is one of
+        // the vendor's packages, so the policy named it again and pnpm refused the file with
+        // `duplicated mapping key`. Building the answer once makes that unrepresentable.
+        Map<String, String> overrides = mergeOverrides(appBoot,
+                heldDependencies(runtime, version, appBoot, policy));
 
         JsonObject manifest = new JsonObject();
         manifest.addProperty("private", true);
@@ -211,12 +212,9 @@ public final class DshVersionManager {
         // left the pinning silently not applied, and a runtime came out with the
         // launcher at one version and its boot library at another — a pairing that
         // fails at import rather than degrading. The tests cover the pair.
-        StringBuilder workspace = new StringBuilder("overrides:\n")
-                .append("  '").append(APP_BOOT_PACKAGE).append("': ").append(appBoot).append('\n');
-        for (Map.Entry<String, String> held : heldDependencies(runtime, version, appBoot, policy).entrySet()) {
-            workspace.append("  '").append(held.getKey()).append("': ")
-                    .append(held.getValue()).append('\n');
-        }
+        StringBuilder workspace = new StringBuilder("overrides:\n");
+        overrides.forEach((name, held) -> workspace.append("  '").append(name).append("': ")
+                .append(held).append('\n'));
 
         try {
             Files.createDirectories(prefix);
@@ -226,6 +224,23 @@ public final class DshVersionManager {
         } catch (IOException e) {
             throw new DshException("Failed to write the manifest for " + version, e);
         }
+    }
+
+    /// Combines the boot library's pin with the ones the policy holds.
+    ///
+    /// The boot library wins where the two name the same package, and that is not a tie-break but the
+    /// point: it is the one the **caller** chose — the create page offers it — while the policy only
+    /// knows what the harness's ranges say. Keeping them in one map is also what stops the same key
+    /// being written twice, which is a file pnpm refuses outright.
+    ///
+    /// @param appBoot the boot library version the caller asked for
+    /// @param held    the versions the policy holds
+    /// @return the overrides, boot library first
+    static Map<String, String> mergeOverrides(String appBoot, Map<String, String> held) {
+        Map<String, String> overrides = new LinkedHashMap<>();
+        overrides.put(APP_BOOT_PACKAGE, appBoot);
+        held.forEach(overrides::putIfAbsent);
+        return overrides;
     }
 
     /// Returns the dependencies to hold to the versions the harness declares.
