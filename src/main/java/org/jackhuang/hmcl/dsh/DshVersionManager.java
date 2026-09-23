@@ -152,8 +152,8 @@ public final class DshVersionManager {
 
     public static List<DshRelease> fetchReleases() throws DshException {
         DshNodeRuntime runtime = requireRuntime();
-        if (!runtime.canManagePlugins()) {
-            throw new DshException("pnpm was not found on PATH; installing versions requires it");
+        if (!runtime.canInstall()) {
+            throw new DshException("npm was not found on PATH; reading the version list requires it");
         }
 
         Set<String> versions = queryVersions(runtime.npm());
