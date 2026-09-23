@@ -88,7 +88,7 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
                 title,
                 card("modpack.choose.local", this::chooseLocalFile),
                 card("modpack.choose.remote", this::chooseRemoteFile),
-                card("modpack.choose.repository", this::openCatalogue));
+                card("dsh.pack.choose.market", this::openCatalogue));
 
         // Whole-page drop, which is the original's own gesture: the card says the file can be
         // dropped here, so it has to be true of the page and not only of the card.
@@ -215,6 +215,15 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
     ///
     /// @param archive where the pack is
     private void install(Path archive) {
+        // **Two formats, one page**, because this page is now the only way in from the interface: the
+        // instance list's "install a pack" opens it too — the original's own arrangement, where both
+        // entry points call one method — so a page that understood only the newer container would
+        // take away the older one's only graphical route without saying so. The CLI keeps working
+        // either way; this is about the person who has a file and no terminal.
+        if (isOldFormat(archive)) {
+            installOlderFormat(archive);
+            return;
+        }
         ProgressDialog.run(i18n("dsh.pack.installing", archive.getFileName().toString()), report -> {
             DshPackInstaller.Container container = DshPackInstaller.identify(archive);
             report.accept("Container version " + container.containerVersion()
@@ -228,6 +237,55 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
             String id = uniqueId(container.text("name"));
             DshPackInstaller.installNew(archive, id, container.profileName("pack"), version,
                     report::accept);
+        }, () -> Controllers.navigate(MainPage.instance().getInstancesPage()));
+    }
+
+    /// Reports whether a file is the older pack format rather than the current container.
+    ///
+    /// By extension, because that is what distinguishes them: the older one is a `.hdslp` (or a plain
+    /// `.zip` carrying its manifest), and the current one is a `.dspack` whose marker is inside. A
+    /// `.zip` is taken as the older format because the current one is never distributed as a bare
+    /// zip — that is the whole reason it has an extension of its own.
+    ///
+    /// @param archive the file
+    /// @return whether it is the older format
+    private static boolean isOldFormat(Path archive) {
+        String name = archive.getFileName().toString().toLowerCase(java.util.Locale.ROOT);
+        return !name.endsWith(".dspack");
+    }
+
+    /// Installs a pack in the older format.
+    ///
+    /// The installer for it makes its own instance, so this cannot go through
+    /// [DshPackInstaller#installNew] — but the same promise is kept: an instance that this attempt
+    /// created and then failed to fill is removed, so a failure does not leave a name in the list
+    /// that cannot start. Whether it created one is known by looking **before** the call, which is
+    /// the only moment the answer is available.
+    ///
+    /// @param archive the pack
+    private void installOlderFormat(Path archive) {
+        ProgressDialog.run(i18n("dsh.pack.installing", archive.getFileName().toString()), report -> {
+            org.jackhuang.hmcl.dsh.DshModpacks.Manifest manifest =
+                    org.jackhuang.hmcl.dsh.DshModpacks.readManifest(archive);
+            String id = uniqueId(manifest.name());
+            boolean existed = DshInstanceManager.find(id) != null;
+            try {
+                report.accept("Installing " + id + " from the older pack format");
+                org.jackhuang.hmcl.dsh.DshModpacks.install(archive, id,
+                        Path.of(System.getProperty("user.home")), report::accept);
+            } catch (DshException | RuntimeException failed) {
+                org.jackhuang.hmcl.dsh.DshInstance made = DshInstanceManager.find(id);
+                if (!existed && made != null) {
+                    org.jackhuang.hmcl.dsh.DshVersionManager.discardPartial(made);
+                    try {
+                        DshInstanceManager.delete(id);
+                    } catch (DshException | RuntimeException cleanupFailure) {
+                        org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                                "Could not remove the half-made instance " + id, cleanupFailure);
+                    }
+                }
+                throw failed;
+            }
         }, () -> Controllers.navigate(MainPage.instance().getInstancesPage()));
     }
 
