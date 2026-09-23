@@ -126,10 +126,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstanceItem.setSubtitle(i18n("dsh.launch.no_instance.hint"));
         currentInstanceItem.setOnAction(event -> openCurrentInstance());
 
-        // The original groups by what a thing is, not by where it sits in the
-        // page: the instance you are about to launch leads its own group, and
-        // the launcher's own settings sit apart from the game's.
+        // The original's order, which is an order of importance rather than of implementation: the
+        // account leads, because without one nothing can be launched; then the game; then the
+        // launcher's own settings. An account is its own group rather than a row under the settings,
+        // because it is not a setting — it is the thing everything else is done on behalf of.
         AdvancedListBox sideBar = new AdvancedListBox()
+                .startCategory(i18n("dsh.account.list").toUpperCase(Locale.ROOT))
+                .addNavigationDrawerItem(i18n("dsh.account.list"), SVG.DRESSER,
+                        () -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage()))
                 .startCategory(i18n("instance").toUpperCase(Locale.ROOT))
                 .add(currentInstanceItem)
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
@@ -137,10 +141,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                 .addNavigationDrawerItem(i18n("download"), SVG.DOWNLOAD,
                         () -> Controllers.navigate(getDownloadPage()))
                 .startCategory(i18n("settings.launcher.general").toUpperCase(Locale.ROOT))
-                // Accounts sit with the launcher's own settings rather than with a game: an account
-                // here is a key this machine holds, not something an instance owns.
-                .addNavigationDrawerItem(i18n("dsh.account.list"), SVG.DRESSER,
-                        () -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage()))
                 .addNavigationDrawerItem(i18n("settings"), SVG.SETTINGS,
                         () -> Controllers.navigate(getSettingsPage()));
         FXUtils.setLimitWidth(sideBar, 200);
