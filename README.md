@@ -7,7 +7,7 @@
 <div align="center">
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
 [![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk&logoColor=ffffff)](https://openjdk.org/projects/jdk/21)
 
 </div>
@@ -40,7 +40,7 @@ DeepSeek Harness 通过 npm 发布、以 `dsh web` 启动。HDSL 把这些步骤
 
 | 项目 | 要求 |
 |---|---|
-| 操作系统 | **仅 Linux**（x86_64 / aarch64） |
+| 操作系统 | **Linux / macOS**（x86_64 / aarch64） |
 | 运行时 | **Java 21**（构建与运行） |
 | DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
 
@@ -53,17 +53,24 @@ HDSL 不自行下载 Node.js 之外的运行时，也不修改系统环境；它
 ./gradlew run        # 直接启动
 ```
 
-打包为 `.deb` 与自解压脚本：
+打包为 `.deb` 与自解压脚本（Linux）：
 
 ```bash
 ./gradlew makeDeb
+```
+
+打包为 `.app`、`.dmg` 与 `.zip`（macOS）：
+
+```bash
+./gradlew makeExecutable
+./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png build/libs
 ```
 
 产物在 `build/libs/` 下。
 
 ## 数据目录
 
-HDSL 的数据集中在 `~/.local/share/hdsl`（遵循 `XDG_DATA_HOME`）：
+HDSL 的数据集中在一处：Linux 在 `~/.local/share/hdsl`（遵循 `XDG_DATA_HOME`），macOS 在 `~/Library/Application Support/hdsl`：
 
 ```
 ~/.local/share/hdsl/
