@@ -21,49 +21,62 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXComboBox;
 import com.jfoenix.controls.JFXPasswordField;
 import com.jfoenix.controls.JFXTextField;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
+import com.jfoenix.controls.JFXDialogLayout;
 import javafx.scene.control.Label;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshVendor;
 import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.DialogPane;
+import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.LinePane;
-import org.jackhuang.hmcl.ui.construct.LineSelectButton;
 import org.jackhuang.hmcl.ui.construct.LineTextPane;
+import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Where the accounts are kept.
+/// Adds an account, and manages the ones already there.
 ///
-/// A DeepSeek Harness account is a key and the vendor it belongs to. The original's accounts are
-/// logins it performs for the user; there is no login here, because the harness is not a service —
-/// it is a program that talks to whichever model supplier it is configured with. So this is the
-/// page where a key is entered, checked, and kept, and where it can be taken away again.
+/// A dialog, and a `JFXDialogLayout` rather than a bare pane. The second part is not decoration:
+/// the launcher attaches a dialog's close handler to **the node it is handed**, so a pane that
+/// fires the close event from a child of itself fires it past the handler and the dialog never
+/// closes. Extending the layout the launcher already knows, and firing on `this`, is what makes the
+/// buttons work.
 ///
-/// A key is checked before it is added, and the check is made against the vendor itself rather than
-/// by asking the harness: the harness answers out of a local catalogue for a vendor it knows and
-/// never makes the request, so asking it would accept any string. What decides is the vendor's own
-/// model list, which is the smallest call that requires a valid key and spends nothing.
+/// Which vendor is being added is the caller's to say. The accounts page asks by offering one row
+/// per vendor, so a dialog opened from there needs no vendor question; the "another vendor" row
+/// opens the same dialog without an answer, and then it asks.
 ///
-/// A key that cannot be checked — because the network cannot reach the vendor, or because the
-/// endpoint does not offer a model list — is **not** refused: a network that cannot reach a supplier
-/// today may reach it tomorrow, and the refusal that matters is the one the vendor gives.
+/// A key is checked before it is kept, against the vendor itself rather than by asking the harness:
+/// the harness answers out of a local catalogue for a vendor it knows and never makes the request,
+/// so asking it would accept any string. A key that cannot be checked — the network cannot reach the
+/// vendor, the endpoint does not offer a model list — is **not** refused: a network that cannot
+/// reach a supplier today may reach it tomorrow, and the refusal that matters is the vendor's.
 @NotNullByDefault
-public final class AccountSettingsDialog extends VBox {
-    /// The vendors the person can add an account for.
+public final class AccountSettingsDialog extends JFXDialogLayout {
+    /// The vendor being added, or `null` when the dialog has to ask.
+    private final @Nullable DshVendor preselected;
+
+    /// The accounts already kept, redrawn whenever one is added or removed.
+    private final ComponentList accounts = new ComponentList();
+
+    /// The vendor, when it has to be asked for.
     private final JFXComboBox<DshVendor> vendorBox = new JFXComboBox<>();
 
-    /// What the account is called, for telling two keys for one vendor apart.
-    private final JFXTextField labelField = new JFXTextField();
+    /// What the account is called.
+    private final JFXTextField usernameField = new JFXTextField();
 
     /// The key.
     private final JFXPasswordField keyField = new JFXPasswordField();
@@ -71,45 +84,120 @@ public final class AccountSettingsDialog extends VBox {
     /// The endpoint, for a vendor whose address is per account.
     private final JFXTextField baseUrlField = new JFXTextField();
 
-    /// The model the harness should start with, or empty to leave the choice alone.
+    /// The model the harness should start with.
     private final JFXTextField modelField = new JFXTextField();
+
+    /// The row holding the endpoint, kept so it can be taken away.
+    private final LinePane baseUrlRow = new LinePane();
 
     /// Where the verdict on a key is shown.
     private final Label verdict = new Label();
 
-    /// The endpoint row, kept so it can be taken away for a vendor that publishes its own address.
-    private javafx.scene.Node accountBaseUrlRow;
+    /// The button that accepts, and the spinner shown while a key is being checked.
+    private final SpinnerPane acceptPane = new SpinnerPane();
 
-    /// The accounts, redrawn whenever one is added or removed.
-    private final ComponentList accounts = new ComponentList();
-
-    /// The vendor the dialog opens on, or `null` to start at the first one offered.
-    private final @org.jetbrains.annotations.Nullable DshVendor preselected;
-
-    /// Creates the dialog's content, starting at the first vendor offered.
-    public AccountSettingsDialog() {
-        this(null);
-    }
-
-    /// Creates the dialog's content.
+    /// Creates the dialog.
     ///
-    /// @param preselected the vendor to start on, or `null` for the first one offered
-    public AccountSettingsDialog(@org.jetbrains.annotations.Nullable DshVendor preselected) {
+    /// @param preselected the vendor to add, or `null` to ask
+    public AccountSettingsDialog(@Nullable DshVendor preselected) {
         this.preselected = preselected;
-        setSpacing(10);
-        setPadding(new Insets(10));
 
-        accounts.getContent().addAll(accountRows());
-        getChildren().addAll(
-                ComponentList.createComponentListTitle(i18n("dsh.account.existing")), accounts,
-                ComponentList.createComponentListTitle(i18n("dsh.account.add")), addForm());
+        setHeading(new Label(i18n(preselected == null
+                ? "dsh.account.add.custom" : "account.create")));
+
+        VBox body = new VBox(10, accounts, buildForm());
+        setBody(body);
+        setActions(buildActions());
+        refreshAccounts();
+
+        // After the body is assembled, so that hiding the endpoint row takes it out of the layout
+        // rather than leaving a gap where it was.
+        javafx.application.Platform.runLater(this::syncEndpointRow);
     }
 
-    /// Builds one row per account.
+    /// Builds the form for the new account.
     ///
-    /// @return the rows
-    private java.util.List<javafx.scene.Node> accountRows() {
-        java.util.List<javafx.scene.Node> rows = new java.util.ArrayList<>();
+    /// @return the form
+    private VBox buildForm() {
+        ComponentList list = new ComponentList();
+
+        // The vendor is only asked for when the caller did not say. The accounts page asks by
+        // offering a row per vendor, so asking again inside the dialog would be asking a question
+        // that has just been answered.
+        if (preselected == null) {
+            vendorBox.getItems().setAll(DshVendor.offered());
+            vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
+            vendorBox.getSelectionModel().selectFirst();
+            vendorBox.setMaxWidth(Double.MAX_VALUE);
+            vendorBox.valueProperty().addListener(observable -> syncEndpointRow());
+            list.getContent().add(row(i18n("dsh.account.vendor"), vendorBox));
+        }
+
+        usernameField.setPromptText(i18n("dsh.account.label.prompt"));
+        keyField.setPromptText(i18n("dsh.account.key.prompt"));
+        baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
+        modelField.setPromptText(i18n("dsh.account.model.prompt"));
+
+        list.getContent().add(row(i18n("account.username"), usernameField));
+        list.getContent().add(row(i18n("dsh.account.key"), keyField));
+
+        baseUrlRow.setTitle(i18n("dsh.account.base_url"));
+        baseUrlField.setMinWidth(360);
+        baseUrlRow.setRight(baseUrlField);
+        list.getContent().add(baseUrlRow);
+
+        list.getContent().add(row(i18n("dsh.account.model"), modelField));
+
+        verdict.getStyleClass().add("desc");
+        list.getContent().add(verdict);
+        return new VBox(ComponentList.createComponentListTitle(i18n("dsh.account.add")), list);
+    }
+
+    /// Builds the buttons.
+    ///
+    /// @return the actions
+    private HBox buildActions() {
+        JFXButton accept = new JFXButton(i18n("dsh.account.add.button"));
+        accept.getStyleClass().add("dialog-accept");
+        accept.setOnAction(event -> addAccount());
+        acceptPane.getStyleClass().add("small-spinner-pane");
+        acceptPane.setContent(accept);
+
+        JFXButton cancel = new JFXButton(i18n("button.cancel"));
+        cancel.getStyleClass().add("dialog-cancel");
+        cancel.setOnAction(event -> fireEvent(new DialogCloseEvent()));
+
+        HBox actions = new HBox(8, acceptPane, cancel);
+        actions.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        return actions;
+    }
+
+    /// Builds a row of a name and its box.
+    ///
+    /// @param title the name
+    /// @param field the box
+    /// @return the row
+    private LinePane row(String title, javafx.scene.Node field) {
+        LinePane pane = new LinePane();
+        pane.setTitle(title);
+        if (field instanceof Region region) {
+            region.setMinWidth(360);
+        }
+        pane.setRight(field);
+        return pane;
+    }
+
+    /// Takes the endpoint row away for a vendor that publishes its own address.
+    private void syncEndpointRow() {
+        DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
+        boolean needed = vendor == null || !vendor.hasBaseUrl();
+        baseUrlRow.setVisible(needed);
+        baseUrlRow.setManaged(needed);
+    }
+
+    /// Redraws the list of accounts.
+    private void refreshAccounts() {
+        List<javafx.scene.Node> rows = new ArrayList<>();
         for (DshAccount account : SettingsManager.settings().getAccounts()) {
             rows.add(accountRow(account));
         }
@@ -119,13 +207,13 @@ public final class AccountSettingsDialog extends VBox {
             empty.setSubtitle(i18n("dsh.account.none.hint"));
             rows.add(empty);
         }
-        return rows;
+        accounts.getContent().setAll(rows);
     }
 
-    /// Builds the row for one account: what it is, its key masked, and a button to remove it.
+    /// Builds the row for one account.
     ///
-    /// The key is shown masked because the row is a record of what is configured, not a place to
-    /// read a secret back from — and a full key on screen is a key in every screenshot.
+    /// The key is shown masked: the row is a record of what is configured, not a place to read a
+    /// secret back from, and a full key on screen is a key in every screenshot.
     ///
     /// @param account the account
     /// @return the row
@@ -139,110 +227,68 @@ public final class AccountSettingsDialog extends VBox {
         FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
         check.setOnAction(event -> {
             row.setSubtitle(i18n("dsh.account.checking"));
-            java.util.concurrent.CompletableFuture
-                    .supplyAsync(account::check, org.jackhuang.hmcl.task.Schedulers.io())
-                    .whenComplete((result, failure) -> javafx.application.Platform.runLater(() -> {
-                        if (failure != null) {
-                            row.setSubtitle(failure.getMessage());
-                            return;
-                        }
-                        row.setSubtitle(result.message());
-                    }));
+            CompletableFuture.supplyAsync(account::check, Schedulers.io())
+                    .whenComplete((result, failure) -> javafx.application.Platform.runLater(() ->
+                            row.setSubtitle(failure != null
+                                    ? failure.getMessage() : result.message())));
         });
+
+        JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
+        FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
+        changeKey.setOnAction(event -> changeKey(account));
 
         JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
         FXUtils.installFastTooltip(remove, i18n("button.remove"));
         remove.setOnAction(event -> {
-            SettingsManager.settings().getAccounts().remove(account);
+            SettingsManager.settings().getAccounts().removeIf(a -> a.matchesKey(account.key()));
             SettingsManager.save();
-            refresh();
+            refreshAccounts();
         });
 
-        HBox actions = new HBox(4, check, remove);
-        actions.setAlignment(Pos.CENTER_RIGHT);
+        HBox actions = new HBox(4, check, changeKey, remove);
+        actions.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
         row.setRowTrailing(actions);
         return row;
     }
 
-    /// Builds the form for adding one.
+    /// Replaces an account's key, keeping everything else about it.
     ///
-    /// @return the form
-    private javafx.scene.Node addForm() {
-        vendorBox.getItems().setAll(DshVendor.offered());
-        vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
-        if (preselected != null) {
-            // The page's sidebar already asked which vendor this is for, so the dialog opens on that
-            // answer rather than asking again.
-            vendorBox.getSelectionModel().select(preselected);
-        }
-        if (vendorBox.getValue() == null) {
-            vendorBox.getSelectionModel().selectFirst();
-        }
-        vendorBox.setMaxWidth(Double.MAX_VALUE);
-
-        labelField.setPromptText(i18n("dsh.account.label.prompt"));
-        keyField.setPromptText(i18n("dsh.account.key.prompt"));
-        baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
-        modelField.setPromptText(i18n("dsh.account.model.prompt"));
-        verdict.getStyleClass().add("desc");
-
-        // An endpoint is only needed by a vendor whose address is per account, so the row is only
-        // offered for one — a row asking for something that is not wanted is a row that makes people
-        // wonder what they were supposed to type. A dialog opened without a vendor is the one that
-        // may have to ask for an address at all.
-        Runnable syncBaseUrl = () -> {
-            DshVendor vendor = vendorBox.getValue();
-            boolean needed = vendor != null && !vendor.hasBaseUrl();
-            if (accountBaseUrlRow != null) {
-                accountBaseUrlRow.setVisible(needed);
-                accountBaseUrlRow.setManaged(needed);
-            }
-        };
-        vendorBox.valueProperty().addListener(observable -> syncBaseUrl.run());
-        javafx.application.Platform.runLater(syncBaseUrl);
-
-        JFXButton add = new JFXButton(i18n("dsh.account.add.button"));
-        add.getStyleClass().add("jfx-button-raised");
-        add.setOnAction(event -> addAccount());
-        HBox buttons = new HBox(add);
-        buttons.setAlignment(Pos.CENTER_RIGHT);
-
-        javafx.scene.Node baseUrlRow = labelled(i18n("dsh.account.base_url"), baseUrlField);
-        accountBaseUrlRow = baseUrlRow;
-
-        ComponentList list = new ComponentList();
-        list.getContent().add(labelled(i18n("dsh.account.vendor"), vendorBox));
-        list.getContent().add(labelled(i18n("dsh.account.label"), labelField));
-        list.getContent().add(labelled(i18n("dsh.account.key"), keyField));
-        list.getContent().add(baseUrlRow);
-        list.getContent().add(labelled(i18n("dsh.account.model"), modelField));
-        list.getContent().add(verdict);
-        list.getContent().add(buttons);
-        return list;
-    }
-
-    /// Builds a row of a name and its box.
+    /// What changes is the key and nothing else: the vendor, the name and the model are the
+    /// account's identity, and a key is the one part of it that expires. An account whose vendor is
+    /// no longer offered can still have its key changed, because nothing here consults the vendor
+    /// list.
     ///
-    /// @param title the name
-    /// @param field the box
-    /// @return the row
-    private javafx.scene.Node labelled(String title, javafx.scene.Node field) {
-        LinePane pane = new LinePane();
-        pane.setTitle(title);
-        if (field instanceof javafx.scene.layout.Region region) {
-            region.setMinWidth(420);
-        }
-        pane.setRight(field);
-        return pane;
+    /// @param account the account
+    private void changeKey(DshAccount account) {
+        org.jackhuang.hmcl.ui.construct.InputDialogPane pane =
+                new org.jackhuang.hmcl.ui.construct.InputDialogPane(
+                        i18n("dsh.account.change_key"), "", (key, handler) -> {
+                            // The pane refuses an empty answer itself, so what arrives here is a key.
+                            String trimmed = key == null ? "" : key.trim();
+                            java.util.List<DshAccount> accounts =
+                                    SettingsManager.settings().getAccounts();
+                            for (int i = 0; i < accounts.size(); i++) {
+                                if (accounts.get(i).matchesKey(account.key())) {
+                                    accounts.set(i, new DshAccount(account.vendorId(), trimmed,
+                                            account.baseUrl(), account.label(), account.model()));
+                                    break;
+                                }
+                            }
+                            SettingsManager.save();
+                            refreshAccounts();
+                            handler.resolve();
+                        });
+        org.jackhuang.hmcl.ui.Controllers.dialog(pane);
     }
 
     /// Checks what was typed and, if it is not refused, keeps it.
     ///
-    /// The check runs off the interface thread: it is a network call, and a page that stops
-    /// responding while a supplier is asked a question is a page that looks broken.
+    /// The check runs off the interface thread: it is a network call, and a dialog that stops
+    /// responding while a supplier is asked a question is a dialog that looks broken.
     private void addAccount() {
-        DshVendor vendor = vendorBox.getValue();
+        DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
         String key = keyField.getText() == null ? "" : keyField.getText().trim();
+        String username = usernameField.getText() == null ? "" : usernameField.getText().trim();
         if (vendor == null || key.isEmpty()) {
             verdict.setText(i18n("dsh.account.need_vendor_and_key"));
             return;
@@ -252,40 +298,19 @@ public final class AccountSettingsDialog extends VBox {
             return;
         }
 
-        String baseUrl = baseUrlField.isVisible() && baseUrlField.getText() != null
+        String baseUrl = baseUrlRow.isVisible() && baseUrlField.getText() != null
                 ? baseUrlField.getText().trim() : "";
-        String label = labelField.getText() == null ? "" : labelField.getText().trim();
         String model = modelField.getText() == null ? "" : modelField.getText().trim();
         DshAccount candidate = new DshAccount(vendor.id(), key,
-                baseUrl.isEmpty() ? null : baseUrl, label.isEmpty() ? null : label,
+                baseUrl.isEmpty() ? null : baseUrl,
+                username.isEmpty() ? vendor.displayName() : username,
                 model.isEmpty() ? null : model);
 
-        verdict.setText(i18n("dsh.account.checking"));
-        java.util.concurrent.CompletableFuture
-                .supplyAsync(candidate::check, org.jackhuang.hmcl.task.Schedulers.io())
-                .whenComplete((result, failure) -> javafx.application.Platform.runLater(() -> {
-                    if (failure != null) {
-                        LOG.warning("The account check failed", failure);
-                        verdict.setText(failure.getMessage());
-                        return;
-                    }
-                    verdict.setText(result.message());
-                    // Only a refusal stops it. An unreachable vendor, or an endpoint that does not
-                    // answer this question, leaves the key's worth unknown rather than disproved.
-                    if (result.outcome() == DshAccount.Outcome.REJECTED) {
-                        return;
-                    }
-                    SettingsManager.settings().getAccounts().add(candidate);
-                    SettingsManager.save();
-                    keyField.clear();
-                    labelField.clear();
-                    modelField.clear();
-                    refresh();
-                }));
-    }
-
-    /// Redraws the account list.
-    private void refresh() {
-        accounts.getContent().setAll(accountRows());
+        // Kept without asking the vendor, which is what the person pressed the button for. The row
+        // it leaves behind has a check of its own: checking is a question worth asking deliberately,
+        // at a moment when the answer is useful, rather than a gate in front of the door.
+        SettingsManager.settings().getAccounts().add(candidate);
+        SettingsManager.save();
+        fireEvent(new DialogCloseEvent());
     }
 }

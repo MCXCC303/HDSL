@@ -57,7 +57,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 /// Minecraft accounts. What is left is what can be done without asking anybody: the launcher's own
 /// skins, and a picture on this machine.
 @NotNullByDefault
-public final class SkinDialog extends BorderPane {
+public final class SkinDialog extends com.jfoenix.controls.JFXDialogLayout {
     /// The turning model.
     private final SkinCanvas canvas;
 
@@ -97,19 +97,21 @@ public final class SkinDialog extends BorderPane {
 
     /// Creates the dialog.
     public SkinDialog() {
-        setPadding(new Insets(16));
-        setPrefWidth(720);
+        setHeading(new Label(i18n("dsh.skin.title")));
 
         canvas = new SkinCanvas(DshSkin.imageOrFallback(), 300, 320, true);
         // Dragging turns it; a model that cannot be turned hides exactly the parts being checked.
         canvas.enableRotation(0.4);
         StackPane previewPane = new StackPane(canvas);
         previewPane.setMinWidth(300);
+        previewPane.setPrefWidth(300);
 
-        setLeft(previewPane);
-        setCenter(buildMethods());
-        setRight(buildFields());
-        setBottom(buildActions());
+        BorderPane body = new BorderPane();
+        body.setLeft(previewPane);
+        body.setCenter(buildMethods());
+        body.setRight(buildFields());
+        setBody(body);
+        setActions(buildActions());
 
         // It opens on the launcher's own skins whatever is in force, because that is the one choice
         // that needs nothing from the person using it: opening on "a file on this machine" would
@@ -188,18 +190,17 @@ public final class SkinDialog extends BorderPane {
     /// Builds the buttons that end the dialog.
     ///
     /// @return the foot
-    private HBox buildActions() {
+    private javafx.scene.Node buildActions() {
         JFXButton confirm = new JFXButton(i18n("button.ok"));
-        confirm.getStyleClass().add("jfx-button-raised");
+        confirm.getStyleClass().add("dialog-accept");
         confirm.setOnAction(event -> confirm());
 
         JFXButton cancel = new JFXButton(i18n("button.cancel"));
-        cancel.getStyleClass().add("jfx-button-border");
+        cancel.getStyleClass().add("dialog-cancel");
         cancel.setOnAction(event -> fireEvent(new org.jackhuang.hmcl.ui.construct.DialogCloseEvent()));
 
-        HBox actions = new HBox(8, cancel, confirm);
+        HBox actions = new HBox(8, confirm, cancel);
         actions.setAlignment(Pos.CENTER_RIGHT);
-        actions.setPadding(new Insets(16, 0, 0, 0));
         return actions;
     }
 

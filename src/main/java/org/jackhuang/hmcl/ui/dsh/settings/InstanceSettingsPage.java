@@ -485,7 +485,7 @@ public final class InstanceSettingsPage extends ScrollPane {
                 i18n("dsh.account.manage"));
         manage.getStyleClass().add("jfx-button-border");
         manage.setOnAction(event -> org.jackhuang.hmcl.ui.Controllers.dialog(
-                new AccountSettingsDialog()));
+                new AccountSettingsDialog(null)));
 
         javafx.scene.layout.HBox controls = new javafx.scene.layout.HBox(8, picker, manage);
         controls.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);

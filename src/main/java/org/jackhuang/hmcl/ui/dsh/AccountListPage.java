@@ -100,19 +100,27 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     ///
     /// @return the sidebar
     private Region buildAddSidebar() {
-        // One row per vendor rather than a category heading per family: the vendors are a short flat
-        // list, and grouping thirteen of them would be more structure than the list has content.
+        // The original's shape, which says something by its order:
+        //
+        //     ┌ 添加账户 ─────────────
+        //     │  Microsoft          ← the one the launcher is built around
+        //     │  离线模式            ← the one that needs nothing
+        //     │  LittleSkin     ×   ← the others, each removable
+        //     └ ...
+        //     + 添加认证服务器          ← pinned at the foot
+        //
+        // The first row is the vendor this launcher exists for, and the rest are the others. The
+        // distinguishing is not decoration: the harness's own vendor is the one that works with
+        // nothing configured, and the ones below are arrangements somebody has to know they want.
         VBox vendorBox = new VBox();
         vendorBox.getStyleClass().add("advanced-list-box-content");
+
+        DshVendor primary = DshVendor.offered().get(0);
+        vendorBox.getChildren().add(vendorItem(primary));
         for (DshVendor vendor : DshVendor.offered()) {
-            org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
-                    new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
-            item.getStyleClass().add("navigation-drawer-item");
-            item.setTitle(vendor.displayName());
-            item.setSubtitle(vendor.id());
-            item.setLeftIcon(SVG.PERSON);
-            item.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(vendor)));
-            vendorBox.getChildren().add(item);
+            if (vendor != primary) {
+                vendorBox.getChildren().add(vendorItem(vendor));
+            }
         }
 
         ScrollPane scrollPane = new ScrollPane(vendorBox);
@@ -120,9 +128,10 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
         FXUtils.setLimitWidth(scrollPane, 200);
         FXUtils.smoothScrolling(scrollPane);
 
-        // The foot of the sidebar, as in the original: the things that are about accounts as a
-        // whole rather than about one of them. A skin is one of those — it is what the launcher
-        // draws beside every account, not something an account owns.
+        // The foot, as in the original: the things that are about accounts as a whole rather than
+        // about one of them. The original's is "add an authentication server"; this launcher's is
+        // the same idea — the vendors are a fixed list it ships with, and a name of one's own is
+        // reached by asking for it here.
         AdvancedListBox actions = new AdvancedListBox()
                 .addNavigationDrawerItem(i18n("dsh.account.add.custom"), SVG.ADD_CIRCLE,
                         () -> Controllers.dialog(new AccountSettingsDialog(null)))
@@ -132,6 +141,21 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         setLeft(scrollPane, actions);
         return scrollPane;
+    }
+
+    /// Builds one row of the add column.
+    ///
+    /// @param vendor the vendor
+    /// @return the row
+    private javafx.scene.Node vendorItem(DshVendor vendor) {
+        org.jackhuang.hmcl.ui.construct.AdvancedListItem item =
+                new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
+        item.getStyleClass().add("navigation-drawer-item");
+        item.setTitle(vendor.displayName());
+        item.setSubtitle(vendor.id());
+        item.setLeftIcon(SVG.PERSON);
+        item.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(vendor)));
+        return item;
     }
 
     /// Builds the accounts themselves.
@@ -187,6 +211,30 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             SettingsManager.save();
         }
         accountList.refresh();
+    }
+
+    /// Replaces an account's key, keeping everything else about it.
+    ///
+    /// @param account the account
+    private void changeKey(DshAccount account) {
+        org.jackhuang.hmcl.ui.construct.InputDialogPane pane =
+                new org.jackhuang.hmcl.ui.construct.InputDialogPane(
+                        i18n("dsh.account.change_key"), "", (key, handler) -> {
+                            // The pane refuses an empty answer itself, so what arrives is a key.
+                            String trimmed = key == null ? "" : key.trim();
+                            java.util.List<DshAccount> accounts = SettingsManager.settings().getAccounts();
+                            for (int i = 0; i < accounts.size(); i++) {
+                                if (accounts.get(i).matchesKey(account.key())) {
+                                    accounts.set(i, new DshAccount(account.vendorId(), trimmed,
+                                            account.baseUrl(), account.label(), account.model()));
+                                    break;
+                                }
+                            }
+                            SettingsManager.save();
+                            accountList.refresh();
+                            handler.resolve();
+                        });
+        Controllers.dialog(pane);
     }
 
     /// Removes an account, after asking.
@@ -281,6 +329,18 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
             FXUtils.installFastTooltip(check, i18n("dsh.account.check"));
             check.setOnAction(event -> check());
 
+            // The original's second spot on a row is "move to portable"; this launcher's is "change
+            // the key", because a key is the one part of an account that expires and the vendor,
+            // the name and the model are its identity.
+            com.jfoenix.controls.JFXButton changeKey = FXUtils.newToggleButton4(SVG.EDIT);
+            FXUtils.installFastTooltip(changeKey, i18n("dsh.account.change_key"));
+            changeKey.setOnAction(event -> {
+                DshAccount account = getItem();
+                if (account != null) {
+                    changeKey(account);
+                }
+            });
+
             com.jfoenix.controls.JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE_FOREVER);
             FXUtils.installFastTooltip(remove, i18n("button.remove"));
             remove.setOnAction(event -> {
@@ -290,7 +350,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 }
             });
 
-            HBox right = new HBox(check, remove);
+            HBox right = new HBox(check, changeKey, remove);
             right.setAlignment(Pos.CENTER_RIGHT);
             root.setRight(right);
 

@@ -111,6 +111,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// The instance icon shown on the manage entry.
     private final ImageContainer currentInstanceIcon = new ImageContainer(AdvancedListItem.LEFT_GRAPHIC_SIZE);
 
+    /// The account entry at the head of the sidebar.
+    ///
+    /// The original's home page leads with the account, and shows **which** one: its icon is the
+    /// account's skin and its second line names the kind of account it is. A launcher whose first
+    /// question is "who am I doing this for" has to be able to answer it without being asked, and an
+    /// entry that only said "Accounts" would leave the person opening a page to find out what they
+    /// could have been told.
+    private final AdvancedListItem accountItem = new AdvancedListItem();
+
+    /// The account's picture, drawn from the skin when one has been chosen.
+    private final javafx.scene.canvas.Canvas accountAvatar = new javafx.scene.canvas.Canvas(32, 32);
+
     /// Lazily created destination pages.
     private @Nullable DownloadPage downloadPage;
     private @Nullable SettingsPage settingsPage;
@@ -126,14 +138,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstanceItem.setSubtitle(i18n("dsh.launch.no_instance.hint"));
         currentInstanceItem.setOnAction(event -> openCurrentInstance());
 
+        accountAvatar.setMouseTransparent(true);
+        accountItem.setLeftGraphic(accountAvatar);
+        accountItem.setOnAction(event ->
+                Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage()));
+
         // The original's order, which is an order of importance rather than of implementation: the
         // account leads, because without one nothing can be launched; then the game; then the
         // launcher's own settings. An account is its own group rather than a row under the settings,
         // because it is not a setting — it is the thing everything else is done on behalf of.
         AdvancedListBox sideBar = new AdvancedListBox()
                 .startCategory(i18n("dsh.account.list").toUpperCase(Locale.ROOT))
-                .addNavigationDrawerItem(i18n("dsh.account.list"), SVG.DRESSER,
-                        () -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage()))
+                .add(accountItem)
                 .startCategory(i18n("instance").toUpperCase(Locale.ROOT))
                 .add(currentInstanceItem)
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
@@ -356,6 +372,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                 ? DshInstanceIcon.DEFAULT.load()
                 : DshInstanceIcons.load(current));
 
+        refreshAccountItem();
         refreshActionState();
     }
 
@@ -385,6 +402,50 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     ///
     /// With no instance chosen there is nothing to manage, so the list is shown
     /// instead of an empty editor.
+    /// Redraws the account entry: which account is in force, and whose face it is.
+    ///
+    /// The first account the launcher holds is the one it uses, which is the same rule the accounts
+    /// page's radio button sets and the same rule an instance falls back to.
+    private void refreshAccountItem() {
+        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> accounts =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
+        if (accounts.isEmpty()) {
+            accountItem.setTitle(i18n("dsh.account.none.short"));
+            accountItem.setSubtitle(i18n("dsh.account.none.hint"));
+        } else {
+            org.jackhuang.hmcl.dsh.DshAccount account = accounts.get(0);
+            accountItem.setTitle(account.displayName());
+            accountItem.setSubtitle(account.vendorId());
+        }
+        drawAccountAvatar();
+    }
+
+    /// Draws the skin's head on the account entry, or a monogram when no skin has been chosen.
+    ///
+    /// The same two answers the account rows give, for the same reason: a skin belongs to the person
+    /// using the launcher, and a vendor has no face of its own to draw.
+    private void drawAccountAvatar() {
+        javafx.scene.image.Image skin = org.jackhuang.hmcl.dsh.skin.DshSkin.image();
+        javafx.scene.canvas.GraphicsContext gc = accountAvatar.getGraphicsContext2D();
+        gc.clearRect(0, 0, 32, 32);
+        if (skin != null) {
+            gc.setImageSmoothing(false);
+            double unit = 4.0;
+            gc.drawImage(skin, 8, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+            gc.drawImage(skin, 40, 8, 8, 8, 0, 0, unit * 8, unit * 8);
+            return;
+        }
+        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> accounts =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts();
+        String initial = accounts.isEmpty() ? "?"
+                : accounts.get(0).displayName().substring(0, 1).toUpperCase(Locale.ROOT);
+        gc.setFill(javafx.scene.paint.Color.web("#8d8d8d"));
+        gc.fillRoundRect(0, 0, 32, 32, 8, 8);
+        gc.setFill(javafx.scene.paint.Color.WHITE);
+        gc.setFont(javafx.scene.text.Font.font(16));
+        gc.fillText(initial, 10, 23);
+    }
+
     private void openCurrentInstance() {
         DshInstance instance = currentInstance.get();
         if (instance == null) {
