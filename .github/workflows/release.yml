@@ -54,11 +54,15 @@ jobs:
 
     - name: Build the Linux packages
       run: |
+        # `dist/`, not `build/libs`: `build/` belongs to Gradle and any rebuild empties it, which is
+        # how a release's artifacts came to vanish between being built and being uploaded.
         ./packaging/linux-packages.sh \
           "${{ env.VERSION }}" \
           "build/libs/hdsl-${{ env.VERSION }}.sh" \
           "src/main/resources/assets/img/icon@8x.png" \
-          build/libs
+          dist
+        # The two Gradle writes go beside them, so one directory holds the whole release.
+        cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
 
     - name: Write the release note
       run: |
@@ -72,13 +76,13 @@ jobs:
         # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
         # and the portable tar.zst is for unpacking anywhere.
         for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb"; do
-          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; esac) | \`$(cut -d' ' -f1 < "build/libs/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
+          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
         done
         cat RELEASE_NOTE
 
     - name: Sum the deb
       run: |
-        ( cd build/libs && sha256sum "hdsl-${VERSION}.deb" > "hdsl-${VERSION}.deb.sha256" )
+        ( cd dist && sha256sum "hdsl-${VERSION}.deb" > "hdsl-${VERSION}.deb.sha256" )
 
     - name: Create the release
       run: |
@@ -86,15 +90,15 @@ jobs:
         # simply absent: `gh release create` fails the whole release over one path that does not exist,
         # and the AppImage depends on a tool fetched over the network.
         gh release create "${GITHUB_REF_NAME}" \
-          build/libs/hdsl-${VERSION}-linux-x64.tar.zst \
-          build/libs/hdsl-${VERSION}-linux-x64.tar.zst.sha256 \
-          build/libs/hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst \
-          build/libs/hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst.sha256 \
-          build/libs/HDSL-${VERSION}-x86_64.AppImage \
-          build/libs/HDSL-${VERSION}-x86_64.AppImage.sha256 \
-          build/libs/hdsl-${VERSION}.deb \
-          build/libs/hdsl-${VERSION}.deb.sha256 \
-          build/libs/hdsl-${VERSION}.sh \
+          dist/hdsl-${VERSION}-linux-x64.tar.zst \
+          dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256 \
+          dist/hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst \
+          dist/hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst.sha256 \
+          dist/HDSL-${VERSION}-x86_64.AppImage \
+          dist/HDSL-${VERSION}-x86_64.AppImage.sha256 \
+          dist/hdsl-${VERSION}.deb \
+          dist/hdsl-${VERSION}.deb.sha256 \
+          dist/hdsl-${VERSION}.sh \
           --target "${{ github.sha }}" \
           --title "HMCL-DSH ${VERSION}" \
           --notes-file RELEASE_NOTE
