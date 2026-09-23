@@ -62,7 +62,29 @@ public record DshAccount(
         /// Empty is a real answer and the default one: which model a route offers is the vendor's
         /// catalogue to describe, and the harness refuses to start on a default it cannot resolve,
         /// so a name invented here would turn a convenience into a launch that fails.
-        @Nullable String model) {
+        @Nullable String model,
+
+        /// How this account's skin was chosen.
+        ///
+        /// Stored as the *choice* rather than as the picture, as the original does: a picture alone
+        /// cannot answer "which of the launcher's own skins is this", and so cannot draw the chooser
+        /// in the state it was left in. Empty means the body's own default.
+        @Nullable org.jackhuang.hmcl.dsh.skin.DshSkinChoice skin) {
+
+    /// Returns the skin choice, never `null`.
+    ///
+    /// @return the choice, or the default one
+    public org.jackhuang.hmcl.dsh.skin.DshSkinChoice skinOrDefault() {
+        return skin == null ? org.jackhuang.hmcl.dsh.skin.DshSkinChoice.DEFAULT : skin;
+    }
+
+    /// Returns a copy with a different skin.
+    ///
+    /// @param newSkin the choice
+    /// @return the copy
+    public DshAccount withSkin(org.jackhuang.hmcl.dsh.skin.DshSkinChoice newSkin) {
+        return new DshAccount(kind, vendorId, apiKey, baseUrl, label, model, newSkin);
+    }
 
     /// Which kind of account this is.
     ///
@@ -93,7 +115,7 @@ public record DshAccount(
     public DshAccount(String vendorId, String apiKey, @Nullable String baseUrl, @Nullable String label) {
         this(vendorId.equals(DshVendor.offered().get(0).id())
                         ? AccountKind.OFFICIAL : AccountKind.THIRD_PARTY,
-                vendorId, apiKey, baseUrl, label, null);
+                vendorId, apiKey, baseUrl, label, null, null);
     }
 
     /// Creates an account of a stated kind, naming no model.
@@ -105,7 +127,7 @@ public record DshAccount(
     /// @param label    what the person calls it, or `null`
     public DshAccount(AccountKind kind, String vendorId, String apiKey,
                       @Nullable String baseUrl, @Nullable String label) {
-        this(kind, vendorId, apiKey, baseUrl, label, null);
+        this(kind, vendorId, apiKey, baseUrl, label, null, null);
     }
 
     /// Creates an offline account: a name, and nothing to check or hand over.
@@ -113,7 +135,7 @@ public record DshAccount(
     /// @param label the name
     /// @return the account
     public static DshAccount offline(String label) {
-        return new DshAccount(AccountKind.OFFLINE, "offline", "", null, label, null);
+        return new DshAccount(AccountKind.OFFLINE, "offline", "", null, label, null, null);
     }
 
     /// How long a key check is given.

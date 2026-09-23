@@ -379,7 +379,10 @@ public final class SettingsManager {
                 @Nullable org.jackhuang.hmcl.dsh.DshAccount.AccountKind kind,
                 String vendorId, String apiKey,
                 @Nullable String baseUrl, @Nullable String label,
-                @Nullable String model) {
+                @Nullable String model,
+                @Nullable String skinType,
+                @Nullable String skinModel,
+                @Nullable String skinPath) {
         }
 
         /// The language the interface speaks, by the name the locale helper uses.
@@ -516,7 +519,10 @@ public final class SettingsManager {
             snapshot.activeAccountKey = settings.activeAccountKey();
             snapshot.accounts = settings.getAccounts().stream()
                     .map(account -> new AccountSnapshot(account.kind(), account.vendorId(),
-                            account.apiKey(), account.baseUrl(), account.label(), account.model()))
+                            account.apiKey(), account.baseUrl(), account.label(), account.model(),
+                            account.skinOrDefault().type().name(),
+                            account.skinOrDefault().model().modelName,
+                            account.skinOrDefault().localSkinPath()))
                     .toList();
             snapshot.language = settings.languageProperty().get() == null
                     ? null : settings.languageProperty().get().getName();
@@ -653,7 +659,15 @@ public final class SettingsManager {
                                     ? org.jackhuang.hmcl.dsh.DshAccount.AccountKind.THIRD_PARTY
                                     : account.kind(),
                             account.vendorId(), account.apiKey(), account.baseUrl(),
-                            account.label(), account.model()));
+                            account.label(), account.model(),
+                            new org.jackhuang.hmcl.dsh.skin.DshSkinChoice(
+                                    org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type.valueOf(
+                                            account.skinType() == null
+                                                    ? org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type.DEFAULT.name()
+                                                    : account.skinType()),
+                                    org.jackhuang.hmcl.dsh.skin.DshSkinChoice.TextureModel
+                                            .fromStorage(account.skinModel()),
+                                    account.skinPath())));
                 }
             }
             if (defaultLaunchArguments != null) {

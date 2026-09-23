@@ -285,8 +285,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             // follows only fills in what that choice left open.
             case "create" -> Controllers.navigate(getDownloadPage());
             case "accounts" -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage());
-            case "skin" -> Controllers.dialog(
-                    new org.jackhuang.hmcl.ui.dsh.settings.SkinDialog());
+            case "skin" -> {
+                // A skin belongs to an account, so the deep link opens the chooser for whichever
+                // account is in force — which is what a person would reach it through.
+                org.jackhuang.hmcl.dsh.DshAccount chosen =
+                        org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
+                if (chosen == null) {
+                    Controllers.dialog(i18n("dsh.launch.needs_account"),
+                            i18n("dsh.account.list"), org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+                } else {
+                    Controllers.dialog(new org.jackhuang.hmcl.ui.dsh.settings.SkinDialog(chosen));
+                }
+            }
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
@@ -437,7 +447,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             return;
         }
 
-        javafx.scene.image.Image skin = org.jackhuang.hmcl.dsh.skin.DshSkin.image();
+        javafx.scene.image.Image skin = org.jackhuang.hmcl.dsh.skin.DshSkin.image(active.key());
         if (skin != null) {
             gc.setImageSmoothing(false);
             double unit = 4.0;

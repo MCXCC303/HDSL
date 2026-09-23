@@ -147,27 +147,38 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                 vendorItem(i18n("account.methods.offline"), null,
                         SVG.PERSON, () -> Controllers.dialog(AccountSettingsDialog.offline())));
 
+        // The original's shape, node for node:
+        //
+        //     ScrollPane(ways)            VBox.setVgrow(ALWAYS)
+        //     AdvancedListItem(add one)   VBox.setMargin(0, 0, 12, 0)
+        //     setLeft(scrollPane, addItem)
+        //
+        // Three details of it are each load-bearing and I had all three wrong:
+        //
+        // - the add-row is a **plain item**, not another `AdvancedListBox`. That class is a
+        //   `ScrollPane`, and a scroll pane placed after one that is already growing gets no height of
+        //   its own — which is why the row read as "偏下" and why the pair of them looked like one
+        //   scrollable area: it was one scrollable area.
+        // - it is **not** pushed to the bottom. It sits directly under the ways, the same distance
+        //   from them as any other row, and the 12px margin under it is all the room it has.
+        // - its height is **not** fixed. `setLimitHeight` pinned it to forty pixels, and the row's
+        //   text sits near the bottom of its own box, so the column ended inside the glyphs. Given no
+        //   height, it takes the height its content asks for.
         ScrollPane scrollPane = new ScrollPane(rows);
         scrollPane.setFitToWidth(true);
-        // The scrolling part takes what is left and the fixed part keeps its height, which is what
-        // puts the foot at the foot rather than directly under the last row.
         VBox.setVgrow(scrollPane, Priority.ALWAYS);
         FXUtils.setLimitWidth(scrollPane, 200);
         FXUtils.smoothScrolling(scrollPane);
 
-        // The foot, as in the original: what is about accounts as a whole rather than about one.
-        // The original's is "add an authentication server"; this launcher's is the same idea — the
-        // vendors it ships with are a fixed list, and the rest are reached by asking for one here.
-        AdvancedListBox actions = new AdvancedListBox()
-                .addNavigationDrawerItem(i18n("dsh.account.add.vendor"), SVG.ADD_CIRCLE,
-                        () -> Controllers.dialog(new AccountSettingsDialog(null)));
-        // Room under the foot. The row is forty high but its text sits near the bottom of that, so a
-        // column that ends exactly at the window's edge cuts the descenders — which is what "被裁断
-        // 一部分" is: the row is laid out, and its last few pixels are below the visible area.
-        VBox.setMargin(actions, new Insets(0, 0, 8, 0));
-        FXUtils.setLimitHeight(actions, 40);
+        org.jackhuang.hmcl.ui.construct.AdvancedListItem addVendor =
+                new org.jackhuang.hmcl.ui.construct.AdvancedListItem();
+        addVendor.getStyleClass().add("navigation-drawer-item");
+        addVendor.setTitle(i18n("dsh.account.add.vendor"));
+        addVendor.setLeftIcon(SVG.ADD_CIRCLE);
+        addVendor.setOnAction(event -> Controllers.dialog(new AccountSettingsDialog(null)));
+        VBox.setMargin(addVendor, new Insets(0, 0, 12, 0));
 
-        setLeft(scrollPane, actions);
+        setLeft(scrollPane, addVendor);
     }
 
     /// Builds one row of the add column.
@@ -311,7 +322,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 
         com.jfoenix.controls.JFXButton skin = FXUtils.newToggleButton4(SVG.CHECKROOM);
         FXUtils.installFastTooltip(skin, i18n("dsh.account.skin"));
-        skin.setOnAction(event -> Controllers.dialog(new SkinDialog()));
+        skin.setOnAction(event -> Controllers.dialog(new SkinDialog(account)));
         buttons.add(skin);
 
         if (account.carriesAKey()) {
@@ -343,7 +354,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
     /// @param monogram where to draw the initial
     private void drawAvatar(DshAccount account,
                             javafx.scene.canvas.Canvas avatar, Label monogram) {
-        javafx.scene.image.Image skin = DshSkin.image();
+        javafx.scene.image.Image skin = DshSkin.image(account.key());
         monogram.setText(account.displayName().isEmpty()
                 ? "?" : account.displayName().substring(0, 1).toUpperCase(java.util.Locale.ROOT));
         if (skin == null) {
@@ -423,7 +434,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
                             for (int i = 0; i < accounts.size(); i++) {
                                 if (accounts.get(i).matchesKey(account.key())) {
                                     accounts.set(i, new DshAccount(account.kind(), account.vendorId(),
-                                            trimmed, account.baseUrl(), account.label(), account.model()));
+                                            trimmed, account.baseUrl(), account.label(), account.model(), account.skin()));
                                     break;
                                 }
                             }

@@ -33,6 +33,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.skin.DefaultSkin;
 import org.jackhuang.hmcl.dsh.skin.DshSkin;
@@ -74,8 +75,12 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 public final class SkinDialog extends JFXDialogLayout {
     /// How a skin is being chosen.
     private enum Source {
-        /// One of the launcher's own.
-        BUNDLED,
+        /// The body's own default skin.
+        DEFAULT,
+        /// The wide-armed model.
+        STEVE,
+        /// The slim-armed model.
+        ALEX,
         /// A picture on this machine.
         LOCAL_FILE
     }
@@ -110,8 +115,14 @@ public final class SkinDialog extends JFXDialogLayout {
     /// The rows whose visibility follows the way in force.
     private ComponentList fields = new ComponentList();
 
+    /// The account whose skin this dialog changes.
+    private final DshAccount account;
+
     /// Creates the dialog.
-    public SkinDialog() {
+    ///
+    /// @param account the account whose skin is being changed
+    public SkinDialog(DshAccount account) {
+        this.account = account;
         setHeading(new Label(i18n("account.skin")));
 
         BorderPane body = new BorderPane();
@@ -131,7 +142,7 @@ public final class SkinDialog extends JFXDialogLayout {
     ///
     /// @return the preview
     private Node buildPreview() {
-        canvas = new SkinCanvas(DshSkin.imageOrFallback(), 260, 260, true);
+        canvas = new SkinCanvas(DshSkin.imageOrFallback(account.key()), 260, 260, true);
         canvas.getAnimationPlayer().addSkinAnimation(
                 new SkinAniWavingArms(100, 2000, 7.5, canvas),
                 new SkinAniRunning(100, 100, 30, canvas));
@@ -169,7 +180,9 @@ public final class SkinDialog extends JFXDialogLayout {
         bundledBox.valueProperty().addListener((observable, was, value) -> readPreview());
 
         sourceItem.loadChildren(List.of(
-                new MultiFileItem.Option<>(i18n("message.default"), Source.BUNDLED),
+                new MultiFileItem.Option<>(i18n("message.default"), Source.DEFAULT),
+                new MultiFileItem.Option<>(i18n("account.skin.type.steve"), Source.STEVE),
+                new MultiFileItem.Option<>(i18n("account.skin.type.alex"), Source.ALEX),
                 new MultiFileItem.Option<>(i18n("account.skin.type.local_file"), Source.LOCAL_FILE)));
         sourceItem.setToggleSelectedListener(toggle -> {
             syncFields();
@@ -223,7 +236,7 @@ public final class SkinDialog extends JFXDialogLayout {
 
     /// Shows only the rows the current way needs.
     private void syncFields() {
-        boolean bundled = sourceItem.getSelectedData() == Source.BUNDLED;
+        boolean bundled = sourceItem.getSelectedData() == Source.DEFAULT;
         // The model choice applies to both ways; the other two are each about one of them.
         setVisible(fields.getContent().get(1), bundled);
         setVisible(fields.getContent().get(2), !bundled);
@@ -260,14 +273,14 @@ public final class SkinDialog extends JFXDialogLayout {
     /// It opens on what is in force rather than on the first entry of the list: the dialog is about the
     /// skin as it is, and the ways of choosing are ways of changing it.
     private void populate() {
-        (DshSkin.isSlim() ? slimModel : wideModel).setSelected(true);
+        (DshSkin.isSlim(account.key()) ? slimModel : wideModel).setSelected(true);
         bundledBox.getSelectionModel().selectFirst();
-        if (DshSkin.isSet()) {
-            chosenFile = DshSkin.file();
+        if (DshSkin.isSet(account.key())) {
+            chosenFile = DshSkin.file(account.key());
             fileLabel.setText(chosenFile.getFileName().toString());
             sourceItem.setSelectedData(Source.LOCAL_FILE);
         } else {
-            sourceItem.setSelectedData(Source.BUNDLED);
+            sourceItem.setSelectedData(Source.DEFAULT);
         }
         syncFields();
         readPreview();
@@ -276,7 +289,7 @@ public final class SkinDialog extends JFXDialogLayout {
     /// Reads the picture the current choices describe and puts it on the model.
     private void readPreview() {
         boolean slim = slimModel.isSelected();
-        if (sourceItem.getSelectedData() == Source.BUNDLED) {
+        if (sourceItem.getSelectedData() == Source.DEFAULT) {
             DefaultSkin skin = bundledBox.getValue();
             if (skin == null) {
                 return;
@@ -286,7 +299,7 @@ public final class SkinDialog extends JFXDialogLayout {
             previewSlim = slim;
         } else {
             Image fromFile = chosenFile == null ? null : DshSkin.read(chosenFile);
-            preview = fromFile != null ? fromFile : DshSkin.imageOrFallback();
+            preview = fromFile != null ? fromFile : DshSkin.imageOrFallback(account.key());
             // An imported picture decides its own body, which is what makes importing a slim skin
             // switch the arms without anybody being asked.
             previewSlim = fromFile != null ? DshSkin.slimOf(fromFile) : slim;
@@ -330,14 +343,14 @@ public final class SkinDialog extends JFXDialogLayout {
     /// Saves what the dialog describes.
     private void confirm() {
         try {
-            if (sourceItem.getSelectedData() == Source.BUNDLED) {
+            if (sourceItem.getSelectedData() == Source.DEFAULT) {
                 DefaultSkin skin = bundledBox.getValue();
                 if (skin == null) {
                     return;
                 }
-                DshSkin.setFromImage(skin.image(slimModel.isSelected()), slimModel.isSelected());
+                DshSkin.setFromImage(account.key(), skin.image(slimModel.isSelected()), slimModel.isSelected());
             } else if (chosenFile != null) {
-                DshSkin.setFrom(chosenFile);
+                DshSkin.setFrom(account.key(), chosenFile);
             }
             fireEvent(new DialogCloseEvent());
         } catch (DshException e) {

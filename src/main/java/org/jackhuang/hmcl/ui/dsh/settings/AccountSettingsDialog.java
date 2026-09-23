@@ -300,7 +300,7 @@ public final class AccountSettingsDialog extends JFXDialogLayout {
         String model = modelField.getText() == null ? "" : modelField.getText().trim();
         DshAccount candidate = new DshAccount(kind, vendor.id(), key,
                 baseUrl.isEmpty() ? null : baseUrl,
-                username, model.isEmpty() ? null : model);
+                username, model.isEmpty() ? null : model, null);
 
         // Kept without asking the vendor, which is what the person pressed the button for. The row
         // it leaves behind has a check of its own: checking is a question worth asking deliberately,

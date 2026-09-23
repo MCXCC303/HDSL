@@ -73,7 +73,7 @@ class DshAccountTest {
     void aModelIsWhateverWasNamedOrNothing() {
         assertEquals("", new DshAccount("deepseek", "k", null, null).modelOrDefault());
         assertEquals("qwen3:32b", new DshAccount(DshAccount.AccountKind.OFFICIAL,
-                "deepseek", "k", null, null, "qwen3:32b").modelOrDefault());
+                "deepseek", "k", null, null, "qwen3:32b", null).modelOrDefault());
     }
 
     @Test

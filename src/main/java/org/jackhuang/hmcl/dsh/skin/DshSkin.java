@@ -41,12 +41,20 @@ import java.util.Locale;
 /// - keep the result, and hand it out without reading the file again.
 ///
 /// Storage is one file in the launcher's own directory. A skin belongs to the person using the
-/// launcher, not to an instance: it is what the launcher draws beside a name, and two instances do
-/// not have two faces.
+/// account, not to the launcher: the original keeps one per account, offline ones included, which is
+/// why two accounts can wear different faces. A single launcher-wide skin is what made changing one
+/// change them all.
 @NotNullByDefault
 public final class DshSkin {
-    /// Where the chosen skin is kept, inside the launcher's data directory.
-    private static final String FILE_NAME = "skin.png";
+    /// Where chosen skins are kept, inside the launcher's data directory.
+    ///
+    /// One file per account, named after the account's key. A key is not a legal file name as it
+    /// stands — it is `vendor|name`, and a separator or a slash in it would escape the directory —
+    /// so it is hashed: the file names are opaque and stable, which is all they need to be.
+    private static final String DIRECTORY = "skins";
+
+    /// The name a skin's file has inside [#DIRECTORY].
+    private static final String SUFFIX = ".png";
 
     /// A skin that is all one colour, used when nothing has been chosen.
     ///
@@ -55,52 +63,70 @@ public final class DshSkin {
     /// works. This is `null` until asked for, because building it needs JavaFX to be up.
     private static @Nullable Image fallback;
 
-    /// The skin currently loaded, or `null` before the first read.
+    /// What one account's skin came to when it was read.
     ///
-    /// The normalized texture: a 64x64 tile atlas, which is what drawing a head or a body part out
-    /// of it needs. It is **not** what the 3D renderer wants — see [#previewImage()].
-    private static @Nullable Image loaded;
+    /// @param normalized the 64x64 tile atlas, for drawing a head or a body part out of
+    /// @param source     the picture as decoded, which is **not** the same thing — see [#previewImage]
+    /// @param slim       whether the arms are three pixels wide
+    /// @param fromDisk   whether a skin was actually there, as opposed to the fallback
+    private record Loaded(Image normalized, @Nullable Image source, boolean slim, boolean fromDisk) {
+    }
 
-    /// The skin as read, before normalising, or `null` before the first read.
+    /// What each account's skin came to, keyed by the account's key.
     ///
-    /// Kept because the two consumers want different things and the difference is not cosmetic. The
-    /// 3D renderer's entry point refuses an image that was decoded to a requested size
-    /// (`SkinHelper.isNoRequest`), and a `WritableImage` always reports one — it is a picture that
-    /// was assembled rather than decoded. Handing it the normalized texture is what made the model
-    /// draw white: the call returned without binding any material, so the geometry was there and the
-    /// picture was not.
-    private static @Nullable Image source;
-
-    /// Whether the loaded skin is the slim model.
-    private static boolean loadedSlim;
-
-    /// Whether the loaded skin is the one on disk, as opposed to the fallback.
-    private static boolean loadedFromDisk;
+    /// Keyed rather than held once, because the answer is now per account: a menu that lists several
+    /// accounts draws several faces, and a single cache would have them overwrite one another.
+    private static final java.util.Map<String, Loaded> LOADED =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
     private DshSkin() {
     }
 
-    /// Returns the file the chosen skin is kept in.
+    /// Returns the file an account's skin is kept in.
     ///
+    /// The account's key is hashed rather than used literally: a key is `vendor|name`, so a name
+    /// containing a separator or a slash would put the file somewhere else entirely.
+    ///
+    /// @param accountKey the account's key
     /// @return the path, which may not exist
-    public static Path file() {
-        return org.jackhuang.hmcl.Metadata.HMCL_USER_HOME.resolve(FILE_NAME);
+    public static Path file(String accountKey) {
+        return org.jackhuang.hmcl.Metadata.HMCL_USER_HOME.resolve(DIRECTORY)
+                .resolve(hashedName(accountKey) + SUFFIX);
+    }
+
+    /// Returns the file name for an account's key.
+    ///
+    /// @param accountKey the account's key
+    /// @return the name
+    private static String hashedName(String accountKey) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(accountKey.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < 16; i++) {
+                hex.append(String.format("%02x", digest[i]));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            // Every JVM has SHA-256; a fallback that cannot collide with a hash is still needed so the
+            // method never throws.
+            return "key-" + Integer.toHexString(accountKey.hashCode());
+        }
     }
 
     /// Reads the skin, from cache when it has already been read.
     ///
     /// @return the normalized skin, or `null` when none has been chosen
-    public static @Nullable Image image() {
-        requireLoaded();
-        return loadedFromDisk ? loaded : null;
+    public static @Nullable Image image(String accountKey) {
+        Loaded skin = load(accountKey);
+        return skin.fromDisk() ? skin.normalized() : null;
     }
 
     /// Returns the skin as read, for the 3D renderer.
     ///
     /// @return the decoded image, or `null` when none has been chosen
-    public static @Nullable Image previewImage() {
-        requireLoaded();
-        return loadedFromDisk ? source : null;
+    public static @Nullable Image previewImage(String accountKey) {
+        return load(accountKey).source();
     }
 
     /// Reads the skin, falling back to the built-in one.
@@ -110,17 +136,16 @@ public final class DshSkin {
     /// cannot be told apart from one that failed.
     ///
     /// @return the skin to draw, never `null`
-    public static Image imageOrFallback() {
-        requireLoaded();
-        return loaded != null ? loaded : fallback();
+    public static Image imageOrFallback(String accountKey) {
+        Loaded skin = load(accountKey);
+        return skin.normalized();
     }
 
     /// Reports whether a skin has been chosen.
     ///
     /// @return whether the file is there
-    public static boolean isSet() {
-        requireLoaded();
-        return loadedFromDisk;
+    public static boolean isSet(String accountKey) {
+        return load(accountKey).fromDisk();
     }
 
     /// Reports whether the chosen skin is the slim model.
@@ -130,9 +155,8 @@ public final class DshSkin {
     /// asked a question the file already answers.
     ///
     /// @return whether the arms are three pixels wide
-    public static boolean isSlim() {
-        requireLoaded();
-        return loadedSlim;
+    public static boolean isSlim(String accountKey) {
+        return load(accountKey).slim();
     }
 
     /// Reports whether a picture describes the slim body.
@@ -197,7 +221,7 @@ public final class DshSkin {
     /// @param picture the picture
     /// @param slim    whether the slim body is wanted
     /// @throws DshException when the picture is not a skin, or cannot be written
-    public static void setFromImage(@Nullable Image picture, boolean slim) throws DshException {
+    public static void setFromImage(String accountKey, @Nullable Image picture, boolean slim) throws DshException {
         if (picture == null) {
             throw new DshException(i18n("dsh.skin.invalid"), null);
         }
@@ -210,7 +234,7 @@ public final class DshSkin {
 
         // The file is written from the normalised atlas, so what is stored is always the current
         // format whether the picture came from a bundled pair, an old 64x32 file, or anywhere else.
-        Path target = file();
+        Path target = file(accountKey);
         Image atlas = normalized.getNormalizedTexture();
         try {
             Files.createDirectories(target.getParent());
@@ -219,12 +243,7 @@ public final class DshSkin {
             throw new DshException("Could not write " + target, e);
         }
 
-        loaded = atlas;
-        DshSkin.source = picture;
-        // For a bundled pair the body is what was chosen; the picture is drawn for that body, so
-        // reading it back would agree — but the choice is the answer, not a guess at it.
-        loadedSlim = slim;
-        loadedFromDisk = true;
+        LOADED.put(accountKey, new Loaded(atlas, picture, slim, true));
     }
 
     /// Copies an image out of JavaFX so it can be written.
@@ -258,7 +277,7 @@ public final class DshSkin {
     ///
     /// @param source the image file
     /// @throws DshException when the file is not a skin, or cannot be read or written
-    public static void setFrom(Path source) throws DshException {
+    public static void setFrom(String accountKey, Path source) throws DshException {
         Image candidate;
         try {
             // Loaded with its own size requested so the picture is not scaled to a default: the
@@ -279,12 +298,12 @@ public final class DshSkin {
             throw new DshException(i18n("dsh.skin.invalid"), e);
         }
 
-        Path target = file();
+        Path target = file(accountKey);
         try {
             Files.createDirectories(target.getParent());
             // Written beside the target and moved over it, so an interrupted copy cannot leave half
             // a picture where the launcher expects a whole one.
-            Path staging = target.resolveSibling(FILE_NAME + ".hdsl-writing");
+            Path staging = target.resolveSibling(target.getFileName() + ".hdsl-writing");
             Files.copy(source, staging, StandardCopyOption.REPLACE_EXISTING);
             try {
                 Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING,
@@ -296,55 +315,71 @@ public final class DshSkin {
             throw new DshException("Could not write " + target, e);
         }
 
-        loaded = normalized.getNormalizedTexture();
-        DshSkin.source = candidate;
-        loadedSlim = normalized.isSlim();
-        loadedFromDisk = true;
+        LOADED.put(accountKey, new Loaded(normalized.getNormalizedTexture(), candidate,
+                normalized.isSlim(), true));
     }
 
     /// Forgets the chosen skin.
     ///
     /// @throws DshException when the file cannot be removed
-    public static void clear() throws DshException {
+    public static void clear(String accountKey) throws DshException {
         try {
-            Files.deleteIfExists(file());
+            Files.deleteIfExists(file(accountKey));
         } catch (IOException e) {
-            throw new DshException("Could not remove " + file(), e);
+            throw new DshException("Could not remove " + file(accountKey), e);
         }
-        loaded = null;
-        source = null;
-        loadedSlim = false;
-        loadedFromDisk = false;
+        forget(accountKey);
     }
 
     /// Reads the file if it has not been read yet.
     ///
     /// A failure is not thrown at the caller: a skin is decoration, and a launcher that refuses to
     /// draw because a picture is unreadable would be trading the whole interface for an ornament.
-    private static void requireLoaded() {
-        if (loaded != null || loadedFromDisk) {
-            return;
+    ///
+    /// @param accountKey the account whose skin is wanted
+    /// @return what its skin came to, with the built-in picture standing in when there is none
+    private static Loaded load(String accountKey) {
+        Loaded cached = LOADED.get(accountKey);
+        if (cached != null) {
+            return cached;
         }
-        Path source = file();
-        if (!Files.isRegularFile(source)) {
-            return;
+        Loaded skin = readFromDisk(accountKey);
+        LOADED.put(accountKey, skin);
+        return skin;
+    }
+
+    /// Reads an account's skin from its file.
+    ///
+    /// @param accountKey the account
+    /// @return what the file came to
+    private static Loaded readFromDisk(String accountKey) {
+        Image blank = fallback();
+        Path file = file(accountKey);
+        if (!Files.isRegularFile(file)) {
+            return new Loaded(blank, null, false, false);
         }
         try {
-            Image candidate = new Image(Files.newInputStream(source));
+            Image candidate = new Image(Files.newInputStream(file));
             if (candidate.isError() || candidate.getWidth() <= 0) {
                 org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
-                        "The skin at " + source + " could not be read; using the built-in one");
-                return;
+                        "The skin at " + file + " could not be read; using the built-in one");
+                return new Loaded(blank, null, false, false);
             }
             NormalizedSkin normalized = new NormalizedSkin(candidate);
-            loaded = normalized.getNormalizedTexture();
-            DshSkin.source = candidate;
-            loadedSlim = normalized.isSlim();
-            loadedFromDisk = true;
+            return new Loaded(normalized.getNormalizedTexture(), candidate,
+                    normalized.isSlim(), true);
         } catch (IOException | InvalidSkinException | RuntimeException e) {
             org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
-                    "The skin at " + source + " is not usable; using the built-in one", e);
+                    "The skin at " + file + " is not usable; using the built-in one", e);
+            return new Loaded(blank, null, false, false);
         }
+    }
+
+    /// Forgets what was read for an account, so the next read goes to the file.
+    ///
+    /// @param accountKey the account
+    private static void forget(String accountKey) {
+        LOADED.remove(accountKey);
     }
 
     /// Builds the skin drawn when none has been chosen.
