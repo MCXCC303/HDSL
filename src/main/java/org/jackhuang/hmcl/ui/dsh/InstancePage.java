@@ -101,6 +101,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The plugins tab.
     private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 
+    /// The skill packs tab: the instructions the agent can be given here.
+    private final TabHeader.Tab<SkillListPage> skillsTab = new TabHeader.Tab<>("dshInstanceSkills");
+
     /// The details tab.
     private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
 
@@ -134,7 +137,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     ///
     /// @param instance   the instance to show
     /// @param initialTab the tab to open: `settings`, `installers`, `plugins`,
-    ///                   `sessions` or `details`, or `null` for the first
+    ///                   `skills`, `sessions` or `details`, or `null` for the first
     public InstancePage(DshInstance instance, @Nullable String initialTab) {
         this.instance = instance;
         // The original titles this page with the page's name and the instance's,
@@ -148,6 +151,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         installersTab.setNodeSupplier(() -> new InstanceInstallersPage(instance));
         sessionsTab.setNodeSupplier(() -> new WorkspaceListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
+        skillsTab.setNodeSupplier(() -> new SkillListPage(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
         // Every tab the sidebar offers has to be in this list. A tab that is not
         // is one the selection model cannot find: selecting it falls back to
@@ -155,10 +159,12 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         // the tabs' own selected flags behind — and the next request for the tab
         // whose index that was is then refused as a selection of what is already
         // selected, while the page it asked for is shown anyway.
-        tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, sessionsTab, detailsTab);
+        tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, skillsTab,
+                sessionsTab, detailsTab);
         TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
             case "installers" -> installersTab;
             case "plugins" -> pluginsTab;
+            case "skills" -> skillsTab;
             case "sessions" -> sessionsTab;
             case "details" -> detailsTab;
             default -> settingsTab;
@@ -180,6 +186,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                         SVG.DEPLOYED_CODE, SVG.DEPLOYED_CODE_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"),
                         SVG.EXTENSION, SVG.EXTENSION_FILL)
+                // The book mark has no solid version in the icon set, so this entry keeps
+                // one mark either way — which the original allows for the same reason.
+                .addNavigationDrawerTab(tab, skillsTab, i18n("dsh.instance.skills"),
+                        SVG.GLOBE_BOOK)
                 // The folder-with-a-copy mark has no solid version in the icon set,
                 // so this entry would keep one mark either way. The pair the
                 // original uses for a pack of things is the one to take instead.
