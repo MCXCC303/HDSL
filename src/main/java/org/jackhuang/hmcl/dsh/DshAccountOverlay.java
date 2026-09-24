@@ -91,15 +91,26 @@ public final class DshAccountOverlay {
         private final String api;
         private final String fallbackModel;
         private final @Nullable String endpoint;
+
+        /// Whether the harness's own adapter for this vendor declares reasoning levels.
+        ///
+        /// A route the launcher writes is not in the harness's catalogue, so the harness cannot
+        /// fill the model's reasoning capability in itself; the launcher has to say it. For a
+        /// vendor the harness does have an adapter for, the launcher says exactly what that
+        /// adapter says, so the same model thinks the same way whichever account it is reached
+        /// through.
+        private final boolean reasoning;
+
         private @Nullable List<String> served;
 
         private Prepared(DshInstance instance, String route, String api, String fallbackModel,
-                         @Nullable String endpoint) {
+                         @Nullable String endpoint, boolean reasoning) {
             this.instance = instance;
             this.route = route;
             this.api = api;
             this.fallbackModel = fallbackModel;
             this.endpoint = endpoint;
+            this.reasoning = reasoning;
         }
 
         /// The route the harness will know this supplier by.
@@ -181,6 +192,19 @@ public final class DshAccountOverlay {
                     yaml.append("              - text\n");
                     yaml.append("              - image\n");
                 }
+                if (reasoning) {
+                    // The harness's DeepSeek adapter offers these four levels for every model it
+                    // serves, and reasoningEfforts is how a route it has never heard of says the
+                    // same. Without it the model carries no reasoning metadata at all, and the
+                    // model picker offers no effort control — only the provider's default. off
+                    // carries no wire value because not thinking is the parameter's absence rather
+                    // than a value to send; the other three are DeepSeek's own spellings.
+                    yaml.append("            reasoningEfforts:\n");
+                    yaml.append("              off: null\n");
+                    yaml.append("              low: low\n");
+                    yaml.append("              high: high\n");
+                    yaml.append("              max: max\n");
+                }
             }
 
             Path directory = directory();
@@ -218,7 +242,27 @@ public final class DshAccountOverlay {
         // cannot address. The dialog checks that before it gets here.
         return Optional.of(new Prepared(instance, account.displayName(),
                 vendor == null ? "openai-completions" : vendor.api(),
-                account.modelOrDefault(), account.endpoint()));
+                account.modelOrDefault(), account.endpoint(), reasons(vendor, account.endpoint())));
+    }
+
+    /// Reports whether the harness's own adapter declares reasoning levels for this route.
+    ///
+    /// Only the DeepSeek adapter is mirrored, because that is the one the launcher's account
+    /// plumbing is built around and the one whose models are known to think. The test is the
+    /// harness's own: the vendor id, or an address under deepseek.com, which is how pi-ai decides
+    /// to speak DeepSeek's reasoning dialect. A route neither test recognises is left alone —
+    /// declaring levels for a model that has none would offer a control that does not work, which
+    /// is worse than offering none.
+    ///
+    /// @param vendor   the route's vendor, or null
+    /// @param endpoint the route's address, or null
+    /// @return whether to write reasoning levels
+    private static boolean reasons(@Nullable DshVendor vendor, @Nullable String endpoint) {
+        if (vendor != null && "deepseek".equals(vendor.id())) {
+            return true;
+        }
+        String host = DshVendor.hostOf(endpoint);
+        return host != null && (host.equals("deepseek.com") || host.endsWith(".deepseek.com"));
     }
 
     /// Writes the overlay for an account, asking its supplier for the models on the way.
