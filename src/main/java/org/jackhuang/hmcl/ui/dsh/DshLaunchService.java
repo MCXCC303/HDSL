@@ -397,12 +397,11 @@ public final class DshLaunchService {
                 if (settings().openBrowserOnLaunchProperty().get()) {
                     FXUtils.openLink(url.get().toString());
                 }
-            } else if (DshCrashDialog.isCrash(process)) {
-                // It ended before ever answering. Not the user's doing — that case is excluded by
-                // `isCrash` — so it is a failure, and the output is where the reason is.
-                DshCrashDialog.show(instance, DshCrashDialog.bannerOf(process),
-                        DshCrashDialog.describe(process), process);
             }
+            // An instance that ended before ever answering is **not** reported here. The manager's
+            // own listener reports every ending — including the ones that happen long after a launch
+            // is over, which this path never sees — so reporting it here as well put two identical
+            // crash dialogs on the screen for one crash.
         }
 
         if (onDone != null && process != null) {

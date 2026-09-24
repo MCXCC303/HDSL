@@ -334,9 +334,16 @@ public final class DshProcess {
 
     /// Installs a listener notified on every state transition.
     ///
+    /// A listener installed **after** the process has already ended is told about that ending at once.
+    /// The listener is what reports a crash, and the process is started before its listener is
+    /// attached — a child that dies in that window would otherwise end in silence.
+    ///
     /// @param listener the listener, or `null` to detach
     public void setStateListener(@Nullable Consumer<State> listener) {
         this.stateListener = listener;
+        if (listener != null && (state == State.STOPPED || state == State.FAILED)) {
+            listener.accept(state);
+        }
     }
 
     /// Stops the process, allowing upstream's bounded drain before killing it.
