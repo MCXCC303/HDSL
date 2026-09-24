@@ -131,6 +131,19 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         }
         java.nio.file.Path target = chosen.toPath();
 
+        // The dialog belongs to the wizard, not to this method: the wizard shows the work, and it is
+        // what says 完成 when the work is done and closes back to the page the wizard was opened from.
+        // Writing the pack here and returning nothing — which is what this did — leaves the person
+        // with a wizard that vanishes and no word about whether anything was written.
+        //
+        // So the work is handed back as a task, and the lines the exporter reports become the title
+        // the person reads while it runs.
+        javafx.beans.property.StringProperty title =
+                new javafx.beans.property.SimpleStringProperty(i18n("modpack.export"));
+        settings.put("title", title);
+        java.util.function.Consumer<String> report =
+                line -> org.jackhuang.hmcl.ui.FXUtils.runInFX(() -> title.set(line));
+
         if (packforge) {
             org.jackhuang.hmcl.dsh.DshPackForge.Options options =
                     new org.jackhuang.hmcl.dsh.DshPackForge.Options(
@@ -139,11 +152,12 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                             string(settings, NAME, instance.id()),
                             string(settings, DESCRIPTION, ""),
                             string(settings, AUTHOR, ""));
-            ModpackFilesPage.runPackForge(instance, target, options);
-        } else {
-            ModpackFilesPage.run(instance, target, optionsOf(settings));
+            return org.jackhuang.hmcl.task.Task.runAsync(i18n("modpack.export"),
+                    () -> ModpackFilesPage.writePackForge(instance, target, options, report));
         }
-        return null;
+        org.jackhuang.hmcl.dsh.DshModpacks.Options options = optionsOf(settings);
+        return org.jackhuang.hmcl.task.Task.runAsync(i18n("modpack.export"),
+                () -> ModpackFilesPage.write(instance, target, options, report));
     }
 
     @Override

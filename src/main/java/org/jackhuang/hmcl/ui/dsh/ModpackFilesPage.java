@@ -207,14 +207,20 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     }
 
 
-    /// Writes this launcher's own kind of pack.
+    /// Writes a pack, reporting what it is doing.
+    ///
+    /// The dialog the person watches is the wizard's own: this returns the work, and the wizard shows
+    /// it — which is also what puts the completion message at the end of it. Wrapping it in a dialog
+    /// here would put two of them on the screen, and the one that closed last would be the silent one.
     ///
     /// @param instance the instance to write out
     /// @param target   where to write it
-    /// @param options  what it should say and carry
-    static void run(DshInstance instance, java.nio.file.Path target, DshModpacks.Options options) {
-        ProgressDialog.run(i18n("modpack.export"),
-                progress -> DshModpacks.export(instance, target, options, progress::accept), null);
+    /// @param options  what it should say about itself
+    /// @param report   receives progress lines
+    /// @throws DshException when the pack cannot be written
+    static void write(DshInstance instance, java.nio.file.Path target, DshModpacks.Options options,
+                      java.util.function.Consumer<String> report) throws DshException {
+        DshModpacks.export(instance, target, options, report);
     }
 
     /// Writes a pack the community's tooling reads, and the digest beside it.
@@ -226,17 +232,23 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// @param instance the instance to write out
     /// @param target   where to write it
     /// @param options  what it should say about itself
-    static void runPackForge(DshInstance instance, java.nio.file.Path target,
-                             DshPackForge.Options options) {
-        ProgressDialog.run(i18n("modpack.export"), progress -> {
-            DshPackForge.Result result = DshPackForge.export(instance, target, options, progress::accept);
-            try {
-                Files.writeString(target.resolveSibling(target.getFileName() + ".sha256"),
-                        result.sha256() + "  " + target.getFileName() + "\n");
-                progress.accept("Wrote " + target.getFileName() + ".sha256");
-            } catch (java.io.IOException e) {
-                progress.accept("The pack was written, but its digest was not: " + e.getMessage());
-            }
-        }, null);
+    /// @param instance the instance to write out
+    /// @param target   where to write it
+    /// @param options  what it should say about itself
+    /// @param report   receives progress lines
+    /// @throws DshException when the pack cannot be written
+    static void writePackForge(DshInstance instance, java.nio.file.Path target,
+                               DshPackForge.Options options,
+                               java.util.function.Consumer<String> report) throws DshException {
+        DshPackForge.Result result = DshPackForge.export(instance, target, options, report);
+        try {
+            Files.writeString(target.resolveSibling(target.getFileName() + ".sha256"),
+                    result.sha256() + "  " + target.getFileName() + "\n");
+            report.accept("Wrote " + target.getFileName() + ".sha256");
+        } catch (java.io.IOException e) {
+            // The pack is written and is usable; only its digest is missing, and saying so beats
+            // failing an export that succeeded.
+            report.accept("The pack was written, but its digest was not: " + e.getMessage());
+        }
     }
 }
