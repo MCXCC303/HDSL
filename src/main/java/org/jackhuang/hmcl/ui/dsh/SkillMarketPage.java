@@ -19,7 +19,6 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXComboBox;
-import com.jfoenix.controls.JFXDialogLayout;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXTextField;
 import javafx.collections.FXCollections;
@@ -28,7 +27,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
@@ -44,7 +42,8 @@ import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
-import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
+import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
+import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
@@ -367,7 +366,7 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
             onClicked(() -> {
                 DshSkillSource.Offering item = getItem();
                 if (item != null) {
-                    Controllers.dialog(new SkillDetailDialog(SkillMarketPage.this, item));
+                    open(item);
                 }
             });
         }
@@ -401,55 +400,27 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
         }
     }
 
-    /// Shows one skill and the two things that can be done with it.
+    /// Asks what to do with one skill, the way the plugin market asks about a plugin.
     ///
-    /// A dialog rather than a page: a skill is a name, a description, and asking to have
-    /// it installed or saved. There is nothing else to say about it, so a page would be a
-    /// dialog with an empty half.
-    private static final class SkillDetailDialog extends JFXDialogLayout {
-        /// Creates the dialog.
-        ///
-        /// @param page     the page the actions belong to
-        /// @param offering the skill
-        SkillDetailDialog(SkillMarketPage page, DshSkillSource.Offering offering) {
-            Label title = new Label(offering.name());
-            title.getStyleClass().add("title");
-            setHeading(title);
+    /// What the catalogue says about the skill is the body and the two things that can be
+    /// done with it are the dialog's own actions, which is the shape the original uses for
+    /// every "here is a thing, what now" question. Building the layout by hand instead
+    /// gave a dialog with the house styling's name and none of its manners.
+    ///
+    /// @param offering the skill
+    private void open(DshSkillSource.Offering offering) {
+        String body = offering.description().isEmpty()
+                ? i18n("dsh.skills.market.no_description")
+                : offering.description();
+        MessageDialogPane.Builder builder = new MessageDialogPane.Builder(
+                body + "\n\n" + offering.source(), offering.name(), MessageType.QUESTION);
 
-            Label source = new Label(offering.source());
-            source.getStyleClass().add("subtitle");
-            Label description = new Label(offering.description().isEmpty()
-                    ? i18n("dsh.skills.market.no_description") : offering.description());
-            description.setWrapText(true);
-
-            VBox body = new VBox(10, source, description);
-            body.setPadding(new Insets(4, 0, 4, 0));
-            ScrollPane scroll = new ScrollPane(body);
-            scroll.setFitToWidth(true);
-            scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-            scroll.setPrefViewportHeight(160);
-            // After the content, never before: the original's smooth scrolling wraps the
-            // scroll pane's own skin, and a pane with no content yet has none.
-            FXUtils.smoothScrolling(scroll);
-            setBody(scroll);
-
-            JFXButton save = new JFXButton();
-            save.setText(i18n("dsh.skills.market.save"));
-            save.setOnAction(event -> {
-                fireEvent(new DialogCloseEvent());
-                page.save(offering);
-            });
-            JFXButton install = new JFXButton();
-            install.getStyleClass().add("dialog-accept");
-            install.setText(i18n("dsh.skills.market.install"));
-            install.setOnAction(event -> {
-                fireEvent(new DialogCloseEvent());
-                page.install(offering);
-            });
-            JFXButton close = new JFXButton();
-            close.setText(i18n("button.cancel"));
-            close.setOnAction(event -> fireEvent(new DialogCloseEvent()));
-            getActions().setAll(save, install, close);
-        }
+        // The label the plugin market uses for the same action, and not the title the
+        // progress dialog wears: one is a thing to press and the other says what is
+        // happening, and the same words cannot do both.
+        builder.addAction(i18n("mods.install"), () -> install(offering));
+        builder.addAction(i18n("dsh.skills.market.save"), () -> save(offering));
+        builder.addCancel(null);
+        Controllers.dialog(builder.build());
     }
 }
