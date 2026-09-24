@@ -55,7 +55,7 @@ class DshInstanceTerminalTest {
         Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), null, runtime(bin));
 
-        assertTrue(script.contains("cd '" + home.resolve("work") + "'"), script);
+        assertTrue(script.contains("cd '" + DshPaths.instanceDirectory("test") + "'"), script);
         assertTrue(script.contains("export DSH_HOME='" + home.resolve("dsh-home") + "'"), script);
         // The instance's own tools first, and its dsh shim before even those.
         String shim = DshInstanceTerminal.directory().resolve("test").resolve("bin").toString();

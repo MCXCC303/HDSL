@@ -186,7 +186,10 @@ public final class DshInstanceTerminal {
     static String scriptText(DshInstance instance, @Nullable DshAccount account, DshNodeRuntime runtime)
             throws DshException {
         Path home = instance.homeDirectory();
-        Path workspace = instance.workspacePath();
+        // The instance directory itself, not its workspace: this shell is for looking
+        // at the instance — its home, its dsh, its manifest — rather than for the work a
+        // session started there would be scoped to.
+        Path where = DshPaths.instanceDirectory(instance.id());
         Path bin = directory().resolve(instance.id()).resolve(BIN);
 
         Map<String, String> environment = new LinkedHashMap<>();
@@ -213,7 +216,7 @@ public final class DshInstanceTerminal {
         text.append("#\n");
         text.append("# With arguments it runs them and exits; with none it leaves a shell.\n");
         text.append('\n');
-        text.append("cd ").append(quote(workspace.toString())).append(" || exit 1\n");
+        text.append("cd ").append(quote(where.toString())).append(" || exit 1\n");
         for (Map.Entry<String, String> variable : environment.entrySet()) {
             if (!NAME.matcher(variable.getKey()).matches()) {
                 // A name a shell cannot hold is dropped rather than quoted into something
