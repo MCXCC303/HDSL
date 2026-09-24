@@ -427,6 +427,15 @@ public final class DshPackInstaller {
     /// What landing a pack's files came to.
     ///
     /// @param files      how many files were written
+    /// How long the installed pack is given to come up, and to go down again, before the check
+    /// gives up on it. An instance answers in seconds; one that answers by hanging is not one that
+    /// would have worked for a person either.
+    private static final java.time.Duration VERIFY_TIMEOUT = java.time.Duration.ofSeconds(90);
+
+    /// How many lines of a failed composition are shown. Enough for the reason and the package or
+    /// route it names, and not the plugin tree above it.
+    private static final int FAILURE_LINES = 12;
+
     /// @param overrides  how many came from `overrides/`
     /// @param home       how many came from `home/`
     /// @param machine    how many were the archive's own machine files
@@ -651,8 +660,89 @@ public final class DshPackInstaller {
                     + "lost if the duplicate were dropped: " + keptWhole);
         }
 
+        // And then the harness is asked what it makes of the profile, because a pack can be broken in
+        // ways this cannot see — a plugin the patch inserts that nothing provides, a configuration
+        // the schema refuses. Failing here means failing while the pack is still in hand.
+        say(report, "Checking that the pack starts");
+        verifyBoots(instance);
+
         return new Landed(machine.files() + rest.files(), rest.overrides(), rest.home(),
                 machine.machine());
+    }
+
+    /// Starts the instance the way a launch does, and stops it again, to find out whether it starts
+    /// at all.
+    ///
+    /// **Not `--dump-config`, which was the first attempt at this and does not work.** The dump
+    /// composes the patch layers and prints the tree; it resolves nothing and applies nothing, so it
+    /// exits 0 for a pack whose patch inserts a package nobody provides and for one that applies a
+    /// plugin twice — measured, all three of those cases green. What fails at boot is exactly those
+    /// things: a module that cannot be found, a plugin claiming a route another copy already claimed.
+    ///
+    /// So the check is a boot: the profile is started on its own port with nothing attached, waited
+    /// for, and stopped — the same thing a person would do by hand to answer "will this pack run?".
+    /// The instance was made a moment ago and has no state worth keeping yet, which is what makes
+    /// booting it safe here.
+    ///
+    /// @param instance the instance the pack was installed into
+    /// @throws DshException carrying the harness's own output when the profile does not come up
+    static void verifyBoots(DshInstance instance) throws DshException {
+        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, null);
+        StringBuilder output = new StringBuilder();
+        DshProcess process = DshProcess.startPrepared(instance, plan);
+        process.setLogSink(line -> output.append(line).append('\n'));
+        try {
+            long deadline = System.currentTimeMillis() + VERIFY_TIMEOUT.toMillis();
+            while (System.currentTimeMillis() < deadline && process.state() == DshProcess.State.STARTING) {
+                Thread.sleep(200);
+            }
+            if (process.state() != DshProcess.State.READY) {
+                throw new DshException("The installed pack does not start:\n"
+                        + failureOf(output.toString()));
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new DshException("Interrupted while starting the installed pack", e);
+        } finally {
+            process.stop();
+            long gone = System.currentTimeMillis() + VERIFY_TIMEOUT.toMillis();
+            while (process.isRunning() && System.currentTimeMillis() < gone) {
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Returns the lines of a failed composition that say what went wrong.
+    ///
+    /// The harness prints a plugin tree before it fails, so the whole output is a page of rows with
+    /// one or two lines of reason in it. What a person needs is those lines: the first ones that name
+    /// an error, and the ones under them, which carry the package or the route at fault.
+    ///
+    /// @param output everything the harness printed
+    /// @return the part worth showing somebody
+    static String failureOf(String output) {
+        List<String> lines = new ArrayList<>();
+        boolean started = false;
+        for (String line : output.split("\n")) {
+            String trimmed = line.strip();
+            if (!started) {
+                // The harness tags its own lines — `[ERROR] Error: dsh: plugin tree failed to load: …`
+                // — so the reason is not always the first thing on the line.
+                started = trimmed.contains("Error") || trimmed.contains("Cannot find package");
+            }
+            if (started && !trimmed.isEmpty()) {
+                lines.add(trimmed);
+            }
+            if (lines.size() >= FAILURE_LINES) {
+                break;
+            }
+        }
+        return lines.isEmpty() ? output.strip() : String.join("\n", lines);
     }
 
     /// Says something if anybody is listening.
