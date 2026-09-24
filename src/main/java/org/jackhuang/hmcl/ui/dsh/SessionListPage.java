@@ -20,21 +20,23 @@ package org.jackhuang.hmcl.ui.dsh;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXPopup;
+import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.ListCell;
+import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Skin;
-import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceIcons;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshSession;
-import org.jackhuang.hmcl.dsh.DshSessionPacks;
 import org.jackhuang.hmcl.dsh.DshSessions;
+import org.jackhuang.hmcl.dsh.DshWorkspace;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -44,18 +46,18 @@ import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.LineButton;
+import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
-import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -64,7 +66,7 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists an instance's sessions and moves them between instances.
+/// Lists one workspace's sessions and moves them between instances.
 ///
 /// Modelled on HMCL's world list, which answers the same shape of question: a
 /// list of things belonging to one instance, each with an identity, a when, and
@@ -72,6 +74,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// thumbnail-sized icon, a two-line label with a tag, and the actions on the
 /// trailing edge — because the launcher's job here is to show what DeepSeek
 /// Harness persisted without reading it.
+///
+/// The page is one **workspace**, not the whole instance: the sessions are filed
+/// by the directory they were recorded in, so a workspace is the natural unit to
+/// look at, export, or move. The whole instance is the [WorkspaceListPage] one
+/// step back.
 @NotNullByDefault
 public final class SessionListPage extends ListPageBase<DshSession> implements Refreshable {
     /// Formats a session's last activity the way a person reads it.
@@ -81,17 +88,31 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
     /// The instance whose sessions are listed.
     private final DshInstance instance;
 
+    /// The workspace being looked at.
+    private final DshWorkspace workspace;
+
     /// Whether migrating also removes the session here.
     private boolean moveAfterMigrating = true;
 
     /// Whether a load is already running.
     private boolean busy;
 
+    /// The ordinary toolbar.
+    private final HBox toolbar = new HBox(8);
+
+    /// The toolbar shown while sessions are selected.
+    private final HBox selectingToolbar = new HBox(8);
+
+    /// The box the two toolbars swap in.
+    private final StackPane toolbarPane = new StackPane(toolbar, selectingToolbar);
+
     /// Creates the page.
     ///
-    /// @param instance the instance whose sessions are listed
-    public SessionListPage(DshInstance instance) {
+    /// @param instance  the instance whose sessions are listed
+    /// @param workspace the workspace whose sessions are listed
+    public SessionListPage(DshInstance instance, DshWorkspace workspace) {
         this.instance = instance;
+        this.workspace = workspace;
         refresh();
     }
 
@@ -110,7 +131,13 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 
         CompletableFuture.supplyAsync(() -> {
             try {
-                return DshSessions.list(instance.homeDirectory());
+                List<DshSession> sessions = new ArrayList<>();
+                for (DshSession session : DshSessions.list(instance.homeDirectory())) {
+                    if (session.workspaceSlug().equals(workspace.slug())) {
+                        sessions.add(session);
+                    }
+                }
+                return sessions;
             } catch (DshException e) {
                 throw new CompletionException(e);
             }
@@ -144,123 +171,87 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         return builder.toString();
     }
 
-    /// Copies the sessions of the machine's own DeepSeek Harness installation.
+    /// Holds the list and gives the page the toolbar that acts on a selection.
     ///
-    /// The source is read and never written: this launcher does not manage that
-    /// installation, and importing is meant to take what it has without
-    /// becoming responsible for it. Sessions already present are left alone, and
-    /// ones whose lease is held are reported rather than skipped silently.
-    private void importFromSystem() {
-        Path source = Path.of(System.getProperty("user.home"), ".dsh");
-        if (!java.nio.file.Files.isDirectory(source)) {
-            Controllers.dialog(i18n("dsh.session.import.missing", source.toString()),
-                    i18n("dsh.session.import"), MessageType.ERROR);
+    /// The skin owns the list view, and the selection toolbar acts on it, so the
+    /// skin hands it over once it exists rather than the page reaching for a list
+    /// that is not built yet.
+    ///
+    /// @param listView the page's list
+    private void attachList(JFXListView<DshSession> listView) {
+        toolbar.setAlignment(Pos.CENTER_LEFT);
+        toolbar.getChildren().setAll(
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.session.pack.export.project"), SVG.ARCHIVE,
+                        () -> SessionPackActions.export(instance, new ArrayList<>(getItems()))),
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.session.pack.import"), SVG.FILE_OPEN,
+                        () -> SessionPackActions.importPack(instance, this::refresh)));
+
+        JFXButton selectAll = ToolbarListPageSkin.createToolbarButton2(
+                i18n("button.select_all"), SVG.SELECT_ALL,
+                () -> listView.getSelectionModel().selectRange(0, listView.getItems().size()));
+        selectingToolbar.setAlignment(Pos.CENTER_LEFT);
+        selectingToolbar.getChildren().setAll(
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.session.pack.export.selected"), SVG.ARCHIVE,
+                        () -> SessionPackActions.export(instance,
+                                new ArrayList<>(listView.getSelectionModel().getSelectedItems()))),
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.remove"), SVG.DELETE_FOREVER,
+                        () -> deleteSelected(listView.getSelectionModel().getSelectedItems())),
+                selectAll,
+                ToolbarListPageSkin.createToolbarButton2(i18n("button.cancel"), SVG.CANCEL,
+                        () -> listView.getSelectionModel().clearSelection()));
+
+        listView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+        FXUtils.onChangeAndOperate(listView.getSelectionModel().selectedItemProperty(),
+                selected -> showSelectingToolbar(selected != null));
+
+        // Selecting everything through the button rather than `selectAll()`, which
+        // clears first and makes the whole list flicker; and disabling the button
+        // once there is nothing left to select, as the original does.
+        ListChangeListener<Object> listener = change -> selectAll.setDisable(!listView.getItems().isEmpty()
+                && listView.getSelectionModel().getSelectedItems().size() == listView.getItems().size());
+        listView.getSelectionModel().getSelectedItems().addListener(listener);
+        listView.getItems().addListener(listener);
+        showSelectingToolbar(false);
+    }
+
+    /// Shows the toolbar that acts on a selection, or the ordinary one.
+    ///
+    /// @param selecting whether anything is selected
+    private void showSelectingToolbar(boolean selecting) {
+        selectingToolbar.setVisible(selecting);
+        selectingToolbar.setManaged(selecting);
+        toolbar.setVisible(!selecting);
+        toolbar.setManaged(!selecting);
+    }
+
+    /// Deletes the selected sessions after one confirmation.
+    ///
+    /// @param sessions the sessions to delete
+    private void deleteSelected(Collection<DshSession> sessions) {
+        if (sessions.isEmpty()) {
             return;
         }
-
-        setLoading(true);
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                List<DshSession> sessions = DshSessions.readForeignHome(source);
-                int imported = 0;
-                int present = 0;
-                int refused = 0;
-                for (DshSession session : sessions) {
-                    try {
-                        DshSessions.importFrom(source, session, instance);
-                        imported++;
-                    } catch (DshException e) {
-                        if (e.getMessage() != null && e.getMessage().contains("already has a session")) {
-                            present++;
-                        } else {
-                            refused++;
-                        }
-                    }
+        String message = sessions.size() == 1
+                ? i18n("dsh.session.delete.confirm", sessions.iterator().next().label())
+                : i18n("dsh.session.delete.confirm.many", sessions.size());
+        Controllers.confirm(message, i18n("dsh.session.delete"), () -> {
+            List<String> failed = new ArrayList<>();
+            for (DshSession session : sessions) {
+                try {
+                    DshSessions.delete(instance, session);
+                } catch (DshException e) {
+                    LOG.warning("Could not delete session " + session.id(), e);
+                    failed.add(session.label());
                 }
-                // Asking for the grouping to be worked out again is what files the
-                // imported conversations under their projects; the harness derives
-                // it from the sessions themselves on the next start of the instance.
-                DshSessions.regroup(instance.homeDirectory());
-                return new int[]{imported, present, refused, sessions.size()};
-            } catch (DshException e) {
-                throw new CompletionException(e);
             }
-        }, Schedulers.io()).whenComplete((counts, throwable) -> runInFX(() -> {
-            setLoading(false);
-            if (throwable != null) {
-                Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-                        ? throwable.getCause() : throwable;
-                LOG.warning("Failed to import sessions", cause);
-                Controllers.dialog(cause.getMessage(), i18n("dsh.session.import.failed"), MessageType.ERROR);
-            } else {
-                Controllers.dialog(i18n("dsh.session.import.done",
-                        counts[0], counts[1], counts[2], counts[3]),
-                        i18n("dsh.session.import"));
+            if (!failed.isEmpty()) {
+                Controllers.dialog(i18n("dsh.session.delete_failed.many", String.join(", ", failed)),
+                        i18n("dsh.session.delete_failed"), MessageType.ERROR);
             }
             refresh();
-        }));
-    }
-
-    /// Writes a set of sessions into a pack the user chooses.
-    ///
-    /// @param sessions the sessions to write
-    private void exportPack(List<DshSession> sessions) {
-        if (sessions.isEmpty()) {
-            Controllers.dialog(i18n("dsh.session.pack.export.empty"), i18n("dsh.session.pack.export"),
-                    MessageType.ERROR);
-            return;
-        }
-
-        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
-        chooser.setTitle(i18n("dsh.session.pack.export"));
-        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.session.pack.filter"), "*" + DshSessionPacks.FILE_EXTENSION));
-        chooser.setInitialFileName("hdsl-sessions-" + instance.id() + "-"
-                + java.time.LocalDate.now() + DshSessionPacks.FILE_EXTENSION);
-        java.io.File chosen = chooser.showSaveDialog(Controllers.getStage());
-        if (chosen == null) {
-            return;
-        }
-
-        Path target = chosen.toPath();
-        ProgressDialog.run(i18n("dsh.session.pack.export"), progress ->
-                DshSessionPacks.export(instance, sessions, target, progress::accept), null);
-    }
-
-    /// Reads a pack the user chooses.
-    private void importPack() {
-        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
-        chooser.setTitle(i18n("dsh.session.pack.import"));
-        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.session.pack.filter"),
-                DshSessionPacks.ACCEPTED_EXTENSIONS.stream()
-                        .map(extension -> "*" + extension).toList()));
-        java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
-        if (chosen == null) {
-            return;
-        }
-
-        Path pack = chosen.toPath();
-        ProgressDialog.run(i18n("dsh.session.pack.import"), progress ->
-                DshSessionPacks.importFrom(instance.homeDirectory(), pack, progress::accept),
-                this::refresh);
-    }
-
-    /// Deletes a session after confirmation.
-    ///
-    /// @param session the session to delete
-    private void delete(DshSession session) {
-        Controllers.confirm(i18n("dsh.session.delete.confirm", session.label()),
-                i18n("dsh.session.delete"),
-                () -> {
-                    try {
-                        DshSessions.delete(instance, session);
-                    } catch (DshException e) {
-                        Controllers.dialog(e.getMessage(), i18n("dsh.session.delete_failed"), MessageType.ERROR);
-                    }
-                    refresh();
-                },
-                null);
+        }, null);
     }
 
     /// Opens a session's directory.
@@ -366,23 +357,21 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         SessionListPageSkin(SessionListPage control) {
             super(control);
             setPlaceholder(i18n("dsh.sessions.empty"));
+            // After the base skin has made the list: the selection toolbar acts on
+            // it, and it does not exist while the toolbars are being built.
+            control.attachList(listView);
         }
 
         @Override
         protected List<Node> initializeToolbar(SessionListPage page) {
-            List<Node> toolbar = new ArrayList<>();
-            toolbar.add(createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh));
-            toolbar.add(createToolbarButton2(i18n("dsh.session.import"), SVG.DOWNLOAD, page::importFromSystem));
-            toolbar.add(createToolbarButton2(i18n("dsh.session.pack.export.all"), SVG.ARCHIVE,
-                    () -> page.exportPack(page.getItems())));
-            toolbar.add(createToolbarButton2(i18n("dsh.session.pack.import"), SVG.FILE_OPEN,
-                    page::importPack));
-            return toolbar;
+            page.showSelectingToolbar(false);
+            page.toolbar.setAlignment(Pos.CENTER_LEFT);
+            return List.of(page.toolbarPane);
         }
 
         @Override
         protected ListCell<DshSession> createListCell(JFXListView<DshSession> listView) {
-            return new SessionListCell(getSkinnable());
+            return new SessionListCell(listView, getSkinnable());
         }
     }
 
@@ -392,7 +381,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
     /// label, and the actions on the trailing edge. A session has no thumbnail,
     /// so the instance's own icon stands in — it keeps the rows aligned without
     /// inventing artwork the data does not have.
-    private static final class SessionListCell extends ListCell<DshSession> {
+    private static final class SessionListCell extends MDListCell<DshSession> {
         /// The page whose actions the row's buttons run.
         private final SessionListPage page;
 
@@ -402,36 +391,43 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         /// The label and its tags.
         private final TwoLineListItem content = new TwoLineListItem();
 
+        /// The button that exports this session alone.
+        private final JFXButton export = FXUtils.newToggleButton4(SVG.ARCHIVE);
+
         /// The button that moves the session elsewhere.
         private final JFXButton migrate = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
 
         /// The button that opens the row menu.
         private final JFXButton more = FXUtils.newToggleButton4(SVG.MORE_VERT);
 
-        /// The row's graphic, re-installed for every item.
-        private final RipplerContainer graphic;
-
         /// Creates the cell.
         ///
-        /// @param page the page the row's actions belong to
-        SessionListCell(SessionListPage page) {
+        /// @param listView the owning list
+        /// @param page     the page the row's actions belong to
+        SessionListCell(JFXListView<DshSession> listView, SessionListPage page) {
+            super(listView);
             this.page = page;
 
-            BorderPane root = new BorderPane();
-            root.getStyleClass().add("md-list-cell");
-            root.setPadding(new Insets(8));
+            HBox container = new HBox(8);
+            container.setPickOnBounds(false);
+            container.setAlignment(Pos.CENTER_LEFT);
+            HBox.setHgrow(content, Priority.ALWAYS);
+            content.setMouseTransparent(true);
+            setSelectable();
 
             StackPane left = new StackPane(icon);
             left.setPadding(new Insets(0, 8, 0, 0));
-            root.setLeft(left);
 
-            content.setMouseTransparent(true);
-            root.setCenter(content);
-
-            HBox right = new HBox(8);
-            right.setAlignment(Pos.CENTER_RIGHT);
+            FXUtils.installFastTooltip(export, i18n("dsh.session.pack.export.session"));
             FXUtils.installFastTooltip(migrate, i18n("dsh.session.migrate"));
             FXUtils.installFastTooltip(more, i18n("dsh.instance.menu"));
+
+            export.setOnAction(event -> {
+                DshSession session = getItem();
+                if (session != null) {
+                    SessionPackActions.export(page.instance, List.of(session));
+                }
+            });
             migrate.setOnAction(event -> {
                 DshSession session = getItem();
                 if (session != null) {
@@ -444,11 +440,10 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
                     showRowMenu(session, more);
                 }
             });
-            right.getChildren().setAll(migrate, more);
-            root.setRight(right);
 
-            this.graphic = new RipplerContainer(root);
-            setGraphic(graphic);
+            container.getChildren().setAll(left, content, export, migrate, more);
+            StackPane.setMargin(container, new Insets(8));
+            getContainer().getChildren().setAll(container);
         }
 
         /// Shows the row's own menu.
@@ -458,10 +453,15 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         private void showRowMenu(DshSession session, Node anchor) {
             AdvancedListBox menu = new AdvancedListBox();
 
-            LineButton pack = new LineButton();
-            pack.setTitle(i18n("dsh.session.pack.export.project"));
-            pack.setLeading(SVG.ARCHIVE, 16);
-            menu.add(pack);
+            LineButton single = new LineButton();
+            single.setTitle(i18n("dsh.session.pack.export.session"));
+            single.setLeading(SVG.ARCHIVE, 16);
+            menu.add(single);
+
+            LineButton project = new LineButton();
+            project.setTitle(i18n("dsh.session.pack.export.project"));
+            project.setLeading(SVG.ARCHIVE, 16);
+            menu.add(project);
 
             LineButton reveal = new LineButton();
             reveal.setTitle(i18n("dsh.session.reveal"));
@@ -474,15 +474,17 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
             menu.add(delete);
 
             JFXPopup popup = new JFXPopup(menu);
-            pack.setOnAction(event -> {
+            single.setOnAction(event -> {
+                popup.hide();
+                SessionPackActions.export(page.instance, List.of(session));
+            });
+            project.setOnAction(event -> {
                 popup.hide();
                 // A subagent's conversation lives in its own session directory and
                 // is reached through its parent, so the unit worth moving is the
                 // project the sessions were recorded in — which is exactly the
-                // directory they share.
-                page.exportPack(page.getItems().stream()
-                        .filter(other -> other.workspaceSlug().equals(session.workspaceSlug()))
-                        .toList());
+                // directory they share, and exactly this page's list.
+                SessionPackActions.export(page.instance, new ArrayList<>(page.getItems()));
             });
             reveal.setOnAction(event -> {
                 popup.hide();
@@ -490,22 +492,18 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
             });
             delete.setOnAction(event -> {
                 popup.hide();
-                page.delete(session);
+                page.deleteSelected(List.of(session));
             });
             popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT,
                     -anchor.getBoundsInLocal().getWidth(), 0);
         }
 
         @Override
-        protected void updateItem(@Nullable DshSession session, boolean empty) {
-            super.updateItem(session, empty);
-
+        protected void updateControl(@Nullable DshSession session, boolean empty) {
             if (empty || session == null) {
-                setGraphic(null);
                 return;
             }
 
-            setGraphic(graphic);
             icon.setImage(DshInstanceIcons.load(page.instance));
             content.setTitle(session.label());
             content.setSubtitle(describe(session));

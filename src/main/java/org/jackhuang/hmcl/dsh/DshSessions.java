@@ -35,6 +35,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -127,6 +128,38 @@ public final class DshSessions {
 
         sessions.sort(Comparator.comparingLong(DshSession::modifiedAt).reversed());
         return List.copyOf(sessions);
+    }
+
+    /// Groups a home's sessions by the workspace they were recorded in.
+    ///
+    /// The grouping is the harness's own — the slug directory a session lives
+    /// under — rather than a second opinion derived from the working-directory
+    /// string, so one workspace can never be split by two spellings of one path.
+    /// Sessions arrive newest first, and so do the workspaces.
+    ///
+    /// @param home the `DSH_HOME` to read
+    /// @return the workspaces, newest activity first
+    /// @throws DshException when the home cannot be read
+    public static @Unmodifiable List<DshWorkspace> workspaces(Path home) throws DshException {
+        Map<String, List<DshSession>> bySlug = new LinkedHashMap<>();
+        for (DshSession session : list(home)) {
+            bySlug.computeIfAbsent(session.workspaceSlug(), slug -> new ArrayList<>()).add(session);
+        }
+
+        List<DshWorkspace> workspaces = new ArrayList<>();
+        for (Map.Entry<String, List<DshSession>> entry : bySlug.entrySet()) {
+            String path = null;
+            for (DshSession session : entry.getValue()) {
+                if (session.workingDirectory() != null && !session.workingDirectory().isBlank()) {
+                    path = session.workingDirectory();
+                    break;
+                }
+            }
+            workspaces.add(new DshWorkspace(entry.getKey(), path,
+                    DshWorkspace.titleOf(path, entry.getKey()), List.copyOf(entry.getValue())));
+        }
+        workspaces.sort(Comparator.comparingLong(DshWorkspace::modifiedAt).reversed());
+        return List.copyOf(workspaces);
     }
 
     /// Reads one session directory.

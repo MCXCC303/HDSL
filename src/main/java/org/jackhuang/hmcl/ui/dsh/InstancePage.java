@@ -95,8 +95,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The components tab: what this instance runs, and what can be installed into it.
     private final TabHeader.Tab<InstanceInstallersPage> installersTab = new TabHeader.Tab<>("dshInstanceInstallers");
 
-    /// The sessions tab.
-    private final TabHeader.Tab<SessionListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
+    /// The sessions tab: the workspaces its conversations were recorded in.
+    private final TabHeader.Tab<WorkspaceListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
 
     /// The plugins tab.
     private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
@@ -146,7 +146,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
         installersTab.setNodeSupplier(() -> new InstanceInstallersPage(instance));
-        sessionsTab.setNodeSupplier(() -> new SessionListPage(instance));
+        sessionsTab.setNodeSupplier(() -> new WorkspaceListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
         // Every tab the sidebar offers has to be in this list. A tab that is not
