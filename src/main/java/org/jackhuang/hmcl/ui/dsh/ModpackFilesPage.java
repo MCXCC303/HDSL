@@ -18,30 +18,40 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import java.nio.file.Files;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.Consumer;
 
-import org.jackhuang.hmcl.dsh.DshPackForge;
-import org.jackhuang.hmcl.dsh.DshPluginInstaller;
+import com.jfoenix.controls.JFXButton;
+import com.jfoenix.controls.JFXCheckTreeCell;
+import com.jfoenix.controls.JFXTreeView;
 
-import org.jackhuang.hmcl.dsh.DshModpacks;
-
-import javafx.geometry.Insets;
-import javafx.scene.Node;
-import javafx.scene.control.CheckBox;
-import javafx.scene.control.Label;
-import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshModpacks;
+import org.jackhuang.hmcl.dsh.DshPackForge;
+import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.dsh.DshSession;
 import org.jackhuang.hmcl.dsh.DshSessions;
 import org.jackhuang.hmcl.ui.FXUtils;
-import org.jackhuang.hmcl.ui.construct.ComponentList;
-import org.jackhuang.hmcl.ui.construct.LinePane;
+import org.jackhuang.hmcl.ui.construct.NoneMultipleSelectionModel;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardPage;
 import org.jackhuang.hmcl.util.SettingsMap;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
-import java.util.List;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Node;
+import javafx.scene.control.CheckBoxTreeItem;
+import javafx.scene.control.Label;
+import javafx.scene.control.TreeItem;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
@@ -54,16 +64,19 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 /// the one thing worth asking about. A pack of a hundred conversations is a
 /// hundred megabytes and one of none is a kilobyte, and which of those somebody
 /// wants depends on whether they are handing over an environment or a workspace.
+///
+/// The tree is drawn the way the original draws its own: the same view, the same
+/// checkbox cell, and the same rule that a row is not selectable — only its box is.
 @NotNullByDefault
 public final class ModpackFilesPage extends VBox implements WizardPage {
     /// The wizard's settings.
     private final SettingsMap settings;
 
     /// The boxes for the bundles, so what was unticked can be read when the pack is written.
-    private final List<javafx.scene.control.CheckBoxTreeItem<String>> bundleItems = new java.util.ArrayList<>();
+    private final List<CheckBoxTreeItem<String>> bundleItems = new ArrayList<>();
 
     /// The box for the conversations.
-    private javafx.scene.control.CheckBoxTreeItem<String> sessionsItem;
+    private CheckBoxTreeItem<String> sessionsItem;
 
     /// How many conversations the instance has.
     private int sessionCount;
@@ -92,23 +105,20 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
 
         // A tree, as the original draws this step: the instance at the root, what it holds beneath
         // it, and a box on everything that can travel. Ticking a branch takes its children with it,
-        // which is how the original's boxes behave too.
-        javafx.scene.control.TreeView<String> tree = new javafx.scene.control.TreeView<>(buildTree());
+        // which is how the original's boxes behave too. The view, the cell and the selection model
+        // are the original's three: without them the boxes are the platform's small square ones
+        // rather than the round ones every other page of this launcher draws.
+        JFXTreeView<String> tree = new JFXTreeView<>(buildTree());
+        tree.setCellFactory(view -> new ModpackFileTreeCell());
+        tree.setSelectionModel(new NoneMultipleSelectionModel<>());
         tree.setShowRoot(true);
-        tree.setCellFactory(view -> new javafx.scene.control.cell.CheckBoxTreeCell<>() {
-            @Override
-            public void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                setText(empty || item == null ? null : item);
-            }
-        });
-        javafx.scene.layout.VBox.setVgrow(tree, javafx.scene.layout.Priority.ALWAYS);
+        VBox.setVgrow(tree, Priority.ALWAYS);
         getChildren().add(tree);
 
-        javafx.scene.layout.HBox buttons = new javafx.scene.layout.HBox(8);
-        buttons.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
-        com.jfoenix.controls.JFXButton write = new com.jfoenix.controls.JFXButton(i18n("modpack.export"));
-        write.getStyleClass().add("jfx-button-raised");
+        HBox buttons = new HBox(8);
+        buttons.setAlignment(Pos.CENTER_RIGHT);
+        JFXButton write = FXUtils.newRaisedButton(i18n("modpack.export"));
+        write.setPrefSize(100, 40);
         write.setOnAction(event -> {
             cleanup(settings);
             controller.onFinish();
@@ -120,9 +130,8 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// Builds the tree of what the pack can carry.
     ///
     /// @return the root
-    private javafx.scene.control.CheckBoxTreeItem<String> buildTree() {
-        javafx.scene.control.CheckBoxTreeItem<String> root =
-                new javafx.scene.control.CheckBoxTreeItem<>(instance.id());
+    private ModpackFileTreeItem buildTree() {
+        ModpackFileTreeItem root = new ModpackFileTreeItem(instance.id());
         root.setExpanded(true);
         // The root is not ticked by hand: what it says is what its branches say, and that is computed
         // at the end of this method. Setting it here is what made it read "everything travels" while
@@ -136,29 +145,27 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         } catch (DshException | RuntimeException e) {
             // The page still works without the list; the pack is then simply written whole.
         }
-        javafx.scene.control.CheckBoxTreeItem<String> plugins = new javafx.scene.control.CheckBoxTreeItem<>(
-                i18n("dsh.modpack.files.plugins", bundles.size()));
+        ModpackFileTreeItem plugins = new ModpackFileTreeItem(i18n("dsh.modpack.files.plugins", bundles.size()));
         plugins.setExpanded(true);
         for (String bundle : bundles) {
-            javafx.scene.control.CheckBoxTreeItem<String> item =
-                    new javafx.scene.control.CheckBoxTreeItem<>(bundle);
+            ModpackFileTreeItem item = new ModpackFileTreeItem(bundle);
             item.setSelected(true);
             plugins.getChildren().add(item);
         }
         bundleItems.clear();
-        for (javafx.scene.control.TreeItem<String> child : plugins.getChildren()) {
-            bundleItems.add((javafx.scene.control.CheckBoxTreeItem<String>) child);
+        for (TreeItem<String> child : plugins.getChildren()) {
+            bundleItems.add((CheckBoxTreeItem<String>) child);
         }
         root.getChildren().add(plugins);
 
         // The configuration always travels, so its boxes are there to be seen rather than used.
-        javafx.scene.control.CheckBoxTreeItem<String> configuration =
-                new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.configuration"));
+        ModpackFileTreeItem configuration =
+                new ModpackFileTreeItem(i18n("dsh.modpack.files.configuration"),
+                        i18n("dsh.modpack.files.configuration.detail"));
         for (String name : List.of("package.json", "cordis.patch.yml")) {
-            javafx.scene.control.CheckBoxTreeItem<String> item =
-                    new javafx.scene.control.CheckBoxTreeItem<>(name);
+            ModpackFileTreeItem item = new ModpackFileTreeItem(name);
             item.setSelected(true);
-                configuration.getChildren().add(item);
+            configuration.getChildren().add(item);
         }
         root.getChildren().add(configuration);
 
@@ -171,12 +178,14 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         }
         sessionCount = sessions.size();
 
-        sessionsItem = new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.sessions"));
+        sessionsItem = new ModpackFileTreeItem(i18n("dsh.modpack.files.sessions"),
+                sessionCount > 0
+                        ? i18n("dsh.modpack.files.sessions.count", sessionCount)
+                        : i18n("dsh.modpack.files.sessions.none"));
         sessionsItem.setSelected(Boolean.TRUE.equals(settings.get(ModpackExportWizardProvider.SESSIONS))
                 && sessionCount > 0);
         sessionsItem.setIndependent(sessionCount == 0);
-        javafx.scene.control.CheckBoxTreeItem<String> attachments =
-                new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.attachments"));
+        CheckBoxTreeItem<String> attachments = new ModpackFileTreeItem(i18n("dsh.modpack.files.attachments"));
         attachments.setSelected(sessionsItem.isSelected());
         sessionsItem.getChildren().add(attachments);
         root.getChildren().add(sessionsItem);
@@ -198,9 +207,9 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// Makes a branch's box say what the boxes under it say, now and after every change.
     ///
     /// @param branch the branch
-    static void follow(javafx.scene.control.CheckBoxTreeItem<String> branch) {
-        for (javafx.scene.control.TreeItem<String> child : branch.getChildren()) {
-            if (child instanceof javafx.scene.control.CheckBoxTreeItem<String> box) {
+    static void follow(CheckBoxTreeItem<String> branch) {
+        for (TreeItem<String> child : branch.getChildren()) {
+            if (child instanceof CheckBoxTreeItem<String> box) {
                 box.selectedProperty().addListener((observable, was, now) -> refreshFrom(box));
                 follow(box);
             }
@@ -211,8 +220,8 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// Refreshes a branch and every branch above it.
     ///
     /// @param box the box that changed
-    private static void refreshFrom(javafx.scene.control.CheckBoxTreeItem<String> box) {
-        if (box.getParent() instanceof javafx.scene.control.CheckBoxTreeItem<String> parent) {
+    private static void refreshFrom(CheckBoxTreeItem<String> box) {
+        if (box.getParent() instanceof CheckBoxTreeItem<String> parent) {
             refreshBranch(parent);
             refreshFrom(parent);
         }
@@ -229,12 +238,12 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// So the mark is set, and `selected` is only written when the children already agree with it.
     ///
     /// @param branch the branch
-    static void refreshBranch(javafx.scene.control.CheckBoxTreeItem<String> branch) {
+    static void refreshBranch(CheckBoxTreeItem<String> branch) {
         int travelling = 0;
         int some = 0;
         int boxes = 0;
-        for (javafx.scene.control.TreeItem<String> child : branch.getChildren()) {
-            if (child instanceof javafx.scene.control.CheckBoxTreeItem<String> box) {
+        for (TreeItem<String> child : branch.getChildren()) {
+            if (child instanceof CheckBoxTreeItem<String> box) {
                 boxes++;
                 boolean ticked = box.isSelected() || box.isIndeterminate();
                 if (ticked) {
@@ -265,8 +274,8 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     public void cleanup(SettingsMap settings) {
         settings.put(ModpackExportWizardProvider.SESSIONS,
                 sessionsItem != null && sessionsItem.isSelected());
-        java.util.Set<String> excluded = new java.util.LinkedHashSet<>();
-        for (javafx.scene.control.CheckBoxTreeItem<String> item : bundleItems) {
+        Set<String> excluded = new LinkedHashSet<>();
+        for (CheckBoxTreeItem<String> item : bundleItems) {
             if (!item.isSelected()) {
                 excluded.add(item.getValue());
             }
@@ -292,7 +301,7 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// @param report   receives progress lines
     /// @throws DshException when the pack cannot be written
     static void write(DshInstance instance, java.nio.file.Path target, DshModpacks.Options options,
-                      java.util.function.Consumer<String> report) throws DshException {
+                      Consumer<String> report) throws DshException {
         DshModpacks.export(instance, target, options, report);
     }
 
@@ -305,14 +314,11 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
     /// @param instance the instance to write out
     /// @param target   where to write it
     /// @param options  what it should say about itself
-    /// @param instance the instance to write out
-    /// @param target   where to write it
-    /// @param options  what it should say about itself
     /// @param report   receives progress lines
     /// @throws DshException when the pack cannot be written
     static void writePackForge(DshInstance instance, java.nio.file.Path target,
                                DshPackForge.Options options,
-                               java.util.function.Consumer<String> report) throws DshException {
+                               Consumer<String> report) throws DshException {
         DshPackForge.Result result = DshPackForge.export(instance, target, options, report);
         try {
             Files.writeString(target.resolveSibling(target.getFileName() + ".sha256"),
@@ -322,6 +328,85 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
             // The pack is written and is usable; only its digest is missing, and saying so beats
             // failing an export that succeeded.
             report.accept("The pack was written, but its digest was not: " + e.getMessage());
+        }
+    }
+
+    /// A row of the tree, which may carry the note shown beside it.
+    ///
+    /// The note is how the original explains a folder it recognises — the grey line after the name —
+    /// and it is read off the row rather than off the cell, because a cell is reused as the tree
+    /// scrolls and takes its content from whichever row it is given.
+    private static final class ModpackFileTreeItem extends CheckBoxTreeItem<String> {
+        /// The localized explanation for this row, or `null` if there is none.
+        private final @Nullable String comment;
+
+        /// Creates a row showing only its name.
+        ///
+        /// @param name what the row says
+        ModpackFileTreeItem(String name) {
+            this(name, null);
+        }
+
+        /// Creates a row showing its name and, after it, an explanation.
+        ///
+        /// @param name    what the row says
+        /// @param comment the explanation, or `null` for none
+        ModpackFileTreeItem(String name, @Nullable String comment) {
+            super(name);
+            this.comment = comment;
+        }
+    }
+
+    /// Draws a row as the original does: the bound checkbox, then the name, then the note.
+    ///
+    /// The checkbox comes from [JFXCheckTreeCell], which is the material checkbox this launcher
+    /// draws everywhere else and the one the original's export page uses.
+    @NotNullByDefault
+    private static final class ModpackFileTreeCell extends JFXCheckTreeCell<String> {
+        /// Holds the inherited checkbox followed by the labels.
+        private final HBox content = new HBox(3);
+
+        /// Shows the current row's name.
+        private final Label name = new Label();
+
+        /// Shows the current row's note.
+        private final Label comment = new Label();
+
+        /// Creates reusable labels whose mouse events pass through to the cell.
+        private ModpackFileTreeCell() {
+            name.setMouseTransparent(true);
+            comment.setStyle("-fx-text-fill: -monet-on-surface-variant;");
+            comment.setMouseTransparent(true);
+            content.setAlignment(Pos.CENTER_LEFT);
+            content.setPickOnBounds(false);
+        }
+
+        /// Refreshes the labels and removes the content when the cell is cleared.
+        @Override
+        protected void updateDisplay(@Nullable String item, boolean empty) {
+            content.getChildren().clear();
+            super.updateDisplay(item, empty);
+
+            name.setText(null);
+            comment.setText(null);
+            if (empty || item == null) {
+                return;
+            }
+
+            // Setting the text again makes the skin reattach the current graphic to the cell, so it
+            // is cleared first and the checkbox graphic is moved into the container instead.
+            setText(null);
+            @Nullable Node graphic = getGraphic();
+            if (graphic != null) {
+                content.getChildren().add(graphic);
+            }
+            name.setText(item);
+            content.getChildren().add(name);
+            if (getTreeItem() instanceof ModpackFileTreeItem treeItem && treeItem.comment != null) {
+                comment.setText(treeItem.comment);
+                content.getChildren().add(comment);
+            }
+            setGraphic(content);
         }
     }
 }
