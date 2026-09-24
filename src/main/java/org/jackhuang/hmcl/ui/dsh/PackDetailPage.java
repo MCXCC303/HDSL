@@ -196,6 +196,12 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
         readme.setWrapText(true);
         readme.setPadding(new Insets(10));
         readme.getStyleClass().add("card");
+        // A Label's maximum width is its *preferred* width: LabeledSkinBase caps it there, so a
+        // wrapped Label left to itself stops at the width of its longest line. Inside a ScrollPane
+        // that fills its width, that is exactly the bug — the README card ends in the middle of the
+        // page and the rest is background. Allowing the full width is what lets the ScrollPane's
+        // fitToWidth give the Label the viewport, so it wraps there instead.
+        readme.setMaxWidth(Double.MAX_VALUE);
         javafx.scene.control.ScrollPane scroll = new javafx.scene.control.ScrollPane(readme);
         scroll.setFitToWidth(true);
         scroll.setPrefHeight(400);
