@@ -278,9 +278,10 @@ public final class DshInstanceManager {
     /// @return the instance, or `null` when there is no readable manifest
     /// Renames an instance.
     ///
-    /// An instance whose home the launcher owns has that directory moved with
-    /// it, because the directory is named after the instance; a custom home is
-    /// left alone, since it is somewhere the user chose.
+    /// The instance's own directory — the runtime it holds, and an isolated
+    /// home if it has one — is named after the instance and moves with it. A
+    /// home the instance shares, or one the user chose, lives elsewhere and is
+    /// left alone.
     ///
     /// @param id    the current id
     /// @param newId the new id
@@ -307,7 +308,7 @@ public final class DshInstanceManager {
         Path newDirectory = DshPaths.instanceDirectory(normalized);
 
         boolean moved = false;
-        if (existing.homeMode() == DshHomeMode.ISOLATED && Files.isDirectory(oldDirectory)) {
+        if (Files.isDirectory(oldDirectory)) {
             try {
                 deleteQuietly(newDirectory);
                 Files.move(oldDirectory, newDirectory);
@@ -332,9 +333,6 @@ public final class DshInstanceManager {
             throw e;
         }
 
-        if (moved) {
-            deleteQuietly(newDirectory.resolve(MANIFEST_NAME));
-        }
         fireChanged();
         return renamed;
     }
