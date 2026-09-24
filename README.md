@@ -6,6 +6,7 @@
 
 <div align="center">
 
+[![CI](https://img.shields.io/github/actions/workflow/status/MCXCC303/HDSL/build.yml?branch=master&label=CI&logo=github&style=flat-square)](https://github.com/MCXCC303/HDSL/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
 [![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk&logoColor=ffffff)](https://openjdk.org/projects/jdk/21)
@@ -23,28 +24,45 @@ HDSL 是一款 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harnes
 
 DeepSeek Harness 通过 npm 发布、以 `dsh web` 启动。HDSL 把这些步骤收进一个图形界面：下载并安装任意已发布的 `dsh` 版本、为每个实例保留独立的运行环境与 `DSH_HOME`、管理插件、查看会话与运行日志，并在同一个窗口里启动和停止它们。
 
-<img width="816" height="506" alt="屏幕截图_20260921_171858" src="https://github.com/user-attachments/assets/164b22a1-f177-4fb1-beba-62165b45f8ad" />
+<img height="400" alt="screenshot_20260924_191955" src="https://github.com/user-attachments/assets/112c49aa-3b77-466b-bff4-5cd31278b58b" />
 
-## 功能
+## 启动策略
 
-- **实例管理**：每个实例带一份自己的 DeepSeek Harness 与独立的 `DSH_HOME`，可整体复制、移动或删除
-- **版本管理**：从 npm 仓库读取已发布版本，按发布渠道筛选；实例可在不同版本之间迁移
-- **插件管理**：经 `dsh plugin` 安装与管理插件，内置 dsh-market 等预设
-- **会话与日志**：查看实例的会话列表与启动输出
-- **多实例运行**：同时运行多个实例，各自占用独立端口
-- **多实例文件夹**：可以把任意文件夹加入实例列表，原有数据无需搬迁
+目前 HDSL 通过高度定制化启动策略，支持启动各种 DSH 版本，从最古老的 v0.0.1-rc1 到最新的 v0.1.7-rc.1。
 
-<img width="816" height="506" alt="屏幕截图_20260921_171918" src="https://github.com/user-attachments/assets/11f9fae0-39f4-4f93-9160-52d0136ce6e4" />
+HDSL 致力于提供与 HMCL 类似的高质量、高兼容性、用户友好的使用体验，无论是新手小白还是开发人员，HDSL 都能发挥出色的体验。
+
+<img height="400" alt="screenshot_20260924_192002" src="https://github.com/user-attachments/assets/d7d7e37d-63f1-4234-8208-ea2f6b6242a6" />
+
+## 整合包
+
+HDSL v0.2.0 现已支持 [PackForge](https://github.com/DSH-PackForge/DSH-PackForge) 协议整合包导出，你可以通过 HDSL 在 [PackMarket](https://github.com/DSH-PackForge/dsh-pack-market) 中搜索、下载并安装公开发布在市场中的 DSH 整合包：
+
+<img height="400" alt="screenshot_20260924_193340" src="https://github.com/user-attachments/assets/98e676bc-69af-4952-a3d3-919c2c92dd41" />
+
+当然，自己动手制作一个整合包也不在话下。
+
+<img height="400" alt="screenshot_20260924_192723" src="https://github.com/user-attachments/assets/7274bd2a-aa6a-4ee7-8ee7-3b550d531236" />
+
+## 插件
+
+HDSL v0.2.0 支持从 NPM 源安装指定插件，同样也支持从本地安装插件。
+
+HDSL 的插件管理与 HMCL 操作逻辑高度一致，为玩家提供最原汁原味的体验。
+
+<img height="400" alt="screenshot_20260924_193527" src="https://github.com/user-attachments/assets/6e7b21d4-ff35-44df-9831-f05355313805" />
+
+## 账户
+
+HDSL v0.2.0 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特的操作逻辑，让你的 DSH 更加多样！
 
 ## 环境要求
 
 | 项目 | 要求 |
 |---|---|
-| 操作系统 | **仅 Linux**（x86_64 / aarch64） |
+| 操作系统 | **Linux**（x86_64 / aarch64） |
 | 运行时 | **Java 21**（构建与运行） |
 | DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
-
-HDSL 不自行下载 Node.js 之外的运行时，也不修改系统环境；它只调用 PATH 上的 `node`、`npm` 与 `pnpm`。
 
 ## 构建
 
@@ -53,17 +71,9 @@ HDSL 不自行下载 Node.js 之外的运行时，也不修改系统环境；它
 ./gradlew run        # 直接启动
 ```
 
-打包为 `.deb` 与自解压脚本：
-
-```bash
-./gradlew makeDeb
-```
-
-产物在 `build/libs/` 下。
-
 ## 数据目录
 
-HDSL 的数据集中在 `~/.local/share/hdsl`（遵循 `XDG_DATA_HOME`）：
+HDSL 的默认应用数据位于 `~/.local/share/hdsl`：
 
 ```
 ~/.local/share/hdsl/
@@ -76,14 +86,9 @@ HDSL 的数据集中在 `~/.local/share/hdsl`（遵循 `XDG_DATA_HOME`）：
 └── launcher-settings.json
 ```
 
-删掉这个目录即可完全卸载；其中没有任何东西写在别处。
-
 ## 参与贡献
 
-HDSL 是 HMCL 的衍生作品，欢迎提交问题与改进。
-
-- 提交缺陷或功能请求：请在本仓库创建 issue
-- 提交代码：fork 后发起 pull request
+HDSL 是 HMCL 的衍生作品，目前功能正在快速完善，欢迎通过该仓库提交问题与改进。
 
 ## 开源协议
 
