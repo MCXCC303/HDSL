@@ -74,8 +74,9 @@ public final class Metadata {
     /// The full window title including the version.
     public static final String FULL_TITLE = FULL_NAME + " v" + VERSION;
 
-    /// The documentation and help entry point shown in the title bar.
-    public static final String CONTACT_URL = "https://github.com/";
+    /// The HDSL project page. The title bar's help button, the crash window's help
+    /// button and the About page's product row all open it.
+    public static final String HOMEPAGE_URL = "https://github.com/MCXCC303/HDSL";
 
     /// The identifier used for Linux desktop integration and window grouping.
     public static final String APPLICATION_ID = "run.hdsl.HDSL";

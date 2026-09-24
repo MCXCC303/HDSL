@@ -348,7 +348,7 @@ public final class DshCrashDialog extends Stage {
     /// @return the button
     private JFXButton helpButton() {
         JFXButton help = FXUtils.newRaisedButton(i18n("help"));
-        help.setOnAction(event -> FXUtils.openLink(Metadata.CONTACT_URL));
+        help.setOnAction(event -> FXUtils.openLink(Metadata.HOMEPAGE_URL));
         FXUtils.installFastTooltip(help, i18n("logwindow.help"));
         return help;
     }
