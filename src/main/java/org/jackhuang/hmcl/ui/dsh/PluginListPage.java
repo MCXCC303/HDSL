@@ -33,6 +33,7 @@ import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshLocalPlugins;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
+import org.jackhuang.hmcl.dsh.DshPluginPatch;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -55,9 +56,11 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import javafx.collections.ListChangeListener;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -74,9 +77,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// finish, and a list that only showed the dependency would hide exactly the
 /// case worth seeing.
 ///
-/// The box reports rather than toggles: DeepSeek Harness activates a package by
-/// rewriting the profile's bundle list during an install, and offers no command
-/// that switches one off in place.
+/// The box toggles: a plugin is switched off by a row in the profile's own patch
+/// layer, which the loader re-applies on every boot, so the state survives a
+/// restart. Only a package that is an active bundle with its own insert rows can
+/// be switched; one that is merely a dependency, or that declares no rows, keeps
+/// its box disabled and its explanation.
 @NotNullByDefault
 public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow> implements Refreshable {
     /// The instance whose profile is listed.
@@ -108,8 +113,16 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
         CompletableFuture.supplyAsync(() -> {
             try {
-                return new Loaded(DshPluginInstaller.readDependencies(instance.homeDirectory(), instance.profile()),
-                        DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile()));
+                Path home = instance.homeDirectory();
+                String profile = instance.profile();
+                Map<String, String> dependencies = DshPluginInstaller.readDependencies(home, profile);
+                List<String> bundles = DshPluginInstaller.readBundles(home, profile);
+                Set<String> disabled = DshPluginPatch.disabledIds(home, profile);
+                Map<String, List<String>> inserted = new LinkedHashMap<>();
+                for (String name : dependencies.keySet()) {
+                    inserted.put(name, DshPluginPatch.insertedIds(home, profile, name));
+                }
+                return new Loaded(dependencies, bundles, disabled, inserted);
             } catch (DshException e) {
                 throw new CompletionException(e);
             }
@@ -129,8 +142,11 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 if (!toolbar.accepts(entry.getKey())) {
                     continue;
                 }
-                rows.add(new PluginRow(entry.getKey(), entry.getValue(),
-                        loaded.bundles().contains(entry.getKey())));
+                List<String> own = loaded.inserted().getOrDefault(entry.getKey(), List.of());
+                boolean active = loaded.bundles().contains(entry.getKey());
+                boolean disabled = own.stream().anyMatch(loaded.disabled()::contains);
+                rows.add(new PluginRow(entry.getKey(), entry.getValue(), active,
+                        active && !own.isEmpty(), disabled));
             }
             getItems().setAll(rows);
         }));
@@ -157,6 +173,56 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 ProgressDialog.run(i18n("dsh.instance.plugins.remove"),
                         progress -> DshPluginInstaller.removeSpecs(instance, names, progress::accept),
                         this::refresh), null);
+    }
+
+    /// Switches one plugin on or off in the profile's patch layer.
+    ///
+    /// @param row the row that was clicked
+    /// @param box the tick box, disabled while the write runs
+    private void toggle(PluginRow row, JFXCheckBox box) {
+        box.setDisable(true);
+        apply(List.of(row), !row.enabled());
+    }
+
+    /// Switches the selected plugins on or off.
+    ///
+    /// A plugin already in the asked-for state is left alone, so a batch of
+    /// mixed rows writes only the ones that move.
+    ///
+    /// @param rows    the selected rows
+    /// @param enabled whether they should run
+    private void setEnabled(Collection<PluginRow> rows, boolean enabled) {
+        List<PluginRow> targets = rows.stream()
+                .filter(row -> row.toggleable() && row.enabled() != enabled)
+                .toList();
+        if (!targets.isEmpty()) {
+            apply(targets, enabled);
+        }
+    }
+
+    /// Writes the switch into the patch layer and reads the profile again.
+    ///
+    /// @param rows    the plugins to switch
+    /// @param enabled whether they should run
+    private void apply(List<PluginRow> rows, boolean enabled) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                for (PluginRow row : rows) {
+                    DshPluginPatch.setEnabled(instance.homeDirectory(), instance.profile(), row.name(), enabled);
+                }
+            } catch (DshException | RuntimeException e) {
+                throw new CompletionException(e);
+            }
+        }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+            if (throwable != null) {
+                Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+                        ? throwable.getCause() : throwable;
+                LOG.warning("Failed to switch plugins", cause);
+                Controllers.dialog(cause.getMessage(),
+                        i18n("dsh.instance.plugins.toggle_failed"), MessageType.ERROR);
+            }
+            refresh();
+        }));
     }
 
     /// Opens the page that lists the community's plugins.
@@ -213,13 +279,14 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
                         this::revealProfile));
 
-        // The original's selection toolbar, minus the two entries it has and this
-        // launcher cannot offer: enabling and disabling a plugin means rewriting
-        // the profile's bundle list by hand, which the harness has no command for.
         JFXButton selectAll = ToolbarListPageSkin.createToolbarButton2(
                 i18n("button.select_all"), SVG.SELECT_ALL,
                 () -> listView.getSelectionModel().selectRange(0, listView.getItems().size()));
         selectingToolbar.getChildren().setAll(
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.enable"), SVG.CHECK,
+                        () -> setEnabled(listView.getSelectionModel().getSelectedItems(), true)),
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.disable"), SVG.CLOSE,
+                        () -> setEnabled(listView.getSelectionModel().getSelectedItems(), false)),
                 ToolbarListPageSkin.createToolbarButton2(i18n("button.remove"), SVG.DELETE_FOREVER,
                         () -> removeSelected(listView.getSelectionModel().getSelectedItems())),
                 selectAll,
@@ -261,18 +328,30 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
     /// One installed plugin.
     ///
-    /// @param name    the package name
-    /// @param version the declared version range
-    /// @param active  whether the package is an active bundle
-    public record PluginRow(String name, String version, boolean active) {
+    /// @param name       the package name
+    /// @param version    the declared version range
+    /// @param active     whether the package is an active bundle
+    /// @param toggleable whether its own loader rows can be switched
+    /// @param disabled   whether the profile's patch layer switches it off
+    public record PluginRow(String name, String version, boolean active, boolean toggleable, boolean disabled) {
+        /// Returns whether the plugin is running.
+        ///
+        /// @return whether it is an active bundle the patch layer does not disable
+        public boolean enabled() {
+            return active && !disabled;
+        }
     }
 
-    /// The loaded dependency map and bundle list.
+    /// The loaded dependency map, bundle list, patch state and insert rows.
     ///
     /// @param dependencies the declared dependencies
     /// @param bundles      the profile's active bundles
+    /// @param disabled     the row ids the profile's patch layer disables
+    /// @param inserted     each package's own loader row ids
     private record Loaded(@Unmodifiable Map<String, String> dependencies,
-                          @Unmodifiable List<String> bundles) {
+                          @Unmodifiable List<String> bundles,
+                          @Unmodifiable Set<String> disabled,
+                          @Unmodifiable Map<String, List<String>> inserted) {
     }
 
     /// The page's toolbar, which swaps itself for a search field.
@@ -353,6 +432,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
             FXUtils.installFastTooltip(info, i18n("dsh.instance.plugins.open"));
             FXUtils.installFastTooltip(remove, i18n("dsh.instance.plugins.remove"));
 
+            active.setOnAction(event -> {
+                PluginRow row = getItem();
+                if (row != null) {
+                    page.toggle(row, active);
+                }
+            });
+
             container.getChildren().setAll(active, icon, content, info, remove);
             javafx.scene.layout.StackPane.setMargin(container, new Insets(8));
             getContainer().getChildren().setAll(container);
@@ -364,12 +450,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 return;
             }
 
-            active.setSelected(row.active());
-            // A report, not a control: see the page's documentation.
-            active.setDisable(true);
-            FXUtils.installFastTooltip(active, row.active()
-                    ? i18n("dsh.instance.plugins.active.short")
-                    : i18n("dsh.instance.plugins.inactive.short"));
+            active.setSelected(row.enabled());
+            active.setDisable(!row.toggleable());
+            FXUtils.installFastTooltip(active, !row.active()
+                    ? i18n("dsh.instance.plugins.inactive.short")
+                    : !row.toggleable() ? i18n("dsh.instance.plugins.toggle.fixed")
+                    : row.enabled() ? i18n("dsh.instance.plugins.toggle.off")
+                    : i18n("dsh.instance.plugins.toggle.on"));
 
             content.setTitle(row.name());
             content.setSubtitle(i18n("dsh.instance.plugins.source", row.name()));
