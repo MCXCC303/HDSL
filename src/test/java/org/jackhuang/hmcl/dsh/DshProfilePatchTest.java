@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// The repair a pack needs when it both lists a plugin as a bundle and inserts it.
@@ -71,6 +72,31 @@ class DshProfilePatchTest {
 
         assertEquals(List.of("better-sidebar"), left, "the entry is reported by its id");
         assertEquals(body, Files.readString(file), "its settings are not thrown away");
+    }
+
+    @Test
+    void theTextFormIsWhatAPackIsWrittenFrom() {
+        // The exporter writes a copy of this file into the archive, and a copy has to be repaired the
+        // same way — otherwise every pack made from such an instance carries the defect forward.
+        String text = """
+                - insert:
+                    - id: dsh-im-connect
+                      name: '@michengai/dsh-im-connect'
+                """;
+
+        DshProfilePatch.Edit edit = DshProfilePatch.withoutRedundantInserts(text,
+                List.of("@michengai/dsh-im-connect"));
+
+        assertTrue(edit.changed(), "the duplicate is taken out of the copy");
+        assertTrue(!edit.text().contains("dsh-im-connect"), edit.text());
+        assertEquals(List.of(), edit.withConfiguration());
+    }
+
+    @Test
+    void theTextFormSaysWhenThereWasNothingToDo() {
+        DshProfilePatch.Edit edit = DshProfilePatch.withoutRedundantInserts("- id: x\n", List.of("y"));
+        assertFalse(edit.changed(), "a file with nothing to repair is left as it is");
+        assertEquals("- id: x\n", edit.text());
     }
 
     @Test

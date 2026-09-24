@@ -56,12 +56,46 @@ public final class DshProfilePatch {
         if (bundles.isEmpty() || !Files.isRegularFile(patch)) {
             return List.of();
         }
-        List<String> lines;
+        String text;
         try {
-            lines = List.of(Files.readString(patch, StandardCharsets.UTF_8).split("\n", -1));
+            text = Files.readString(patch, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new DshException("Could not read " + patch, e);
         }
+        Edit edit = withoutRedundantInserts(text, bundles);
+        if (edit.changed()) {
+            try {
+                Files.writeString(patch, edit.text(), StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new DshException("Could not write " + patch, e);
+            }
+            LOG.info("Removed inserts from " + patch + " that its own bundles already apply");
+        }
+        return edit.withConfiguration();
+    }
+
+    /// What one pass over a patch produced.
+    ///
+    /// @param text             the patch without the redundant inserts
+    /// @param changed          whether anything was taken out
+    /// @param withConfiguration the entries left alone because they carry configuration
+    public record Edit(String text, boolean changed, List<String> withConfiguration) {
+    }
+
+    /// Returns the patch without the inserts its bundles already apply, and what was left alone.
+    ///
+    /// The text form exists because a pack is written from a **copy**: the exporter puts this file
+    /// into the archive, and the copy has to be repaired too — otherwise every pack made from an
+    /// instance that carries such an insert hands the same broken profile to the next person.
+    ///
+    /// @param text    the patch
+    /// @param bundles the bundle list the profile boots, in order
+    /// @return what one pass produced
+    public static Edit withoutRedundantInserts(String text, List<String> bundles) {
+        if (bundles.isEmpty()) {
+            return new Edit(text, false, List.of());
+        }
+        List<String> lines = List.of(text.split("\n", -1));
 
         List<String> kept = new ArrayList<>();
         List<String> withConfiguration = new ArrayList<>();
@@ -92,15 +126,7 @@ public final class DshProfilePatch {
             i = end - 1;
         }
 
-        if (changed) {
-            try {
-                Files.writeString(patch, String.join("\n", kept), StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                throw new DshException("Could not write " + patch, e);
-            }
-            LOG.info("Removed inserts from " + patch + " that its own bundles already apply");
-        }
-        return List.copyOf(withConfiguration);
+        return new Edit(String.join("\n", kept), changed, List.copyOf(withConfiguration));
     }
 
     /// Reports whether a line opens an item of an `insert` list.

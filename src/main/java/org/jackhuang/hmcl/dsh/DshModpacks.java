@@ -307,7 +307,13 @@ public final class DshModpacks {
             }
             try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
                 if (hasPatch) {
-                    byte[] body = Files.readAllBytes(patch);
+                    // The copy goes in repaired, for the same reason the installer repairs it on the
+                    // way out: a profile that both boots a plugin as a bundle and inserts it applies
+                    // it twice and does not start. Fixing it only on install would leave every pack
+                    // made from such an instance carrying the defect forward.
+                    byte[] body = DshProfilePatch.withoutRedundantInserts(
+                            Files.readString(patch, StandardCharsets.UTF_8), bundles).text()
+                            .getBytes(StandardCharsets.UTF_8);
                     zip.putNextEntry(new ZipEntry(PATCH));
                     zip.write(body);
                     zip.closeEntry();
