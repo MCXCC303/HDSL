@@ -227,7 +227,10 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         // A grid cell gives a child what it asks for, and a field asks for the width of its prompt;
         // without this the box stops short of the column it is in.
         nameField.setMaxWidth(Double.MAX_VALUE);
-        FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
+        // The form searches when it is told to, and not while somebody is typing: a button
+        // that is not what searches is a button with nothing to do. Enter is the form's own
+        // way of submitting, so it does the same thing.
+        nameField.setOnAction(event -> refresh());
 
         instanceBox.setMaxWidth(Double.MAX_VALUE);
         instanceBox.setConverter(FXUtils.stringConverter(
@@ -241,8 +244,9 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         versionBox.setValue(i18n("download.type.all"));
         versionBox.valueProperty().addListener((observable, was, value) -> {
             chosenVersion = value == null || value.equals(i18n("download.type.all")) ? null : value;
+            // The cache of what fits is dropped here because the answer depends on the
+            // choice; the list is redrawn when the form is submitted.
             fitting.clear();
-            search();
         });
         loadVersions();
 
@@ -250,13 +254,11 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         categoryBox.setConverter(FXUtils.stringConverter(CategoryFilter::displayName));
         categoryBox.getItems().add(CategoryFilter.ALL);
         categoryBox.getSelectionModel().select(CategoryFilter.ALL);
-        categoryBox.valueProperty().addListener((observable, was, value) -> search());
 
         sortBox.setMaxWidth(Double.MAX_VALUE);
         sortBox.setConverter(FXUtils.stringConverter(this::sortName));
         sortBox.getItems().setAll("downloads", "stars", "added");
         sortBox.setValue("downloads");
-        sortBox.valueProperty().addListener((observable, was, value) -> search());
 
         // The instance the install goes into, across the top: it is what every filter below is
         // narrowing a list *for*, which is why the original leads with it and gives it the width.
@@ -270,7 +272,10 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
-        search.setOnAction(event -> search());
+        // Reading is what a refresh means the first time and filtering is what it means
+        // afterwards, which is what pressing search should do: the catalogue is one document,
+        // and what changes between two presses is the form.
+        search.setOnAction(event -> refresh());
 
         HBox paging = new HBox(8);
         paging.setAlignment(Pos.CENTER_LEFT);

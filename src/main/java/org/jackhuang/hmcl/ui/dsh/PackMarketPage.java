@@ -184,25 +184,25 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         // A grid cell gives a child what it asks for, and a field asks for the width of its prompt;
         // without this the box stops short of the column it is in.
         nameField.setMaxWidth(Double.MAX_VALUE);
-        FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
+        // The form searches when it is told to, and not while somebody is typing: a button
+        // that is not what searches is a button with nothing to do. Enter is the form's own
+        // way of submitting, so it does the same thing.
+        nameField.setOnAction(event -> refresh());
 
         versionBox.setMaxWidth(Double.MAX_VALUE);
         versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
         versionBox.getItems().setAll(i18n("download.type.all"));
         versionBox.setValue(i18n("download.type.all"));
-        versionBox.valueProperty().addListener(observable -> search());
 
         categoryBox.setMaxWidth(Double.MAX_VALUE);
         categoryBox.setConverter(FXUtils.stringConverter(choice -> choice));
         categoryBox.getItems().setAll(i18n("download.type.all"));
         categoryBox.setValue(i18n("download.type.all"));
-        categoryBox.valueProperty().addListener(observable -> search());
 
         sortBox.setMaxWidth(Double.MAX_VALUE);
         sortBox.getItems().setAll(i18n("addon.sort.date_created"), i18n("addon.sort.popularity"),
                 i18n("dsh.market.sort.name"));
         sortBox.setValue(i18n("addon.sort.date_created"));
-        sortBox.valueProperty().addListener(observable -> search());
 
         // The original's own two rows, in its own order: what to look for and which version, then
         // which category and how to order the answers.
@@ -219,10 +219,13 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         pane.add(buildPaging(), 0, 2, 2, 1);
 
         // The ends of the row, as the original has them: when the index was assembled, beside the
-        // button that reads it again, and the button that installs a pack somebody already has.
-        JFXButton reload = new JFXButton(i18n("button.refresh"));
-        reload.getStyleClass().add("dialog-accept");
-        reload.setOnAction(event -> refresh());
+        // button that searches the form, and the button that installs a pack somebody already has.
+        // The search reads the index on its way, because here the two are one action: an index is a
+        // document rather than a query, so the button changes which part of it is shown — and a
+        // person pressing it after an index that failed to load gets it read again.
+        JFXButton search = new JFXButton(i18n("search"));
+        search.getStyleClass().add("dialog-accept");
+        search.setOnAction(event -> refresh());
 
         JFXButton installLocal = FXUtils.newRaisedButton(i18n("install.modpack"));
         installLocal.setOnAction(event -> Controllers.navigate(new PackInstallPage()));
@@ -231,14 +234,14 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
         // its own instead. Left to the grid, the opposite happened: the timestamp is long and took
         // what it wanted, and the button was drawn as "安…" — a button nobody can read is a button
         // nobody presses.
-        for (JFXButton button : List.of(reload, installLocal)) {
+        for (JFXButton button : List.of(search, installLocal)) {
             button.setMinWidth(Region.USE_PREF_SIZE);
         }
         updatedLabel.setMinWidth(0);
         HBox.setHgrow(updatedLabel, Priority.ALWAYS);
         updatedLabel.setAlignment(Pos.CENTER_RIGHT);
 
-        HBox actions = new HBox(8, updatedLabel, reload, installLocal);
+        HBox actions = new HBox(8, updatedLabel, search, installLocal);
         actions.setAlignment(Pos.CENTER_RIGHT);
         pane.add(actions, 2, 2, 2, 1);
 

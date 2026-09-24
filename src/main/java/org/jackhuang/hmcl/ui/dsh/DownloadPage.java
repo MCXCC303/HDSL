@@ -257,6 +257,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     public boolean openTab(String name) {
         switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
             case "versions" -> tab.select(versionsTab, false);
+            case "packs" -> tab.select(packTab, false);
             case "plugins" -> tab.select(marketTab, false);
             case "skills" -> tab.select(skillsTab, false);
             default -> {
