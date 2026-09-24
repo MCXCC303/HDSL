@@ -227,9 +227,9 @@ class DshModpacksTest {
     private static void writeProfileManifestForTest(DshInstance instance, DshModpacks.Manifest manifest)
             throws Exception {
         java.lang.reflect.Method method = DshModpacks.class.getDeclaredMethod(
-                "writeProfileManifest", Path.class, DshModpacks.Manifest.class);
+                "writeProfileManifest", Path.class, DshModpacks.Manifest.class, java.util.Map.class);
         method.setAccessible(true);
-        method.invoke(null, profileDirectory(instance).resolve("package.json"), manifest);
+        method.invoke(null, profileDirectory(instance).resolve("package.json"), manifest, java.util.Map.of());
     }
 
     /// Returns an instance's profile directory.

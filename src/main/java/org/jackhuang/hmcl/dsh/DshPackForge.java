@@ -346,14 +346,42 @@ public final class DshPackForge {
                 : DshPluginInstaller.readDependencies(instance.homeDirectory(), instance.profile())
                         .entrySet()) {
             if (DshModpacks.isLocalSpec(entry.getValue())) {
-                throw new DshException("The plugin " + entry.getKey() + " was installed from a file "
-                        + "this instance keeps (" + entry.getValue() + "), which another machine "
-                        + "cannot fetch. Install it from a published source before exporting a pack.");
+                // A specification this instance installed from a file. This format names sources, and
+                // a file on this machine is not one — unless the registry publishes the same version,
+                // in which case the source it names is the one the file was built from and the pack
+                // stays a pack of published sources.
+                dependencies.addProperty(entry.getKey(),
+                        publishedVersionOf(instance, entry.getKey(), entry.getValue()));
+                report(onStage, entry.getKey() + " was installed from a file and is published, so the"
+                        + " pack names its published version");
+                continue;
             }
             dependencies.addProperty(entry.getKey(), pin(entry.getKey(), entry.getValue(), onStage));
         }
         manifest.add("dependencies", dependencies);
         return manifest;
+    }
+
+    /// Returns the published version of a plugin an instance installed from a file.
+    ///
+    /// @param instance the instance the plugin belongs to
+    /// @param name     the dependency name
+    /// @param declared what the profile declares for it
+    /// @return the published version
+    /// @throws DshException when the registry does not publish it, which this format cannot express
+    private static String publishedVersionOf(DshInstance instance, String name, String declared)
+            throws DshException {
+        Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
+        DshPluginBundle.Payload payload = DshPluginBundle.locate(profileDirectory, name, declared);
+        if (payload != null
+                && DshPackageRegistry.availability(name, payload.version())
+                        == DshPackageRegistry.Availability.PUBLISHED) {
+            return payload.version();
+        }
+        throw new DshException("The plugin " + name + " was installed from a file this instance keeps ("
+                + declared + "), and the registry does not publish that version, so a pack of published"
+                + " sources cannot name it. Export a pack this launcher reads (.hdslp) to carry the files"
+                + " themselves, or install a published version first.");
     }
 
     /// Pins a dependency to what the specification requires.

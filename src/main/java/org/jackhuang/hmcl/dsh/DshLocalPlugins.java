@@ -290,6 +290,14 @@ public final class DshLocalPlugins {
         return value.replaceAll("[^A-Za-z0-9._-]", "_");
     }
 
+    /// Returns a name that can be used as a file name, for a package a pack carries.
+    ///
+    /// @param value the package name or version
+    /// @return the sanitised value
+    static String safeName(String value) {
+        return safeFileName(value);
+    }
+
     /// Reports whether a tar header block is all zeroes.
     ///
     /// @param block the block

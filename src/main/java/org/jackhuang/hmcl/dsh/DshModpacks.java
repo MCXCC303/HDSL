@@ -67,6 +67,13 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// resolve the whole list in one run — installing bundles one at a time would
 /// append each at the end and lose the order the pack was made with.
 ///
+/// A plugin the instance installed from a file is the one thing that cannot be named and fetched, so
+/// it travels as its own files and is put back into the next instance's plugin directory. That is the
+/// exception to *configuration only*, and it is a deliberate one: a pack that named a path from the
+/// machine it was made on would describe an installation nobody can make. A local plugin that the
+/// registry *does* publish at the version the instance has is not carried — the pack names
+/// `name@version` instead, which installs the same thing from the registry.
+///
 /// Credentials never travel. The harness keeps provider keys in `.credentials.yaml`
 /// beside the sessions, and this reads nothing from there; the profile's patch
 /// layer is included because it is composition, and the launcher says so when it
@@ -94,7 +101,13 @@ public final class DshModpacks {
     public static final java.util.List<String> ACCEPTED_EXTENSIONS = java.util.List.of(".hdslp", ".zip");
 
     /// The format's version.
-    public static final int FORMAT_VERSION = 1;
+    ///
+    /// Version 2 added the plugins a pack carries — a plugin installed from a file that the registry
+    /// does not publish now travels inside the pack, under `plugins/`, and is put back into the
+    /// instance's own plugin directory on install. A version 2 pack is therefore one a version 1
+    /// launcher cannot install correctly: it would read the plugin as a local one it cannot fetch and
+    /// leave it out, so the pack is refused instead, which is the honest answer.
+    public static final int FORMAT_VERSION = 2;
 
     /// The manifest's name inside the archive.
     public static final String MANIFEST = "manifest.json";
@@ -113,7 +126,16 @@ public final class DshModpacks {
     /// @param active  whether the package is in the profile's bundle list
     /// @param local   whether the plugin was installed from a file this instance
     ///                keeps, and so cannot be fetched by anyone else
-    public record Plugin(String name, String version, boolean active, boolean local) {
+    /// One plugin a pack names.
+    ///
+    /// @param name    the package name
+    /// @param version the version the pack pins, or a local specification for a plugin that was not
+    ///                fetched — which is a path, and only meaningful on the machine it names
+    /// @param active  whether the pack boots it as a bundle
+    /// @param local   whether the instance installed it from a file rather than a registry
+    /// @param bundled whether the pack carries the plugin's own files, which is what makes a local
+    ///                plugin installable somewhere else
+    public record Plugin(String name, String version, boolean active, boolean local, boolean bundled) {
     }
 
     /// What a pack describes.
@@ -171,6 +193,24 @@ public final class DshModpacks {
         /// @return the local plugins
         public List<Plugin> localPlugins() {
             return plugins.stream().filter(Plugin::local).toList();
+        }
+
+        /// Returns the local plugins a pack carries the files of.
+        ///
+        /// @return the plugins whose files travel inside the pack
+        public List<Plugin> bundledPlugins() {
+            return plugins.stream().filter(Plugin::bundled).toList();
+        }
+
+        /// Returns the local plugins a pack cannot install.
+        ///
+        /// A pack written before it carried local plugin files names one, and so does a pack whose
+        /// instance had already lost the file: either way there is nothing to install from, and
+        /// saying which plugin it is beats a resolve that fails on a path from another machine.
+        ///
+        /// @return the plugins that cannot be installed
+        public List<Plugin> uninstallablePlugins() {
+            return plugins.stream().filter(plugin -> plugin.local() && !plugin.bundled()).toList();
         }
     }
 
@@ -271,12 +311,18 @@ public final class DshModpacks {
         bundles.removeIf(bundle -> !options.includesBundle(bundle));
 
         List<Plugin> plugins = new ArrayList<>();
+        List<DshPluginBundle.Payload> carried = new ArrayList<>();
         for (Map.Entry<String, String> entry : dependencies.entrySet()) {
             if (!options.includesBundle(entry.getKey())) {
                 continue;
             }
-            plugins.add(new Plugin(entry.getKey(), entry.getValue(), bundles.contains(entry.getKey()),
-                    isLocalSpec(entry.getValue())));
+            boolean active = bundles.contains(entry.getKey());
+            if (!isLocalSpec(entry.getValue())) {
+                plugins.add(new Plugin(entry.getKey(), entry.getValue(), active, false, false));
+                continue;
+            }
+            plugins.add(localPlugin(profileDirectory, entry.getKey(), entry.getValue(), active,
+                    carried, onStage));
         }
 
         Path patch = profileDirectory.resolve("cordis.patch.yml");
@@ -318,6 +364,11 @@ public final class DshModpacks {
                     zip.write(body);
                     zip.closeEntry();
                 }
+                for (DshPluginBundle.Payload payload : carried) {
+                    // A local plugin nobody publishes travels as its own files, and there is no
+                    // smaller way to say it: the alternative is a pack that cannot be installed.
+                    DshPluginBundle.writeInto(zip, payload, onStage);
+                }
                 if (!sessions.isEmpty()) {
                     // The conversations are written the way a session pack writes
                     // them, because that is the layout the harness reads and the
@@ -339,6 +390,48 @@ public final class DshModpacks {
                 + ", " + plugins.size() + " plugin(s)");
         LOG.info("Wrote a modpack for " + instance.id() + " to " + target);
         return new ExportResult(plugins.size(), size);
+    }
+
+    /// Records a plugin the instance installed from a file.
+    ///
+    /// The registry is asked first, because a plugin that is published at the version the instance
+    /// has does not need to travel: the pack names `name@version` and the install fetches it, which is
+    /// smaller and is the same code either way. Only when the registry does not publish it — or cannot
+    /// be asked at all, which is not the same as an answer — are the files carried, because a pack
+    /// that named a package nobody can fetch would be a pack that does not install.
+    ///
+    /// @param profileDirectory the profile the plugin was installed into
+    /// @param name             the dependency name
+    /// @param declared         what the profile declares for it
+    /// @param active           whether it is in the bundle list
+    /// @param carried          collects the payloads the pack has to carry
+    /// @param onStage          receives progress lines, or `null`
+    /// @return what the pack records for it
+    private static Plugin localPlugin(Path profileDirectory, String name, String declared, boolean active,
+                                      List<DshPluginBundle.Payload> carried,
+                                      @Nullable Consumer<String> onStage) {
+        DshPluginBundle.Payload payload = DshPluginBundle.locate(profileDirectory, name, declared);
+        if (payload == null) {
+            report(onStage, "Note: " + name + " was installed from a file this instance no longer has,"
+                    + " so the pack cannot carry it");
+            return new Plugin(name, declared, active, true, false);
+        }
+
+        DshPackageRegistry.Availability availability =
+                DshPackageRegistry.availability(name, payload.version());
+        if (availability == DshPackageRegistry.Availability.PUBLISHED) {
+            report(onStage, name + " " + payload.version() + " is published, so the pack fetches it"
+                    + " from the registry rather than carrying it");
+            return new Plugin(name, payload.version(), active, false, false);
+        }
+        if (availability == DshPackageRegistry.Availability.UNKNOWN) {
+            report(onStage, "Could not ask the registry about " + name + " " + payload.version()
+                    + "; carrying its files instead");
+        } else {
+            report(onStage, name + " " + payload.version() + " is not published, so the pack must carry it");
+        }
+        carried.add(payload);
+        return new Plugin(name, payload.version(), active, true, true);
     }
 
     /// Reads a pack's manifest.
@@ -449,12 +542,13 @@ public final class DshModpacks {
 
         if (!manifest.plugins().isEmpty() || !manifest.bundles().isEmpty()) {
             report(onStage, "Writing the pack's plugin list");
-            writeProfileManifest(manifestFile, manifest);
-            if (!manifest.localPlugins().isEmpty()) {
-                report(onStage, "Note: " + manifest.localPlugins().size()
-                        + " plugin(s) were installed from a file on the instance this pack came from, and"
-                        + " cannot be fetched here: " + String.join(", ",
-                                manifest.localPlugins().stream().map(Plugin::name).toList()));
+            Map<String, Path> released = releaseCarried(instance, manifest, pack, onStage);
+            writeProfileManifest(manifestFile, manifest, released);
+            if (!manifest.uninstallablePlugins().isEmpty()) {
+                report(onStage, "Note: " + manifest.uninstallablePlugins().size()
+                        + " plugin(s) were installed from a file the pack does not carry, so they are left"
+                        + " out rather than pointed at a path from another machine: " + String.join(", ",
+                                manifest.uninstallablePlugins().stream().map(Plugin::name).toList()));
             }
             report(onStage, "Resolving " + manifest.installSpecs().size() + " plugin(s)");
             DshPluginInstaller.resolve(instance, onStage);
@@ -463,16 +557,55 @@ public final class DshModpacks {
         return manifest.plugins().size();
     }
 
+    /// Puts the plugins a pack carries back into the instance.
+    ///
+    /// They are written under the directory the launcher keeps local plugin files in, which is where
+    /// an instance that installed one by hand would hold it, and the path returned is what the profile
+    /// then depends on.
+    ///
+    /// @param instance the instance being filled
+    /// @param manifest the pack's manifest
+    /// @param pack     the archive
+    /// @param onStage  receives progress lines, or `null`
+    /// @return where each carried plugin was put, by package name
+    /// @throws DshException when the files cannot be written
+    private static Map<String, Path> releaseCarried(DshInstance instance, Manifest manifest, Path pack,
+                                                    @Nullable Consumer<String> onStage) throws DshException {
+        List<Plugin> bundled = manifest.bundledPlugins();
+        if (bundled.isEmpty()) {
+            return Map.of();
+        }
+        Path pluginsDirectory = instance.instanceDirectory().resolve(DshLocalPlugins.DIRECTORY);
+        Map<String, Path> released = new LinkedHashMap<>();
+        for (Plugin plugin : bundled) {
+            Path path = DshPluginBundle.release(pack, pluginsDirectory, plugin.name(), plugin.version());
+            if (path == null) {
+                report(onStage, "Note: the pack says it carries " + plugin.name()
+                        + ", but it holds no files for it");
+                continue;
+            }
+            report(onStage, "Put " + plugin.name() + " " + plugin.version() + " into the instance");
+            released.put(plugin.name(), path);
+        }
+        return released;
+    }
+
     /// Writes a pack's dependencies and bundle list into a profile manifest.
     ///
     /// Only those two fields are touched: everything else in the file — the
     /// profile's name, and anything a harness version puts there that this launcher
     /// does not know about — is left as it is.
     ///
+    /// A plugin the pack carries is declared by the path its files were put back at, on *this*
+    /// machine: a profile records the file it installed from and resolves it again on every later
+    /// operation, so a path from the machine the pack was made on would break every one of them.
+    ///
     /// @param manifestFile the profile's `package.json`
     /// @param pack         the pack's manifest
+    /// @param released     where the pack's carried plugins were put, by package name
     /// @throws DshException when the file cannot be read or written
-    private static void writeProfileManifest(Path manifestFile, Manifest pack) throws DshException {
+    private static void writeProfileManifest(Path manifestFile, Manifest pack, Map<String, Path> released)
+            throws DshException {
         JsonObject manifest;
         try {
             manifest = JsonUtils.fromJsonFile(manifestFile, JsonObject.class);
@@ -484,11 +617,7 @@ public final class DshModpacks {
         }
 
         JsonObject dependencies = new JsonObject();
-        Map<String, String> ordered = new LinkedHashMap<>();
-        for (Plugin plugin : pack.plugins()) {
-            ordered.put(plugin.name(), plugin.version() == null ? "" : plugin.version());
-        }
-        for (Map.Entry<String, String> entry : ordered.entrySet()) {
+        for (Map.Entry<String, String> entry : dependenciesOf(pack, released).entrySet()) {
             dependencies.addProperty(entry.getKey(), entry.getValue());
         }
         manifest.add("dependencies", dependencies);
@@ -498,7 +627,7 @@ public final class DshModpacks {
         JsonObject profile = dsh.has("profile") && dsh.get("profile").isJsonObject()
                 ? dsh.getAsJsonObject("profile") : new JsonObject();
         JsonArray bundles = new JsonArray();
-        pack.bundles().forEach(bundles::add);
+        listsBootable(pack, dependencies).forEach(bundles::add);
         profile.add("bundles", bundles);
         dsh.add("profile", profile);
         manifest.add("dsh", dsh);
@@ -512,6 +641,61 @@ public final class DshModpacks {
         }
         LOG.info("Restored the plugin list of " + manifestFile.getParent().getFileName()
                 + ": " + pack.plugins().size() + " plugin(s), " + pack.bundles().size() + " bundle(s)");
+    }
+
+    /// Returns the dependencies a pack's profile should declare.
+    ///
+    /// Three cases, and the difference between them is the whole of what a local plugin needs:
+    ///
+    /// - **Carried and put back.** The value is the path *this* machine now holds the files at. A
+    ///   profile records the file it installed from and resolves it again on every later operation,
+    ///   so the path has to be one that exists here; a path from the machine the pack was made on is
+    ///   the bug this replaces.
+    /// - **Carried but not found in the pack.** Nothing to install from, so nothing is declared.
+    /// - **Local and not carried.** A pack written before packs carried local plugins names one. Its
+    ///   path is another machine's, and declaring it would make every later operation on the profile
+    ///   fail with a message about a missing file. It is left out instead.
+    ///
+    /// @param pack     the pack's manifest
+    /// @param released where the pack's carried plugins were put, by package name
+    /// @return the dependency name to declaration map, in the pack's order
+    static Map<String, String> dependenciesOf(Manifest pack, Map<String, Path> released) {
+        Map<String, String> ordered = new LinkedHashMap<>();
+        for (Plugin plugin : pack.plugins()) {
+            if (plugin.bundled()) {
+                Path path = released.get(plugin.name());
+                if (path != null) {
+                    ordered.put(plugin.name(), path.toString());
+                }
+                continue;
+            }
+            if (plugin.local()) {
+                continue;
+            }
+            ordered.put(plugin.name(), plugin.version() == null ? "" : plugin.version());
+        }
+        return ordered;
+    }
+
+    /// Returns the bundles a profile with these dependencies can boot.
+    ///
+    /// A bundle that could not be installed is not booted either: naming a package the profile does
+    /// not have stops the instance from starting, which is a worse answer than starting without a
+    /// plugin that was never there. A bundle the pack does not name as a plugin is kept — the
+    /// harness's own bundles are packages a profile does not declare.
+    ///
+    /// @param pack         the pack's manifest
+    /// @param dependencies what the profile will declare
+    /// @return the bundle list, in the pack's order
+    static List<String> listsBootable(Manifest pack, JsonObject dependencies) {
+        List<String> bootable = new ArrayList<>();
+        for (String bundle : pack.bundles()) {
+            boolean named = pack.plugins().stream().anyMatch(plugin -> plugin.name().equals(bundle));
+            if (!named || dependencies.has(bundle)) {
+                bootable.add(bundle);
+            }
+        }
+        return bootable;
     }
 
     /// Writes a pack's patch layer into a profile.
@@ -556,7 +740,7 @@ public final class DshModpacks {
                     continue;
                 }
                 plugins.add(new Plugin(name, string(object, "version"), bool(object, "active"),
-                        bool(object, "local")));
+                        bool(object, "local"), bool(object, "bundled")));
             }
         }
 
