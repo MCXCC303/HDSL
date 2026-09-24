@@ -186,10 +186,12 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                         SVG.DEPLOYED_CODE, SVG.DEPLOYED_CODE_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"),
                         SVG.EXTENSION, SVG.EXTENSION_FILL)
-                // The book mark has no solid version in the icon set, so this entry keeps
-                // one mark either way — which the original allows for the same reason.
+                // The original marks its resource packs with the texture mark, and a skill
+                // pack is the same kind of thing: a folder of files that changes how the
+                // harness behaves. It has no solid version either, which the original allows
+                // for the same reason.
                 .addNavigationDrawerTab(tab, skillsTab, i18n("dsh.instance.skills"),
-                        SVG.GLOBE_BOOK)
+                        SVG.TEXTURE)
                 // The folder-with-a-copy mark has no solid version in the icon set,
                 // so this entry would keep one mark either way. The pair the
                 // original uses for a pack of things is the one to take instead.

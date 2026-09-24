@@ -176,10 +176,11 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
                 .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, marketTab, i18n("dsh.download.plugins"),
                         SVG.EXTENSION, SVG.EXTENSION_FILL)
-                // The book mark has no solid version in the icon set, so this entry keeps
-                // one mark either way, as the instance page's own skills entry does.
+                // The texture mark, which is what the original gives its resource packs and
+                // what the instance page's own skills entry wears: a skill pack and a
+                // resource pack are the same kind of thing.
                 .addNavigationDrawerTab(tab, skillsTab, i18n("dsh.download.skills"),
-                        SVG.GLOBE_BOOK);
+                        SVG.TEXTURE);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
