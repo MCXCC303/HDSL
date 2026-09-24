@@ -19,7 +19,9 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import javafx.application.Platform;
+import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -92,15 +94,22 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
     /// What was read out of the manifest, for the install to use.
     private @Nullable DshPackInstaller.Container container;
 
-    /// The button that installs, kept so its state can follow what has been read.
+    /// The button that installs.
+    ///
+    /// Enabled from the start, because installing reads the *archive*, not the manifest: the
+    /// manifest is fetched only to be read, and a market that cannot be reached for it must not be
+    /// able to take the pack away.
     private final JFXButton install = new JFXButton(i18n("download.install"));
+
+    /// Whether the title bar offers a refresh, which re-reads the manifest and the README.
+    private final BooleanProperty refreshable = new SimpleBooleanProperty(this, "refreshable", true);
 
     /// Creates the page.
     ///
     /// @param entry the pack
     public PackDetailPage(DshPackMarket.Entry entry) {
         this.entry = entry;
-        this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(entry.title()));
+        this.state = new ReadOnlyObjectWrapper<>(new State(entry.title(), null, true, true, true));
 
         BorderPane layout = new BorderPane();
         layout.setPadding(new Insets(10));
@@ -135,7 +144,6 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
 
         install.getStyleClass().add("dialog-accept");
         install.setOnAction(event -> install());
-        install.setDisable(true);
 
         // No back button: the title bar draws one for every page, and a second one inside the card
         // would be the same control twice. The original's detail pages have none either.
@@ -227,31 +235,41 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
 
     /// Reads the pack's own documents.
     ///
-    /// Two requests, each allowed to fail on its own. They are started together because neither
-    /// depends on the other, and a page that waited for the README before showing whether the pack
-    /// can be installed would be slower for no reason.
+    /// Two requests, each allowed to fail on its own. They are started separately because neither
+    /// depends on the other: a manifest that is slow or unreachable must not hold up the README, and
+    /// a README that fails must not make the manifest look unreadable. Neither decides whether the
+    /// pack can be installed — the archive is what says that, and it is read when Install is
+    /// pressed — so a fetch that fails here costs the reader a note, not the pack.
     @Override
     public void refresh() {
         manifestLine.setText(i18n("dsh.pack.loading"));
 
-        CompletableFuture.supplyAsync(() -> {
-            String manifest = get(DshPackMarket.manifestUrl(entry));
-            String text = get(DshPackMarket.readmeUrl(entry));
-            return new String[]{manifest, text};
-        }, Schedulers.io()).whenComplete((documents, failure) -> Platform.runLater(() -> {
-            if (getScene() == null) {
-                return;
-            }
-            if (failure != null) {
-                manifestLine.setText(i18n("dsh.pack.manifest.unreadable"));
-                return;
-            }
-            readManifest(documents[0]);
-            showReadme(documents[1]);
-        }));
+        CompletableFuture.supplyAsync(() -> get(DshPackMarket.manifestUrl(entry)), Schedulers.io())
+                .whenComplete((manifest, failure) -> Platform.runLater(() -> {
+                    if (getScene() == null) {
+                        return;
+                    }
+                    if (failure != null) {
+                        manifestLine.setText(i18n("dsh.pack.manifest.unreadable"));
+                    } else {
+                        readManifest(manifest);
+                    }
+                }));
+
+        CompletableFuture.supplyAsync(() -> get(DshPackMarket.readmeUrl(entry)), Schedulers.io())
+                .whenComplete((text, failure) -> Platform.runLater(() -> {
+                    if (getScene() == null || failure != null) {
+                        return;
+                    }
+                    showReadme(text);
+                }));
     }
 
-    /// Works out what the pack's manifest says, and whether this launcher can install it.
+    /// Works out what the pack's manifest says, for the reader.
+    ///
+    /// What it says never decides whether the pack can be installed: that is the archive's answer,
+    /// read when Install is pressed. A manifest a person can read is a courtesy, and a note rather
+    /// than a switch on the button.
     ///
     /// @param body the manifest, or `null` when there is none
     private void readManifest(@Nullable String body) {
@@ -271,9 +289,6 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
             int dependencies = manifest.has("dependencies") && manifest.get("dependencies").isJsonObject()
                     ? manifest.getAsJsonObject("dependencies").size() : 0;
             manifestLine.setText(i18n("dsh.pack.manifest.read", bundles, dependencies));
-            // Nothing is enabled here that the container check would refuse; the download is the
-            // step that finds out, and this only says the manifest was read.
-            install.setDisable(false);
         } catch (RuntimeException e) {
             manifestLine.setText(i18n("dsh.pack.manifest.malformed"));
         }
@@ -373,5 +388,18 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
     @Override
     public ReadOnlyObjectWrapper<State> stateProperty() {
         return state;
+    }
+
+    /// Returns whether the title bar offers a refresh.
+    ///
+    /// Always, because both documents can be re-read and the manifest that failed on the network is
+    /// exactly the one worth asking for again. The button is what [DecoratorPage#refreshable] and
+    /// this have to agree on; a page that says yes to one and no to the other draws a button that
+    /// does nothing.
+    ///
+    /// @return the property
+    @Override
+    public BooleanProperty refreshableProperty() {
+        return refreshable;
     }
 }
