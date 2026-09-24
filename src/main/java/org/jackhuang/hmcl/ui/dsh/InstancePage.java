@@ -215,17 +215,12 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 .add(launchItem)
                 .addNavigationDrawerItem(i18n("settings.game.exploration"), SVG.FOLDER_OPEN, null,
                         item -> item.setOnAction(event -> showBrowsePopup(item)))
-                // A launch is all or nothing, and when it stops before it answers there is
-                // nothing to read: this is the same instance in a shell, where the failure
-                // can be run again a line at a time.
-                .addNavigationDrawerItem(i18n("dsh.instance.terminal"), SVG.OUTPUT,
-                        this::openTerminal)
                 .addNavigationDrawerItem(i18n("settings.game.management"), SVG.MENU, null,
                         item -> item.setOnAction(event -> showManagePopup(item)));
         actions.getStyleClass().add("advanced-list-box-clear-padding");
 
         FXUtils.setLimitWidth(sideBar, 200);
-        FXUtils.setLimitHeight(actions, 40 * 4 + 12 * 3);
+        FXUtils.setLimitHeight(actions, 40 * 3 + 12 * 2);
         // The navigation box takes the room so the actions settle at the bottom.
         // Its maximum height has to be lifted first: a control sized to its
         // content will not grow just because the box asks it to.
@@ -400,6 +395,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 actionLabel(state), this::testLaunch, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.OUTPUT, i18n("dsh.instance.terminal"), this::openTerminal, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.MenuSeparator());
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.PACKAGE2, i18n("modpack.export"), this::exportModpack, popup));
