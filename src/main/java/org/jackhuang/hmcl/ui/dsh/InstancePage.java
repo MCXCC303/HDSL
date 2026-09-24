@@ -28,8 +28,10 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceTerminal;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
@@ -213,12 +215,17 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 .add(launchItem)
                 .addNavigationDrawerItem(i18n("settings.game.exploration"), SVG.FOLDER_OPEN, null,
                         item -> item.setOnAction(event -> showBrowsePopup(item)))
+                // A launch is all or nothing, and when it stops before it answers there is
+                // nothing to read: this is the same instance in a shell, where the failure
+                // can be run again a line at a time.
+                .addNavigationDrawerItem(i18n("dsh.instance.terminal"), SVG.OUTPUT,
+                        this::openTerminal)
                 .addNavigationDrawerItem(i18n("settings.game.management"), SVG.MENU, null,
                         item -> item.setOnAction(event -> showManagePopup(item)));
         actions.getStyleClass().add("advanced-list-box-clear-padding");
 
         FXUtils.setLimitWidth(sideBar, 200);
-        FXUtils.setLimitHeight(actions, 40 * 3 + 12 * 2);
+        FXUtils.setLimitHeight(actions, 40 * 4 + 12 * 3);
         // The navigation box takes the room so the actions settle at the bottom.
         // Its maximum height has to be lifted first: a control sized to its
         // content will not grow just because the box asks it to.
@@ -488,6 +495,19 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     }
 
     /// Starts or stops this instance from its own page.
+    /// Opens a terminal on this instance, set up the way a launch sets it up.
+    ///
+    /// The way out of a launch that will not start: the same home, the same environment and
+    /// the instance's own toolchain, in a shell where the harness can be run by hand.
+    private void openTerminal() {
+        try {
+            DshInstanceTerminal.open(instance, DshAccount.forInstance(instance));
+        } catch (DshException e) {
+            LOG.warning("Could not open a terminal on " + instance.id(), e);
+            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+        }
+    }
+
     private void testLaunch() {
         // Test launch shows the output: the point of launching from here is to
         // see what the program does, which is what the original's test game does
