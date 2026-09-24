@@ -18,25 +18,19 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
-import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXComboBox;
-import com.jfoenix.controls.JFXDialogLayout;
 import com.jfoenix.controls.JFXListView;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Skin;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
-import org.jackhuang.hmcl.dsh.DshSkill;
 import org.jackhuang.hmcl.dsh.DshSkillSource;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.task.Schedulers;
@@ -45,7 +39,6 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.ListPageBase;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
-import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -55,7 +48,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -64,25 +56,37 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Browses the skill packs published on GitHub and installs them into an instance.
+/// Browses the community's published skills and either installs one into an instance or
+/// saves it as an archive.
 ///
-/// The original's resource-pack download page browses a catalogue that a publisher
-/// maintains. There is no such catalogue for skills, and there does not need to be one:
-/// a skill is a directory with a SKILL.md in it, so a collection of skills is already a
-/// git repository. GitHub's agent-skills topic is therefore the catalogue, its search is
-/// the search, and repository stars are the only ordering available.
+/// The catalogue is the community's own index rather than GitHub's topic search. That is
+/// the difference that matters here: the index lists **skills**, so one row is one skill
+/// instead of a repository that may hold twenty, and it publishes an install count, which
+/// is the ordering somebody browsing actually wants. It also means a search costs one
+/// request to a service that is built to be searched, rather than one of the sixty an
+/// hour GitHub allows an unauthenticated caller.
 ///
-/// Installing is per pack, not per repository: the repositories worth browsing hold
-/// twenty packs each, and a person wants one of them.
+/// Saving is offered beside installing because a skill is a file and not only an
+/// installation: an archive of it can be kept, read, unpacked by hand, or handed to
+/// another tool, and none of that is the launcher's business to decide. What is offered
+/// is the same bytes either way — the instance is written to only when installing.
 @NotNullByDefault
-public final class SkillMarketPage extends ListPageBase<DshSkillSource.Repo> implements Refreshable {
-    /// How many repositories the topic search returns.
-    private static final int LIMIT = 60;
+public final class SkillMarketPage extends ListPageBase<DshSkillSource.Offering> implements Refreshable {
+    /// How many skills a search returns.
+    private static final int LIMIT = 50;
 
-    /// Whether a load is already running.
+    /// The shortest query the registry answers, mirrored so the page can say so before
+    /// asking.
+    private static final int SHORTEST_QUERY = 2;
+
+    /// Whether a search is already running.
     private boolean busy;
 
-    /// The instance packs are installed into.
+    /// The skin, held so the placeholder can say which of the two empty states this is:
+    /// nothing searched for yet, or nothing found.
+    private @Nullable SkillMarketPageSkin skin;
+
+    /// The instance an install goes into.
     private final JFXComboBox<DshInstance> instanceBox = new JFXComboBox<>();
 
     /// The page's toolbar, which swaps itself for a search field.
@@ -106,7 +110,10 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Repo> imp
 
     @Override
     protected Skin<?> createDefaultSkin() {
-        return new SkillMarketPageSkin(this);
+        SkillMarketPageSkin created = new SkillMarketPageSkin(this);
+        skin = created;
+        showPlaceholder(i18n("dsh.skills.market.prompt"));
+        return created;
     }
 
     @Override
@@ -114,26 +121,45 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Repo> imp
         if (busy) {
             return;
         }
+        String query = toolbar.filter() == null ? "" : toolbar.filter().trim();
+        if (query.length() < SHORTEST_QUERY) {
+            // Not a failure and not an empty result: nothing has been asked for yet. The
+            // registry refuses anything shorter, so the page says what it wants instead
+            // of asking and showing the refusal.
+            getItems().clear();
+            showPlaceholder(i18n("dsh.skills.market.prompt"));
+            return;
+        }
+
         busy = true;
         setLoading(true);
-
-        String query = toolbar.filter() == null ? "" : toolbar.filter();
         CompletableFuture.supplyAsync(() -> {
             try {
-                return DshSkillSource.search(query, LIMIT);
+                return DshSkillSource.find(query, LIMIT);
             } catch (DshException e) {
                 throw new CompletionException(e);
             }
-        }, Schedulers.io()).whenComplete((repos, throwable) -> runInFX(() -> {
+        }, Schedulers.io()).whenComplete((offerings, throwable) -> runInFX(() -> {
             busy = false;
             setLoading(false);
             if (throwable != null) {
-                LOG.warning("Failed to search the skill repositories", causeOf(throwable));
+                LOG.warning("Failed to search the skill registry", causeOf(throwable));
                 setFailedReason(causeOf(throwable).getMessage());
                 return;
             }
-            getItems().setAll(repos);
+            getItems().setAll(offerings);
+            showPlaceholder(i18n("dsh.skills.market.empty"));
         }));
+    }
+
+    /// Says what an empty list means.
+    ///
+    /// @param message the placeholder to show
+    private void showPlaceholder(String message) {
+        SkillMarketPageSkin current = skin;
+        if (current != null) {
+            current.placeholder(message);
+        }
     }
 
     /// Returns the failure a future completed with.
@@ -145,71 +171,63 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Repo> imp
                 ? throwable.getCause() : throwable;
     }
 
-    /// Holds the list the page is drawn in and gives it its toolbar.
+    /// Installs one skill into the instance the page is pointed at.
     ///
-    /// @param listView the page's list
-    private void attachList(JFXListView<DshSkillSource.Repo> listView) {
-        toolbar.setButtons(ToolbarListPageSkin.createToolbarButton2(
-                i18n("button.refresh"), SVG.REFRESH, this::refresh));
-    }
-
-    /// Asks GitHub what packs a repository holds and offers them.
-    ///
-    /// @param repo the repository to open
-    private void showBundles(DshSkillSource.Repo repo) {
-        setLoading(true);
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                return DshSkillSource.bundles(repo);
-            } catch (DshException e) {
-                throw new CompletionException(e);
-            }
-        }, Schedulers.io()).whenComplete((bundles, throwable) -> runInFX(() -> {
-            setLoading(false);
-            if (throwable != null) {
-                LOG.warning("Failed to list the packs in " + repo.fullName(), causeOf(throwable));
-                Controllers.dialog(causeOf(throwable).getMessage(),
-                        i18n("message.error"), MessageType.ERROR);
-                return;
-            }
-            if (bundles.isEmpty()) {
-                Controllers.dialog(i18n("dsh.skills.market.no_packs", repo.fullName()));
-                return;
-            }
-            Controllers.dialog(new BundleDialog(this, repo, bundles));
-        }));
-    }
-
-    /// Installs the chosen packs into the instance the page is pointed at.
-    ///
-    /// @param bundles the packs to install
-    private void install(List<DshSkillSource.Bundle> bundles) {
+    /// @param offering the skill
+    private void install(DshSkillSource.Offering offering) {
         DshInstance instance = instanceBox.getValue();
         if (instance == null) {
             Controllers.dialog(i18n("dsh.skills.market.no_instance"));
             return;
         }
         ProgressDialog.run(i18n("dsh.skills.market.install"), report -> {
-            for (DshSkillSource.Bundle bundle : bundles) {
-                report.accept(i18n("dsh.skills.market.fetching", bundle.name()));
-                try {
-                    DshSkillSource.install(instance.homeDirectory(), bundle, file -> { });
-                } catch (DshException e) {
-                    throw new DshException(bundle.name() + ": " + e.getMessage(), e);
-                }
-            }
+            report.accept(offering.source());
+            DshSkillSource.Bundle bundle = DshSkillSource.resolve(offering);
+            DshSkillSource.install(instance.homeDirectory(), bundle, report::accept);
         }, null);
+    }
+
+    /// Saves one skill as an archive, where the user says to keep it.
+    ///
+    /// The launcher writes the file and stops there. What the archive is for — unpacking
+    /// it into a skills directory, reading it first, keeping it for another machine — is
+    /// the person's decision, which is the whole reason the archive exists beside the
+    /// install.
+    ///
+    /// @param offering the skill
+    private void save(DshSkillSource.Offering offering) {
+        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
+        chooser.setTitle(i18n("dsh.skills.market.save"));
+        chooser.setInitialFileName(offering.name() + ".zip");
+        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
+                i18n("dsh.skills.market.save.filter"), "*.zip"));
+        Path target = Controllers.showSaveDialog(chooser);
+        if (target == null) {
+            return;
+        }
+        ProgressDialog.run(i18n("dsh.skills.market.save"), report -> {
+            report.accept(offering.source());
+            DshSkillSource.Bundle bundle = DshSkillSource.resolve(offering);
+            DshSkillSource.download(bundle, target, report::accept);
+        }, null);
+    }
+
+    /// Holds the list the page is drawn in and gives it its toolbar.
+    ///
+    /// @param listView the page's list
+    private void attachList(JFXListView<DshSkillSource.Offering> listView) {
+        toolbar.setButtons(ToolbarListPageSkin.createToolbarButton2(
+                i18n("button.refresh"), SVG.REFRESH, this::refresh));
     }
 
     /// The page's skin.
     private static final class SkillMarketPageSkin
-            extends ToolbarListPageSkin<DshSkillSource.Repo, SkillMarketPage> {
+            extends ToolbarListPageSkin<DshSkillSource.Offering, SkillMarketPage> {
         /// Creates the skin.
         ///
         /// @param control the page
         SkillMarketPageSkin(SkillMarketPage control) {
             super(control);
-            setPlaceholder(i18n("dsh.skills.market.empty"));
             control.attachList(listView);
         }
 
@@ -219,33 +237,49 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Repo> imp
         }
 
         @Override
-        protected ListCell<DshSkillSource.Repo> createListCell(JFXListView<DshSkillSource.Repo> listView) {
-            return new RepoCell(listView, getSkinnable());
+        protected ListCell<DshSkillSource.Offering> createListCell(
+                JFXListView<DshSkillSource.Offering> listView) {
+            return new OfferingCell(listView, getSkinnable());
+        }
+
+        /// Replaces what an empty list says.
+        ///
+        /// Kept here because the placeholder belongs to the list view, and the page has
+        /// two different things to say with it: nothing searched for yet, and nothing
+        /// found.
+        ///
+        /// @param message the placeholder
+        void placeholder(String message) {
+            setPlaceholder(message);
         }
     }
 
-    /// One repository in the list.
+    /// One skill in the list.
     ///
-    /// The shape is the original's download row: a mark, the name with its description
-    /// beneath, and the action on the trailing edge.
-    private static final class RepoCell extends MDListCell<DshSkillSource.Repo> {
-        /// The page whose actions the row's button runs.
+    /// The shape is the original's download row: a mark, the name with what it belongs to
+    /// beneath, and the actions on the trailing edge. Two actions rather than one,
+    /// because a skill can be installed or kept, and the two are not the same act.
+    private static final class OfferingCell extends MDListCell<DshSkillSource.Offering> {
+        /// The page whose actions the row's buttons run.
         private final SkillMarketPage page;
 
-        /// The repository's mark.
+        /// The skill's mark.
         private final ImageContainer icon = new ImageContainer(32);
 
-        /// The name, description and star count.
+        /// The name, source and install count.
         private final TwoLineListItem content = new TwoLineListItem();
 
-        /// The button that opens the repository's packs.
-        private final JFXButton open = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
+        /// The button that saves the skill as an archive.
+        private final JFXButton download = FXUtils.newToggleButton4(SVG.ARCHIVE);
+
+        /// The button that installs the skill into the instance.
+        private final JFXButton install = FXUtils.newToggleButton4(SVG.ADD);
 
         /// Creates the cell.
         ///
         /// @param listView the owning list
-        /// @param page     the page the row's action belongs to
-        RepoCell(JFXListView<DshSkillSource.Repo> listView, SkillMarketPage page) {
+        /// @param page     the page the row's actions belong to
+        OfferingCell(JFXListView<DshSkillSource.Offering> listView, SkillMarketPage page) {
             super(listView);
             this.page = page;
 
@@ -257,89 +291,26 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Repo> imp
             setSelectable();
 
             icon.setImage(org.jackhuang.hmcl.dsh.DshInstanceIcon.COMMAND.load());
-            FXUtils.installFastTooltip(open, i18n("dsh.skills.market.open"));
-            container.getChildren().setAll(icon, content, open);
+            FXUtils.installFastTooltip(download, i18n("dsh.skills.market.save"));
+            FXUtils.installFastTooltip(install, i18n("dsh.skills.market.install"));
+
+            container.getChildren().setAll(icon, content, download, install);
             StackPane.setMargin(container, new Insets(8));
             getContainer().getChildren().setAll(container);
         }
 
         @Override
-        protected void updateControl(@Nullable DshSkillSource.Repo repo, boolean empty) {
-            if (empty || repo == null) {
+        protected void updateControl(@Nullable DshSkillSource.Offering offering, boolean empty) {
+            if (empty || offering == null) {
                 return;
             }
-            content.setTitle(repo.fullName());
-            content.setSubtitle(repo.description());
+            content.setTitle(offering.name());
+            content.setSubtitle(offering.source());
             content.getTags().clear();
-            content.addTag(i18n("dsh.skills.market.stars", String.valueOf(repo.stars())));
+            content.addTag(i18n("dsh.skills.market.installs", String.valueOf(offering.installs())));
 
-            open.setOnAction(event -> page.showBundles(repo));
-            setOnMouseClicked(event -> page.showBundles(repo));
-        }
-    }
-
-    /// Offers the packs one repository holds.
-    ///
-    /// A dialog rather than a page of its own: a repository's packs are a short list and
-    /// the choice is one or a few of them. They are ticked rather than clicked so that
-    /// one install run covers a person who wants three.
-    private static final class BundleDialog extends JFXDialogLayout {
-        /// Creates the dialog.
-        ///
-        /// @param page    the page the install belongs to
-        /// @param repo    the repository being offered
-        /// @param bundles the packs it holds
-        BundleDialog(SkillMarketPage page, DshSkillSource.Repo repo, List<DshSkillSource.Bundle> bundles) {
-            Label title = new Label(repo.fullName());
-            title.getStyleClass().add("title");
-            setHeading(title);
-
-            VBox rows = new VBox(4);
-            List<JFXCheckBox> boxes = new ArrayList<>();
-            for (DshSkillSource.Bundle bundle : bundles) {
-                JFXCheckBox box = new JFXCheckBox();
-                box.setSelected(true);
-                boxes.add(box);
-
-                Label name = new Label(bundle.name());
-                Label path = new Label(bundle.path().isEmpty() ? repo.fullName() : bundle.path());
-                path.getStyleClass().add("subtitle");
-                VBox text = new VBox(name, path);
-                HBox.setHgrow(text, Priority.ALWAYS);
-
-                HBox row = new HBox(8, box, text);
-                row.setAlignment(Pos.CENTER_LEFT);
-                rows.getChildren().add(row);
-            }
-
-            ScrollPane scroll = new ScrollPane(rows);
-            scroll.setFitToWidth(true);
-            scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-            scroll.setPrefViewportHeight(Math.min(400, bundles.size() * 56 + 16));
-            // After the content, never before: the original's smooth scrolling wraps the
-            // scroll pane's own skin, and a pane with no content yet has none.
-            FXUtils.smoothScrolling(scroll);
-            setBody(scroll);
-
-            JFXButton install = new JFXButton();
-            install.getStyleClass().add("dialog-accept");
-            install.setText(i18n("dsh.skills.market.install_selected"));
-            install.setOnAction(event -> {
-                List<DshSkillSource.Bundle> chosen = new ArrayList<>();
-                for (int i = 0; i < boxes.size(); i++) {
-                    if (boxes.get(i).isSelected()) {
-                        chosen.add(bundles.get(i));
-                    }
-                }
-                if (!chosen.isEmpty()) {
-                    fireEvent(new DialogCloseEvent());
-                    page.install(chosen);
-                }
-            });
-            JFXButton close = new JFXButton();
-            close.setText(i18n("button.cancel"));
-            close.setOnAction(event -> fireEvent(new DialogCloseEvent()));
-            getActions().setAll(install, close);
+            download.setOnAction(event -> page.save(offering));
+            install.setOnAction(event -> page.install(offering));
         }
     }
 }

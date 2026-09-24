@@ -79,6 +79,95 @@ public final class DshSkillSource {
     public record Bundle(Repo repo, String path, String name) {
     }
 
+    /// One skill as the community's own index lists it.
+    ///
+    /// The id is what the registry knows a skill by, {@code owner/repo/skill}; the source
+    /// is the repository it lives in and the name is its directory there. Installs is the
+    /// registry's own count, which is the only popularity signal it publishes.
+    ///
+    /// @param id       the registry's identifier
+    /// @param source   the repository, as {@code owner/name}
+    /// @param name     the skill's directory in that repository
+    /// @param installs how many times the registry has seen it installed
+    public record Offering(String id, String source, String name, int installs) {
+    }
+
+    /// The community's index of published skills.
+    private static final String REGISTRY = "https://skills.sh";
+
+    /// The shortest query the registry answers.
+    private static final int SHORTEST_QUERY = 2;
+
+    /// Searches the community's registry.
+    ///
+    /// This is the catalogue the launcher would otherwise have to maintain: it indexes
+    /// skills rather than repositories, so a result is one skill and not a repository
+    /// that may hold twenty, and it carries an install count, which is the ordering a
+    /// person browsing actually wants. A query shorter than the registry's minimum is
+    /// answered with nothing rather than with an error — an empty search field is not a
+    /// mistake.
+    ///
+    /// @param query what to search for
+    /// @param limit the greatest number of skills to return
+    /// @return the skills, as the registry ranked them
+    /// @throws DshException when the registry cannot be read
+    public static @Unmodifiable List<Offering> find(String query, int limit) throws DshException {
+        if (query == null || query.trim().length() < SHORTEST_QUERY) {
+            return List.of();
+        }
+        JsonObject root = get(REGISTRY + "/api/search?q=" + encode(query.trim()) + "&limit=" + limit);
+        JsonArray skills = root.getAsJsonArray("skills");
+        if (skills == null) {
+            throw new DshException("The skill registry answered with no list", null);
+        }
+        List<Offering> offerings = new ArrayList<>();
+        for (JsonElement element : skills) {
+            JsonObject object = element.getAsJsonObject();
+            String id = string(object, "id");
+            String source = string(object, "source");
+            String name = orEmpty(string(object, "skillId"));
+            if (id == null || source == null || name.isEmpty()) {
+                continue;
+            }
+            offerings.add(new Offering(id, source, name, integer(object, "installs")));
+        }
+        LOG.info("The registry answered " + offerings.size() + " skills for " + query);
+        return List.copyOf(offerings);
+    }
+
+    /// Finds where in its repository a registry entry lives.
+    ///
+    /// The registry names the repository and the skill's directory but not the path to
+    /// it, because a collection is free to file its skills wherever it likes. One tree
+    /// listing settles it, asked at HEAD so that the default branch does not have to be
+    /// looked up first.
+    ///
+    /// @param offering the entry to locate
+    /// @return the pack
+    /// @throws DshException when the repository cannot be listed, or holds no such skill
+    public static Bundle resolve(Offering offering) throws DshException {
+        // The default branch has to be the real name and not HEAD: the tree listing
+        // accepts HEAD, but the archive host does not, and a bundle that carries a branch
+        // nothing can download is a trap for whoever holds it next.
+        JsonObject repo = get(API + "/repos/" + offering.source());
+        String branch = string(repo, "default_branch");
+        if (branch == null) {
+            throw new DshException("GitHub did not say which branch " + offering.source() + " uses", null);
+        }
+        List<Bundle> bundles = bundles(new Repo(offering.source(), "", 0, branch));
+        for (Bundle bundle : bundles) {
+            if (bundle.name().equals(offering.name())) {
+                return bundle;
+            }
+        }
+        for (Bundle bundle : bundles) {
+            if (bundle.path().endsWith("/" + offering.name())) {
+                return bundle;
+            }
+        }
+        throw new DshException(offering.source() + " holds no skill called " + offering.name());
+    }
+
     /// Searches the repositories published under the agent-skills topic.
     ///
     /// @param query extra words to narrow the search, or an empty string for the topic
@@ -166,6 +255,59 @@ public final class DshSkillSource {
     /// @return the installed skill
     /// @throws DshException when the pack cannot be fetched, or is not one
     public static DshSkill install(Path home, Bundle bundle, Consumer<String> report) throws DshException {
+        Path staging = null;
+        try {
+            staging = Files.createTempDirectory("hdsl-skill-");
+            Path pack = staging.resolve(bundle.name());
+            unpack(bundle, pack, report);
+            return DshSkills.install(home, pack);
+        } catch (IOException e) {
+            throw new DshException("Failed to fetch " + bundle.name() + " from "
+                    + bundle.repo().fullName(), e);
+        } finally {
+            if (staging != null) {
+                deleteTree(staging);
+            }
+        }
+    }
+
+    /// Saves one pack as an archive the user keeps.
+    ///
+    /// The same fetch as an install and a different ending: the files are packed back up
+    /// under one directory named after the skill, so unpacking the archive into a skills
+    /// directory is all it takes to have the skill, and a person who would rather keep it
+    /// somewhere else, read it first, or hand it to another tool can. Nothing is written
+    /// into an instance.
+    ///
+    /// @param bundle the pack to fetch
+    /// @param target the file to write
+    /// @param report told the name of each file as it is unpacked
+    /// @throws DshException when the pack cannot be fetched or the archive written
+    public static void download(Bundle bundle, Path target, Consumer<String> report) throws DshException {
+        Path staging = null;
+        try {
+            staging = Files.createTempDirectory("hdsl-skill-");
+            Path pack = staging.resolve(bundle.name());
+            unpack(bundle, pack, report);
+            archive(pack, bundle.name(), target);
+        } catch (IOException e) {
+            throw new DshException("Failed to save " + bundle.name() + " to " + target, e);
+        } finally {
+            if (staging != null) {
+                deleteTree(staging);
+            }
+        }
+    }
+
+    /// Unpacks one pack out of its repository's archive.
+    ///
+    /// @param bundle the pack
+    /// @param pack   where its files should land
+    /// @param report told the name of each file
+    /// @throws DshException when the archive cannot be read, or holds no such pack
+    /// @throws IOException  when the archive cannot be downloaded or written out
+    private static void unpack(Bundle bundle, Path pack, Consumer<String> report)
+            throws DshException, IOException {
         Repo repo = bundle.repo();
         String prefix = bundle.path().isEmpty() ? "" : bundle.path() + "/";
         // A repository that is one skill at its root may hold whole packs under it too;
@@ -179,16 +321,12 @@ public final class DshSkillSource {
             }
         }
 
-        Path staging = null;
-        Path archive = null;
+        Path archive = Files.createTempFile("hdsl-skill-", ".zip");
         try {
-            staging = Files.createTempDirectory("hdsl-skill-");
-            archive = Files.createTempFile("hdsl-skill-", ".zip");
             report.accept(repo.fullName());
             Files.write(archive, getBytes("https://codeload.github.com/" + repo.fullName()
                     + "/zip/refs/heads/" + encode(repo.branch())));
 
-            Path pack = staging.resolve(bundle.name());
             Files.createDirectories(pack);
             int files = 0;
             try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
@@ -222,18 +360,37 @@ public final class DshSkillSource {
                 }
             }
             if (files == 0 || !Files.isRegularFile(pack.resolve("SKILL.md"))) {
-                throw new DshException("The pack " + bundle.name() + " in "
-                        + repo.fullName() + " holds no SKILL.md");
+                throw new DshException("The pack " + bundle.name() + " in " + repo.fullName()
+                        + " holds no SKILL.md");
             }
-            return DshSkills.install(home, pack);
-        } catch (IOException e) {
-            throw new DshException("Failed to fetch " + bundle.name() + " from " + repo.fullName(), e);
         } finally {
-            if (archive != null) {
-                deleteTree(archive);
-            }
-            if (staging != null) {
-                deleteTree(staging);
+            deleteTree(archive);
+        }
+    }
+
+    /// Writes a directory into an archive whose entries all sit under one name.
+    ///
+    /// @param pack   the directory
+    /// @param name   the directory name every entry is prefixed with
+    /// @param target the file to write
+    /// @throws IOException when the archive cannot be written
+    private static void archive(Path pack, String name, Path target) throws IOException {
+        Path parent = target.toAbsolutePath().getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(
+                new java.io.BufferedOutputStream(Files.newOutputStream(target)))) {
+            try (java.util.stream.Stream<Path> walk = Files.walk(pack)) {
+                for (Path path : walk.sorted().toList()) {
+                    if (Files.isDirectory(path)) {
+                        continue;
+                    }
+                    zip.putNextEntry(new java.util.zip.ZipEntry(
+                            name + "/" + pack.relativize(path).toString().replace('\\', '/')));
+                    Files.copy(path, zip);
+                    zip.closeEntry();
+                }
             }
         }
     }
@@ -294,7 +451,7 @@ public final class DshSkillSource {
             java.net.http.HttpResponse<byte[]> response = CLIENT.send(request,
                     java.net.http.HttpResponse.BodyHandlers.ofByteArray());
             if (response.statusCode() != OK) {
-                throw new DshException("GitHub answered " + response.statusCode() + " for " + url, null);
+                throw new DshException("The server answered " + response.statusCode() + " for " + url, null);
             }
             return response.body();
         } catch (IOException e) {

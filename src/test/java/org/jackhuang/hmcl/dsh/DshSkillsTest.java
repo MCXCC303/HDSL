@@ -126,4 +126,36 @@ class DshSkillsTest {
         DshSkills.remove(DshSkills.list(home).get(0));
         assertEquals(List.of(), DshSkills.list(home));
     }
+    @Test
+    void anArchiveIsUnpackedAndThePackInsideItIsInstalled() throws Exception {
+        Path zip = Files.createTempFile("pack", ".zip");
+        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(zip))) {
+            out.putNextEntry(new java.util.zip.ZipEntry("alpha/SKILL.md"));
+            out.write(("---" + "\n" + "name: alpha" + "\n" + "description: From an archive"
+                    + "\n" + "---" + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.closeEntry();
+            out.putNextEntry(new java.util.zip.ZipEntry("alpha/notes.txt"));
+            out.write("hi".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+
+        DshSkill installed = DshSkills.install(home, zip);
+        assertEquals("alpha", installed.name());
+        assertEquals("From an archive", installed.description());
+        assertTrue(Files.isRegularFile(DshSkills.directory(home).resolve("alpha").resolve("notes.txt")));
+    }
+
+    @Test
+    void anArchiveWithoutAPackIsRefused() throws Exception {
+        Path zip = Files.createTempFile("empty", ".zip");
+        try (java.util.zip.ZipOutputStream out = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(zip))) {
+            out.putNextEntry(new java.util.zip.ZipEntry("readme.txt"));
+            out.write("nothing".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            out.closeEntry();
+        }
+        assertThrows(DshException.class, () -> DshSkills.install(home, zip));
+        assertEquals(List.of(), DshSkills.list(home));
+    }
 }

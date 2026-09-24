@@ -88,7 +88,8 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
     /// file. Both are checked again when the pack is read, so this is only what makes the
     /// cursor say yes while the drag is over the list.
     private static final PathMatcher SKILL_PACKS = path -> Files.isDirectory(path)
-            || (path.getFileName() != null && path.getFileName().toString().endsWith(".md"));
+            || (path.getFileName() != null && (path.getFileName().toString().endsWith(".md")
+            || path.getFileName().toString().endsWith(".zip")));
 
     /// Creates the page.
     ///
@@ -243,7 +244,7 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
         javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
         chooser.setTitle(i18n("dsh.instance.skills.add"));
         chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.instance.skills.add.filter"), "*.md"));
+                i18n("dsh.instance.skills.add.filter"), "*.md", "*.zip"));
         List<java.io.File> chosen = chooser.showOpenMultipleDialog(Controllers.getStage());
         if (chosen != null) {
             addFiles(chosen.stream().map(java.io.File::toPath).toList());

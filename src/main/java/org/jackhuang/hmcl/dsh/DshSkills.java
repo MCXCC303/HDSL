@@ -219,6 +219,12 @@ public final class DshSkills {
     /// @throws DshException when the source is not a pack, has no name or description, or
     ///                       cannot be copied
     public static DshSkill install(Path home, Path source) throws DshException {
+        // An archive is what the market hands out, so what it hands out has to be
+        // something this can take back: unpacked first, then treated as the directory
+        // it contains.
+        if (Files.isRegularFile(source) && source.getFileName().toString().endsWith(".zip")) {
+            return installArchive(home, source);
+        }
         Path fileName = source.getFileName();
         boolean bundle = Files.isDirectory(source);
         Path instructions;
@@ -265,6 +271,96 @@ public final class DshSkills {
             throw new DshException("The skill pack " + target + " was copied but is not readable");
         }
         return installed;
+    }
+
+    /// Unpacks an archive and installs the pack inside it.
+    ///
+    /// What the market downloads is an archive, so an archive has to be something this
+    /// can take back: the files are unpacked into a temporary directory and then treated
+    /// as the pack directory they are, which keeps one set of rules for every way a pack
+    /// can arrive.
+    ///
+    /// @param home   the instance's DSH_HOME
+    /// @param source the archive
+    /// @return the installed skill
+    /// @throws DshException when the archive cannot be read or holds no pack
+    private static DshSkill installArchive(Path home, Path source) throws DshException {
+        Path staging;
+        try {
+            staging = Files.createTempDirectory("hdsl-skill-zip-");
+        } catch (IOException e) {
+            throw new DshException("Failed to make somewhere to unpack " + source, e);
+        }
+        try {
+            unzip(source, staging);
+            Path pack = packIn(staging);
+            if (pack == null) {
+                throw new DshException(source + " holds no skill pack: no SKILL.md in it");
+            }
+            return install(home, pack);
+        } catch (IOException e) {
+            throw new DshException("Failed to unpack " + source, e);
+        } finally {
+            try {
+                deleteTree(staging);
+            } catch (IOException ignored) {
+                // A temporary directory that cannot be removed is untidy, not a failure.
+            }
+        }
+    }
+
+    /// Writes a zip's entries under a directory.
+    ///
+    /// Entries that would land outside it are dropped rather than sanitised: an archive
+    /// is something the person downloaded, and one that tries to write above where it was
+    /// unpacked is not one to be clever about.
+    ///
+    /// @param source the archive
+    /// @param target the directory to unpack into
+    /// @throws IOException when it cannot be read or written
+    private static void unzip(Path source, Path target) throws IOException {
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                new java.io.BufferedInputStream(Files.newInputStream(source)))) {
+            for (java.util.zip.ZipEntry entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                String name = entry.getName().replace('\\', '/');
+                if (name.isEmpty() || name.startsWith("/") || name.contains("..")) {
+                    continue;
+                }
+                Path file = target.resolve(name);
+                Files.createDirectories(file.getParent());
+                Files.copy(zip, file, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    /// Returns the shallowest pack in a tree.
+    ///
+    /// An archive of one skill holds one SKILL.md; an archive of a whole collection could
+    /// hold several. The shallowest one is the pack that was asked for, because the
+    /// others are inside it.
+    ///
+    /// @param directory the unpacked tree
+    /// @return the directory holding the SKILL.md, or null when there is none
+    /// @throws IOException when the tree cannot be walked
+    private static @Nullable Path packIn(Path directory) throws IOException {
+        Path found = null;
+        int depth = Integer.MAX_VALUE;
+        try (Stream<Path> walk = Files.walk(directory)) {
+            for (Path path : walk.toList()) {
+                if (!Files.isRegularFile(path) || !INSTRUCTION.equals(path.getFileName().toString())) {
+                    continue;
+                }
+                int at = directory.relativize(path).getNameCount();
+                if (at < depth) {
+                    depth = at;
+                    found = path.getParent();
+                }
+            }
+        }
+        return found;
     }
 
     // ---- frontmatter ---------------------------------------------------------------------------
