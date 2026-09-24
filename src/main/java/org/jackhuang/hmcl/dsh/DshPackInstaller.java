@@ -638,6 +638,19 @@ public final class DshPackInstaller {
 
         Landed rest = land(archive, profiles, home,
                 java.util.EnumSet.of(Part.OVERRIDES, Part.HOME));
+
+        // A pack that both lists a plugin as a bundle and inserts it applies that plugin twice, and a
+        // plugin applied twice cannot claim its routes the second time — the profile then fails to
+        // load at all. The duplicate is taken out here: after the patch has landed, so it is the
+        // pack's own file being repaired, and before anything tries to boot the profile.
+        java.nio.file.Path patch = profiles.resolve("cordis.patch.yml");
+        java.util.List<String> keptWhole = DshProfilePatch.dropRedundantInserts(patch,
+                DshPluginInstaller.readBundles(home, instance.profile()));
+        if (!keptWhole.isEmpty()) {
+            say(report, "These are both a bundle and an insert, and carry settings that would be "
+                    + "lost if the duplicate were dropped: " + keptWhole);
+        }
+
         return new Landed(machine.files() + rest.files(), rest.overrides(), rest.home(),
                 machine.machine());
     }
