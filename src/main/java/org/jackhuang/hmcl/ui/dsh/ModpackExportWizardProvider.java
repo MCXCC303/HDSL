@@ -75,6 +75,14 @@ public final class ModpackExportWizardProvider implements WizardProvider {
     /// The key that says whether the conversations travel too.
     public static final String SESSIONS = "modpack.sessions";
 
+    /// The key the `settings.yaml` sections a pack carries are held under.
+    ///
+    /// A plugin keeps its own settings in the harness's settings file, one section per plugin, and
+    /// that is most of what "the same environment" means for it: a sidebar's custom CSS, a market's
+    /// preferences. They travel unless the person says otherwise, and the values that look like
+    /// credentials never do.
+    public static final String SETTINGS = "modpack.settings";
+
     /// The instance being exported.
     private final DshInstance instance;
 
@@ -94,6 +102,12 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         settings.put(FORMAT, FORMAT_HDSL);
         settings.put(SESSIONS, Boolean.FALSE);
         settings.put("modpack.instance", instance.id());
+        try {
+            settings.put(SETTINGS, new java.util.LinkedHashSet<>(
+                    org.jackhuang.hmcl.dsh.DshPluginSettings.sectionsOf(instance.homeDirectory())));
+        } catch (org.jackhuang.hmcl.dsh.DshException e) {
+            settings.put(SETTINGS, new java.util.LinkedHashSet<String>());
+        }
     }
 
     @Override
@@ -176,6 +190,18 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
     }
 
+    /// Reads the settings sections the person chose to carry.
+    ///
+    /// @param settings the wizard's settings
+    /// @return the names, never `null`
+    @SuppressWarnings("unchecked")
+    public static java.util.Set<String> settingsOf(
+            org.jackhuang.hmcl.util.SettingsMap settings) {
+        Object value = settings.get(SETTINGS);
+        return value instanceof java.util.Set<?> set
+                ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
+    }
+
     /// Reads the options the pages collected.
     ///
     /// @param settings the wizard's settings
@@ -190,7 +216,8 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 string(settings, URL, ""),
                 string(settings, REFERENCE_URL, ""),
                 Boolean.TRUE.equals(settings.get(SESSIONS)),
-                excludedBundlesOf(settings));
+                excludedBundlesOf(settings),
+                settingsOf(settings));
     }
 
     /// Reads a string setting.

@@ -33,6 +33,7 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshModpacks;
 import org.jackhuang.hmcl.dsh.DshPackForge;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
+import org.jackhuang.hmcl.dsh.DshPluginSettings;
 import org.jackhuang.hmcl.dsh.DshSession;
 import org.jackhuang.hmcl.dsh.DshSessions;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -67,6 +68,12 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 ///
 /// The tree is drawn the way the original draws its own: the same view, the same
 /// checkbox cell, and the same rule that a row is not selectable — only its box is.
+///
+/// One branch is not the original's: a plugin keeps its own settings in the harness's settings file,
+/// one section per plugin, and that is most of what "the same environment" means for it. The sections
+/// travel unless somebody says otherwise, and the values that look like credentials never do — which
+/// is what the branch's note says, because a person handing a pack to somebody else should be told
+/// what is in it.
 @NotNullByDefault
 public final class ModpackFilesPage extends VBox implements WizardPage {
     /// The wizard's settings.
@@ -77,6 +84,9 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
 
     /// The box for the conversations.
     private CheckBoxTreeItem<String> sessionsItem;
+
+    /// The boxes for the plugins' own settings, one per section of the harness's settings file.
+    private final List<ModpackFileTreeItem> settingsItems = new ArrayList<>();
 
     /// How many conversations the instance has.
     private int sessionCount;
@@ -168,6 +178,32 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
             configuration.getChildren().add(item);
         }
         root.getChildren().add(configuration);
+
+        // The plugins' own settings. Each section is a plugin that has been configured, so the
+        // branch is also the answer to "what have I actually set up here", which the plugin list
+        // alone does not tell anybody.
+        List<String> sections = List.of();
+        try {
+            sections = DshPluginSettings.sectionsOf(instance.homeDirectory());
+        } catch (DshException e) {
+            // Without the list the pack still carries what the wizard's settings say; this branch is
+            // how a person sees and changes it.
+        }
+        if (!sections.isEmpty()) {
+            Set<String> wanted = ModpackExportWizardProvider.settingsOf(settings);
+            ModpackFileTreeItem settingsItem = new ModpackFileTreeItem(
+                    i18n("dsh.modpack.files.settings", sections.size()),
+                    i18n("dsh.modpack.files.settings.detail"));
+            settingsItem.setExpanded(true);
+            for (String section : sections) {
+                ModpackFileTreeItem item = new ModpackFileTreeItem(section);
+                item.setSelected(wanted.isEmpty() || wanted.contains(section));
+                settingsItem.getChildren().add(item);
+                settingsItems.add(item);
+            }
+            root.getChildren().add(settingsItem);
+            follow(settingsItem);
+        }
 
         // The conversations, and the attachments that go with them.
         List<DshSession> sessions;
@@ -281,6 +317,13 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
             }
         }
         settings.put(ModpackExportWizardProvider.EXCLUDED_BUNDLES, excluded);
+        Set<String> sections = new LinkedHashSet<>();
+        for (ModpackFileTreeItem item : settingsItems) {
+            if (item.isSelected()) {
+                sections.add(item.getValue());
+            }
+        }
+        settings.put(ModpackExportWizardProvider.SETTINGS, sections);
     }
 
     @Override

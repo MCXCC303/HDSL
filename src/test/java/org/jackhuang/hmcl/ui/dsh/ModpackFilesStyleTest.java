@@ -129,6 +129,9 @@ class ModpackFilesStyleTest {
                 CheckBoxTreeItem<String> root = (CheckBoxTreeItem<String>) treeOf(page).getRoot();
 
                 CheckBoxTreeItem<String> plugins = (CheckBoxTreeItem<String>) root.getChildren().get(0);
+                // The branches are: the plugins, the configuration, and the conversations. The
+                // settings branch is only drawn when the instance has plugin settings, and this one
+                // has none.
                 CheckBoxTreeItem<String> sessions = (CheckBoxTreeItem<String>) root.getChildren().get(2);
                 assertTrue(plugins.isSelected(), "both bundles are ticked, so the branch is");
                 assertFalse(plugins.isIndeterminate());

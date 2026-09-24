@@ -172,7 +172,7 @@ class DshPluginBundleTest {
     void aBundleThePackDoesNotNameAsAPluginIsKept(@TempDir Path directory) {
         DshModpacks.Manifest pack = new DshModpacks.Manifest(DshModpacks.FORMAT, DshModpacks.FORMAT_VERSION,
                 "", "x", "v0.1.7", null, "web", List.of(), List.of("@deepseek-ai/dsh-base"), false,
-                "", "1.0", "", "", "", "", 0);
+                "", "1.0", "", "", "", "", 0, List.of(), List.of());
 
         assertEquals(List.of("@deepseek-ai/dsh-base"), DshModpacks.listsBootable(pack, json(Map.of())),
                 "the harness's own bundles are not dependencies of the profile");
@@ -181,7 +181,7 @@ class DshPluginBundleTest {
     private static DshModpacks.Manifest manifest(DshModpacks.Plugin plugin) {
         return new DshModpacks.Manifest(DshModpacks.FORMAT, DshModpacks.FORMAT_VERSION, "", "x", "v0.1.7",
                 null, "web", List.of(plugin), List.of(plugin.name()), true,
-                "", "1.0", "", "", "", "", 0);
+                "", "1.0", "", "", "", "", 0, List.of(), List.of());
     }
 
     private static com.google.gson.JsonObject json(Map<String, String> values) {

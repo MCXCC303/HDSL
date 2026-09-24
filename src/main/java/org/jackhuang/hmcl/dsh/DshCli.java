@@ -659,8 +659,14 @@ public final class DshCli {
                     }
                     java.nio.file.Path target = java.nio.file.Path.of(invocation.arguments().get(1));
                     boolean withSessions = invocation.arguments().contains("--with-sessions");
-                    DshModpacks.Options options = new DshModpacks.Options(instance.id(), "1.0", "", "",
-                            withSessions);
+                    // Everything a pack carries by default is what a person asked for by not being
+                    // asked: the plugins' own settings travel, because a pack that named a sidebar but
+                    // not the stylesheet somebody configured it with is the difference nobody notices
+                    // until they open it. The conversations are the one thing that is opt-in, because
+                    // they are the one thing that is somebody's own.
+                    DshModpacks.Options options = new DshModpacks.Options(instance.id(), "1.0", "", "", "", "",
+                            withSessions, java.util.Set.of(),
+                            DshModpacks.Options.of(instance).settings());
                     DshModpacks.ExportResult exported = DshModpacks.export(instance, target, options, out::println);
                     out.println("Wrote " + exported.plugins() + " plugin(s), " + exported.bytes() + " byte(s)");
                     return 0;

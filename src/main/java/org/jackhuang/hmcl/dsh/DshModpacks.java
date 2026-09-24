@@ -67,6 +67,12 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// resolve the whole list in one run — installing bundles one at a time would
 /// append each at the end and lose the order the pack was made with.
 ///
+/// What a plugin was *configured* with travels too: the harness keeps one section per plugin in
+/// `settings.yaml`, and that file is most of what "the same environment" means for a plugin — a
+/// sidebar's custom CSS, a market's preferences. The sections travel, the values that look like
+/// credentials do not, and a section is merged key by key into the next home so that a value the pack
+/// left out cannot delete the one that machine already had. See [DshPluginSettings].
+///
 /// A plugin the instance installed from a file is the one thing that cannot be named and fetched, so
 /// it travels as its own files and is put back into the next instance's plugin directory. That is the
 /// exception to *configuration only*, and it is a deliberate one: a pack that named a path from the
@@ -155,11 +161,15 @@ public final class DshModpacks {
     /// @param author      who made it, or an empty string
     /// @param description what it is for, or an empty string
     /// @param sessionCount how many conversations it carries, zero for none
+    /// @param settings        the `settings.yaml` sections the pack carries, in the file's order
+    /// @param settingsOmitted the `section.key` paths left out of them because they look like
+    ///                        credentials, so whoever opens the pack can see what it does not hold
     public record Manifest(String format, int version, String createdAt, String instanceId,
                            String dshVersion, @Nullable String appBoot, String profile,
                            List<Plugin> plugins, List<String> bundles, boolean hasPatch,
                            String name, String packVersion, String author, String description,
-                           String url, String referenceUrl, int sessionCount) {
+                           String url, String referenceUrl, int sessionCount,
+                           List<String> settings, List<String> settingsOmitted) {
 
         /// Returns the plugins that should be installed, in the order they are
         /// listed in.
@@ -240,9 +250,11 @@ public final class DshModpacks {
     /// @param description     what it is for
     /// @param includeSessions whether the instance's conversations travel with it
     /// @param excludedBundles the bundles the person chose to leave out
+    /// @param settings        the `settings.yaml` sections that travel: a plugin's own settings, and
+    ///                        most of what "the same environment" means for it
     public record Options(String name, String version, String author, String description,
                           String url, String referenceUrl,
-                          boolean includeSessions, Set<String> excludedBundles) {
+                          boolean includeSessions, Set<String> excludedBundles, Set<String> settings) {
         /// Returns options that carry no addresses.
         ///
         /// @param name            what the pack is called
@@ -252,7 +264,7 @@ public final class DshModpacks {
         /// @param includeSessions whether the conversations travel
         public Options(String name, String version, String author, String description,
                        boolean includeSessions) {
-            this(name, version, author, description, "", "", includeSessions, Set.of());
+            this(name, version, author, description, "", "", includeSessions, Set.of(), Set.of());
         }
 
         /// Returns options that carry every bundle.
@@ -265,10 +277,22 @@ public final class DshModpacks {
 
         /// Returns the options a pack is written with when nobody chose any.
         ///
+        /// Everything a plugin keeps in the harness's settings travels, because that is what makes a
+        /// pack an environment rather than a list of packages — and because the alternative, a pack
+        /// that names a sidebar but not the stylesheet it was configured with, is the difference
+        /// nobody notices until they open it. Values that look like credentials are removed on the
+        /// way out; see [DshPluginSettings].
+        ///
         /// @param instance the instance
         /// @return the options
         public static Options of(DshInstance instance) {
-            return new Options(instance.id(), "1.0", "", "", false);
+            Set<String> settings = Set.of();
+            try {
+                settings = new java.util.LinkedHashSet<>(DshPluginSettings.sectionsOf(instance.homeDirectory()));
+            } catch (DshException e) {
+                LOG.warning("Failed to read the settings of " + instance.id(), e);
+            }
+            return new Options(instance.id(), "1.0", "", "", "", "", false, Set.of(), settings);
         }
 
         /// Returns whether a bundle travels.
@@ -339,11 +363,25 @@ public final class DshModpacks {
                 ? DshSessions.list(instance.homeDirectory())
                 : List.of();
 
+        DshPluginSettings.Carried settings = options.settings().isEmpty()
+                ? new DshPluginSettings.Carried("", List.of(), List.of())
+                : DshPluginSettings.extract(instance.homeDirectory(), options.settings());
+        if (!settings.sections().isEmpty()) {
+            report(onStage, "Carrying the settings of " + settings.sections().size() + " plugin(s): "
+                    + String.join(", ", settings.sections()));
+        }
+        if (!settings.omitted().isEmpty()) {
+            // Named rather than counted: whoever opens the pack should be able to see what was left
+            // out, and whoever made it should be able to see that a setting did not travel.
+            report(onStage, "Left out " + settings.omitted().size() + " value(s) that look like credentials: "
+                    + String.join(", ", settings.omitted()));
+        }
+
         Manifest manifest = new Manifest(FORMAT, FORMAT_VERSION, Instant.now().toString(), instance.id(),
                 instance.version(), appBoot, instance.profile(), List.copyOf(plugins), List.copyOf(bundles),
                 hasPatch, options.name(), options.version(), options.author(), options.description(),
                 options.url(), options.referenceUrl(),
-                sessions.size());
+                sessions.size(), settings.sections(), settings.omitted());
 
         report(onStage, "Recording " + plugins.size() + " plugin(s), " + bundles.size() + " active bundle(s)");
         Path parent = target.toAbsolutePath().getParent();
@@ -362,6 +400,11 @@ public final class DshModpacks {
                             .getBytes(StandardCharsets.UTF_8);
                     zip.putNextEntry(new ZipEntry(PATCH));
                     zip.write(body);
+                    zip.closeEntry();
+                }
+                if (!settings.text().isEmpty()) {
+                    zip.putNextEntry(new ZipEntry(DshPluginSettings.ENTRY));
+                    zip.write(settings.text().getBytes(StandardCharsets.UTF_8));
                     zip.closeEntry();
                 }
                 for (DshPluginBundle.Payload payload : carried) {
@@ -540,6 +583,13 @@ public final class DshModpacks {
             writePatch(pack, patch);
         }
 
+        String settings = readSettings(pack);
+        if (!settings.isBlank()) {
+            List<String> merged = DshPluginSettings.merge(instance.homeDirectory(), settings);
+            report(onStage, "Put the pack's settings for " + merged.size() + " plugin(s) into"
+                    + " settings.yaml: " + String.join(", ", merged));
+        }
+
         if (!manifest.plugins().isEmpty() || !manifest.bundles().isEmpty()) {
             report(onStage, "Writing the pack's plugin list");
             Map<String, Path> released = releaseCarried(instance, manifest, pack, onStage);
@@ -698,7 +748,26 @@ public final class DshModpacks {
         return bootable;
     }
 
-    /// Writes a pack's patch layer into a profile.
+    /// Reads the settings a pack carries.
+    ///
+    /// @param pack the archive
+    /// @return the text, or an empty string when the pack carries none
+    /// @throws DshException when the archive cannot be read
+    private static String readSettings(Path pack) throws DshException {
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (DshPluginSettings.ENTRY.equals(entry.getName())) {
+                    return new String(zip.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        } catch (IOException e) {
+            throw new DshException("Failed to read " + pack, e);
+        }
+        return "";
+    }
+
+    /// Reads a pack's patch layer into a profile.
     ///
     /// @param pack   the archive
     /// @param target the file to write
@@ -769,7 +838,25 @@ public final class DshModpacks {
                 string(root, "description") == null ? "" : string(root, "description"),
                 string(root, "url") == null ? "" : string(root, "url"),
                 string(root, "referenceUrl") == null ? "" : string(root, "referenceUrl"),
-                integer(root, "sessionCount"));
+                integer(root, "sessionCount"), strings(root, "settings"), strings(root, "settingsOmitted"));
+    }
+
+    /// Reads an array of strings.
+    ///
+    /// @param root the object
+    /// @param name the field
+    /// @return the strings, empty when the field is absent or not an array
+    private static List<String> strings(JsonObject root, String name) {
+        List<String> values = new ArrayList<>();
+        JsonElement element = root.get(name);
+        if (element != null && element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) {
+                if (item.isJsonPrimitive() && item.getAsJsonPrimitive().isString()) {
+                    values.add(item.getAsString());
+                }
+            }
+        }
+        return List.copyOf(values);
     }
 
     /// Reports whether a declared version is really the path of a local file.
