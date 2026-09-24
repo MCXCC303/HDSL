@@ -23,7 +23,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.file.Path;
 
-/// Stores metadata about the Hello DeepSeek Launcher application and the
+/// Stores metadata about the Hello DeepSeek! Launcher application and the
 /// directories it owns.
 ///
 /// All launcher-owned data lives under a single user home so that HDSL can
@@ -38,7 +38,7 @@ public final class Metadata {
     public static final String NAME = "HDSL";
 
     /// The full product name shown in window titles.
-    public static final String FULL_NAME = "Hello DeepSeek Launcher";
+    public static final String FULL_NAME = "Hello DeepSeek! Launcher";
 
     /// The running version.
     ///

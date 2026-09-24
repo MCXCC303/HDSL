@@ -93,7 +93,7 @@ HDSL 是 HMCL 的衍生作品，欢迎提交问题与改进。
 
 1. 当你分发该程序的修改版本时，你必须以一种合理的方式修改该程序的名称或版本号，以示其与原始版本不同。（依据 [GPLv3, 7(c)](https://github.com/HMCL-dev/HMCL/blob/11820e31a85d8989e41d97476712b07e7094b190/LICENSE#L372-L374)）
 
-   本作品的名称已改为 **Hello DeepSeek Launcher（HDSL）**，版本号见 `build.gradle.kts`。
+   本作品的名称已改为 **Hello DeepSeek! Launcher（HDSL）**，版本号见 `build.gradle.kts`。
 
 2. 你不得移除该程序所显示的版权声明。（依据 [GPLv3, 7(b)](https://github.com/HMCL-dev/HMCL/blob/11820e31a85d8989e41d97476712b07e7094b190/LICENSE#L368-L370)）
 

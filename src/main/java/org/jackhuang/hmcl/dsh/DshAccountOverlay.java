@@ -129,7 +129,7 @@ public final class DshAccountOverlay {
         public Path write() throws DshException {
             String model = fallbackModel;
             StringBuilder yaml = new StringBuilder();
-            yaml.append("# Written by Hello DeepSeek Launcher for one launch; removed when it ends.\n");
+            yaml.append("# Written by Hello DeepSeek! Launcher for one launch; removed when it ends.\n");
             yaml.append("# It carries no key: the key travels in the environment as ")
                     .append(KEY_ENVIRONMENT_VARIABLE).append(".\n");
             yaml.append("- id: llm-pi-ai\n");
