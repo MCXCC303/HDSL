@@ -30,6 +30,12 @@ import org.jackhuang.hmcl.ui.animation.AnimationUtils;
 public class JFXCheckBoxSkin extends CheckBoxSkin {
     private final StackPane box = new StackPane();
     private final StackPane mark = new StackPane();
+
+    /// The bar a checkbox shows when it is neither ticked nor empty — a branch of a tree whose
+    /// children disagree. Drawn by this skin rather than by JavaFX, which has the state and no look
+    /// for it: without this the third answer was invisible, and a partly travelling branch read as
+    /// an unticked one.
+    private final StackPane indeterminateMark = new StackPane();
     private final double lineThick = 2.0;
     private final double padding = 10.0;
     private final JFXRippler rippler;
@@ -56,16 +62,31 @@ public class JFXCheckBoxSkin extends CheckBoxSkin {
         this.mark.setShape(shape);
         this.mark.setMaxSize(15.0, 12.0);
         this.mark.setStyle("-fx-background-color:-monet-on-primary; -fx-border-color:-monet-on-primary; -fx-border-width:2px;");
+        this.mark.getStyleClass().add("jfx-check-mark");
         this.mark.setVisible(false);
         this.mark.setScaleX(0.0);
         this.mark.setScaleY(0.0);
+        Region bar = new Region();
+        bar.getStyleClass().add("jfx-indeterminate-bar");
+        bar.setMinSize(10.0, 2.0);
+        bar.setPrefSize(10.0, 2.0);
+        bar.setMaxSize(10.0, 2.0);
+        // The same colour the tick is drawn in, which is what is legible on a filled box.
+        bar.setStyle("-fx-background-color: -monet-on-primary; -fx-background-radius: 1px;");
+        this.indeterminateMark.getStyleClass().add("jfx-indeterminate-mark");
+        this.indeterminateMark.getChildren().add(bar);
+        this.indeterminateMark.setMaxSize(15.0, 12.0);
+        this.indeterminateMark.setVisible(false);
+        boxContainer.getChildren().add(this.indeterminateMark);
         boxContainer.getChildren().add(this.mark);
         this.container.getChildren().add(this.rippler);
         AnchorPane.setRightAnchor(this.rippler, this.labelOffset);
         control.selectedProperty().addListener((o, oldVal, newVal) -> {
             this.updateRippleColor();
             this.playSelectAnimation(newVal);
+            this.updateIndeterminate();
         });
+        control.indeterminateProperty().addListener((o, oldVal, newVal) -> this.updateIndeterminate());
 
         ReadOnlyBooleanProperty focusVisibleProperty = FXUtils.focusVisibleProperty(control);
         if (focusVisibleProperty == null)
@@ -102,15 +123,28 @@ public class JFXCheckBoxSkin extends CheckBoxSkin {
 
     private void updateColors() {
         var control = (JFXCheckBox) getSkinnable();
-        boolean isSelected = control.isSelected();
-        JFXNodeUtils.updateBackground(box.getBackground(), box, isSelected ? control.getCheckedColor() : Color.TRANSPARENT);
-        rippler.setRipplerFill(isSelected ? control.getCheckedColor() : control.getUnCheckedColor());
+        // A partly ticked box is filled like a ticked one: what distinguishes it is the bar the tick
+        // gives way to, not the colour of the box.
+        boolean filled = control.isSelected() || control.isIndeterminate();
+        JFXNodeUtils.updateBackground(box.getBackground(), box, filled ? control.getCheckedColor() : Color.TRANSPARENT);
+        rippler.setRipplerFill(filled ? control.getCheckedColor() : control.getUnCheckedColor());
         final BorderStroke borderStroke = box.getBorder().getStrokes().get(0);
         box.setBorder(new Border(new BorderStroke(
-                isSelected ? control.getCheckedColor() : Themes.getColorScheme().getOnSurfaceVariant(),
+                filled ? control.getCheckedColor() : Themes.getColorScheme().getOnSurfaceVariant(),
                 borderStroke.getTopStyle(),
                 borderStroke.getRadii(),
                 borderStroke.getWidths())));
+    }
+
+    /// Shows the bar, and hides the tick, while the box is partly ticked.
+    ///
+    /// The state is the checkbox's rather than the tree's, so anything that sets `indeterminate` —
+    /// a tree branch whose children disagree, or a caller with a third answer — is drawn the same.
+    private void updateIndeterminate() {
+        boolean indeterminate = getSkinnable().isIndeterminate();
+        indeterminateMark.setVisible(indeterminate);
+        mark.setVisible(getSkinnable().isSelected() && !indeterminate);
+        updateColors();
     }
 
     protected void updateChildren() {
@@ -174,7 +208,8 @@ public class JFXCheckBoxSkin extends CheckBoxSkin {
         JFXCheckBox control = (JFXCheckBox) this.getSkinnable();
 
         this.box.setBorder(new Border(new BorderStroke(
-                selection ? control.getCheckedColor() : Themes.getColorScheme().getOnSurfaceVariant(),
+                selection || control.isIndeterminate()
+                        ? control.getCheckedColor() : Themes.getColorScheme().getOnSurfaceVariant(),
                 BorderStrokeStyle.SOLID,
                 new CornerRadii(2.0),
                 new BorderWidths(this.lineThick))));
@@ -200,9 +235,11 @@ public class JFXCheckBoxSkin extends CheckBoxSkin {
         select.stop();
         invalid = false;
         boolean selected = getSkinnable().isSelected();
-        mark.setVisible(selected);
+        boolean indeterminate = getSkinnable().isIndeterminate();
+        mark.setVisible(selected && !indeterminate);
         mark.setScaleX(selected ? 1.0 : 0.0);
         mark.setScaleY(selected ? 1.0 : 0.0);
+        indeterminateMark.setVisible(indeterminate);
         updateColors();
     }
 
