@@ -79,6 +79,21 @@ public final class DshAccountOverlay {
             "deepseek-flash",
             "deepseek-v4-flash-vision-exp");
 
+    /// The context capacity the harness's own DeepSeek adapter gives every model it serves.
+    ///
+    /// `dsh-llm-deepseek` declares `DEFAULT_CONTEXT_WINDOW = 1_000_000` and hands it to the models
+    /// it ships. A route the launcher writes is not in that adapter's catalogue, so the harness
+    /// cannot fill this in for it. Without it `pi-ai` falls back to `DEFAULT_CONTEXT_WINDOW =
+    /// 262_144` for a model neither it nor its own catalogue sizes, which is 256 Ki where the same
+    /// model gets 1M through the harness's own route.
+    private static final int DEEPSEEK_CONTEXT_WINDOW = 1_000_000;
+
+    /// The output cap the harness's own DeepSeek adapter gives every model it serves.
+    ///
+    /// The same mirror: `dsh-llm-deepseek` declares `DEFAULT_MAX_TOKENS = 256_000`, against
+    /// `pi-ai`'s fallback of 32_768.
+    private static final int DEEPSEEK_MAX_TOKENS = 256_000;
+
     /// An account's route, described but not yet written.
     ///
     /// The two halves of writing an overlay take very different amounts of time. Saying what the
@@ -92,25 +107,25 @@ public final class DshAccountOverlay {
         private final String fallbackModel;
         private final @Nullable String endpoint;
 
-        /// Whether the harness's own adapter for this vendor declares reasoning levels.
+        /// Whether this route is the one the harness's own DeepSeek adapter describes.
         ///
         /// A route the launcher writes is not in the harness's catalogue, so the harness cannot
-        /// fill the model's reasoning capability in itself; the launcher has to say it. For a
-        /// vendor the harness does have an adapter for, the launcher says exactly what that
-        /// adapter says, so the same model thinks the same way whichever account it is reached
-        /// through.
-        private final boolean reasoning;
+        /// fill the model's reasoning capability or its capacity in itself; the launcher has to say
+        /// both. For a vendor the harness does have an adapter for, the launcher says exactly what
+        /// that adapter says, so the same model thinks the same way and holds the same context
+        /// whichever account it is reached through.
+        private final boolean deepSeek;
 
         private @Nullable List<String> served;
 
         private Prepared(DshInstance instance, String route, String api, String fallbackModel,
-                         @Nullable String endpoint, boolean reasoning) {
+                         @Nullable String endpoint, boolean deepSeek) {
             this.instance = instance;
             this.route = route;
             this.api = api;
             this.fallbackModel = fallbackModel;
             this.endpoint = endpoint;
-            this.reasoning = reasoning;
+            this.deepSeek = deepSeek;
         }
 
         /// The route the harness will know this supplier by.
@@ -138,6 +153,27 @@ public final class DshAccountOverlay {
         /// @return the file to pass to `--patch`
         /// @throws DshException when the file cannot be written
         public Path write() throws DshException {
+            String yaml = render();
+            Path directory = directory();
+            Path file = directory.resolve("account-" + instance.id() + "-"
+                    + Long.toHexString(System.nanoTime()) + ".yml");
+            try {
+                Files.createDirectories(directory);
+                Files.writeString(file, yaml, StandardCharsets.UTF_8);
+            } catch (IOException e) {
+                throw new DshException("Failed to write the account overlay " + file, e);
+            }
+            return file;
+        }
+
+        /// Renders the overlay's text, without writing it.
+        ///
+        /// Kept apart from [`write`][#write] so a test can read exactly what a launch would put in
+        /// the file: the file itself goes to the launcher's own data directory, which is not a
+        /// test's to touch.
+        ///
+        /// @return the YAML to pass through `--patch`
+        String render() {
             String model = fallbackModel;
             StringBuilder yaml = new StringBuilder();
             yaml.append("# Written by Hello DeepSeek! Launcher for one launch; removed when it ends.\n");
@@ -151,6 +187,18 @@ public final class DshAccountOverlay {
             yaml.append("        api: ").append(api).append("\n");
             if (endpoint != null && !endpoint.isBlank()) {
                 yaml.append("        baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
+            }
+            if (deepSeek) {
+                // Provider-level, not per model. `dsh-llm-deepseek` states a `defaultContextWindow`
+                // and a `defaultMaxTokens` for the whole route, and every model it does not
+                // otherwise size takes those. `pi-ai` sizes a model from its entry, then its own
+                // catalogue, then this pair — its own fallbacks being 262_144 and 32_768. So this
+                // is what makes the same model hold the same context and answer in the same length
+                // through either route.
+                yaml.append("        defaultContextWindow: ")
+                        .append(DEEPSEEK_CONTEXT_WINDOW).append("\n");
+                yaml.append("        defaultMaxTokens: ")
+                        .append(DEEPSEEK_MAX_TOKENS).append("\n");
             }
             yaml.append("        models:\n");
             // Which models this route serves, **asked of the vendor every launch and never remembered**.
@@ -192,7 +240,7 @@ public final class DshAccountOverlay {
                     yaml.append("              - text\n");
                     yaml.append("              - image\n");
                 }
-                if (reasoning) {
+                if (deepSeek) {
                     // The harness's DeepSeek adapter offers these four levels for every model it
                     // serves, and reasoningEfforts is how a route it has never heard of says the
                     // same. Without it the model carries no reasoning metadata at all, and the
@@ -207,16 +255,7 @@ public final class DshAccountOverlay {
                 }
             }
 
-            Path directory = directory();
-            Path file = directory.resolve("account-" + instance.id() + "-"
-                    + Long.toHexString(System.nanoTime()) + ".yml");
-            try {
-                Files.createDirectories(directory);
-                Files.writeString(file, yaml.toString(), StandardCharsets.UTF_8);
-            } catch (IOException e) {
-                throw new DshException("Failed to write the account overlay " + file, e);
-            }
-            return file;
+            return yaml.toString();
         }
     }
 
@@ -242,22 +281,22 @@ public final class DshAccountOverlay {
         // cannot address. The dialog checks that before it gets here.
         return Optional.of(new Prepared(instance, account.displayName(),
                 vendor == null ? "openai-completions" : vendor.api(),
-                account.modelOrDefault(), account.endpoint(), reasons(vendor, account.endpoint())));
+                account.modelOrDefault(), account.endpoint(), isDeepSeek(vendor, account.endpoint())));
     }
 
-    /// Reports whether the harness's own adapter declares reasoning levels for this route.
+    /// Reports whether this route is the one the harness's own DeepSeek adapter describes.
     ///
     /// Only the DeepSeek adapter is mirrored, because that is the one the launcher's account
     /// plumbing is built around and the one whose models are known to think. The test is the
     /// harness's own: the vendor id, or an address under deepseek.com, which is how pi-ai decides
-    /// to speak DeepSeek's reasoning dialect. A route neither test recognises is left alone —
-    /// declaring levels for a model that has none would offer a control that does not work, which
-    /// is worse than offering none.
+    /// to speak DeepSeek's dialect. A route neither test recognises is left alone — declaring
+    /// reasoning levels for a model that has none would offer a control that does not work, and
+    /// claiming a capacity it does not have could let a request overrun it.
     ///
     /// @param vendor   the route's vendor, or null
     /// @param endpoint the route's address, or null
-    /// @return whether to write reasoning levels
-    private static boolean reasons(@Nullable DshVendor vendor, @Nullable String endpoint) {
+    /// @return whether to mirror the adapter's reasoning levels and capacities
+    private static boolean isDeepSeek(@Nullable DshVendor vendor, @Nullable String endpoint) {
         if (vendor != null && "deepseek".equals(vendor.id())) {
             return true;
         }
