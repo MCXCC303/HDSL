@@ -124,7 +124,9 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         javafx.scene.control.CheckBoxTreeItem<String> root =
                 new javafx.scene.control.CheckBoxTreeItem<>(instance.id());
         root.setExpanded(true);
-        root.setSelected(true);
+        // The root is not ticked by hand: what it says is what its branches say, and that is computed
+        // at the end of this method. Setting it here is what made it read "everything travels" while
+        // a whole branch was unticked.
 
         // The plugins, one box each: a bundle somebody unticks is not in the pack and is not
         // recorded as one of its plugins.
@@ -152,7 +154,6 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         // The configuration always travels, so its boxes are there to be seen rather than used.
         javafx.scene.control.CheckBoxTreeItem<String> configuration =
                 new javafx.scene.control.CheckBoxTreeItem<>(i18n("dsh.modpack.files.configuration"));
-        configuration.setSelected(true);
         for (String name : List.of("package.json", "cordis.patch.yml")) {
             javafx.scene.control.CheckBoxTreeItem<String> item =
                     new javafx.scene.control.CheckBoxTreeItem<>(name);
@@ -180,7 +181,79 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
         sessionsItem.getChildren().add(attachments);
         root.getChildren().add(sessionsItem);
 
+        // And now every branch is told what it is. JavaFX does not do this for us: a child that was
+        // already ticked when it was attached never makes its parent recompute, and a branch with one
+        // ticked child of two is drawn as fully ticked rather than as partially — which is how the
+        // page came to show "plugins" empty with every plugin ticked, and the instance ticked with a
+        // branch missing. The marks are what the person reads to know what will travel, so they are
+        // ours to keep right, here and on every change under them.
+        follow(plugins);
+        follow(configuration);
+        follow(sessionsItem);
+        refreshBranch(root);
+
         return root;
+    }
+
+    /// Makes a branch's box say what the boxes under it say, now and after every change.
+    ///
+    /// @param branch the branch
+    static void follow(javafx.scene.control.CheckBoxTreeItem<String> branch) {
+        for (javafx.scene.control.TreeItem<String> child : branch.getChildren()) {
+            if (child instanceof javafx.scene.control.CheckBoxTreeItem<String> box) {
+                box.selectedProperty().addListener((observable, was, now) -> refreshFrom(box));
+                follow(box);
+            }
+        }
+        refreshBranch(branch);
+    }
+
+    /// Refreshes a branch and every branch above it.
+    ///
+    /// @param box the box that changed
+    private static void refreshFrom(javafx.scene.control.CheckBoxTreeItem<String> box) {
+        if (box.getParent() instanceof javafx.scene.control.CheckBoxTreeItem<String> parent) {
+            refreshBranch(parent);
+            refreshFrom(parent);
+        }
+    }
+
+    /// Sets one branch's box from the boxes directly under it.
+    ///
+    /// Three answers, not two: everything under it travels, nothing does, or something in between —
+    /// and the third is the one JavaFX never draws on its own.
+    ///
+    /// **A partly ticked branch is marked and left otherwise alone.** A branch that is not independent
+    /// pushes its own `selected` down onto its children — that is what makes ticking a branch take the
+    /// plugins with it, and it is also why clearing `selected` here would untick every child under it.
+    /// So the mark is set, and `selected` is only written when the children already agree with it.
+    ///
+    /// @param branch the branch
+    static void refreshBranch(javafx.scene.control.CheckBoxTreeItem<String> branch) {
+        int travelling = 0;
+        int some = 0;
+        int boxes = 0;
+        for (javafx.scene.control.TreeItem<String> child : branch.getChildren()) {
+            if (child instanceof javafx.scene.control.CheckBoxTreeItem<String> box) {
+                boxes++;
+                boolean ticked = box.isSelected() || box.isIndeterminate();
+                if (ticked) {
+                    some++;
+                }
+                if (box.isSelected() && !box.isIndeterminate()) {
+                    travelling++;
+                }
+            }
+        }
+        if (boxes == 0) {
+            return;
+        }
+        branch.setIndeterminate(some > 0 && travelling < boxes);
+        if (travelling == boxes) {
+            branch.setSelected(true);
+        } else if (some == 0) {
+            branch.setSelected(false);
+        }
     }
 
     @Override
