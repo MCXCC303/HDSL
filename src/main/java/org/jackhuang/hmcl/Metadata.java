@@ -42,6 +42,11 @@ public final class Metadata {
 
     /// The running version.
     ///
+    /// The build script decides what this string says: a release carries the tag's
+    /// version, and anything else carries the commit it was built from, as in
+    /// `0.1.0+g1a613c5`. A package built here is therefore never mistaken for one a tag
+    /// published, which is what the window title shows.
+    ///
     /// Resolution order: an explicit override (used by `gradlew run`, which has
     /// no packaged manifest to read), then the jar manifest written by the
     /// shadow task, then a development placeholder.
