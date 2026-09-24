@@ -22,6 +22,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.IOException;
@@ -79,60 +80,198 @@ public final class DshSkillSource {
     public record Bundle(Repo repo, String path, String name) {
     }
 
-    /// One skill as the community's own index lists it.
+    /// One skill as a catalogue lists it.
     ///
-    /// The id is what the registry knows a skill by, {@code owner/repo/skill}; the source
-    /// is the repository it lives in and the name is its directory there. Installs is the
-    /// registry's own count, which is the only popularity signal it publishes.
+    /// The catalogues do not agree on what they publish, so this is their union: the
+    /// things that always exist (which catalogue, and the repository and name that
+    /// identify the skill) and the ones each fills in as it can. A catalogue that knows
+    /// where in the repository the skill sits saves the launcher the two GitHub calls a
+    /// fetch would otherwise spend finding out; one that does not is resolved then.
     ///
-    /// @param id       the registry's identifier
-    /// @param source   the repository, as {@code owner/name}
-    /// @param name     the skill's directory in that repository
-    /// @param installs how many times the registry has seen it installed
-    public record Offering(String id, String source, String name, int installs) {
+    /// @param catalog     which catalogue found it
+    /// @param id          the catalogue's own identifier
+    /// @param source      the repository, as {@code owner/name}
+    /// @param name        the skill's directory in that repository
+    /// @param description what the skill says it does, or an empty string
+    /// @param ref         the branch or tag it was indexed at, or null when unknown
+    /// @param path        the directory holding the skill, or null when unknown
+    /// @param popularity  the count the catalogue publishes: installs, or stars
+    public record Offering(String catalog, String id, String source, String name,
+                           String description, @Nullable String ref, @Nullable String path,
+                           long popularity) {
     }
 
-    /// The community's index of published skills.
-    private static final String REGISTRY = "https://skills.sh";
+    /// What a search across the catalogues found.
+    ///
+    /// @param skills   the skills, most popular first and without duplicates
+    /// @param failures the catalogues that could not be read, by name
+    public record Found(@Unmodifiable List<Offering> skills, @Unmodifiable List<String> failures) {
+    }
 
-    /// The shortest query the registry answers.
+    /// The shortest query the catalogues answer.
     private static final int SHORTEST_QUERY = 2;
 
-    /// Searches the community's registry.
+    /// Searches every catalogue and merges what they answer.
     ///
-    /// This is the catalogue the launcher would otherwise have to maintain: it indexes
-    /// skills rather than repositories, so a result is one skill and not a repository
-    /// that may hold twenty, and it carries an install count, which is the ordering a
-    /// person browsing actually wants. A query shorter than the registry's minimum is
-    /// answered with nothing rather than with an error — an empty search field is not a
-    /// mistake.
+    /// One catalogue failing is not a failed search: they are separate services with
+    /// separate quotas and separate outages, and somebody looking for a skill is better
+    /// served by the part of the answer that arrived than by an error. The names of the
+    /// ones that did not answer come back with the result so the page can say so.
+    ///
+    /// A duplicate is the same repository and the same skill name. The first catalogue to
+    /// name one keeps it, because the order is fixed and a skill listed twice is one
+    /// skill; sorting by the count each publishes is what orders the merged list.
     ///
     /// @param query what to search for
-    /// @param limit the greatest number of skills to return
-    /// @return the skills, as the registry ranked them
-    /// @throws DshException when the registry cannot be read
-    public static @Unmodifiable List<Offering> find(String query, int limit) throws DshException {
+    /// @param limit the greatest number of skills each catalogue is asked for
+    /// @return the merged skills, and the catalogues that failed
+    public static Found find(String query, int limit) {
         if (query == null || query.trim().length() < SHORTEST_QUERY) {
-            return List.of();
+            return new Found(List.of(), List.of());
         }
-        JsonObject root = get(REGISTRY + "/api/search?q=" + encode(query.trim()) + "&limit=" + limit);
-        JsonArray skills = root.getAsJsonArray("skills");
-        if (skills == null) {
-            throw new DshException("The skill registry answered with no list", null);
-        }
-        List<Offering> offerings = new ArrayList<>();
-        for (JsonElement element : skills) {
-            JsonObject object = element.getAsJsonObject();
-            String id = string(object, "id");
-            String source = string(object, "source");
-            String name = orEmpty(string(object, "skillId"));
-            if (id == null || source == null || name.isEmpty()) {
+        List<Offering> merged = new ArrayList<>();
+        List<String> failures = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (Catalog catalog : CATALOGS) {
+            List<Offering> found;
+            try {
+                found = catalog.search(query.trim(), limit);
+            } catch (DshException | RuntimeException e) {
+                LOG.warning(catalog.name() + " could not be searched", e);
+                failures.add(catalog.name());
                 continue;
             }
-            offerings.add(new Offering(id, source, name, integer(object, "installs")));
+            for (Offering offering : found) {
+                if (seen.add(offering.source() + "/" + offering.name())) {
+                    merged.add(offering);
+                }
+            }
         }
-        LOG.info("The registry answered " + offerings.size() + " skills for " + query);
-        return List.copyOf(offerings);
+        merged.sort(java.util.Comparator.comparingLong(Offering::popularity).reversed());
+        LOG.info("The catalogues answered " + merged.size() + " skills for " + query);
+        return new Found(List.copyOf(merged), List.copyOf(failures));
+    }
+
+    /// One catalogue of published skills.
+    private interface Catalog {
+        /// Returns the name this catalogue is shown and reported by.
+        ///
+        /// @return the name
+        String name();
+
+        /// Searches it.
+        ///
+        /// @param query what to search for
+        /// @param limit the greatest number of skills to return
+        /// @return the skills it lists
+        /// @throws DshException when it cannot be read
+        List<Offering> search(String query, int limit) throws DshException;
+    }
+
+    /// The catalogues searched, in the order their claims on a duplicate win.
+    private static final List<Catalog> CATALOGS = List.of(new SkillsSh(), new SkillsMp());
+
+    /// The community's own index, which counts installs.
+    private static final class SkillsSh implements Catalog {
+        /// Where it lives.
+        private static final String BASE = "https://skills.sh";
+
+        @Override
+        public String name() {
+            return "skills.sh";
+        }
+
+        @Override
+        public List<Offering> search(String query, int limit) throws DshException {
+            JsonObject root = get(BASE + "/api/search?q=" + encode(query) + "&limit=" + limit);
+            JsonArray skills = root.getAsJsonArray("skills");
+            if (skills == null) {
+                throw new DshException(BASE + " answered with no list", null);
+            }
+            List<Offering> offerings = new ArrayList<>();
+            for (JsonElement element : skills) {
+                JsonObject object = element.getAsJsonObject();
+                String id = string(object, "id");
+                String source = string(object, "source");
+                String name = orEmpty(string(object, "skillId"));
+                if (id == null || source == null || name.isEmpty()) {
+                    continue;
+                }
+                offerings.add(new Offering(name(), id, source, name, "", null, null,
+                        integer(object, "installs")));
+            }
+            return offerings;
+        }
+    }
+
+    /// The marketplace that indexes repositories and says where each skill sits.
+    private static final class SkillsMp implements Catalog {
+        /// Where it lives.
+        private static final String BASE = "https://skillsmp.com";
+
+        @Override
+        public String name() {
+            return "SkillsMP";
+        }
+
+        @Override
+        public List<Offering> search(String query, int limit) throws DshException {
+            JsonObject root = get(BASE + "/api/v1/skills/search?q=" + encode(query)
+                    + "&limit=" + limit);
+            JsonObject data = root.getAsJsonObject("data");
+            JsonArray skills = data == null ? null : data.getAsJsonArray("skills");
+            if (skills == null) {
+                throw new DshException(BASE + " answered with no list", null);
+            }
+            List<Offering> offerings = new ArrayList<>();
+            for (JsonElement element : skills) {
+                JsonObject object = element.getAsJsonObject();
+                GithubAddress where = parseGithubUrl(string(object, "githubUrl"));
+                String id = string(object, "id");
+                String name = orEmpty(string(object, "name"));
+                if (id == null || name.isEmpty() || where == null) {
+                    continue;
+                }
+                offerings.add(new Offering(name(), id, where.source(), name,
+                        orEmpty(string(object, "description")), where.ref(), where.path(),
+                        integer(object, "stars")));
+            }
+            return offerings;
+        }
+    }
+
+    /// Where a GitHub tree address points.
+    ///
+    /// @param source the repository, as {@code owner/name}
+    /// @param ref    the branch or tag
+    /// @param path   the directory in it
+    private record GithubAddress(String source, String ref, String path) {
+    }
+
+    /// Reads the repository, ref and path out of a github.com tree address.
+    ///
+    /// The marketplace publishes one, and it is worth more than it looks: it is the two
+    /// GitHub calls a fetch would otherwise spend finding out the same thing, and those
+    /// calls are limited to sixty an hour for an unauthenticated caller.
+    ///
+    /// @param url the address, or null
+    /// @return where it points, or null when it is not a tree address
+    private static @Nullable GithubAddress parseGithubUrl(@Nullable String url) {
+        if (url == null || !url.startsWith("https://github.com/")) {
+            return null;
+        }
+        String rest = url.substring("https://github.com/".length());
+        int tree = rest.indexOf("/tree/");
+        if (tree < 0) {
+            return null;
+        }
+        String source = rest.substring(0, tree);
+        String tail = rest.substring(tree + "/tree/".length());
+        int slash = tail.indexOf('/');
+        if (source.isEmpty() || slash <= 0 || slash == tail.length() - 1) {
+            return null;
+        }
+        return new GithubAddress(source, tail.substring(0, slash), tail.substring(slash + 1));
     }
 
     /// Finds where in its repository a registry entry lives.
@@ -153,6 +292,11 @@ public final class DshSkillSource {
         String branch = string(repo, "default_branch");
         if (branch == null) {
             throw new DshException("GitHub did not say which branch " + offering.source() + " uses", null);
+        }
+        // A catalogue that already said where the skill sits needs no looking up.
+        if (offering.ref() != null && offering.path() != null) {
+            return new Bundle(new Repo(offering.source(), "", 0, offering.ref()),
+                    offering.path(), offering.name());
         }
         List<Bundle> bundles = bundles(new Repo(offering.source(), "", 0, branch));
         for (Bundle bundle : bundles) {

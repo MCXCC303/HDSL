@@ -133,22 +133,25 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Offering>
 
         busy = true;
         setLoading(true);
-        CompletableFuture.supplyAsync(() -> {
-            try {
-                return DshSkillSource.find(query, LIMIT);
-            } catch (DshException e) {
-                throw new CompletionException(e);
-            }
-        }, Schedulers.io()).whenComplete((offerings, throwable) -> runInFX(() -> {
+        // A catalogue that fails is reported with the answer, not thrown: the point of
+        // asking several is that one of them being down is not a failed search.
+        CompletableFuture.supplyAsync(() -> DshSkillSource.find(query, LIMIT), Schedulers.io()).whenComplete((found, throwable) -> runInFX(() -> {
             busy = false;
             setLoading(false);
             if (throwable != null) {
-                LOG.warning("Failed to search the skill registry", causeOf(throwable));
+                LOG.warning("Failed to search the skill catalogues", causeOf(throwable));
                 setFailedReason(causeOf(throwable).getMessage());
                 return;
             }
-            getItems().setAll(offerings);
-            showPlaceholder(i18n("dsh.skills.market.empty"));
+            getItems().setAll(found.skills());
+            // A catalogue that did not answer is worth saying out loud, but a list with
+            // results in it is already the answer: the note stands in for the empty state.
+            if (!found.failures().isEmpty()) {
+                LOG.warning("These catalogues did not answer: " + found.failures());
+            }
+            showPlaceholder(found.failures().isEmpty()
+                    ? i18n("dsh.skills.market.empty")
+                    : i18n("dsh.skills.market.partial", String.join(", ", found.failures())));
         }));
     }
 
@@ -305,9 +308,11 @@ public final class SkillMarketPage extends ListPageBase<DshSkillSource.Offering>
                 return;
             }
             content.setTitle(offering.name());
-            content.setSubtitle(offering.source());
+            content.setSubtitle(offering.description().isEmpty()
+                    ? offering.source() : offering.description());
             content.getTags().clear();
-            content.addTag(i18n("dsh.skills.market.installs", String.valueOf(offering.installs())));
+            content.addTag(offering.catalog());
+            content.addTag(i18n("dsh.skills.market.popularity", String.valueOf(offering.popularity())));
 
             download.setOnAction(event -> page.save(offering));
             install.setOnAction(event -> page.install(offering));
