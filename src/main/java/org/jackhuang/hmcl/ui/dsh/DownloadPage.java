@@ -108,6 +108,12 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// as separate pages.
     private final TabHeader.Tab<PackMarketPage> packTab = new TabHeader.Tab<>("dshDownloadPacks");
 
+    /// The tab showing the community's skill packs.
+    ///
+    /// A skill pack is content for an instance, like a plugin, but it comes from a git
+    /// repository rather than a package registry, so it needs its own list.
+    private final TabHeader.Tab<SkillMarketPage> skillsTab = new TabHeader.Tab<>("dshDownloadSkills");
+
     /// The pane the two tabs are shown in.
     private final TransitionPane tabs = new TransitionPane();
 
@@ -169,7 +175,11 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
                 // files its mods under the second category.
                 .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, marketTab, i18n("dsh.download.plugins"),
-                        SVG.EXTENSION, SVG.EXTENSION_FILL);
+                        SVG.EXTENSION, SVG.EXTENSION_FILL)
+                // The book mark has no solid version in the icon set, so this entry keeps
+                // one mark either way, as the instance page's own skills entry does.
+                .addNavigationDrawerTab(tab, skillsTab, i18n("dsh.download.skills"),
+                        SVG.GLOBE_BOOK);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
@@ -229,7 +239,8 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         versionsTab.setNodeSupplier(() -> layout);
         marketTab.setNodeSupplier(PluginMarketPage::new);
         packTab.setNodeSupplier(PackMarketPage::new);
-        tab.getTabs().setAll(versionsTab, packTab, marketTab);
+        skillsTab.setNodeSupplier(SkillMarketPage::new);
+        tab.getTabs().setAll(versionsTab, packTab, marketTab, skillsTab);
         tab.select(versionsTab, false);
 
         setCenter(tabs);
@@ -247,6 +258,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
             case "versions" -> tab.select(versionsTab, false);
             case "plugins" -> tab.select(marketTab, false);
+            case "skills" -> tab.select(skillsTab, false);
             default -> {
                 return false;
             }

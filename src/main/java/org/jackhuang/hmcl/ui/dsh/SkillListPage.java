@@ -250,6 +250,13 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
         }
     }
 
+    /// Opens the page that lists the community's skill packs.
+    private void openMarket() {
+        DownloadPage page = Controllers.getDownloadPage();
+        Controllers.navigate(page);
+        page.openTab("skills");
+    }
+
     /// Opens the skills directory, making it first when the instance has none yet.
     private void reveal() {
         try {
@@ -273,6 +280,10 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
         toolbar.setButtons(
                 ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.add"), SVG.ADD, this::onAdd),
+                // The original's pack list carries a download button, which leads to what
+                // can be installed rather than to a file dialog; this is that.
+                ToolbarListPageSkin.createToolbarButton2(i18n("mods.download"), SVG.DOWNLOAD,
+                        this::openMarket),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.reveal"),
                         SVG.FOLDER_OPEN, this::reveal));
 
