@@ -599,6 +599,44 @@ public final class DshPackInstaller {
         }
     }
 
+    /// Finishes an install that a build-script question stopped, with the same promise as [#installNew].
+    ///
+    /// [#installNew] keeps the instance when pnpm asks for permission to run a package's install
+    /// scripts: the question is written into that instance's profile, and the answer has to be
+    /// written to the same one. This is the other half — the pack is put into that instance once the
+    /// answer is in — and a failure that is not another question takes the half-made instance away,
+    /// exactly as the first attempt would have.
+    ///
+    /// @param archive  the pack
+    /// @param instance the instance the question was about
+    /// @param report   receives progress lines, or `null`
+    /// @return the instance, filled in
+    /// @throws DshException when the pack cannot be installed
+    public static DshInstance finish(Path archive, DshInstance instance,
+                                     @Nullable java.util.function.Consumer<String> report)
+            throws DshException {
+        try {
+            installInto(archive, instance, report);
+            return instance;
+        } catch (DshException | RuntimeException failed) {
+            if (failed instanceof DshPluginInstaller.DshBuildScriptApprovalRequired) {
+                // Another package is waiting; the instance stays for the same reason it stayed the
+                // first time, and the next answer finishes it.
+                throw failed;
+            }
+            org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                    "Could not finish the pack in " + instance.id() + "; removing it", failed);
+            DshVersionManager.discardPartial(instance);
+            try {
+                DshInstanceManager.delete(instance.id());
+            } catch (DshException | RuntimeException cleanupFailure) {
+                org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                        "Could not remove the half-made instance " + instance.id(), cleanupFailure);
+            }
+            throw failed;
+        }
+    }
+
     /// Reports whether a name at the archive's root is one of the pack's machine files.
     ///
     /// The exporter writes by the same rule, through this same method: a file that describes the
@@ -794,9 +832,17 @@ public final class DshPackInstaller {
             installInto(archive, instance, report);
             return instance;
         } catch (DshException | RuntimeException failed) {
-            // What was made for this attempt goes away with it. A half-made instance is worse than no
-            // instance: it appears in the list, it can be launched, and it fails for a reason that is
-            // no longer on screen.
+            if (failed instanceof org.jackhuang.hmcl.dsh.DshPluginInstaller.DshBuildScriptApprovalRequired) {
+                // The one failure that must **keep** what it made. pnpm writes the packages it is
+                // waiting to be told about into the profile's own settings and refuses the install;
+                // the answer is written to that same profile by whoever asked the person, and the
+                // install then finishes the instance it already has. Removing it here would take
+                // the question away with it and the next attempt would ask it again from nothing.
+                throw failed;
+            }
+            // Every other failure takes what was made for this attempt with it. A half-made instance
+            // is worse than no instance: it appears in the list, it can be launched, and it fails
+            // for a reason that is no longer on screen.
             org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
                     "Could not install the pack into " + id + "; removing the instance made for it", failed);
             DshVersionManager.discardPartial(instance);

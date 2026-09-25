@@ -37,6 +37,7 @@ import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
@@ -224,19 +225,40 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
             installOlderFormat(archive);
             return;
         }
-        ProgressDialog.run(i18n("dsh.pack.installing", archive.getFileName().toString()), report -> {
-            DshPackInstaller.Container container = DshPackInstaller.identify(archive);
+
+        // Read and named before the dialog opens, because both have to survive a retry: the id is
+        // what the retry looks the instance up by, and a pack that cannot be read at all should say
+        // so without a progress dialog having flashed first.
+        String title = i18n("dsh.pack.installing", archive.getFileName().toString());
+        DshPackInstaller.Container container;
+        try {
+            container = DshPackInstaller.identify(archive);
+        } catch (DshException e) {
+            Controllers.dialog(e.getMessage(), title, MessageDialogPane.MessageType.ERROR);
+            return;
+        }
+        String version = container.text("dshVersion");
+        if (version == null || version.isBlank()) {
+            Controllers.dialog("这个整合包没有写明需要哪个 DeepSeek Harness 版本，"
+                    + "而必须先装好一个才能安装它", title, MessageDialogPane.MessageType.ERROR);
+            return;
+        }
+        String id = uniqueId(container.text("name"));
+        String profile = container.profileName("pack");
+
+        PluginInstalls.runCreating(title, () -> DshInstanceManager.find(id), report -> {
             report.accept("Container version " + container.containerVersion()
                     + ", manifest version " + container.manifestVersion());
 
-            String version = container.text("dshVersion");
-            if (version == null || version.isBlank()) {
-                throw new DshException("这个整合包没有写明需要哪个 DeepSeek Harness 版本，"
-                        + "而必须先装好一个才能安装它");
+            DshInstance existing = DshInstanceManager.find(id);
+            if (existing == null) {
+                DshPackInstaller.installNew(archive, id, profile, version, report::accept);
+                return;
             }
-            String id = uniqueId(container.text("name"));
-            DshPackInstaller.installNew(archive, id, container.profileName("pack"), version,
-                    report::accept);
+            // A retry after an install-script answer. The instance is the one pnpm asked about, and
+            // the question is written into its profile, so it is finished here rather than made again.
+            report.accept("Finishing " + id + " now that the install scripts are answered");
+            DshPackInstaller.finish(archive, existing, report::accept);
         }, () -> Controllers.navigate(MainPage.instance().getInstancesPage()));
     }
 
@@ -264,16 +286,33 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
     ///
     /// @param archive the pack
     private void installOlderFormat(Path archive) {
-        ProgressDialog.run(i18n("dsh.pack.installing", archive.getFileName().toString()), report -> {
-            org.jackhuang.hmcl.dsh.DshModpacks.Manifest manifest =
-                    org.jackhuang.hmcl.dsh.DshModpacks.readManifest(archive);
-            String id = uniqueId(manifest.name());
-            boolean existed = DshInstanceManager.find(id) != null;
+        String title = i18n("dsh.pack.installing", archive.getFileName().toString());
+        // Named once, outside the work: a retry after an install-script answer has to finish the
+        // instance the question was about, and an id computed again would be a second instance.
+        String id;
+        try {
+            id = uniqueId(org.jackhuang.hmcl.dsh.DshModpacks.readManifest(archive).name());
+        } catch (DshException e) {
+            Controllers.dialog(e.getMessage(), title, MessageDialogPane.MessageType.ERROR);
+            return;
+        }
+
+        // Asked once, before anything runs: the promise that a failure leaves no half-made instance
+        // behind is about what this install made, and a retry must keep it rather than mistake the
+        // instance it is finishing for one that was already there.
+        boolean existed = DshInstanceManager.find(id) != null;
+        PluginInstalls.runCreating(title, () -> DshInstanceManager.find(id), report -> {
             try {
                 report.accept("Installing " + id + " from the older pack format");
                 org.jackhuang.hmcl.dsh.DshModpacks.install(archive, id,
                         Path.of(System.getProperty("user.home")), report::accept);
             } catch (DshException | RuntimeException failed) {
+                if (failed instanceof org.jackhuang.hmcl.dsh.DshPluginInstaller
+                        .DshBuildScriptApprovalRequired) {
+                    // The question is written into this instance's profile, so the instance is the
+                    // answer's address: it stays, and the retry finishes it.
+                    throw failed;
+                }
                 org.jackhuang.hmcl.dsh.DshInstance made = DshInstanceManager.find(id);
                 if (!existed && made != null) {
                     org.jackhuang.hmcl.dsh.DshVersionManager.discardPartial(made);
