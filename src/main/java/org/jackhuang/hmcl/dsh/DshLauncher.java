@@ -321,6 +321,16 @@ public final class DshLauncher {
         }
         DshAccountOverlay.removeStale(instance.id());
 
+        // And the same contract in the home's own .env, which outlives this launch: a
+        // person who starts the harness by hand — or from the terminal this launcher opens
+        // on it — gets the answers a launcher's own launch gives. Not fatal when it cannot
+        // be written: this run already carries the values in its environment.
+        try {
+            DshAccountContract.publish(instance, account);
+        } catch (DshException e) {
+            LOG.warning("Could not write the account contract into the home of " + instance.id(), e);
+        }
+
         // What this launch is about to disturb, noted before it does. Written here, beside the
         // overlay, because both live exactly as long as the launch does.
         if (account != null && account.carriesAKey()) {
@@ -415,6 +425,11 @@ public final class DshLauncher {
         }
         environment.putAll(runtime.pathEnvironment());
         environment.putAll(DshEnvironment.of(instance));
+        // What a plugin needs to show who this instance is running as. Last, so the
+        // contract states what is rather than what somebody typed: it is a description of
+        // this launch, and a description that can be quietly overwritten is a lie waiting
+        // to happen. See DshAccountContract for the same values in the home's .env.
+        environment.putAll(DshAccountContract.values(instance, account));
 
         LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,
