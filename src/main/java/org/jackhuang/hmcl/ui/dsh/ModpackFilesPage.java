@@ -35,6 +35,7 @@ import org.jackhuang.hmcl.dsh.DshPackForge;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
 import org.jackhuang.hmcl.dsh.DshPluginSettings;
 import org.jackhuang.hmcl.dsh.DshSession;
+import org.jackhuang.hmcl.dsh.DshSkills;
 import org.jackhuang.hmcl.dsh.DshSessions;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.NoneMultipleSelectionModel;
@@ -87,6 +88,9 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
 
     /// The boxes for the plugins' own settings, one per section of the harness's settings file.
     private final List<ModpackFileTreeItem> settingsItems = new ArrayList<>();
+
+    /// The boxes for the skill packs, one per pack under the home.
+    private final List<ModpackFileTreeItem> skillsItems = new ArrayList<>();
 
     /// How many conversations the instance has.
     private int sessionCount;
@@ -203,6 +207,32 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
             }
             root.getChildren().add(settingsItem);
             follow(settingsItem);
+        }
+
+        // The skill packs. Content rather than configuration: a skill cannot be named and
+        // fetched the way a plugin can, so a pack that leaves them out cannot reproduce the
+        // instance it was made from.
+        List<String> skills = List.of();
+        try {
+            skills = DshSkills.packableNames(instance.homeDirectory());
+        } catch (DshException e) {
+            // Without the list the pack still carries what the wizard settings say; this
+            // branch is how a person sees and changes it.
+        }
+        if (!skills.isEmpty()) {
+            Set<String> wanted = ModpackExportWizardProvider.skillsOf(settings);
+            ModpackFileTreeItem skillsItem = new ModpackFileTreeItem(
+                    i18n("dsh.modpack.files.skills", skills.size()),
+                    i18n("dsh.modpack.files.skills.detail"));
+            skillsItem.setExpanded(true);
+            for (String skill : skills) {
+                ModpackFileTreeItem item = new ModpackFileTreeItem(skill);
+                item.setSelected(wanted.isEmpty() || wanted.contains(skill));
+                skillsItem.getChildren().add(item);
+                skillsItems.add(item);
+            }
+            root.getChildren().add(skillsItem);
+            follow(skillsItem);
         }
 
         // The conversations, and the attachments that go with them.
@@ -324,6 +354,13 @@ public final class ModpackFilesPage extends VBox implements WizardPage {
             }
         }
         settings.put(ModpackExportWizardProvider.SETTINGS, sections);
+        Set<String> skills = new LinkedHashSet<>();
+        for (ModpackFileTreeItem item : skillsItems) {
+            if (item.isSelected()) {
+                skills.add(item.getValue());
+            }
+        }
+        settings.put(ModpackExportWizardProvider.SKILLS, skills);
     }
 
     @Override

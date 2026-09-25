@@ -197,6 +197,8 @@ class PageStringsTest {
             "dsh.modpack.files.configuration.detail",
             "dsh.modpack.files.settings",
             "dsh.modpack.files.settings.detail",
+            "dsh.modpack.files.skills",
+            "dsh.modpack.files.skills.detail",
             "dsh.modpack.files.sessions",
             "dsh.modpack.files.sessions.count",
             "dsh.modpack.files.sessions.none",
