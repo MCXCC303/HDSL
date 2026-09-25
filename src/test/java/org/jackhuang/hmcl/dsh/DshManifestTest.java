@@ -99,6 +99,66 @@ class DshManifestTest {
                 "the override should say what was asked for, not the launcher's own version");
     }
 
+    /// The pin is read from its own entry, not from a list that merely names the package.
+    ///
+    /// `pnpm-workspace.yaml` holds both: a list of packages spelled `'@scope/name@1.2.3'` and the
+    /// `overrides:` mapping. The reader used to take the first line that contained the package name,
+    /// which is one of the list entries — and what it answered with still carried the `@` that
+    /// separated the two halves of that entry. An instance pinned that way exported a pack whose
+    /// pin was `@0.1.7-rc.1`, and installing that pack wrote a workspace file pnpm refused with
+    /// `bad indentation of a mapping entry`, because a plain scalar cannot begin with `@`.
+    @Test
+    void thePinIsReadFromItsOwnEntryAndNotFromAListOfPackages() {
+        String workspace = """
+                onlyBuiltDependencies:
+                  - '@deepseek-ai/dsh-api-job-controller@0.1.7-rc.1'
+                  - '@deepseek-ai/dsh-app-boot@0.1.7-rc.1'
+                overrides:
+                  '@deepseek-ai/dsh-app-boot': 0.1.7-rc.1
+                  '@deepseek-ai/cordis': 4.0.4
+                """;
+        assertEquals("0.1.7-rc.1", DshVersionManager.appBootPin(workspace),
+                "the list entry names the package and a version, but it is not the pin");
+
+        assertNull(DshVersionManager.appBootPin("  - '@deepseek-ai/dsh-app-boot@0.1.7-rc.1'\n"),
+                "a file that only lists the package pins nothing");
+        assertEquals("0.1.5-alpha.2", DshVersionManager.appBootPin(
+                "overrides:\n  \"@deepseek-ai/dsh-app-boot\": '0.1.5-alpha.2'\n"),
+                "quotes around either half are the spelling, not the value");
+    }
+
+    /// A value YAML would read as an indicator is quoted, and an ordinary version is not.
+    ///
+    /// The file is built by hand, so this is the one place that decides whether what it writes is
+    /// YAML at all. A package name begins with `@` and a pin may be a range or a protocol; both are
+    /// values a reader would otherwise take for syntax.
+    ///
+    /// @throws IOException  when the file cannot be read back
+    /// @throws DshException when the manifest cannot be written
+    @Test
+    void aValueYamlWouldReadAsAnIndicatorIsQuoted() throws IOException, DshException {
+        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "@0.1.7-rc.1", null,
+                DshDependencyPolicy.LATEST);
+
+        String text = Files.readString(prefix.resolve("pnpm-workspace.yaml"));
+        assertTrue(text.contains("  '@deepseek-ai/dsh-app-boot': '@0.1.7-rc.1'"),
+                "a key and a value that start with @ are both quoted, not written as syntax: " + text);
+    }
+
+    /// A version needs no quotes, so the file keeps the shape a person reads.
+    ///
+    /// @throws IOException  when the file cannot be read back
+    /// @throws DshException when the manifest cannot be written
+    @Test
+    void anOrdinaryVersionIsWrittenPlainly() throws IOException, DshException {
+        DshVersionManager.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null,
+                DshDependencyPolicy.LATEST);
+
+        String text = Files.readString(prefix.resolve("pnpm-workspace.yaml"));
+        assertTrue(text.contains(": 0.1.6-alpha.1"), "the version itself is a plain scalar");
+        assertFalse(text.contains("'0.1.6-alpha.1'"), "and is not quoted for no reason");
+    }
+
     /// The boot library is named once, even though the policy also holds it.
     ///
     /// It is one of the vendor's packages, so a policy that holds those names it — and the file then

@@ -36,6 +36,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -62,6 +64,24 @@ public final class DshVersionManager {
     /// published together, and a mismatch between them is a failure at import
     /// rather than a degradation.
     public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
+
+    /// The line that pins the boot library, as the file writes it.
+    ///
+    /// Anchored on the key rather than looked for anywhere in a line, and that is the whole point:
+    /// the workspace file also *lists* packages, in entries spelled "- '@scope/name@1.2.3'", and a
+    /// scan for the name alone reads the boot library out of one of those. What it answers with then
+    /// still carries the "@" that separated the two halves of that list entry — and that value
+    /// travels: an exported pack records it, and installing it writes a workspace file whose pin is
+    /// not a version at all, which pnpm then refuses.
+    private static final Pattern APP_BOOT_PIN = Pattern.compile(
+            "^[ \\t]*['\"]?" + Pattern.quote(APP_BOOT_PACKAGE) + "['\"]?[ \\t]*:[ \\t]*(\\S+)[ \\t]*$",
+            Pattern.MULTILINE);
+
+    /// The characters YAML reserves at the start of a plain scalar.
+    ///
+    /// A scalar beginning with one of these is an indicator to the reader rather than text, so
+    /// anything starting with one has to be quoted.
+    private static final String RESERVED_FIRST = "-?:,[]{}#&*!|>'\"%@`";
 
     /// Reports whether an instance's own DeepSeek Harness is in place.
     ///
@@ -213,8 +233,8 @@ public final class DshVersionManager {
         // launcher at one version and its boot library at another — a pairing that
         // fails at import rather than degrading. The tests cover the pair.
         StringBuilder workspace = new StringBuilder("overrides:\n");
-        overrides.forEach((name, held) -> workspace.append("  '").append(name).append("': ")
-                .append(held).append('\n'));
+        overrides.forEach((name, held) -> workspace.append("  ").append(yamlScalar(name)).append(": ")
+                .append(yamlScalar(held)).append('\n'));
 
         try {
             Files.createDirectories(prefix);
@@ -241,6 +261,26 @@ public final class DshVersionManager {
         overrides.put(APP_BOOT_PACKAGE, appBoot);
         held.forEach(overrides::putIfAbsent);
         return overrides;
+    }
+
+    /// Returns a value written so that YAML reads it back as the string it is.
+    ///
+    /// The file is built by hand rather than through an emitter, so a value that is not a plain
+    /// scalar has to be quoted here or the file stops being YAML. Both halves of an override can be
+    /// such a value: a package name starts with `@`, which YAML reserves, and a pin can be a range
+    /// or a protocol as readily as a version. One this cannot write plainly is single-quoted, which
+    /// is where a quote of its own is doubled — the one escape that style has.
+    ///
+    /// @param value the value
+    /// @return it as a YAML scalar
+    private static String yamlScalar(String value) {
+        boolean plain = !value.isEmpty()
+                && RESERVED_FIRST.indexOf(value.charAt(0)) < 0
+                && value.equals(value.trim())
+                && !value.contains(": ")
+                && !value.contains(" #")
+                && value.indexOf('\n') < 0;
+        return plain ? value : "'" + value.replace("'", "''") + "'";
     }
 
     /// Returns the dependencies to hold to the versions the harness declares.
@@ -439,6 +479,27 @@ public final class DshVersionManager {
         }
     }
 
+    /// Returns the boot library version the workspace file pins, or null when it pins none.
+    ///
+    /// The seam the reader is written against, so the parse can be tested on a file's own text
+    /// rather than through an instance that has to exist first.
+    ///
+    /// @param workspace the file's text
+    /// @return the pinned version, or null
+    static @Nullable String appBootPin(String workspace) {
+        Matcher pin = APP_BOOT_PIN.matcher(workspace);
+        if (!pin.find()) {
+            return null;
+        }
+        String version = pin.group(1).trim();
+        if (version.length() > 1
+                && (version.charAt(0) == '\'' || version.charAt(0) == '"')
+                && version.charAt(version.length() - 1) == version.charAt(0)) {
+            version = version.substring(1, version.length() - 1);
+        }
+        return version.isEmpty() ? null : version;
+    }
+
     /// Returns the boot library version an instance is held to.
     ///
     /// The pin is read back from where it was written, because that is the
@@ -459,14 +520,9 @@ public final class DshVersionManager {
         Path workspace = prefix.resolve("pnpm-workspace.yaml");
         if (Files.isRegularFile(workspace)) {
             try {
-                for (String line : Files.readAllLines(workspace)) {
-                    if (line.contains(APP_BOOT_PACKAGE)) {
-                        String version = line.substring(line.indexOf(APP_BOOT_PACKAGE) + APP_BOOT_PACKAGE.length());
-                        version = version.replaceFirst("^['\"]?\\s*:\\s*", "").trim().replaceAll("^['\"]|['\"]$", "");
-                        if (!version.isEmpty()) {
-                            return version;
-                        }
-                    }
+                String pinned = appBootPin(Files.readString(workspace));
+                if (pinned != null) {
+                    return pinned;
                 }
             } catch (IOException e) {
                 LOG.warning("Failed to read the boot library pin of " + instance.id(), e);
