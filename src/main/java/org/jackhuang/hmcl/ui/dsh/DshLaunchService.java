@@ -226,8 +226,8 @@ public final class DshLaunchService {
     /// Launches an instance in the background.
     ///
     /// When the instance becomes ready and the user has asked for it, the
-    /// browser is opened at the reported URL. Failures are surfaced through
-    /// [Controllers] rather than thrown.
+    /// browser is opened at the instance's own address. Failures are surfaced
+    /// through [Controllers] rather than thrown.
     ///
     /// @param instance the instance to launch
     /// @param onDone   invoked on the JavaFX thread once the launch settles, or `null`
@@ -395,7 +395,12 @@ public final class DshLaunchService {
                 Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
                 applyLauncherVisibility(instance.id());
                 if (settings().openBrowserOnLaunchProperty().get()) {
-                    FXUtils.openLink(url.get().toString());
+                    // The instance's own address. The address the harness printed carries the
+                    // token, and is the one to use while it is the port the instance is recorded
+                    // at; when a patch layer moved the server, sending the browser there would
+                    // key everything it stores to an origin this instance does not own. See
+                    // [DshPorts#openAddress].
+                    FXUtils.openLink(DshPorts.openAddress(instance, url.get()).toString());
                 }
             }
             // An instance that ended before ever answering is **not** reported here. The manager's
@@ -498,6 +503,27 @@ public final class DshLaunchService {
         return 0;
     }
 
+    /// Says so when the harness came up on a port other than the one it was asked for.
+    ///
+    /// The port travels to the server as `--port`, and it is what the instance is recorded at,
+    /// but inside the composition it is only the default for the `webserver` row: a patch layer
+    /// that restates that row replaces the expression that reads the flag with a literal port,
+    /// and the launcher's number is then ignored — silently, because the launch itself succeeded.
+    /// Which layer did that is not knowable from the outside, so the least the launcher can do is
+    /// say which port the instance really came up on and where the row that owns it lives.
+    ///
+    /// @param instance the instance that was launched
+    /// @param process  the process, for the port that was asked for
+    /// @param observed the port the harness reported
+    private static void reportPortDrift(DshInstance instance, DshProcess process, int observed) {
+        LOG.warning("Instance " + instance.id() + " was launched on port " + process.plan().port()
+                + ", but DeepSeek Harness is serving on " + observed
+                + ". A profile patch layer is restating the webserver row, which is the row `--port`"
+                + " is read from, so the launcher's number was ignored; look for a row with id"
+                + " \"webserver\" in " + process.plan().homeDirectory().resolve("profiles")
+                .resolve(instance.profile()).resolve("cordis.patch.yml"));
+    }
+
     /// Opens HMCL's log window on a process.
     ///
     /// The window is the original's, reused unchanged: it asks the process
@@ -527,14 +553,24 @@ public final class DshLaunchService {
             }
         }
 
-        // Remember the port an automatic instance settled on, so its next launch
-        // binds the same one. The browser interface keys session state by
-        // origin, so a moving port would let two writers reach one history.
-        if (process.state() == DshProcess.State.READY && process.plan().port() > 0) {
-            try {
-                DshPorts.remember(process.plan().instance(), process.plan().port());
-            } catch (DshException e) {
-                LOG.warning("Failed to record the port of " + process.plan().instance().id(), e);
+        // Remember the port an automatic instance settled on, so its next launch binds the same
+        // one. The browser interface keys session state by origin, so a moving port would let two
+        // writers reach one history — and the port it settled on is the one it *reported*, not the
+        // one it was asked for. A patch layer can restate the `webserver` row and take the launcher's
+        // number out of the composition entirely, and then the number it asked for is a promise it
+        // did not keep; recording what the harness said keeps the record true.
+        if (process.state() == DshProcess.State.READY) {
+            int planned = process.plan().port();
+            int observed = DshPorts.observedPort(process.webUrl().orElse(null), planned);
+            if (observed > 0) {
+                if (observed != planned) {
+                    reportPortDrift(process.plan().instance(), process, observed);
+                }
+                try {
+                    DshPorts.remember(process.plan().instance(), observed);
+                } catch (DshException e) {
+                    LOG.warning("Failed to record the port of " + process.plan().instance().id(), e);
+                }
             }
         }
     }

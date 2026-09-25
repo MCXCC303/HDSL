@@ -131,4 +131,31 @@ class DshPortsTest {
         // Only the browser surface serves HTTP, so only it takes a port.
         assertEquals(List.of(), DshSurface.ACP.arguments(39000));
     }
+
+    @Test
+    void thePortAnInstanceIsOnIsTheOneTheHarnessReported() {
+        assertEquals(3200, DshPorts.observedPort(java.net.URI.create("http://127.0.0.1:3200/?token=abc"), 3100),
+                "the printed address is what the server bound, whatever the launcher asked for");
+        assertEquals(3100, DshPorts.observedPort(null, 3100), "no address is nothing to contradict");
+        assertEquals(3100, DshPorts.observedPort(java.net.URI.create("http://127.0.0.1/"), 3100),
+                "an address with no port says nothing about which port it is");
+    }
+
+    @Test
+    void theBrowserIsSentToTheAddressTheInstanceIsRecordedAt() {
+        DshInstance fixed = instance(DshPortMode.FIXED, 3100);
+
+        assertEquals("http://127.0.0.1:3100/?token=abc",
+                DshPorts.openAddress(fixed, java.net.URI.create("http://127.0.0.1:3100/?token=abc")).toString(),
+                "the printed address carries the token, so it is used while it is the instance's own port");
+
+        // A harness that came up on another port is a different origin. A browser sent there would
+        // keep everything it stores under an address the instance is not recorded at, and lose it
+        // the day the port moves back — so the instance's own address is opened instead, plainly.
+        assertEquals("http://127.0.0.1:3100/",
+                DshPorts.openAddress(fixed, java.net.URI.create("http://127.0.0.1:3200/?token=abc")).toString(),
+                "a moved server is not where the instance is");
+        assertEquals("http://127.0.0.1:3100/", DshPorts.openAddress(fixed, null).toString(),
+                "a stopped instance has no printed address and is opened at its own");
+    }
 }

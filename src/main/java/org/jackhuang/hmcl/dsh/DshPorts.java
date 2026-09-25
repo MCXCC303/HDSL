@@ -159,6 +159,44 @@ public final class DshPorts {
         return port;
     }
 
+    /// Returns the port an instance is really serving on.
+    ///
+    /// DeepSeek Harness prints the address it bound, so the printed one is the truth and the
+    /// number the launcher asked for is only what it asked for. The two are the same thing until
+    /// a patch layer restates the `webserver` row: `--port` reaches the server through that row's
+    /// own `webStartup` expression, and a layer that replaces the row with a literal port takes
+    /// that expression away. Nothing about a launch says which of the two happened, so the
+    /// answer is read from the address rather than assumed from the request.
+    ///
+    /// @param reported the address the harness printed, or `null` when it printed none
+    /// @param planned  the port the launcher asked for
+    /// @return the port the instance is on
+    public static int observedPort(@Nullable java.net.URI reported, int planned) {
+        if (reported == null) {
+            return planned;
+        }
+        int port = reported.getPort();
+        return port > 0 ? port : planned;
+    }
+
+    /// Returns the address a browser is sent to for an instance.
+    ///
+    /// A browser keys the state it keeps by origin, and an instance's origin is the port it is
+    /// recorded at. The address the harness printed is used while it is that port, because it
+    /// carries the token a fenced release wants. When it is another port the instance's own
+    /// address is returned instead, deliberately without a token: an address on the port the
+    /// harness really bound belongs to an origin this instance is not recorded at, and a browser
+    /// sent there would leave everything it stores behind the day the port moves back.
+    ///
+    /// @param instance the instance
+    /// @param reported the address the harness printed, or `null` when it printed none
+    /// @return the address to open
+    public static java.net.URI openAddress(DshInstance instance, @Nullable java.net.URI reported) {
+        int port = instance.portOrDefault();
+        boolean servingWhereItIsRecorded = reported != null && (port <= 0 || observedPort(reported, port) == port);
+        return servingWhereItIsRecorded ? reported : java.net.URI.create("http://127.0.0.1:" + Math.max(port, 0) + "/");
+    }
+
     /// Records the port an instance settled on.
     ///
     /// Only an instance that had none is written to: a port the launcher or the

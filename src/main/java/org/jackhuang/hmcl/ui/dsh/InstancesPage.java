@@ -41,6 +41,7 @@ import javafx.util.Duration;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
+import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
@@ -396,10 +397,12 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// The address is the instance's own, not something to be looked up: its port is settled when
     /// it is created and never changes, so "open the interface" means the same address whether the
-    /// instance is running or not. A running one is asked for the address it actually bound —
-    /// which carries the trust token — and a stopped one is opened at the plain address, where the
-    /// browser says the site cannot be reached, which is the truthful answer to asking for a page
-    /// nobody is serving yet.
+    /// instance is running or not. A running one is asked for the address it actually bound, which
+    /// carries the trust token — but only while that is the instance's own port: an instance the
+    /// harness moved elsewhere, which a patch layer restating the `webserver` row can do, is still
+    /// opened at the port it is recorded at. A stopped one is opened at the plain address, where
+    /// the browser says the site cannot be reached, which is the truthful answer to asking for a
+    /// page nobody is serving yet.
     ///
     /// The item is not hidden while an instance is stopped: an address that is not answering is a
     /// different answer from a menu entry that is not there, and the second one leaves the person
@@ -407,17 +410,14 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @param instance the instance
     private void openInBrowser(DshInstance instance) {
-        java.util.Optional<DshProcess> running = DshProcessManager.find(instance.id());
-        String address = running
-                .flatMap(DshProcess::webUrl)
-                .map(java.net.URI::toString)
-                .orElseGet(() -> "http://127.0.0.1:" + instance.portOrDefault() + "/");
         if (instance.portOrDefault() <= 0) {
             Controllers.dialog(i18n("dsh.instance.port.auto.none"),
                     i18n("message.error"), MessageType.ERROR);
             return;
         }
-        FXUtils.openLink(address);
+        java.util.Optional<DshProcess> running = DshProcessManager.find(instance.id());
+        FXUtils.openLink(DshPorts.openAddress(instance,
+                running.flatMap(DshProcess::webUrl).orElse(null)).toString());
     }
 
     private void showMenu(DshInstance instance, JFXButton anchor) {
