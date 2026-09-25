@@ -113,7 +113,13 @@ public final class DshModpacks {
     /// instance's own plugin directory on install. A version 2 pack is therefore one a version 1
     /// launcher cannot install correctly: it would read the plugin as a local one it cannot fetch and
     /// leave it out, so the pack is refused instead, which is the honest answer.
-    public static final int FORMAT_VERSION = 2;
+    ///
+    /// Version 3 added the skill packs a pack carries — the skills an instance had under its
+    /// home, under `skills/`, put back into the next home on install. Skills are content rather
+    /// than configuration, which is why they are the second exception to the rule at the top of
+    /// this file: they cannot be named and fetched, so they travel as their own files. A version
+    /// 2 launcher would leave them out in silence, so a version 3 pack is refused by it instead.
+    public static final int FORMAT_VERSION = 3;
 
     /// The manifest's name inside the archive.
     public static final String MANIFEST = "manifest.json";
@@ -164,12 +170,14 @@ public final class DshModpacks {
     /// @param settings        the `settings.yaml` sections the pack carries, in the file's order
     /// @param settingsOmitted the `section.key` paths left out of them because they look like
     ///                        credentials, so whoever opens the pack can see what it does not hold
+    /// @param skills          the skill packs the pack carries, by the name each has on disk
     public record Manifest(String format, int version, String createdAt, String instanceId,
                            String dshVersion, @Nullable String appBoot, String profile,
                            List<Plugin> plugins, List<String> bundles, boolean hasPatch,
                            String name, String packVersion, String author, String description,
                            String url, String referenceUrl, int sessionCount,
-                           List<String> settings, List<String> settingsOmitted) {
+                           List<String> settings, List<String> settingsOmitted,
+                           List<String> skills) {
 
         /// Returns the plugins that should be installed, in the order they are
         /// listed in.
@@ -252,9 +260,14 @@ public final class DshModpacks {
     /// @param excludedBundles the bundles the person chose to leave out
     /// @param settings        the `settings.yaml` sections that travel: a plugin's own settings, and
     ///                        most of what "the same environment" means for it
+    /// @param skills          the skill packs that travel, by the name each has under the home's
+    ///                        skills directory; names rather than packs, so the choice is a small
+    ///                        thing to hold and is read against what is there when the pack is
+    ///                        written
     public record Options(String name, String version, String author, String description,
                           String url, String referenceUrl,
-                          boolean includeSessions, Set<String> excludedBundles, Set<String> settings) {
+                          boolean includeSessions, Set<String> excludedBundles, Set<String> settings,
+                          Set<String> skills) {
         /// Returns options that carry no addresses.
         ///
         /// @param name            what the pack is called
@@ -264,7 +277,8 @@ public final class DshModpacks {
         /// @param includeSessions whether the conversations travel
         public Options(String name, String version, String author, String description,
                        boolean includeSessions) {
-            this(name, version, author, description, "", "", includeSessions, Set.of(), Set.of());
+            this(name, version, author, description, "", "", includeSessions, Set.of(), Set.of(),
+                    Set.of());
         }
 
         /// Returns options that carry every bundle.
@@ -283,6 +297,11 @@ public final class DshModpacks {
         /// nobody notices until they open it. Values that look like credentials are removed on the
         /// way out; see [DshPluginSettings].
         ///
+        /// The same is true of the skill packs an instance has: a pack that reproduces an
+        /// environment without the skills it was set up around is missing the part that took the
+        /// longest to assemble, and a skill is content rather than configuration, so there is
+        /// nowhere else for it to come from.
+        ///
         /// @param instance the instance
         /// @return the options
         public static Options of(DshInstance instance) {
@@ -292,7 +311,14 @@ public final class DshModpacks {
             } catch (DshException e) {
                 LOG.warning("Failed to read the settings of " + instance.id(), e);
             }
-            return new Options(instance.id(), "1.0", "", "", "", "", false, Set.of(), settings);
+            Set<String> skills = Set.of();
+            try {
+                skills = new java.util.LinkedHashSet<>(DshSkills.packableNames(instance.homeDirectory()));
+            } catch (DshException e) {
+                LOG.warning("Failed to read the skills of " + instance.id(), e);
+            }
+            return new Options(instance.id(), "1.0", "", "", "", "", false, Set.of(), settings,
+                    skills);
         }
 
         /// Returns whether a bundle travels.
@@ -377,11 +403,17 @@ public final class DshModpacks {
                     + String.join(", ", settings.omitted()));
         }
 
+        // The pack carries the skill packs the options asked for and the home actually has:
+        // a name for a skill that is no longer there is not something to fail over, because the
+        // alternative is a pack that cannot be written after a skill was deleted.
+        List<DshSkill> skills = DshSkills.packable(instance.homeDirectory(), options.skills());
+        List<String> skillNames = skills.stream().map(DshSkill::fileName).toList();
+
         Manifest manifest = new Manifest(FORMAT, FORMAT_VERSION, Instant.now().toString(), instance.id(),
                 instance.version(), appBoot, instance.profile(), List.copyOf(plugins), List.copyOf(bundles),
                 hasPatch, options.name(), options.version(), options.author(), options.description(),
                 options.url(), options.referenceUrl(),
-                sessions.size(), settings.sections(), settings.omitted());
+                sessions.size(), settings.sections(), settings.omitted(), skillNames);
 
         report(onStage, "Recording " + plugins.size() + " plugin(s), " + bundles.size() + " active bundle(s)");
         Path parent = target.toAbsolutePath().getParent();
@@ -418,6 +450,12 @@ public final class DshModpacks {
                     // rules are the same either way.
                     DshSessionPacks.writeInto(zip, instance.homeDirectory(), sessions, onStage);
                     DshSessionPacks.writeAttachmentsInto(zip, instance.homeDirectory(), sessions, onStage);
+                }
+
+                if (!skills.isEmpty()) {
+                    // The layout under the home is the layout in the pack, which is what makes
+                    // restoring one a copy rather than a translation.
+                    DshSkills.writeInto(zip, skills, onStage);
                 }
                 zip.putNextEntry(new ZipEntry(MANIFEST));
                 zip.write(JsonUtils.GSON.toJson(manifest).getBytes(StandardCharsets.UTF_8));
@@ -542,6 +580,12 @@ public final class DshModpacks {
         int plugins = restoreProfile(existing, manifest, pack, onStage);
         if (manifest.sessionCount() > 0) {
             DshSessionPacks.restoreInto(pack, existing.homeDirectory(), onStage);
+        }
+        if (!manifest.skills().isEmpty()) {
+            // Content rather than configuration, so it is put back the way it came out: a copy
+            // under the home's own skills directory. The harness reads that directory when it
+            // starts, so nothing else has to be told.
+            DshSkills.restoreInto(pack, existing.homeDirectory(), onStage);
         }
         return new InstallResult(existing, !installed, plugins, manifest.bundles().size());
     }
@@ -838,7 +882,8 @@ public final class DshModpacks {
                 string(root, "description") == null ? "" : string(root, "description"),
                 string(root, "url") == null ? "" : string(root, "url"),
                 string(root, "referenceUrl") == null ? "" : string(root, "referenceUrl"),
-                integer(root, "sessionCount"), strings(root, "settings"), strings(root, "settingsOmitted"));
+                integer(root, "sessionCount"), strings(root, "settings"), strings(root, "settingsOmitted"),
+                strings(root, "skills"));
     }
 
     /// Reads an array of strings.

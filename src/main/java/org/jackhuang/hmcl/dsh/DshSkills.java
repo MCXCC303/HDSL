@@ -32,7 +32,13 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /// Reads and edits the skill packs in a DSH home.
 ///
@@ -62,6 +68,19 @@ public final class DshSkills {
 
     /// The suffix a rewrite is staged under before it replaces the file.
     private static final String STAGING = ".hdsl-skills";
+    /// The directory the harness keeps its own shipped skills in.
+    ///
+    /// It is a container one level above the packs rather than a pack, so it is not a skill
+    /// itself — but a pack must never carry it: those are the harness own copies, and
+    /// installing one machine over another is not a thing anybody asked for.
+    private static final String SYSTEM = ".system";
+
+    /// The prefix a pack writes its skill entries under.
+    ///
+    /// The layout beneath it is the home own: a directory bundle travels as its name and
+    /// then its files, a flat skill as its one .md, so restoring a pack is a copy rather
+    /// than a translation.
+    public static final String PREFIX = DIRECTORY + "/";
 
     private DshSkills() {
     }
@@ -73,6 +92,160 @@ public final class DshSkills {
     public static Path directory(Path home) {
         return home.resolve(DIRECTORY);
     }
+    /// Returns the skill packs a pack should carry.
+    ///
+    /// The harness own `.system` container is never one of them, whatever is asked for: it holds
+    /// the skills the harness ships rather than the person s, and carrying it would install one
+    /// machine s copies over another s.
+    ///
+    /// @param home   the instance s DSH_HOME
+    /// @param wanted the names to carry, matched against both the pack s own name and the name
+    ///               it has on disk
+    /// @return the packs, in the order [#list] returns them
+    /// @throws DshException when the skills cannot be read
+    public static @Unmodifiable List<DshSkill> packable(Path home, Set<String> wanted) throws DshException {
+        if (wanted.isEmpty()) {
+            return List.of();
+        }
+        List<DshSkill> chosen = new ArrayList<>();
+        for (DshSkill skill : list(home)) {
+            if (SYSTEM.equals(skill.fileName())) {
+                continue;
+            }
+            if (wanted.contains(skill.name()) || wanted.contains(skill.fileName())) {
+                chosen.add(skill);
+            }
+        }
+        return List.copyOf(chosen);
+    }
+
+    /// Returns the on-disk name of every skill a pack could carry.
+    ///
+    /// @param home the instance s DSH_HOME
+    /// @return the names, ordered as [#list] orders them
+    /// @throws DshException when the skills cannot be read
+    public static @Unmodifiable List<String> packableNames(Path home) throws DshException {
+        List<String> names = new ArrayList<>();
+        for (DshSkill skill : list(home)) {
+            if (!SYSTEM.equals(skill.fileName())) {
+                names.add(skill.fileName());
+            }
+        }
+        return List.copyOf(names);
+    }
+
+    /// Writes skill packs into an archive that is already open.
+    ///
+    /// A directory bundle travels as every file under it; a flat skill travels as its one `.md`.
+    /// Members carry [#PREFIX], which is what tells a pack s skills from its sessions.
+    ///
+    /// @param zip     the archive
+    /// @param skills  the packs to write
+    /// @param onStage receives progress lines, or `null`
+    /// @return how many files were written
+    /// @throws DshException when a pack cannot be read
+    /// @throws IOException  when the archive cannot be written
+    public static int writeInto(ZipOutputStream zip, List<DshSkill> skills,
+                                @Nullable Consumer<String> onStage) throws DshException, IOException {
+        int files = 0;
+        for (DshSkill skill : skills) {
+            if (!skill.bundle()) {
+                copyInto(zip, skill.instructions(), PREFIX + skill.fileName());
+                files++;
+                continue;
+            }
+            List<Path> tree;
+            try (Stream<Path> walk = Files.walk(skill.entry())) {
+                tree = walk.filter(Files::isRegularFile).toList();
+            } catch (IOException e) {
+                throw new DshException("Failed to read " + skill.entry(), e);
+            }
+            for (Path file : tree) {
+                String relative = skill.entry().relativize(file).toString()
+                        .replace(java.io.File.separatorChar, '/');
+                copyInto(zip, file, PREFIX + skill.fileName() + "/" + relative);
+                files++;
+            }
+        }
+        if (!skills.isEmpty()) {
+            report(onStage, "Wrote " + skills.size() + " skill pack(s), " + files + " file(s)");
+        }
+        return files;
+    }
+
+    /// Copies a pack s skill entries into a home.
+    ///
+    /// A skill the home already has is replaced: the pack is the thing being installed, and a
+    /// half-old, half-new pack is worse than either. The harness own `.system` container is
+    /// neither written nor read, and an entry that would land above the skills directory is
+    /// dropped rather than sanitised — the rule the archive import already uses.
+    ///
+    /// @param archive the archive
+    /// @param home    the DSH_HOME to read into
+    /// @param onStage receives progress lines, or `null`
+    /// @return how many files were written
+    /// @throws DshException when the archive cannot be read
+    public static int restoreInto(Path archive, Path home, @Nullable Consumer<String> onStage)
+            throws DshException {
+        Path directory = directory(home);
+        int files = 0;
+        Set<String> packs = new TreeSet<>();
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+                String name = entry.getName().replace('\\', '/');
+                if (!name.startsWith(PREFIX)) {
+                    continue;
+                }
+                String relative = name.substring(PREFIX.length());
+                if (relative.isEmpty() || relative.equals(SYSTEM) || relative.startsWith(SYSTEM + "/")) {
+                    continue;
+                }
+                if (relative.startsWith("/") || relative.contains("..")) {
+                    // An archive is something somebody handed over; one that tries to write above
+                    // where it was unpacked is not one to be clever about.
+                    continue;
+                }
+                Path target = directory.resolve(relative);
+                Files.createDirectories(target.getParent());
+                Files.copy(zip, target, StandardCopyOption.REPLACE_EXISTING);
+                packs.add(relative.contains("/") ? relative.substring(0, relative.indexOf('/')) : relative);
+                files++;
+            }
+        } catch (IOException e) {
+            throw new DshException("Failed to read " + archive, e);
+        }
+        if (files > 0) {
+            report(onStage, "Restored " + packs.size() + " skill pack(s), " + files + " file(s)");
+        }
+        return files;
+    }
+
+    /// Writes one file into an open archive under a member name.
+    ///
+    /// @param zip  the archive
+    /// @param file the file
+    /// @param name the member name
+    /// @throws IOException when the archive cannot be written
+    private static void copyInto(ZipOutputStream zip, Path file, String name) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        Files.copy(file, zip);
+        zip.closeEntry();
+    }
+
+    /// Reports a line of progress to whoever is watching.
+    ///
+    /// @param onStage the sink, or `null`
+    /// @param line    the line
+    private static void report(@Nullable Consumer<String> onStage, String line) {
+        if (onStage != null) {
+            onStage.accept(line);
+        }
+    }
+
 
     /// Lists the skill packs in a home, ordered by name.
     ///

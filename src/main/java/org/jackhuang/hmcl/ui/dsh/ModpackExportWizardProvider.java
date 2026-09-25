@@ -83,6 +83,13 @@ public final class ModpackExportWizardProvider implements WizardProvider {
     /// credentials never do.
     public static final String SETTINGS = "modpack.settings";
 
+    /// The key the skill packs a pack carries are held under.
+    ///
+    /// A skill is content rather than configuration: it cannot be named and fetched the way a
+    /// plugin can, so the only way for it to reach another instance is inside the pack. Like the
+    /// settings, they travel unless the person says otherwise.
+    public static final String SKILLS = "modpack.skills";
+
     /// The instance being exported.
     private final DshInstance instance;
 
@@ -202,6 +209,17 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
     }
 
+    /// Reads the skill packs the pages collected.
+    ///
+    /// @param settings the wizard's settings
+    /// @return the names of the skills that travel, empty for none
+    @SuppressWarnings("unchecked")
+    public static java.util.Set<String> skillsOf(org.jackhuang.hmcl.util.SettingsMap settings) {
+        Object value = settings.get(SKILLS);
+        return value instanceof java.util.Set<?> set
+                ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
+    }
+
     /// Reads the options the pages collected.
     ///
     /// @param settings the wizard's settings
@@ -217,7 +235,8 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 string(settings, REFERENCE_URL, ""),
                 Boolean.TRUE.equals(settings.get(SESSIONS)),
                 excludedBundlesOf(settings),
-                settingsOf(settings));
+                settingsOf(settings),
+                skillsOf(settings));
     }
 
     /// Reads a string setting.

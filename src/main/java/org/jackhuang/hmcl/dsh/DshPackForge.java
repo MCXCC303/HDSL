@@ -269,6 +269,19 @@ public final class DshPackForge {
     /// @param onStage  receives progress lines, or `null`
     /// @return what was written
     /// @throws DshException when the profile cannot be read, a dependency cannot be pinned, or the
+    /// Only `overrides/` is written. The container also defines `home/`, which the installer
+    /// lands at the DSH_HOME root, and that is where anything outside the profile belongs — the
+    /// skills under `skills/` among them. This writer does not produce it yet: a pack of this
+    /// launcher is made of the profile, and home-level content is a question for the format
+    /// repository rather than one to answer here alone. It is also why [DENY_PREFIXES], whose
+    /// entries are home-relative paths, matches nothing under the profile it scans today.
+    ///
+    /// @param instance the instance
+    /// @param target   the archive to create
+    /// @param options  what it should say about itself
+    /// @param onStage  receives progress lines, or `null`
+    /// @return what was written
+    /// @throws DshException when the profile cannot be read or written
     ///                      container cannot be written
     public static Result export(DshInstance instance, Path target, Options options,
                                @Nullable Consumer<String> onStage) throws DshException {

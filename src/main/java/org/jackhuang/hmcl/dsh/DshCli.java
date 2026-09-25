@@ -664,9 +664,9 @@ public final class DshCli {
                     // not the stylesheet somebody configured it with is the difference nobody notices
                     // until they open it. The conversations are the one thing that is opt-in, because
                     // they are the one thing that is somebody's own.
+                    DshModpacks.Options defaults = DshModpacks.Options.of(instance);
                     DshModpacks.Options options = new DshModpacks.Options(instance.id(), "1.0", "", "", "", "",
-                            withSessions, java.util.Set.of(),
-                            DshModpacks.Options.of(instance).settings());
+                            withSessions, java.util.Set.of(), defaults.settings(), defaults.skills());
                     DshModpacks.ExportResult exported = DshModpacks.export(instance, target, options, out::println);
                     out.println("Wrote " + exported.plugins() + " plugin(s), " + exported.bytes() + " byte(s)");
                     return 0;

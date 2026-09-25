@@ -158,4 +158,67 @@ class DshSkillsTest {
         assertThrows(DshException.class, () -> DshSkills.install(home, zip));
         assertEquals(List.of(), DshSkills.list(home));
     }
+
+    @Test
+    void aPackCarriesEverySkillFileAndSkipsTheHarnessOwn() throws Exception {
+        Path alpha = bundle("alpha", "---\nname: alpha\ndescription: First\n---\n");
+        Files.writeString(alpha.resolve("notes.txt"), "extra");
+        Files.createDirectories(alpha.resolve("assets"));
+        Files.writeString(alpha.resolve("assets").resolve("icon.png"), "png");
+        flat("beta", "---\nname: beta\ndescription: Second\n---\n");
+        Path shipped = DshSkills.directory(home).resolve(".system").resolve("shipped");
+        Files.createDirectories(shipped);
+        Files.writeString(shipped.resolve("SKILL.md"), "---\nname: shipped\ndescription: x\n---\n");
+
+        Path pack = Files.createTempFile("skills", ".zip");
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(pack))) {
+            DshSkills.writeInto(zip, DshSkills.packable(home, java.util.Set.of("alpha", "beta")), null);
+        }
+
+        java.util.Set<String> members = new java.util.TreeSet<>();
+        try (java.util.zip.ZipInputStream zip = new java.util.zip.ZipInputStream(
+                Files.newInputStream(pack))) {
+            for (java.util.zip.ZipEntry entry = zip.getNextEntry(); entry != null;
+                    entry = zip.getNextEntry()) {
+                members.add(entry.getName());
+            }
+        }
+        assertEquals(java.util.Set.of("skills/alpha/SKILL.md", "skills/alpha/notes.txt",
+                "skills/alpha/assets/icon.png", "skills/beta.md"), members,
+                "a bundle travels as every file under it and a flat skill as its one .md");
+
+        Path restored = Files.createTempDirectory("skills-restored");
+        assertEquals(4, DshSkills.restoreInto(pack, restored, null));
+        assertTrue(Files.isRegularFile(DshSkills.directory(restored).resolve("alpha")
+                .resolve("assets").resolve("icon.png")));
+        assertTrue(Files.isRegularFile(DshSkills.directory(restored).resolve("beta.md")));
+        assertFalse(Files.exists(DshSkills.directory(restored).resolve(".system")),
+                "the skills the harness ships are not the ones a person installed, so they do not travel");
+        Files.deleteIfExists(pack);
+    }
+
+    @Test
+    void restoringRefusesToWriteOutsideTheSkillsDirectory() throws Exception {
+        Path pack = Files.createTempFile("skills", ".zip");
+        try (java.util.zip.ZipOutputStream zip = new java.util.zip.ZipOutputStream(
+                Files.newOutputStream(pack))) {
+            for (String name : List.of("skills/../escaped.md", "skills/.system/shipped/SKILL.md",
+                    "skills/good.md")) {
+                zip.putNextEntry(new java.util.zip.ZipEntry(name));
+                zip.write("x".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+        }
+
+        Path target = Files.createTempDirectory("skills-restored");
+        DshSkills.restoreInto(pack, target, null);
+
+        assertTrue(Files.isRegularFile(DshSkills.directory(target).resolve("good.md")));
+        assertFalse(Files.exists(target.resolve("escaped.md")),
+                "an entry that would land above the skills directory is dropped, not sanitised");
+        assertFalse(Files.exists(DshSkills.directory(target).resolve(".system")),
+                "an archive cannot put anything into the directory the harness owns");
+        Files.deleteIfExists(pack);
+    }
 }
