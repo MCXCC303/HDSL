@@ -263,18 +263,19 @@ public final class DshPackForge {
 
     /// Writes an instance as a `.dspack`.
     ///
-    /// @param instance the instance to write
-    /// @param target   the container to create
-    /// @param options  what it should say about itself
-    /// @param onStage  receives progress lines, or `null`
-    /// @return what was written
-    /// @throws DshException when the profile cannot be read, a dependency cannot be pinned, or the
-    /// Only `overrides/` is written. The container also defines `home/`, which the installer
-    /// lands at the DSH_HOME root, and that is where anything outside the profile belongs — the
-    /// skills under `skills/` among them. This writer does not produce it yet: a pack of this
-    /// launcher is made of the profile, and home-level content is a question for the format
-    /// repository rather than one to answer here alone. It is also why [DENY_PREFIXES], whose
-    /// entries are home-relative paths, matches nothing under the profile it scans today.
+    /// Both of the container's places are used the way the specification says. The files that
+    /// describe the profile rather than override anything — `package.json`, the lock file, the
+    /// workspace file — are written at the archive root, which is where the installer copies them
+    /// **before** it resolves the dependencies; everything else goes under `overrides/`, which lands
+    /// afterwards. Writing the first group under `overrides/` as well would be a pack that installs
+    /// and then boots with none of its plugins: the resolve that installs them ran while the profile
+    /// was still empty, because the manifest it needed had not been copied yet.
+    ///
+    /// `home/` is not written. The container defines it, and the installer lands it at the DSH_HOME
+    /// root, which is where anything outside the profile belongs — the skills under `skills/` among
+    /// them. That is a question for the format repository rather than one to answer here alone, and
+    /// it is also why [DENY_PREFIXES], whose entries are home-relative paths, matches nothing under
+    /// the profile this scans today.
     ///
     /// @param instance the instance
     /// @param target   the archive to create
@@ -282,7 +283,6 @@ public final class DshPackForge {
     /// @param onStage  receives progress lines, or `null`
     /// @return what was written
     /// @throws DshException when the profile cannot be read or written
-    ///                      container cannot be written
     public static Result export(DshInstance instance, Path target, Options options,
                                @Nullable Consumer<String> onStage) throws DshException {
         Path profile = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
@@ -306,7 +306,14 @@ public final class DshPackForge {
                 put(zip, MARKER, "{\"format\":\"dspack\",\"version\":" + CONTAINER_VERSION + "}");
                 put(zip, MANIFEST, JsonUtils.GSON.toJson(manifest));
                 for (Entry entry : scan.files()) {
-                    copy(zip, profile.resolve(entry.relative()), OVERRIDES + entry.relative());
+                    // The two places are not a matter of taste: the root files are copied before the
+                    // dependency install and the overrides after it, so a manifest under
+                    // `overrides/` arrives too late to be installed from. One predicate decides
+                    // which is which, and the installer reads the archive with the same one.
+                    copy(zip, profile.resolve(entry.relative()),
+                            DshPackInstaller.isMachineFile(entry.relative())
+                                    ? entry.relative()
+                                    : OVERRIDES + entry.relative());
                 }
             }
         } catch (IOException e) {

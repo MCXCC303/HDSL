@@ -601,9 +601,15 @@ public final class DshPackInstaller {
 
     /// Reports whether a name at the archive's root is one of the pack's machine files.
     ///
+    /// The exporter writes by the same rule, through this same method: a file that describes the
+    /// profile belongs at the archive root and is copied to the destination **before** the
+    /// dependencies are resolved, and everything else belongs under `overrides/` and lands after.
+    /// A pack that put its `package.json` under `overrides/` installs and then boots with none of
+    /// its plugins, because the resolve ran while the profile was still empty.
+    ///
     /// @param name the member's name
     /// @return whether it is copied to the destination
-    private static boolean isMachineFile(String name) {
+    static boolean isMachineFile(String name) {
         return name.equals("package.json") || name.equals("pnpm-lock.yaml")
                 || name.equals("pnpm-workspace.yaml");
     }
