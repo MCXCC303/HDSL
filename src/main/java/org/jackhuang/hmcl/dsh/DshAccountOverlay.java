@@ -59,6 +59,15 @@ public final class DshAccountOverlay {
     /// key. This one is set for this child only.
     public static final String KEY_ENVIRONMENT_VARIABLE = "HDSL_LAUNCH_API_KEY";
 
+    /// The entry the harness mounts its web search under, and the plugin it names.
+    ///
+    /// Both are the harness's own: `dsh-base` inserts the row and configures it with the vendor's
+    /// environment name, so the launcher overrides a row it did not write and must name it exactly.
+    private static final String WEB_SEARCH_ENTRY = "web-search-deepseek";
+
+    /// The plugin the web search entry names.
+    private static final String WEB_SEARCH_PACKAGE = "@deepseek-ai/dsh-web-search-deepseek";
+
     /// Where overlays are written, inside the launcher's data directory.
     private static final String DIRECTORY = "launch-overlays";
 
@@ -254,6 +263,19 @@ public final class DshAccountOverlay {
                     yaml.append("              max: max\n");
                 }
             }
+
+            // And the web search, which reads the same key through a name of its own.
+            //
+            // `dsh-base` gives this row the vendor's environment name, and nothing a launcher
+            // starts an instance with sets that name: the key the launcher injects travels as
+            // `HDSL_LAUNCH_API_KEY`, which is what the route above and this row both point at.
+            // One key, two readers — and `apiKeyEnv` is a *reference*, so what is written here is
+            // the name of a variable rather than a key, which is the only thing this launcher ever
+            // writes about a key.
+            yaml.append("- id: ").append(WEB_SEARCH_ENTRY).append('\n');
+            yaml.append("  name: ").append(YamlScalar.of(WEB_SEARCH_PACKAGE)).append('\n');
+            yaml.append("  config:\n");
+            yaml.append("    apiKeyEnv: ").append(KEY_ENVIRONMENT_VARIABLE).append('\n');
 
             return yaml.toString();
         }

@@ -58,6 +58,17 @@ class DshAccountOverlayTest {
     }
 
     @Test
+    void theWebSearchIsPointedAtTheKeyTheLaunchCarries() {
+        String yaml = overlayFor("deepseek");
+
+        assertTrue(yaml.contains("- id: web-search-deepseek\n"), yaml);
+        assertTrue(yaml.contains("  name: \"@deepseek-ai/dsh-web-search-deepseek\"\n"),
+                "the harness mounts its search under a package name, which has to survive YAML: " + yaml);
+        assertTrue(yaml.contains("    apiKeyEnv: " + DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE + "\n"),
+                "the search reads the key the launcher injects, by the only name it has: " + yaml);
+    }
+
+    @Test
     void anotherVendorsRouteIsNotSizedByDeepSeeksNumbers() {
         String yaml = overlayFor("openrouter");
         assertFalse(yaml.contains("defaultContextWindow"), yaml);
