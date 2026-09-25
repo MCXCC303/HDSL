@@ -10,7 +10,10 @@ dist/
 # scratch pad, the screenshots are evidence for one review, the reference images belong to HMCL.
 .dev/
 .verify/
-docs/
+# Everything under docs/ stays out of the product except the plugin guide, which is written
+# for other people rather than for this desk.
+docs/*
+!docs/plugin-guide/
 
 # build outputs, but keep the vendored JFoenix patch base
 *.jar
