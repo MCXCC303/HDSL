@@ -47,6 +47,14 @@ public final class YamlScalar {
             "true", "false", "yes", "no", "on", "off", "y", "n",
             "null", "~", "");
 
+    /// The characters YAML reserves at the start of a plain scalar.
+    ///
+    /// A value beginning with one of these is an indicator rather than text, however ordinary the
+    /// rest of it is: `@scope/name` is a package name to a person and a parse error to YAML. The
+    /// rule is about the **first** character only, which is why it is separate from the walk in
+    /// [#isPlainlySafe]: the same characters are ordinary inside a value.
+    private static final String RESERVED_FIRST = "-?:,[]{}#&*!|>'\"%@`";
+
     /// Returns a value as a YAML scalar that reads back as exactly this text.
     ///
     /// @param value the value, or `null` for the empty string
@@ -112,6 +120,9 @@ public final class YamlScalar {
     /// @return whether it may be written unquoted
     private static boolean isPlainlySafe(String text) {
         if (text.isEmpty()) {
+            return false;
+        }
+        if (RESERVED_FIRST.indexOf(text.charAt(0)) >= 0) {
             return false;
         }
         for (int i = 0; i < text.length(); i++) {
