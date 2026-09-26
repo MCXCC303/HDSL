@@ -18,7 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import org.jackhuang.hmcl.dsh.DshAccount;
-import org.jackhuang.hmcl.dsh.DshAccountOverlay;
+import org.jackhuang.hmcl.dsh.DshAccountRoute;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshLauncher;
@@ -281,7 +281,7 @@ public final class DshLaunchService {
         // is waited for. The list marks a stage running when the task carrying it
         // becomes ready and done when that task finishes, so each step needs a
         // task of its own — which is also why asking the supplier was moved out of
-        // writing the overlay: while it is out there on the network is exactly when
+        // writing the route: while it is out there on the network is exactly when
         // there is something worth saying.
         //
         // The process is held rather than looked up again when the launch ends: an
@@ -290,7 +290,7 @@ public final class DshLaunchService {
         // at all — no log window, no dialog, nothing to look at.
         DshProcess[] started = new DshProcess[1];
         DshAccount[] chosen = new DshAccount[1];
-        DshAccountOverlay.Prepared[] overlay = new DshAccountOverlay.Prepared[1];
+        DshAccountRoute.Prepared[] route = new DshAccountRoute.Prepared[1];
 
         // Each step names the step that runs before it, and the last one carries the hint list — so
         // the executor is handed the end of the chain and works backwards through it.
@@ -304,15 +304,15 @@ public final class DshLaunchService {
         Task<Void> account = new StageTask("dsh.launch.stage.account", null, () -> {
             chosen[0] = DshAccount.forInstance(instance);
             checkAccount(instance, chosen[0]);
-            overlay[0] = DshAccountOverlay.prepare(instance, chosen[0]).orElse(null);
+            route[0] = DshAccountRoute.prepare(chosen[0]).orElse(null);
         });
         Task<Void> models = new StageTask("dsh.launch.stage.models", account, () -> {
-            if (overlay[0] != null) {
-                overlay[0].resolveModels(chosen[0]);
+            if (route[0] != null) {
+                route[0].resolveModels(chosen[0]);
             }
         });
         Task<Void> starting = new StageTask("dsh.launch.stage.starting", models, () -> {
-            DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, chosen[0], overlay[0]);
+            DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, chosen[0], route[0]);
             started[0] = DshProcessManager.launch(instance, chosen[0], plan);
         });
         Task<Void> ready = new StageTask("dsh.launch.stage.ready", starting,

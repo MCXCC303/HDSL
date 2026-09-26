@@ -64,10 +64,7 @@ public final class DshLauncher {
             Path workingDirectory,
             @Unmodifiable Map<String, String> environment,
             Path homeDirectory,
-            int port,
-            /// The account overlay this launch wrote, or `null` when there was none. Removed when
-            /// the instance stops: it belongs to one launch, not to the instance.
-            @Nullable Path accountOverlay) {
+            int port) {
 
         /// Returns the port the browser surface binds.
         ///
@@ -245,20 +242,20 @@ public final class DshLauncher {
         return plan(instance, account, null);
     }
 
-    /// Builds the launch plan for an instance, with an account whose overlay is already described.
+    /// Builds the launch plan for an instance, with an account whose route is already described.
     ///
     /// A caller that has to show the person what it is doing — the launch dialog, which names each
     /// step as it happens — describes the account itself, asks the supplier for its models, and hands
-    /// the result here. A caller with nothing to show passes `null` and the overlay is written here.
+    /// the result here. A caller with nothing to show passes `null` and the route is written here.
     ///
     /// @param instance  the instance to launch
     /// @param account   the account to hand the harness, or `null` for none
-    /// @param prepared  the described overlay, or `null` to write it in this call
+    /// @param prepared  the described route, or `null` to write it in this call
     /// @return the launch plan
     /// @throws DshException when the pinned version or runtime is missing, the
     ///                       entry script is absent, or the workspace cannot be created
     public static LaunchPlan plan(DshInstance instance, @Nullable DshAccount account,
-                                  @Nullable DshAccountOverlay.Prepared prepared)
+                                  @Nullable DshAccountRoute.Prepared prepared)
             throws DshException {
         DshNodeRuntime runtime = resolveRuntime(instance);
         // The instance runs its own copy, so there is nothing to look up: either
@@ -293,11 +290,11 @@ public final class DshLauncher {
         // same one on every launch of this instance.
         int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
 
-        // Anything a launch that was killed before it could tidy up left behind, put back first. The
-        // overlay is a file of this launcher's and the note beside it is what says the last launch
-        // never got to its own cleanup, so both are dealt with here — **before** this launch decides
-        // what to inject, and whatever kind of launch this is: one with no account tidies up after
-        // one that had a key, which is what keeps a supplier out of a launch that wants none.
+        // Anything a launch that was killed before it could tidy up left behind, put back first: the
+        // note beside the harness's own settings says the last launch never got to its own cleanup,
+        // so it is dealt with here — **before** this launch decides what to inject, and whatever kind
+        // of launch this is: one with no account tidies up after one that had a key, which is what
+        // keeps a supplier out of a launch that wants none.
         // Every name the launcher builds routes under: the accounts that carry a key, which are the
         // ones it makes a supplier for.
         java.util.List<String> accountRoutes = new java.util.ArrayList<>();
@@ -319,7 +316,6 @@ public final class DshLauncher {
             LOG.warning("Could not put back what the last launch of " + instance.id()
                     + " left in its settings", e);
         }
-        DshAccountOverlay.removeStale(instance.id());
 
         // And the same contract in the home's own .env, which outlives this launch: a
         // person who starts the harness by hand — or from the terminal this launcher opens
@@ -331,8 +327,8 @@ public final class DshLauncher {
             LOG.warning("Could not write the account contract into the home of " + instance.id(), e);
         }
 
-        // What this launch is about to disturb, noted before it does. Written here, beside the
-        // overlay, because both live exactly as long as the launch does.
+        // What this launch is about to disturb, noted before it does. Written here because it lives
+        // exactly as long as the launch does.
         if (account != null && account.carriesAKey()) {
             DshInjectedSettings.capture(instance, account.displayName(), account.key());
             // Then the profile object, so the route is one the harness's own models page can see and
@@ -340,30 +336,46 @@ public final class DshLauncher {
             // why this comes second and not before.
             try {
                 DshInjectedSettings.publish(instance, account.displayName(),
-                        DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE);
+                        DshAccountRoute.environmentVariable(account.displayName()));
             } catch (DshException e) {
                 // Not fatal: the route still works, it is only not on that page.
                 LOG.warning("Could not make " + account.displayName() + " visible on the models page", e);
             }
         }
 
-        // The account, as an overlay the harness applies over its composed tree. Written here and
-        // removed when the instance stops, so nothing of the user's own configuration is changed.
-        // A caller that described it already — so it could say so while the supplier is asked — gets
-        // its own copy written instead of a second one being made.
-        java.util.Optional<Path> accountOverlay = prepared != null
-                ? java.util.Optional.of(prepared.write())
-                : DshAccountOverlay.write(instance, account);
+        // What the instance runs with, as the user typed it. Its launcher flags go before the
+        // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported. Read
+        // here rather than below because which profile is booted decides which profile the account's
+        // route belongs in.
+        DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
+        String profile = typed.profile() != null ? typed.profile() : instance.profile();
 
-        // An overlay adds a route; it cannot make the harness *use* one, because layers merge with
-        // the user's settings on top and the overlay is the layer that loses. So the default model
-        // is written where the user's own answer lives — and, when the account names no model, not
-        // written at all.
+        // The account's supplier, as a route in the profile's **own** patch layer — the file the
+        // harness's own configuration editor writes. Not a `--patch` overlay: an overlay is applied
+        // over that file and replaces the entry's whole config, which is what made adding a supplier
+        // impossible and hid the person's own suppliers. See DshAccountRoute.
         //
-        // The provider written here is the **account's name**, which is the route name the overlay
-        // just created. It used to be the vendor's id, which stopped being the route name when routes
-        // became the person's own suppliers — and a default naming a route that does not exist is a
-        // harness that will not start.
+        // A caller that described the route already — so it could say so while the supplier is asked
+        // — wrote its own copy, and is not asked a second time.
+        DshAccountRoute.Prepared route = prepared;
+        if (route == null && account != null && account.carriesAKey()) {
+            route = DshAccountRoute.prepare(account).orElse(null);
+            if (route != null) {
+                route.resolveModels(account);
+            }
+        }
+        if (route != null) {
+            DshAccountRoute.apply(home, profile, route);
+        }
+
+        // A route says what the harness is offered; it cannot make the harness *use* one, because
+        // the person's own answer outranks a route the launcher wrote. So the default model is
+        // written where that answer lives — and, when the account names no model, not written at all.
+        //
+        // The provider written here is the **account's name**, which is the route name just created.
+        // It used to be the vendor's id, which stopped being the route name when routes became the
+        // person's own suppliers — and a default naming a route that does not exist is a harness that
+        // will not start.
         //
         // For the launcher's own vendor there is nothing to write either way: the harness knows that
         // vendor's catalogue and picks from it, so naming a model would be naming one of a list it
@@ -379,24 +391,14 @@ public final class DshLauncher {
             }
         }
 
-        // What the instance runs with, as the user typed it. Its launcher flags go before the
-        // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported.
-        DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
-
         List<String> command = new ArrayList<>();
         command.add(runtime.node().toString());
         command.add(script.toString());
         command.addAll(typed.launcherArguments());
-        // The overlay comes after the user's own launcher flags, so a `--patch` of theirs still
-        // applies first and their line keeps its meaning.
-        accountOverlay.ifPresent(patch -> {
-            command.add("--patch");
-            command.add(patch.toString());
-        });
         // The profile is stated after the user's launcher flags, so one they named wins; when they
         // named none this is the instance's own.
         command.add("--profile");
-        command.add(typed.profile() != null ? typed.profile() : instance.profile());
+        command.add(profile);
 
         List<String> surfaceArguments = new ArrayList<>(surface.arguments(port));
         // Whether to leave the browser alone is the user's to decide once they have said anything
@@ -419,9 +421,20 @@ public final class DshLauncher {
         Map<String, String> environment = new LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());
         // The key travels here and nowhere else: an inherited variable is the highest-precedence
-        // source the harness reads, and it is gone when the process is.
+        // source the harness reads, and it is gone when the process is. One variable per route, so
+        // that a route left in the profile by another account names a variable nothing sets rather
+        // than picking this key up. See DshAccountRoute.
         if (account != null && account.carriesAKey()) {
-            environment.put(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, account.apiKey().trim());
+            String key = account.apiKey().trim();
+            environment.put(DshAccountRoute.environmentVariable(account.displayName()), key);
+            // And the harness's own web search, which reads a name of the vendor's rather than a
+            // route's — and only for a DeepSeek route, because the service behind that entry is
+            // DeepSeek's and another vendor's key would be refused by it. The entry itself is not
+            // touched: the launcher used to patch it, which made it unsavable in the settings page
+            // for exactly the reason the supplier route was.
+            if (route != null && route.deepSeek()) {
+                environment.put(DshAccountRoute.WEB_SEARCH_ENVIRONMENT_VARIABLE, key);
+            }
         }
         environment.putAll(runtime.pathEnvironment());
         environment.putAll(DshEnvironment.of(instance));
@@ -433,6 +446,6 @@ public final class DshLauncher {
 
         LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,
-                Map.copyOf(environment), home, port, accountOverlay.orElse(null));
+                Map.copyOf(environment), home, port);
     }
 }

@@ -107,10 +107,10 @@ public final class DshProcessManager {
 
     /// Launches an instance from a plan that has already been built.
     ///
-    /// Building a plan is not free of consequence: it writes the account's overlay. A caller that
-    /// built one — to print what was about to run, which is what the command line interface does —
-    /// must be able to hand that same plan over rather than have a second one built, because the
-    /// second build writes a second overlay and the first is never removed by anybody.
+    /// Building a plan is not free of consequence: it writes the account's route into the profile's
+    /// own patch layer and asks the supplier for its models. A caller that built one — to print what
+    /// was about to run, which is what the command line interface does — hands that same plan over
+    /// rather than paying for a second one.
     ///
     /// @param instance the instance
     /// @param account  the account, or `null` for none
@@ -146,11 +146,7 @@ public final class DshProcessManager {
             process.setStateListener(state -> {
                 if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
                     RUNNING.remove(instance.id(), process);
-                    // The account overlay belonged to this launch. Removing it here means an
-                    // instance that was started with a key is an instance with no trace of it once
-                    // it has stopped.
-                    DshAccountOverlay.remove(process.plan().accountOverlay());
-                    // And whatever this launch put into the home's own settings goes back to what it
+                    // Whatever this launch put into the home's own settings goes back to what it
                     // was, so the next launch — of any kind, with an account or with none — starts
                     // on the person's own configuration rather than on this launch's leftovers.
                     try {

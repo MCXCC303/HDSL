@@ -199,7 +199,8 @@ public final class DshInstanceTerminal {
             // The same variable and the same place in the order as a launch: the key is what
             // makes the harness answer at all, and a terminal without it reproduces every
             // failure except the one being looked for.
-            environment.put(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, account.apiKey().trim());
+            environment.put(DshAccountRoute.environmentVariable(account.displayName()),
+                    account.apiKey().trim());
         }
         String inherited = environment.getOrDefault("PATH", System.getenv("PATH"));
         environment.put("PATH", bin + File.pathSeparator + runtime.binDirectory()

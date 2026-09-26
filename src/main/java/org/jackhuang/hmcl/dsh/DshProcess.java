@@ -228,14 +228,9 @@ public final class DshProcess {
         try {
             return new DshProcess(plan);
         } catch (DshException | RuntimeException e) {
-            // The plan wrote an account overlay, and the only thing that removes one is the state
-            // listener of a process that got as far as being registered. A launch that fails here —
-            // the process cannot be started, the workspace is gone — would leave the file behind for
-            // good: a few hundred bytes in the launcher's directory that nothing will ever look at
-            // again. Removing it is the same cleanup the listener would have done.
-            DshAccountOverlay.remove(plan.accountOverlay());
-            // The note the launch wrote goes with it, and putting back what the launch disturbed is
-            // part of the same cleanup.
+            // The note the plan wrote is the only thing a failed launch leaves behind — the account's
+            // route in the profile is the account's and stays — and putting back what the launch
+            // disturbed is the whole of this cleanup.
             try {
                 DshInjectedSettings.settle(plan.instance());
             } catch (DshException settleFailure) {

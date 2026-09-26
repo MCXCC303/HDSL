@@ -37,19 +37,20 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// What a launch put into a home's own `settings.yaml`, and what was there before it.
 ///
-/// The account overlay is a **patch**, and a patch is the lower layer: it says what the harness is
+/// An account's route is written into the profile's patch layer, and a patch says what the harness is
 /// offered, not what it uses. The harness keeps its own answers in `settings.yaml` — the default
-/// model it was told to use, and the model list it adopted for a route it had never heard of — and
-/// those answers outlive the process. So a launch with a key leaves two things behind in a file that
-/// is not the launcher's:
+/// model it was told to use, and the route's own settings, which the harness writes when the person
+/// edits that supplier — and those answers outlive the process. So a launch with a key leaves two
+/// things behind in a file that is not the launcher's:
 ///
 /// - `agent-default-model.provider` naming the route the launcher built, which the launcher wrote
 ///   itself for a supplier of the person's own;
-/// - `llm-pi-ai.providers.<route>`, which the harness writes when the person edits that supplier,
-///   and which is a **half** route once the patch is gone — models with no address and no key.
+/// - `llm-pi-ai.providers.<route>`, which the launcher puts there only so the harness's models page
+///   has something to draw that route under, and which the harness then keeps — models whose route
+///   may belong to an account that is no longer launched.
 ///
-/// Left alone, the next launch with no account starts on that half route instead of on the harness's
-/// own supplier and its own question for a key. Which is why a launch **stashes** what it is about
+/// Left alone, the next launch with no account starts on that route instead of on the harness's own
+/// supplier and its own question for a key. Which is why a launch **stashes** what it is about
 /// to disturb, and why both the end of that launch and the beginning of the next one put it back.
 ///
 /// **Putting back means restoring, not deleting.** Whatever was there before the launch is what
@@ -207,16 +208,16 @@ public final class DshInjectedSettings {
 
     /// Makes a route visible to the harness's own configuration surfaces, for as long as it runs.
     ///
-    /// An overlay is a **lower** layer, and the models page lists what the **settings** layer
-    /// configures. A route that exists only in the overlay is live and usable and appears nowhere on
-    /// that page: the live routes it does not know are appended with no settings path at all, and
-    /// every group the page draws is chosen by that path — so the row exists in the data and is
-    /// never rendered. Writing the profile object is what puts it in the list, editable, while the
-    /// launch lasts; the note this launch has already written is what takes it away again.
+    /// The models page lists what the **settings** layer configures, and draws a group per settings
+    /// path. A route the patch layer declares has no settings document of its own until one is
+    /// written, and a route with no settings path is not rendered at all — it is live and usable and
+    /// appears nowhere on that page. Writing the profile object is what puts it in the list,
+    /// editable, for as long as the launch lasts; the note this launch has already written is what
+    /// takes it away again.
     ///
     /// **Only the profile object and the credential reference.** What the route *is* — protocol,
-    /// address, models — is the overlay's to say, and repeating it here would be a second copy of the
-    /// same fact, which is one copy more than the cleanup can keep straight.
+    /// address, models — is the profile patch's to say, and repeating it here would be a second copy
+    /// of the same fact, which is one copy more than the cleanup can keep straight.
     ///
     /// @param instance  the instance being launched
     /// @param route     the route this launch built

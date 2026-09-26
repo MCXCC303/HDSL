@@ -61,7 +61,7 @@ class DshInstanceTerminalTest {
         String shim = DshInstanceTerminal.directory().resolve("test").resolve("bin").toString();
         assertTrue(script.contains("export PATH='" + shim + ":" + bin + ":"), script);
         // A session with no account carries no key.
-        assertFalse(script.contains(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE), script);
+        assertFalse(script.contains(DshAccountRoute.KEY_ENVIRONMENT_VARIABLE), script);
     }
 
     @Test
@@ -70,8 +70,10 @@ class DshInstanceTerminalTest {
         DshAccount account = new DshAccount("deepseek", "sk-test", null, null);
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), account, runtime(bin));
 
-        assertTrue(script.contains("export " + DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE
-                + "='sk-test'"), script);
+        // Under the name the account's own route reads, which is what makes the session's harness
+        // able to use that supplier: one variable per route, so no other route can pick it up.
+        assertTrue(script.contains("export "
+                + DshAccountRoute.environmentVariable(account.displayName()) + "='sk-test'"), script);
     }
 
     @Test
