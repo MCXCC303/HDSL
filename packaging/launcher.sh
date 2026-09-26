@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# HMCL-DSH self-executing launcher.
+# HMCL-DSH self-executing launcher for Linux.
 #
 # This script is prepended to the application jar, so `"$0"` is the executable
 # itself. A zip reader finds the central directory at the end of the file, so
 # the jar stays loadable with this preamble in front of it.
 #
-# HMCL-DSH targets Linux only, so unlike HMCL's launcher this one has no
-# macOS, BSD or Windows branches: it looks for a JDK 21+ and runs the jar.
+# This is the Linux artifact; the Windows one is the executable the build wraps
+# the same jar into. Unlike HMCL's launcher this one has no macOS or BSD
+# branches: it looks for a JDK 21+ and runs the jar.
 
 set -e
 

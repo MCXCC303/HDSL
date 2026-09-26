@@ -1,6 +1,6 @@
 name: Release
 
-# A tag is the release: pushing one builds the Linux packages and publishes them.
+# A tag is the release: pushing one builds the packages and publishes them.
 on:
   push:
     tags:
@@ -10,8 +10,107 @@ permissions:
   contents: write
 
 jobs:
+
+  # The Windows artifacts are built by a Windows runner, because the executable
+  # has to be built with the platform's own JavaFX natives inside it. They are
+  # handed to the Linux job as an artifact, so the one `gh release create` there
+  # publishes the whole release from one directory.
+  release-windows:
+
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-cleanup: never
+    - name: Set up Node 22
+      # The lifecycle tests start instances through the system Node; the range
+      # the launcher accepts (^22.19.0 || >=24.0.0) is what the runner has to
+      # hold for them to run rather than skip.
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Take the version from the tag
+      shell: bash
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        [ -n "${VERSION}" ] || { echo "error: tag ${GITHUB_REF_NAME} has no version" >&2; exit 1; }
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "Releasing ${VERSION} (Windows)"
+
+    - name: Build with Gradle
+      # PowerShell runs nothing from the working directory without its path,
+      # which is what the backslash is for; the runner's own desktop session
+      # is what the JavaFX tests run under. `tee` keeps the whole build log
+      # beside the tree, so the report step can quote the failure the log
+      # holds rather than point at it; Git Bash is the one shell both
+      # platforms' report steps can read it from.
+      shell: bash
+      run: >
+        set -o pipefail;
+        ./gradlew.bat clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel 2>&1 | tee build-log.txt
+    - name: Report failing tests
+      # The report Gradle points at lives on the runner — re-print the
+      # failures here, where they can actually be read.
+      if: failure()
+      shell: bash
+      run: |
+        if [ -f build-log.txt ]; then
+          sed -n '/What went wrong/,/^\* Try/p' build-log.txt | head -40
+          echo
+          grep -E 'error: |e: file:' build-log.txt | head -40 || true
+          echo
+        fi
+        shopt -s nullglob
+        files=(build/test-results/test/*.xml)
+        [ ${#files[@]} -gt 0 ] || { echo "no test results were written"; exit 0; }
+        for f in "${files[@]}"; do
+          awk '
+            /<testcase/ { tc = $0 }
+            /<failure|<error/ { print "FAILED " tc; print; c = 25; next }
+            c > 0 { print; c-- }
+          ' "$f"
+        done | sed 's/^[[:space:]]*//' | head -400
+        echo "the complete report is in this run's test-report-windows-release artifact"
+    - name: Upload test report
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report-windows-release
+        path: |
+          build/test-results/test
+          build/reports/tests/test
+
+    # The plain jar travels beside the executable, the way HMCL publishes its
+    # own: the executable is the one most people run, the jar is the one that
+    # runs wherever an executable cannot.
+    - name: Sum the jar
+      shell: bash
+      run: |
+        mkdir -p dist
+        cp "build/libs/hdsl-${VERSION}.exe" "build/libs/hdsl-${VERSION}.exe.sha256" "build/libs/hdsl-${VERSION}.jar" dist/
+        ( cd dist && sha256sum "hdsl-${VERSION}.jar" > "hdsl-${VERSION}.jar.sha256" )
+        ls -l dist
+
+    - name: Upload the Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: windows-dist
+        path: dist/*
+
   release:
 
+    needs: release-windows
     runs-on: ubuntu-latest
 
     steps:
@@ -27,6 +126,19 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
       with:
         cache-cleanup: never
+    - name: Set up Node 22
+      # The lifecycle tests start instances through the system Node; the range
+      # the launcher accepts (^22.19.0 || >=24.0.0) is what the runner has to
+      # hold for them to run rather than skip.
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Install test dependencies
+      # JavaFX needs GTK even under xvfb; without it the toolkit wedges and the
+      # tests hang rather than fail. The t64 name is the one newer Ubuntu uses.
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0t64 libgl1 || sudo apt-get install -y xvfb libgtk-3-0 libgl1
 
     # The version comes from the tag, not from the build file: a release that
     # disagrees with its tag is worse than one that cannot be built. The build
@@ -39,9 +151,41 @@ jobs:
         echo "Releasing ${VERSION}"
 
     - name: Build with Gradle
-      run: xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
-      env:
-        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      # `tee` keeps the whole build log beside the tree, so the report step
+      # can quote the failure the log holds rather than point at it.
+      run: >
+        set -o pipefail;
+        xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel 2>&1 | tee build-log.txt
+    - name: Report failing tests
+      # The report Gradle points at lives on the runner — re-print the
+      # failures here, where they can actually be read.
+      if: failure()
+      run: |
+        if [ -f build-log.txt ]; then
+          sed -n '/What went wrong/,/^\* Try/p' build-log.txt | head -40
+          echo
+          grep -E 'error: |e: file:' build-log.txt | head -40 || true
+          echo
+        fi
+        shopt -s nullglob
+        files=(build/test-results/test/*.xml)
+        [ ${#files[@]} -gt 0 ] || { echo "no test results were written"; exit 0; }
+        for f in "${files[@]}"; do
+          awk '
+            /<testcase/ { tc = $0 }
+            /<failure|<error/ { print "FAILED " tc; print; c = 25; next }
+            c > 0 { print; c-- }
+          ' "$f"
+        done | sed 's/^[[:space:]]*//' | head -400
+        echo "the complete report is in this run's test-report-linux-release artifact"
+    - name: Upload test report
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report-linux-release
+        path: |
+          build/test-results/test
+          build/reports/tests/test
 
     # appimagetool is an AppImage itself; the released one is used rather than a
     # distribution package so the packages are built by the same tool everywhere.
@@ -64,9 +208,15 @@ jobs:
         # The two Gradle writes go beside them, so one directory holds the whole release.
         cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
 
+    - name: Take the Windows artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: windows-dist
+        path: dist
+
     - name: Write the release note
       run: |
-        echo "HMCL-DSH ${VERSION} — DeepSeek Harness launcher for Linux." >> RELEASE_NOTE
+        echo "HMCL-DSH ${VERSION} — DeepSeek Harness launcher for Linux and Windows." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
         echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
@@ -75,8 +225,8 @@ jobs:
         # The Arch package is listed like the others. It is not the tar.zst under another name:
         # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
         # and the portable tar.zst is for unpacking anywhere.
-        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb"; do
-          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
+        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.exe" "hdsl-${VERSION}.jar"; do
+          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.exe) echo "Windows (double-click)";; *.jar) echo "any platform (\`java -jar\`)";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
         done
         cat RELEASE_NOTE
 
@@ -98,6 +248,10 @@ jobs:
           dist/HDSL-${VERSION}-x86_64.AppImage.sha256 \
           dist/hdsl-${VERSION}.deb \
           dist/hdsl-${VERSION}.deb.sha256 \
+          dist/hdsl-${VERSION}.exe \
+          dist/hdsl-${VERSION}.exe.sha256 \
+          dist/hdsl-${VERSION}.jar \
+          dist/hdsl-${VERSION}.jar.sha256 \
           dist/hdsl-${VERSION}.sh \
           --target "${{ github.sha }}" \
           --title "HMCL-DSH ${VERSION}" \

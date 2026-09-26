@@ -22,6 +22,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
+import java.util.Locale;
 
 /// The directory layout HMCL-DSH owns on disk.
 ///
@@ -131,22 +132,60 @@ public final class DshPaths {
     /// @return whether it is usable
     public static boolean isUsableSegment(@Nullable String value) {
         String trimmed = value == null ? "" : value.trim();
-        return !trimmed.isEmpty()
-                && !trimmed.equals(".")
-                && !trimmed.equals("..")
-                && !trimmed.contains("/")
-                && !trimmed.contains("\\")
-                && trimmed.indexOf('\0') < 0;
+        return isSafeSegment(trimmed);
     }
 
-    private static String requireSafeSegment(String value, String what) throws DshException {
-        String trimmed = value == null ? "" : value.trim();
+    /// Reports whether a trimmed string is a usable single path segment.
+    ///
+    /// Windows adds three ways a segment can stop being one: a drive-separated
+    /// colon (`C:` inside `C:foo`), the reserved device names (`CON`, `PRN`,
+    /// `COM1`, `LPT2`, …, with or without an extension) and the trailing dot
+    /// or space that its own programs strip off a name. All three are refused
+    /// on every platform, not only on Windows: a name one platform accepts and
+    /// the other cannot even write is not a name a launcher directory should
+    /// carry from one to the other.
+    ///
+    /// @param trimmed the value, already trimmed
+    /// @return whether it is usable
+    private static boolean isSafeSegment(String trimmed) {
         if (trimmed.isEmpty()
                 || trimmed.equals(".")
                 || trimmed.equals("..")
                 || trimmed.contains("/")
                 || trimmed.contains("\\")
-                || trimmed.indexOf('\0') >= 0) {
+                || trimmed.indexOf('\0') >= 0
+                || trimmed.indexOf(':') >= 0) {
+            return false;
+        }
+        char last = trimmed.charAt(trimmed.length() - 1);
+        if (last == '.' || last == ' ') {
+            return false;
+        }
+        String stem = trimmed.split("[.]", 2)[0];
+        return !isReservedDeviceName(stem);
+    }
+
+    /// Reports whether a name is one Windows reserves for a device.
+    ///
+    /// `CON`, `PRN`, `AUX` and `NUL` are reserved outright; `COM` and `LPT`
+    /// reserve the single digits one to nine behind them. Only the stem is
+    /// tested — the caller has already split an extension off — because
+    /// `CON.txt` is as reserved as `CON`.
+    ///
+    /// @param stem the name without its extension, in any case
+    /// @return whether Windows would treat it as a device
+    private static boolean isReservedDeviceName(String stem) {
+        return switch (stem.toUpperCase(Locale.ROOT)) {
+            case "CON", "PRN", "AUX", "NUL" -> true;
+            default -> stem.length() == 4
+                    && (stem.regionMatches(true, 0, "COM", 0, 3) || stem.regionMatches(true, 0, "LPT", 0, 3))
+                    && stem.charAt(3) >= '1' && stem.charAt(3) <= '9';
+        };
+    }
+
+    private static String requireSafeSegment(String value, String what) throws DshException {
+        String trimmed = value == null ? "" : value.trim();
+        if (!isSafeSegment(trimmed)) {
             throw new DshException("Invalid " + what + ": " + value);
         }
         return trimmed;

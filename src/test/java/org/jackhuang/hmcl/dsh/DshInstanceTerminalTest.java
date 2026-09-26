@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -25,13 +26,24 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// The shell a terminal is opened with: what it exports, and in what order.
+///
+/// The assertions are the same on every platform and only their spelling
+/// follows the platform's own script, so the suite says the same thing
+/// wherever it runs.
 class DshInstanceTerminalTest {
     @TempDir
     private Path home;
+
+    /// Whether the scripts of this platform are the Windows ones.
+    private static final boolean WINDOWS = OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS;
+
+    /// How this platform separates PATH entries.
+    private static final String SEPARATOR = WINDOWS ? ";" : ":";
 
     private DshInstance instance(Map<String, String> environment) {
         return new DshInstance("test", "0.1.6-alpha.2", "web", home.resolve("work").toString(),
@@ -40,8 +52,15 @@ class DshInstanceTerminalTest {
     }
 
     private static DshNodeRuntime runtime(Path bin) {
-        return new DshNodeRuntime(bin.resolve("node"), "22.19.0",
-                bin.resolve("npm"), "10.9.0", null, null);
+        return new DshNodeRuntime(bin.resolve(WINDOWS ? "node.exe" : "node"), "22.19.0",
+                bin.resolve(WINDOWS ? "npm.cmd" : "npm"), "10.9.0", null, null);
+    }
+
+    /// How this platform's script assigns a variable.
+    private static String assignment(String name, String value) {
+        return WINDOWS
+                ? "set \"" + name + "=" + value + "\""
+                : "export " + name + "='" + value + "'";
     }
 
     @Test
@@ -55,11 +74,26 @@ class DshInstanceTerminalTest {
         Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), null, runtime(bin));
 
-        assertTrue(script.contains("cd '" + DshPaths.instanceDirectory("test") + "'"), script);
-        assertTrue(script.contains("export DSH_HOME='" + home.resolve("dsh-home") + "'"), script);
+        assertTrue(script.contains(WINDOWS
+                ? "cd /d \"" + DshPaths.instanceDirectory("test") + "\""
+                : "cd '" + DshPaths.instanceDirectory("test") + "'"), script);
+        assertTrue(script.contains(assignment("DSH_HOME", home.resolve("dsh-home").toString())), script);
         // The instance's own tools first, and its dsh shim before even those.
+        // The PATH line is taken apart rather than looked for as a whole: what
+        // follows the instance's own entries is the machine's business — an
+        // empty inheritance, or one whose own quoting differs — so the
+        // assertion names the two entries that have to lead and lets the rest
+        // be whatever it is.
+        String pathAssignment = WINDOWS ? "set \"PATH=" : "export PATH='";
+        String pathLine = script.lines().filter(line -> line.startsWith(pathAssignment))
+                .findFirst().orElse("");
+        assertFalse(pathLine.isEmpty(), script);
+        List<String> path = List.of(pathLine
+                .substring(pathAssignment.length(), pathLine.length() - 1)
+                .split(WINDOWS ? ";" : ":"));
         String shim = DshInstanceTerminal.directory().resolve("test").resolve("bin").toString();
-        assertTrue(script.contains("export PATH='" + shim + ":" + bin + ":"), script);
+        assertEquals(shim, path.get(0), pathLine);
+        assertEquals(bin.toString(), path.get(1), pathLine);
         // A session with no account carries no key.
         assertFalse(script.contains(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE), script);
     }
@@ -70,8 +104,8 @@ class DshInstanceTerminalTest {
         DshAccount account = new DshAccount("deepseek", "sk-test", null, null);
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), account, runtime(bin));
 
-        assertTrue(script.contains("export " + DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE
-                + "='sk-test'"), script);
+        assertTrue(script.contains(assignment(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, "sk-test")),
+                script);
     }
 
     @Test
@@ -80,7 +114,7 @@ class DshInstanceTerminalTest {
         String script = DshInstanceTerminal.scriptText(
                 instance(Map.of("GOOD_NAME", "yes", "not a name", "no")), null, runtime(bin));
 
-        assertTrue(script.contains("export GOOD_NAME='yes'"), script);
+        assertTrue(script.contains(assignment("GOOD_NAME", "yes")), script);
         assertFalse(script.contains("not a name"), script);
     }
 
@@ -90,8 +124,29 @@ class DshInstanceTerminalTest {
         DshInstance instance = instance(Map.of());
         String shim = DshInstanceTerminal.shimText(instance, runtime(bin));
 
-        assertTrue(shim.contains("exec '" + bin.resolve("node") + "' '"
-                + instance.dshEntryPoint() + "'"), shim);
-        assertTrue(shim.contains("\"$@\""), shim);
+        if (WINDOWS) {
+            assertTrue(shim.contains("\"" + bin.resolve("node.exe") + "\" \""
+                    + instance.dshEntryPoint() + "\""), shim);
+            assertTrue(shim.contains("%*"), shim);
+        } else {
+            assertTrue(shim.contains("exec '" + bin.resolve("node") + "' '"
+                    + instance.dshEntryPoint() + "'"), shim);
+            assertTrue(shim.contains("\"$@\""), shim);
+        }
+    }
+
+    @Test
+    void aCommandLineReachesTheSystemShell() {
+        List<String> command = DshCustomCommands.shellCommand("echo hello");
+        if (WINDOWS) {
+            // The interpreter is named by ComSpec, so only its shape is fixed.
+            assertTrue(command.size() >= 4, command.toString());
+            assertTrue(command.get(command.size() - 4).equalsIgnoreCase("/d"), command.toString());
+            assertTrue(command.get(command.size() - 3).equalsIgnoreCase("/s"), command.toString());
+            assertTrue(command.get(command.size() - 2).equalsIgnoreCase("/c"), command.toString());
+            assertTrue("echo hello".equals(command.get(command.size() - 1)), command.toString());
+        } else {
+            assertTrue(List.of("/bin/sh", "-c", "echo hello").equals(command), command.toString());
+        }
     }
 }

@@ -36,6 +36,7 @@ import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.WindowsNativeUtils;
 import org.jackhuang.hmcl.ui.dsh.MainPage;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.i18n.I18n;
@@ -78,6 +79,9 @@ public final class Launcher extends Application {
 
         FXUtils.setIcon(primaryStage);
         primaryStage.setTitle(Metadata.FULL_TITLE);
+        // What the taskbar pins, relaunches and groups under is the launcher's own
+        // Windows executable; a no-op everywhere that executable is not in play.
+        WindowsNativeUtils.installWindowsAppUserModelRelaunchProperties(primaryStage);
         primaryStage.show();
 
         String page = startPage();

@@ -36,11 +36,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// server without a model credential, so it is pinned here instead: framing,
 /// request correlation, notification dispatch and shutdown.
 class DshAcpClientTest {
+    /// Where the stub runs: a directory that exists on the platform running the test.
+    ///
+    /// The child is started with this as its working directory, so `/tmp` — the
+    /// obvious spelling — is a directory name Windows has not got.
+    private static final Path TEMP = Path.of(System.getProperty("java.io.tmpdir"));
+
     /// Builds a throwaway instance descriptor; the transport is supplied explicitly.
     ///
     /// @return the instance
     private static DshInstance testInstance() {
-        return new DshInstance("test", "0.0.0", "acp", "/tmp",
+        return new DshInstance("test", "0.0.0", "acp", TEMP.toString(),
                 DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null,
                 List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), null, DshPortMode.AUTO, 0, 0L);
     }
@@ -75,7 +81,7 @@ class DshAcpClientTest {
         };
 
         try (DshAcpClient client = DshAcpClient.connect(
-                testInstance(), stubCommand(), Path.of("/tmp"), Map.of(), listener)) {
+                testInstance(), stubCommand(), TEMP, Map.of(), listener)) {
 
             String sessionId = client.newSession();
             assertEquals(StubAcpServer.SESSION_ID, sessionId);
@@ -93,7 +99,7 @@ class DshAcpClientTest {
     @Test
     void closingTheConnectionStopsTheChild() throws Exception {
         DshAcpClient client = DshAcpClient.connect(
-                testInstance(), stubCommand(), Path.of("/tmp"), Map.of(), new DshAcpClient.Listener() {
+                testInstance(), stubCommand(), TEMP, Map.of(), new DshAcpClient.Listener() {
                 });
 
         assertEquals(StubAcpServer.SESSION_ID, client.newSession());

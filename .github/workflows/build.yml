@@ -6,10 +6,25 @@ on:
     paths-ignore:
       - '**.md'
 
+# The failing-tests comment is posted with the build's own token; everything
+# else only reads.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One job per supported platform, each building with its own JavaFX
+        # natives and packaging its own artifacts. The tests that need the
+        # toolkit run under xvfb on Linux; the Windows runners' own desktop
+        # session is what they run under there.
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
@@ -22,23 +37,134 @@ jobs:
       uses: gradle/actions/setup-gradle@v4
       with:
         cache-cleanup: never
-    # The launcher is a JavaFX application, and a few of its tests touch the
-    # toolkit; a headless server needs a display for them.
+    - name: Set up Node 22
+      # The lifecycle tests start instances through the system Node; the range
+      # the launcher accepts (^22.19.0 || >=24.0.0) is what the runners have to
+      # hold for them to run rather than skip.
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+    - name: Install test dependencies (Linux)
+      # JavaFX needs GTK even under xvfb; without it the toolkit wedges and the
+      # tests hang rather than fail. The t64 name is the one newer Ubuntu uses.
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0t64 libgl1 || sudo apt-get install -y xvfb libgtk-3-0 libgl1
     - name: Build with Gradle
-      run: xvfb-run --auto-servernum ./gradlew build --no-daemon --parallel
+      # `tee` keeps the whole build log beside the tree, so the report step
+      # can quote the failure the log holds rather than point at it.
+      run: >
+        set -o pipefail;
+        xvfb-run --auto-servernum ./gradlew build --no-daemon --parallel 2>&1 | tee build-log.txt
+      if: runner.os == 'Linux'
+    - name: Build with Gradle
+      # PowerShell runs nothing from the working directory without its path,
+      # which is what the backslash is for; the runner's own desktop session
+      # is what the JavaFX tests run under. Git Bash is the one shell both
+      # platforms' report steps can read the log from.
+      shell: bash
+      run: >
+        set -o pipefail;
+        ./gradlew.bat build --no-daemon --parallel 2>&1 | tee build-log.txt
+      if: runner.os == 'Windows'
+    - name: Report failing tests
+      # The report Gradle points at lives on the runner, and the step's own log
+      # is too large for the viewer to show whole — so the failures are
+      # re-printed here, at the end, where they can actually be read. bash is
+      # the Git Bash every Windows runner carries. The results are walked one
+      # file at a time, so a failure's context never spills into the next
+      # class's results and names tests that passed. A build that failed
+      # before the tests ran — a compile error, a configuration error — is
+      # quoted from the captured log instead.
+      if: failure()
+      shell: bash
+      run: |
+        if [ -f build-log.txt ]; then
+          sed -n '/What went wrong/,/^\* Try/p' build-log.txt | head -40
+          echo
+          grep -E 'error: |e: file:' build-log.txt | head -40 || true
+          echo
+        fi
+        shopt -s nullglob
+        files=(build/test-results/test/*.xml)
+        [ ${#files[@]} -gt 0 ] || { echo "no test results were written"; exit 0; }
+        for f in "${files[@]}"; do
+          awk '
+            /<testcase/ { tc = $0 }
+            /<failure|<error/ { print "FAILED " tc; print; c = 25; next }
+            c > 0 { print; c-- }
+          ' "$f"
+        done | sed 's/^[[:space:]]*//' | head -400
+        echo "the complete report is in this run's test-report artifact"
+    - name: Upload test report
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report-${{ matrix.os }}
+        path: |
+          build/test-results/test
+          build/reports/tests/test
+    - name: Post failing tests to the pull request
+      # The report and the artifact both live where only a signed redirect
+      # reaches, which not every reader can follow. The failure itself belongs
+      # where the conversation is: in a comment anyone can open — a compile
+      # error as much as a test failure, quoted from the captured log.
+      if: failure() && github.event_name == 'pull_request'
       env:
-        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+        GH_TOKEN: ${{ github.token }}
+      shell: bash
+      run: |
+        {
+          echo "### Build failed on ${RUNNER_OS}"
+          echo
+          if [ -f build-log.txt ]; then
+            sed -n '/What went wrong/,/^\* Try/p' build-log.txt | head -40
+            echo
+            grep -E 'error: |e: file:' build-log.txt | head -40 || true
+            echo
+          fi
+          shopt -s nullglob
+          files=(build/test-results/test/*.xml)
+          for f in "${files[@]}"; do
+            awk '
+              /<testcase/ { tc = $0 }
+              /<failure|<error/ { print "FAILED " tc; print; c = 25; next }
+              c > 0 { print; c-- }
+            ' "$f"
+          done | sed 's/^[[:space:]]*//' | head -400
+          echo
+          echo "_The complete report is in this run's \`test-report-${{ matrix.os }}\` artifact._"
+        } > comment.md
+        grep -qE 'FAILED|error: |e: file:|What went wrong' comment.md && gh pr comment "${{ github.event.number }}" --repo "${{ github.repository }}" --body-file comment.md
     - name: Get short SHA
+      shell: bash
       run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
     - name: Upload SH
       uses: actions/upload-artifact@v4
+      if: runner.os == 'Linux'
       with:
         name: HDSL-${{ env.SHORT_SHA }}-sh
         path: build/libs/hdsl-*.sh
         archive: false
     - name: Upload DEB
       uses: actions/upload-artifact@v4
+      if: runner.os == 'Linux'
       with:
         name: HDSL-${{ env.SHORT_SHA }}-deb
         path: build/libs/hdsl-*.deb
+        archive: false
+    - name: Upload EXE
+      uses: actions/upload-artifact@v4
+      if: runner.os == 'Windows'
+      with:
+        name: HDSL-${{ env.SHORT_SHA }}-exe
+        path: build/libs/hdsl-*.exe
+        archive: false
+    - name: Upload JAR
+      uses: actions/upload-artifact@v4
+      if: runner.os == 'Windows'
+      with:
+        name: HDSL-${{ env.SHORT_SHA }}-jar
+        path: build/libs/hdsl-*.jar
         archive: false
