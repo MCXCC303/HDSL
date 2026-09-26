@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests for reading what a vendor says it serves.
@@ -108,5 +109,43 @@ class ModelListTest {
         assertEquals("https://api.z.ai/api/coding/paas/v4/v1/models?limit=1000",
                 DshAccount.listingUrl("https://api.z.ai/api/coding/paas/v4", "anthropic-messages"),
                 "a deployment path keeps its segments");
+    }
+
+    @Test
+    void aStatusAloneDoesNotMakeAnAddressASupplier() {
+        // The defect this pins, taken from a real host: `api.opencode.ai` answers **200** to every
+        // path, with the body `Not Found`. Reading the status for the answer accepted it as a
+        // supplier, and the account made on it then had no models to route to — for months of
+        // debugging, a 200 was the whole of the evidence.
+        DshAccount.Answer plainPage = new DshAccount.Answer(200, false);
+        assertFalse(plainPage.listsModels(), "a page that answers 200 to everything is not a supplier");
+
+        // A 2xx whose body is a listing is the answer, and an empty listing is still a listing: a
+        // supplier that hides its models until it is given a key answers with one.
+        assertTrue(new DshAccount.Answer(200, true).listsModels());
+        assertTrue(DshAccount.looksLikeAListing("{\"object\":\"list\",\"data\":[]}"));
+        assertTrue(DshAccount.looksLikeAListing("{\"models\":{}}"));
+
+        // A refusal counts as an answer — it is an API saying it wants a key, which is the ordinary
+        // thing to hear while adding a supplier.
+        assertTrue(new DshAccount.Answer(401, false).listsModels());
+        assertTrue(new DshAccount.Answer(403, false).listsModels());
+
+        // Anything else answered as something other than a model service, or did not answer.
+        assertFalse(new DshAccount.Answer(404, false).listsModels());
+        assertFalse(new DshAccount.Answer(500, false).listsModels());
+        assertFalse(new DshAccount.Answer(-1, false).listsModels());
+    }
+
+    @Test
+    void whatIsNotAListingIsNotOne() {
+        assertFalse(DshAccount.looksLikeAListing("Not Found"), "a plain-text page");
+        assertFalse(DshAccount.looksLikeAListing("<html><body>hi</body></html>"));
+        assertFalse(DshAccount.looksLikeAListing("{\"error\":\"invalid api key\"}"));
+        assertFalse(DshAccount.looksLikeAListing("{\"data\":\"not an array\"}"));
+        assertFalse(DshAccount.looksLikeAListing("{\"models\":[]}"), "an array is not the enriched map");
+        assertFalse(DshAccount.looksLikeAListing("[]"));
+        assertFalse(DshAccount.looksLikeAListing(""));
+        assertFalse(DshAccount.looksLikeAListing(null));
     }
 }

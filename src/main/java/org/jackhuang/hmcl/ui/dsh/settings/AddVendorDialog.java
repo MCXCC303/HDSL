@@ -244,8 +244,8 @@ public final class AddVendorDialog extends JFXDialogLayout {
         // that freezes while a stranger's host does not answer is a dialog that looks broken.
         nextPane.showSpinner();
         content.setDisable(true);
-        CompletableFuture.supplyAsync(() -> DshAccount.probe(url), Schedulers.io())
-                .whenComplete((status, failure) -> javafx.application.Platform.runLater(() -> {
+        CompletableFuture.supplyAsync(() -> DshAccount.ask(url), Schedulers.io())
+                .whenComplete((answer, failure) -> javafx.application.Platform.runLater(() -> {
                     nextPane.hideSpinner();
                     content.setDisable(false);
                     // A window that has been closed while the answer was in flight must not be
@@ -253,8 +253,7 @@ public final class AddVendorDialog extends JFXDialogLayout {
                     if (getScene() == null) {
                         return;
                     }
-                    if (failure != null || status == null
-                            || !DshAccount.statusLooksLikeASupplier(status)) {
+                    if (failure != null || answer == null || !answer.listsModels()) {
                         warning.setText(i18n("dsh.account.vendor.not_a_provider"));
                         return;
                     }
