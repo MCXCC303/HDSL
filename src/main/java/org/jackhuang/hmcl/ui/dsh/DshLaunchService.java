@@ -394,7 +394,11 @@ public final class DshLaunchService {
                 // the launcher is the only thing that knows the instance is up.
                 Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
                 applyLauncherVisibility(instance.id());
-                if (settings().openBrowserOnLaunchProperty().get()) {
+                // Only when this launch is the one that opens it. A version that was never told
+                // `--no-open` opens a tab of its own, and opening ours as well is how one instance
+                // came to have two windows on one screen. See
+                // [DshLauncher.LaunchPlan#launcherOpensTheBrowser].
+                if (settings().openBrowserOnLaunchProperty().get() && process.plan().launcherOpensTheBrowser()) {
                     // The instance's own address. The address the harness printed carries the
                     // token, and is the one to use while it is the port the instance is recorded
                     // at; when a patch layer moved the server, sending the browser there would

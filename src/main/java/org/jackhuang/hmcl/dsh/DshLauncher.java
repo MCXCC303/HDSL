@@ -67,13 +67,29 @@ public final class DshLauncher {
             int port,
             /// The account overlay this launch wrote, or `null` when there was none. Removed when
             /// the instance stops: it belongs to one launch, not to the instance.
-            @Nullable Path accountOverlay) {
+            @Nullable Path accountOverlay,
+            /// Whether this launch is the one that opens the interface.
+            ///
+            /// One instance, one interface, and exactly one thing that opens it: either the launcher
+            /// opens the browser once the harness reports ready, or the harness opens it itself —
+            /// never both. Which one it is follows from whether the child was told not to: the flag
+            /// is passed when the version's help says it knows it, and when the help did not answer
+            /// there is nothing to pass and the harness will open its own tab. Opening a second one
+            /// on top of that is the two windows this records the answer to.
+            boolean opensTheBrowser) {
 
         /// Returns the port the browser surface binds.
         ///
         /// @return the port, or `0` for a non-web surface
         public int port() {
             return port;
+        }
+
+        /// Reports whether the launcher is the one that opens the interface.
+        ///
+        /// @return whether the launcher opens the browser
+        public boolean launcherOpensTheBrowser() {
+            return opensTheBrowser;
         }
 
         /// Renders the plan as a single shell-ready line, for logs and bug reports.
@@ -132,7 +148,14 @@ public final class DshLauncher {
     }
 
     /// How long a version is given to answer a help request.
-    private static final java.time.Duration PROBE_TIMEOUT = java.time.Duration.ofSeconds(5);
+    ///
+    /// Generous, and it has to be: what answers it is a whole application being booted by `node`, on
+    /// the machine that is about to run it, and the first launch after an install is the slowest
+    /// there is. Five seconds was measured failing on exactly that — a freshly installed 0.1.5-alpha.2
+    /// did not answer in time, the flag was left out, and the harness opened a tab of its own on top
+    /// of the launcher's. Waiting is not free either, but it happens once per version and profile,
+    /// and the wrong answer costs a second window on every launch.
+    private static final java.time.Duration PROBE_TIMEOUT = java.time.Duration.ofSeconds(20);
 
     /// The help that has been read, keyed by version **and profile**, and whether it mentions
     /// `--no-open`.
@@ -424,6 +447,24 @@ public final class DshLauncher {
         // user put it, which is why it is not filtered out here.
         command.addAll(typed.appArguments());
 
+        // Who opens the interface, decided by what the child was told.
+        //
+        // The two cases are one instruction each and they are not symmetric. Told `--no-open`, the
+        // harness stays off the browser and somebody has to open it — the launcher, which is what
+        // this is for: a person watching a launch should see the interface without having to find
+        // the address. Not told it, because the version would not answer and a flag it does not
+        // know stops the launch outright, the harness opens its own tab: opening a second one from
+        // here is two windows for one instance, and the person clicking Launch is the one who pays
+        // for it.
+        //
+        // The user's own line wins either way: a `--no-open` they typed themselves is theirs, and
+        // having asked the harness to leave the browser alone they still expect to be taken to it.
+        boolean launcherOpens = noOpen || (typed.asksNoOpen() && typed.appArguments().isEmpty());
+        if (surface.isWeb() && !launcherOpens) {
+            LOG.info("DeepSeek Harness " + instance.version() + " was not told --no-open, so it opens"
+                    + " the interface itself; the launcher will not open a second one");
+        }
+
         Map<String, String> environment = new LinkedHashMap<>();
         // The key travels here and nowhere else: an inherited variable is the highest-precedence
         // source the harness reads, and it is gone when the process is.
@@ -444,6 +485,6 @@ public final class DshLauncher {
 
         LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,
-                Map.copyOf(environment), home, port, accountOverlay.orElse(null));
+                Map.copyOf(environment), home, port, accountOverlay.orElse(null), launcherOpens);
     }
 }
