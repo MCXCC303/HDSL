@@ -20,6 +20,8 @@ package org.jackhuang.hmcl.dsh;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -129,7 +131,7 @@ public final class DshLaunchArguments {
 
         for (String token : arguments) {
             if (token.startsWith(ENVIRONMENT_PREFIX)) {
-                refusals.add(token + " — DSH_HOME 由启动器为每个实例指定，不能在这里改");
+                refusals.add(i18n("dsh.launch.refused.home", token));
                 continue;
             }
 
@@ -148,7 +150,7 @@ public final class DshLaunchArguments {
             }
 
             if (MANAGED_FLAGS.contains(name)) {
-                refusals.add(name + " — 端口由启动器为实例保留，不能在这里改");
+                refusals.add(i18n("dsh.launch.refused.port", name));
                 // Skip the value too, so it does not land in the app's arguments on its own. With
                 // `=` the value was on the same token and is simply dropped with it.
                 skipValue = inlineValue == null;

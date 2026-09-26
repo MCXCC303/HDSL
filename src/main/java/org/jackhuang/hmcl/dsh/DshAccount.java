@@ -17,8 +17,11 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
+
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 import java.io.IOException;
 import java.net.URI;
@@ -201,7 +204,11 @@ public record DshAccount(
     /// Returns the endpoint to talk to.
     ///
     /// The account's own address wins, so an account can point at a gateway the launcher has never
-    /// heard of; otherwise the vendor's published one.
+    /// heard of; otherwise the address is the vendor's. **The vendor's** includes the suppliers
+    /// somebody added by address, which are not among the ones the launcher ships and so have to be
+    /// looked for where they are kept. Without that second place an account made on a supplier
+    /// somebody added reaches a launch with no address at all: the route is written without a
+    /// `baseURL`, the harness refuses it, and the key it carries cannot even be checked.
     ///
     /// @return the address, or `null` when neither is known
     public @Nullable String endpoint() {
@@ -209,7 +216,15 @@ public record DshAccount(
             return baseUrl.trim();
         }
         DshVendor vendor = vendor();
-        return vendor == null ? null : vendor.baseUrl();
+        if (vendor != null && vendor.hasBaseUrl()) {
+            return vendor.baseUrl();
+        }
+        for (DshVendor added : SettingsManager.settings().getCustomVendors()) {
+            if (added.hasBaseUrl() && added.id().equalsIgnoreCase(vendorId)) {
+                return added.baseUrl();
+            }
+        }
+        return null;
     }
 
     /// Returns what the interface shows for this account.
@@ -249,16 +264,17 @@ public record DshAccount(
     public Check check() {
         String address = endpoint();
         if (address == null || address.isBlank()) {
-            return new Check(Outcome.UNREACHABLE, "这个供应商的地址取决于账号，请填写端点地址");
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.no_endpoint"));
         }
         DshVendor vendor = vendor();
         String api = vendor == null ? "openai-completions" : vendor.api();
-        String url = address.replaceAll("/+$", "") + "/models";
+        String url = listingUrl(address, api);
 
         try {
             HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(TIMEOUT)
                     .header("Accept", "application/json")
+                    .header("User-Agent", USER_AGENT)
                     .GET();
             if ("anthropic-messages".equals(api)) {
                 request.header("x-api-key", apiKey == null ? "" : apiKey.trim());
@@ -275,91 +291,146 @@ public record DshAccount(
                         HttpResponse.BodyHandlers.ofString());
                 int status = response.statusCode();
                 if (status >= 200 && status < 300) {
-                    return new Check(Outcome.VALID, "密钥有效");
+                    // The status alone is not the answer: a host that replies `200 Not Found` to
+                    // every path would otherwise be reported as a reachable supplier with a working
+                    // key. What says the key worked is a model list coming back.
+                    return looksLikeAListing(response.body())
+                            ? new Check(Outcome.VALID, i18n("dsh.account.check.valid"))
+                            : new Check(Outcome.UNKNOWN, i18n("dsh.account.check.not_a_listing",
+                                    String.valueOf(status), url));
                 }
                 if (status == 401 || status == 403) {
-                    return new Check(Outcome.REJECTED, "供应商拒绝了这个密钥（HTTP " + status + "）");
+                    return new Check(Outcome.REJECTED, i18n("dsh.account.check.rejected", String.valueOf(status)));
                 }
                 // 404 and 400 are the endpoint answering, which is not the same as the key being
                 // wrong: some gateways do not serve a model list at all.
                 if (status == 404 || status == 400 || status == 405) {
                     return new Check(Outcome.UNKNOWN,
-                            "这个端点不提供模型列表（HTTP " + status + "），无法据此判断密钥");
+                            i18n("dsh.account.check.no_listing", String.valueOf(status)));
                 }
-                return new Check(Outcome.UNREACHABLE, "供应商返回 HTTP " + status);
+                return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.http", String.valueOf(status)));
             }
         } catch (IOException e) {
             // A connection failure often carries no message at all — `ConnectException` from a
             // closed port says nothing — so the exception's own name is the more useful half.
             String why = e.getMessage() == null || e.getMessage().isBlank()
                     ? e.getClass().getSimpleName() : e.getMessage();
-            return new Check(Outcome.UNREACHABLE, "无法连接 " + url + "：" + why);
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.unreachable", url, why));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new Check(Outcome.UNREACHABLE, "检查被中断");
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.interrupted"));
         } catch (RuntimeException e) {
-            return new Check(Outcome.UNREACHABLE, "地址无效：" + e.getMessage());
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.bad_address", String.valueOf(e.getMessage())));
         }
     }
 
-    /// Asks an address whether anything is listening, without a key.
+    /// What an address answered when it was asked for its model list.
+    ///
+    /// @param status  the HTTP status, or `-1` when nothing answered at all
+    /// @param listing whether the answer was a model listing
+    public record Answer(int status, boolean listing) {
+
+        /// Reports whether something that lists models answered here.
+        ///
+        /// A refusal counts as an answer: `401` and `403` are an API saying it wants a key, which is
+        /// the ordinary thing to hear when adding a supplier, before there is one to send.
+        ///
+        /// A `2xx` alone does not. The status says a server replied, and a server that answers
+        /// everything with `200 Not Found` — a site behind a proxy that serves a page for every path
+        /// — is exactly the address this must refuse: taking the status for the answer is how one
+        /// was added as a supplier, and a supplier that lists no models is a route that cannot be
+        /// built. What the harness's own discovery reads is the body, and so does this.
+        ///
+        /// @return whether a model API is there
+        public boolean listsModels() {
+            return listing || status == 401 || status == 403;
+        }
+    }
+
+    /// Asks an address for its model list, without a key.
     ///
     /// This is what tells a person who pasted an address that is not in the catalogue whether they
-    /// have found a supplier or mistyped a hostname. What is asked is the same `/models` call the key
-    /// check makes, minus the key — it is the one endpoint every OpenAI-compatible service has, and
-    /// the answer is readable whether or not it is allowed:
-    ///
-    /// - **200** — a model list came back, so this is a supplier and it is even answering openly.
-    /// - **401** or **403** — it answered, and it wants a key. That is the ordinary case, and a
-    ///   supplier rather than a mistake.
-    /// - **anything else** — it answered, but not as a model service. A 404 means the address is a
-    ///   web server with no API under it, and a 5xx means something is there and unwell; neither is
-    ///   something to write a route for.
-    /// - **no answer at all** — nothing is listening, the name does not resolve, or the network
-    ///   cannot reach it. The distinction from the above is the point: an unreachable address has
-    ///   not said "no", and reporting it as a bad address would be reporting the network's fault as
-    ///   the person's.
+    /// have found a supplier or mistyped a hostname. The call is the one every OpenAI-compatible
+    /// service has — `{address}/models`, the protocol the supplier being added will speak — and both
+    /// halves of the answer are read, because either alone says the wrong thing: a status without a
+    /// body accepts a page that answers `200` to everything, and a body without a status cannot tell
+    /// "wants a key" from "nothing is listening".
     ///
     /// @param baseUrl the address, without `/models`
-    /// @return the status it answered with, or `-1` when it did not answer
-    public static int probe(String baseUrl) {
+    /// @return what it answered
+    public static Answer ask(String baseUrl) {
         if (baseUrl == null || baseUrl.isBlank()) {
-            return -1;
+            return new Answer(-1, false);
         }
-        String url = baseUrl.trim().replaceAll("/+$", "") + "/models";
+        String url = listingUrl(baseUrl.trim(), "openai-completions");
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(TIMEOUT)
                     .header("Accept", "application/json")
+                    .header("User-Agent", USER_AGENT)
                     .GET()
                     .build();
             try (HttpClient client = HttpClient.newBuilder()
                     .connectTimeout(TIMEOUT)
                     .followRedirects(HttpClient.Redirect.NORMAL)
                     .build()) {
-                return client.send(request, HttpResponse.BodyHandlers.ofString()).statusCode();
+                HttpResponse<String> response =
+                        client.send(request, HttpResponse.BodyHandlers.ofString());
+                return new Answer(response.statusCode(), looksLikeAListing(response.body()));
             }
         } catch (IOException e) {
             String why = e.getMessage() == null || e.getMessage().isBlank()
                     ? e.getClass().getSimpleName() : e.getMessage();
             org.jackhuang.hmcl.util.logging.Logger.LOG.info("Nothing answered at " + url + ": " + why);
-            return -1;
+            return new Answer(-1, false);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return -1;
+            return new Answer(-1, false);
         } catch (RuntimeException e) {
             org.jackhuang.hmcl.util.logging.Logger.LOG.info("Not an address: " + baseUrl);
-            return -1;
+            return new Answer(-1, false);
         }
     }
 
-    /// Reports whether a status means something is serving a model API there.
+    /// Reports whether an answer's body is a model listing.
     ///
-    /// @param status what [#probe] returned
-    /// @return whether it is a supplier
-    public static boolean statusLooksLikeASupplier(int status) {
-        return status == 200 || status == 401 || status == 403;
+    /// The **shape** and not the contents: a listing with no models in it is still a listing, and a
+    /// supplier that hides its models until it is given a key answers with one. A body that is not
+    /// JSON, or is JSON that holds neither a `data` array nor a `models` object, is a page or an
+    /// error message — not something a model list can be read out of.
+    ///
+    /// @param body the answer
+    /// @return whether it is a listing
+    static boolean looksLikeAListing(@Nullable String body) {
+        if (body == null || body.isBlank()) {
+            return false;
+        }
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) {
+                return false;
+            }
+            com.google.gson.JsonObject root = parsed.getAsJsonObject();
+            com.google.gson.JsonElement data = root.get("data");
+            if (data != null && data.isJsonArray()) {
+                return true;
+            }
+            com.google.gson.JsonElement models = root.get("models");
+            return models != null && models.isJsonObject();
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
+
+    /// How the launcher's own requests name themselves.
+    ///
+    /// The harness identifies itself on every request it makes to a supplier, in the same shape:
+    /// `product/version (+homepage)`. A request that names nobody is the one a proxy or a gateway is
+    /// most willing to turn away, and this machine's launcher being the caller is something the
+    /// supplier may as well be told.
+    private static final String USER_AGENT =
+            org.jackhuang.hmcl.Metadata.NAME + "/" + org.jackhuang.hmcl.Metadata.VERSION
+                    + " (+" + org.jackhuang.hmcl.Metadata.HOMEPAGE_URL + ")";
 
     /// Asks the vendor which models it serves.
     ///
@@ -383,12 +454,13 @@ public record DshAccount(
         }
         DshVendor vendor = vendor();
         String api = vendor == null ? "openai-completions" : vendor.api();
-        String url = address.replaceAll("/+$", "") + "/models";
+        String url = listingUrl(address, api);
 
         try {
             HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
                     .timeout(TIMEOUT)
                     .header("Accept", "application/json")
+                    .header("User-Agent", USER_AGENT)
                     .GET();
             if ("anthropic-messages".equals(api)) {
                 request.header("x-api-key", apiKey == null ? "" : apiKey.trim());
@@ -417,12 +489,40 @@ public record DshAccount(
         }
     }
 
-    /// Reads model ids out of what a `/models` endpoint answered.
+    /// Returns the address a supplier lists its models at.
     ///
-    /// The shape is the one OpenAI-compatible services share — `{"data":[{"id":…},…]}` — and it is
-    /// read defensively because "compatible" is a claim rather than a promise: a service that answers
-    /// something else is a service whose list this cannot use, and saying so by returning nothing is
-    /// better than writing a model the harness will fail to find.
+    /// The protocols do not agree on where that is, and the harness's own discovery module is the
+    /// authority on the difference: an OpenAI protocol lists at `{baseURL}/models`, while Anthropic
+    /// Messages lists at `{root}/v1/models`, the root being the address without its trailing slashes
+    /// and without one trailing `/v1` — gateway documentation publishes both spellings of the same
+    /// root. Asking Anthropic's dialect at `{baseURL}/models` is a 404, and a 404 here is a route
+    /// with no models at all. The query bound is Anthropic's own, and one page is read.
+    ///
+    /// @param address the account's endpoint
+    /// @param api     the wire protocol the supplier speaks
+    /// @return the address to list from
+    static String listingUrl(String address, String api) {
+        String base = address.replaceAll("/+$", "");
+        if (!ANTHROPIC_API.equals(api)) {
+            return base + "/models";
+        }
+        String root = base.endsWith("/v1") ? base.substring(0, base.length() - "/v1".length()) : base;
+        return root + "/v1/models?limit=" + ANTHROPIC_MODEL_LIMIT;
+    }
+
+    /// The protocol whose listing lives under a `/v1` root rather than beside the address.
+    private static final String ANTHROPIC_API = "anthropic-messages";
+
+    /// The largest model-list page Anthropic's public endpoint accepts.
+    private static final int ANTHROPIC_MODEL_LIMIT = 1000;
+
+    /// Reads model ids out of what a listing endpoint answered.
+    ///
+    /// Two shapes are read, because two are published: the `data` array OpenAI-compatible services
+    /// share, and the `models` map some gateways expose instead. In the map the **key** is the id —
+    /// that is what the harness's own reader takes it for — and an entry's own `id` is read only
+    /// where the key says nothing. Anything else is not a model list, and saying so by returning
+    /// nothing is better than writing a model the harness will fail to find.
     ///
     /// @param body the answer
     /// @return the ids, or empty when the body is not a model list
@@ -435,26 +535,58 @@ public record DshAccount(
             if (!parsed.isJsonObject()) {
                 return List.of();
             }
-            com.google.gson.JsonElement data = parsed.getAsJsonObject().get("data");
-            if (data == null || !data.isJsonArray()) {
-                return List.of();
-            }
+            com.google.gson.JsonObject root = parsed.getAsJsonObject();
             List<String> ids = new java.util.ArrayList<>();
-            for (com.google.gson.JsonElement element : data.getAsJsonArray()) {
-                if (!element.isJsonObject()) {
-                    continue;
+            com.google.gson.JsonElement data = root.get("data");
+            if (data != null && data.isJsonArray()) {
+                for (com.google.gson.JsonElement element : data.getAsJsonArray()) {
+                    if (element.isJsonObject()) {
+                        addModelId(ids, idOf(element.getAsJsonObject()));
+                    }
                 }
-                com.google.gson.JsonElement id = element.getAsJsonObject().get("id");
-                if (id != null && id.isJsonPrimitive()) {
-                    String text = id.getAsString();
-                    if (!text.isBlank() && !ids.contains(text)) {
-                        ids.add(text);
+            } else {
+                com.google.gson.JsonElement models = root.get("models");
+                if (models != null && models.isJsonObject()) {
+                    for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry
+                            : models.getAsJsonObject().entrySet()) {
+                        com.google.gson.JsonElement value = entry.getValue();
+                        if (value == null || !value.isJsonObject()) {
+                            // What the harness's own reader skips, for the same reason: a value that
+                            // is not an object describes no model.
+                            continue;
+                        }
+                        String key = entry.getKey();
+                        addModelId(ids, key != null && !key.isBlank()
+                                ? key : idOf(value.getAsJsonObject()));
                     }
                 }
             }
             return List.copyOf(ids);
         } catch (RuntimeException e) {
             return List.of();
+        }
+    }
+
+    /// Returns the `id` an entry carries, or `null` when it carries none.
+    ///
+    /// @param entry the entry
+    /// @return the id
+    private static @Nullable String idOf(com.google.gson.JsonObject entry) {
+        com.google.gson.JsonElement id = entry.get("id");
+        if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
+            return null;
+        }
+        String text = id.getAsString();
+        return text.isBlank() ? null : text;
+    }
+
+    /// Adds an id to a list, once, ignoring one that is not an id.
+    ///
+    /// @param ids the list
+    /// @param id  the candidate, or `null`
+    private static void addModelId(List<String> ids, @Nullable String id) {
+        if (id != null && !id.isBlank() && !ids.contains(id)) {
+            ids.add(id);
         }
     }
 

@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// What a launch hands the harness for an account, as text.
@@ -42,11 +43,29 @@ class DshAccountOverlayTest {
                 DshHomeMode.CUSTOM, home.toString(), List.of(), Map.of(), null, null, null, 0, 0L);
     }
 
+    /// An account whose supplier served a model, which is what a route needs to be written.
+    ///
+    /// The list is named on the account here rather than fetched, so that a test with no network
+    /// still has the thing a launch would have had. It is the account's own model, which is the one
+    /// fallback a route may use when the supplier cannot be reached.
+    private static DshAccount accountOn(String vendor) {
+        return new DshAccount(DshAccount.AccountKind.THIRD_PARTY, vendor, "sk-test", null, null,
+                "a-model", null);
+    }
+
     private String overlayFor(String vendor) {
+        return overlayFor(accountOn(vendor));
+    }
+
+    private String overlayFor(DshAccount account) {
         DshAccountOverlay.Prepared prepared = DshAccountOverlay
-                .prepare(instance(), new DshAccount(vendor, "sk-test", null, null))
+                .prepare(instance(), account)
                 .orElseThrow();
-        return prepared.render();
+        try {
+            return prepared.render();
+        } catch (DshException e) {
+            throw new AssertionError("the overlay could not be written: " + e.getMessage(), e);
+        }
     }
 
     @Test
@@ -73,5 +92,60 @@ class DshAccountOverlayTest {
         String yaml = overlayFor("openrouter");
         assertFalse(yaml.contains("defaultContextWindow"), yaml);
         assertFalse(yaml.contains("defaultMaxTokens"), yaml);
+    }
+
+    @Test
+    void aSupplierThePersonAddedArrivesWithItsAddress() {
+        // What the harness reads, and the half of the defect that was visible from outside: a route
+        // written without a `baseURL` is refused with "needs a baseURL; the installed catalog does
+        // not describe this route", because a route the launcher invents is not one the harness can
+        // look an address up for.
+        DshVendor added = DshVendor.discovered("opencode", "OpenCode", "https://api.opencode.ai/v1");
+        java.util.List<DshVendor> addedVendors =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().getCustomVendors();
+        addedVendors.add(added);
+        try {
+            String yaml = overlayFor("opencode");
+
+            assertTrue(yaml.contains("        baseURL: \"https://api.opencode.ai/v1\"\n"), yaml);
+            assertTrue(yaml.contains("        api: openai-completions\n"), yaml);
+        } finally {
+            addedVendors.remove(added);
+        }
+    }
+
+    @Test
+    void theModelsTheSupplierServedAreWhatTheRouteCarries() throws Exception {
+        List<String> served = List.of("ling-3.0-flash-fin-free", "mimo-v2.5-free");
+        DshAccountOverlay.Prepared prepared =
+                DshAccountOverlay.prepare(instance(), accountOn("openrouter")).orElseThrow();
+        prepared.resolveModels(served);
+
+        String yaml = prepared.render();
+
+        assertTrue(yaml.contains("          - id: ling-3.0-flash-fin-free\n"), yaml);
+        assertTrue(yaml.contains("          - id: mimo-v2.5-free\n"), yaml);
+        assertFalse(yaml.contains("- id: default\n"), yaml);
+        assertFalse(yaml.contains("- id: a-model\n"),
+                "an answer from the supplier is the list, not the name the account kept: " + yaml);
+    }
+
+    @Test
+    void aRouteWithNoModelsTheSupplierCouldBeAskedForIsRefusedRatherThanInvented() {
+        // What this replaced wrote a model called `default` whenever the list could not be read. The
+        // harness fills a route's models in only for a supplier it ships, and a route is named after
+        // the account, so there was nothing for it to fill in either: the launch failed anyway, with
+        // a sentence about a model nobody chose. Saying what happened is what the person can act on.
+        DshAccount noModel = new DshAccount(DshAccount.AccountKind.THIRD_PARTY, "openrouter", "sk-test",
+                null, null, null, null);
+
+        DshException refused = assertThrows(DshException.class,
+                () -> DshAccountOverlay.prepare(instance(), noModel).orElseThrow().render());
+
+        assertTrue(refused.getMessage().contains("Could not read the models of"), refused.getMessage());
+        assertTrue(refused.getMessage().contains("https://openrouter.ai/api/v1"),
+                "the address is what the person has to check: " + refused.getMessage());
+        assertFalse(refused.getMessage().contains("default"),
+                "and nothing is invented to get past it: " + refused.getMessage());
     }
 }
