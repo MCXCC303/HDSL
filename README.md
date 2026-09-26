@@ -81,7 +81,7 @@ HDSL v0.2.0 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特�
 
 ```bash
 ./gradlew makeExecutable
-./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png build/libs
+./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png dist
 ```
 
 ## 参与贡献

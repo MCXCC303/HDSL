@@ -109,12 +109,14 @@ jobs:
   # The macOS bundle embeds the host's JavaFX platform, so it is built where
   # it runs rather than beside the Linux packages — once per Mac arch, with
   # macos-latest covering Apple Silicon and macos-26-intel covering Intel.
-  # Each uploads into the release the Linux job created, which is what the
-  # `needs` is for; the file names carry the arch, so the two uploads never
-  # meet.
+  #
+  # Deliberately no `needs: release`. A release is created by one job and added
+  # to by the other, and `gh release upload` is incremental, so nothing here
+  # depends on the Linux job having run first. Waiting for it would only mean
+  # that a Mac failure leaves a published release missing half its assets —
+  # the release goes public the moment the Linux job creates it, whether or not
+  # this job succeeds afterwards.
   release-mac:
-
-    needs: release
 
     strategy:
       matrix:
@@ -150,19 +152,22 @@ jobs:
 
     - name: Build the macOS packages
       run: |
+        # `dist/`, not `build/libs`, for the same reason the Linux side uses it: the
+        # release note reads every artifact's checksum from one directory, and the
+        # macOS packages belong in it beside the rest.
         ./packaging/mac-packages.sh \
           "${{ env.VERSION }}" \
           "build/libs/hdsl-${{ env.VERSION }}.sh" \
           "src/main/resources/assets/img/icon@8x.png" \
-          build/libs
+          dist
 
     - name: Upload the macOS packages
       run: |
         gh release upload "${GITHUB_REF_NAME}" \
-          build/libs/HDSL-${{ env.VERSION }}-*.dmg \
-          build/libs/HDSL-${{ env.VERSION }}-*.dmg.sha256 \
-          build/libs/HDSL-${{ env.VERSION }}-*.zip \
-          build/libs/HDSL-${{ env.VERSION }}-*.zip.sha256 \
+          dist/HDSL-${{ env.VERSION }}-*.dmg \
+          dist/HDSL-${{ env.VERSION }}-*.dmg.sha256 \
+          dist/HDSL-${{ env.VERSION }}-*.zip \
+          dist/HDSL-${{ env.VERSION }}-*.zip.sha256 \
           --clobber
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
