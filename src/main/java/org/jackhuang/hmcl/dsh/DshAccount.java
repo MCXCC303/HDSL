@@ -21,6 +21,8 @@ import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -262,7 +264,7 @@ public record DshAccount(
     public Check check() {
         String address = endpoint();
         if (address == null || address.isBlank()) {
-            return new Check(Outcome.UNREACHABLE, "这个供应商的地址取决于账号，请填写端点地址");
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.no_endpoint"));
         }
         DshVendor vendor = vendor();
         String api = vendor == null ? "openai-completions" : vendor.api();
@@ -293,32 +295,32 @@ public record DshAccount(
                     // every path would otherwise be reported as a reachable supplier with a working
                     // key. What says the key worked is a model list coming back.
                     return looksLikeAListing(response.body())
-                            ? new Check(Outcome.VALID, "密钥有效")
-                            : new Check(Outcome.UNKNOWN, "这个地址回答了，但回答的不是模型列表（HTTP "
-                                    + status + "）：" + url + " —— 请检查这个地址是不是 API 基址");
+                            ? new Check(Outcome.VALID, i18n("dsh.account.check.valid"))
+                            : new Check(Outcome.UNKNOWN, i18n("dsh.account.check.not_a_listing",
+                                    String.valueOf(status), url));
                 }
                 if (status == 401 || status == 403) {
-                    return new Check(Outcome.REJECTED, "供应商拒绝了这个密钥（HTTP " + status + "）");
+                    return new Check(Outcome.REJECTED, i18n("dsh.account.check.rejected", String.valueOf(status)));
                 }
                 // 404 and 400 are the endpoint answering, which is not the same as the key being
                 // wrong: some gateways do not serve a model list at all.
                 if (status == 404 || status == 400 || status == 405) {
                     return new Check(Outcome.UNKNOWN,
-                            "这个端点不提供模型列表（HTTP " + status + "），无法据此判断密钥");
+                            i18n("dsh.account.check.no_listing", String.valueOf(status)));
                 }
-                return new Check(Outcome.UNREACHABLE, "供应商返回 HTTP " + status);
+                return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.http", String.valueOf(status)));
             }
         } catch (IOException e) {
             // A connection failure often carries no message at all — `ConnectException` from a
             // closed port says nothing — so the exception's own name is the more useful half.
             String why = e.getMessage() == null || e.getMessage().isBlank()
                     ? e.getClass().getSimpleName() : e.getMessage();
-            return new Check(Outcome.UNREACHABLE, "无法连接 " + url + "：" + why);
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.unreachable", url, why));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new Check(Outcome.UNREACHABLE, "检查被中断");
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.interrupted"));
         } catch (RuntimeException e) {
-            return new Check(Outcome.UNREACHABLE, "地址无效：" + e.getMessage());
+            return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.bad_address", String.valueOf(e.getMessage())));
         }
     }
 

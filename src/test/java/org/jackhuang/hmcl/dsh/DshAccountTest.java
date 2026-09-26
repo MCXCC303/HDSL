@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -49,6 +50,23 @@ class DshAccountTest {
         DshAccount gateway = new DshAccount("totally-unknown", "k", "https://my.gateway/v1", null);
         assertEquals("https://my.gateway/v1", gateway.endpoint());
         assertNull(gateway.vendor());
+    }
+
+    @Test
+    void whatTheKeyCheckSaysComesFromTheBundles() {
+        // The sentences the check reports are read from the bundles like everything else the
+        // interface shows. They used to be written into the code in Chinese, so a person running
+        // the launcher in any other language was answered in one they may not read.
+        //
+        // An account on a supplier nothing knows and with no address of its own is the one path
+        // through the check that answers without a request, which is what makes it testable here.
+        DshAccount.Check check = new DshAccount("totally-unknown", "k", null, null).check();
+
+        assertEquals(DshAccount.Outcome.UNREACHABLE, check.outcome());
+        assertEquals(org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.account.check.no_endpoint"),
+                check.message());
+        assertNotEquals("dsh.account.check.no_endpoint", check.message(),
+                "a key no bundle holds comes back as itself, which is not a sentence");
     }
 
     @Test
