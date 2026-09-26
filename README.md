@@ -105,4 +105,7 @@ HDSL 是 HMCL 的衍生作品，目前功能正在快速完善，欢迎通过该
 界面层的说法与实现来自 HMCL 及其贡献者；DeepSeek Harness 领域层为 HDSL 原创。
 
 ## 致谢
+Bemly (Bemly_, For MacOS Transplanting)
+
 DeepSeek V4.1 Flash
+
