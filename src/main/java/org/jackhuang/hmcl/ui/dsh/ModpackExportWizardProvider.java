@@ -63,8 +63,32 @@ public final class ModpackExportWizardProvider implements WizardProvider {
     /// The kind the community's DSH-PackForge tooling reads.
     public static final String FORMAT_PACKFORGE = "packforge";
 
+    /// The key the pack's download address prefix is held under.
+    public static final String URL = "modpack.url";
+
+    /// The key the pack's own site is held under.
+    public static final String REFERENCE_URL = "modpack.referenceUrl";
+
+    /// The key the bundles left out of a pack are held under.
+    public static final String EXCLUDED_BUNDLES = "modpack.excludedBundles";
+
     /// The key that says whether the conversations travel too.
     public static final String SESSIONS = "modpack.sessions";
+
+    /// The key the `settings.yaml` sections a pack carries are held under.
+    ///
+    /// A plugin keeps its own settings in the harness's settings file, one section per plugin, and
+    /// that is most of what "the same environment" means for it: a sidebar's custom CSS, a market's
+    /// preferences. They travel unless the person says otherwise, and the values that look like
+    /// credentials never do.
+    public static final String SETTINGS = "modpack.settings";
+
+    /// The key the skill packs a pack carries are held under.
+    ///
+    /// A skill is content rather than configuration: it cannot be named and fetched the way a
+    /// plugin can, so the only way for it to reach another instance is inside the pack. Like the
+    /// settings, they travel unless the person says otherwise.
+    public static final String SKILLS = "modpack.skills";
 
     /// The instance being exported.
     private final DshInstance instance;
@@ -85,6 +109,12 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         settings.put(FORMAT, FORMAT_HDSL);
         settings.put(SESSIONS, Boolean.FALSE);
         settings.put("modpack.instance", instance.id());
+        try {
+            settings.put(SETTINGS, new java.util.LinkedHashSet<>(
+                    org.jackhuang.hmcl.dsh.DshPluginSettings.sectionsOf(instance.homeDirectory())));
+        } catch (org.jackhuang.hmcl.dsh.DshException e) {
+            settings.put(SETTINGS, new java.util.LinkedHashSet<String>());
+        }
     }
 
     @Override
@@ -108,19 +138,32 @@ public final class ModpackExportWizardProvider implements WizardProvider {
         chooser.setTitle(i18n("modpack.wizard.step.initialization.save"));
         chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
                 packforge ? i18n("dsh.packforge.filter") : i18n("dsh.modpack.filter"),
-                packforge ? "*.dspack" : "*.zip"));
+                packforge ? "*.dspack" : "*" + org.jackhuang.hmcl.dsh.DshModpacks.FILE_EXTENSION));
 
         String name = string(settings, NAME, instance.id());
         chooser.setInitialFileName(packforge
                 ? org.jackhuang.hmcl.dsh.DshPackForge.Options.kebab(name) + "-"
                         + string(settings, VERSION, "1.0.0") + ".dspack"
-                : name + ".zip");
+                : name + org.jackhuang.hmcl.dsh.DshModpacks.FILE_EXTENSION);
 
         java.io.File chosen = chooser.showSaveDialog(org.jackhuang.hmcl.ui.Controllers.getStage());
         if (chosen == null) {
             return null;
         }
         java.nio.file.Path target = chosen.toPath();
+
+        // The dialog belongs to the wizard, not to this method: the wizard shows the work, and it is
+        // what says 完成 when the work is done and closes back to the page the wizard was opened from.
+        // Writing the pack here and returning nothing — which is what this did — leaves the person
+        // with a wizard that vanishes and no word about whether anything was written.
+        //
+        // So the work is handed back as a task, and the lines the exporter reports become the title
+        // the person reads while it runs.
+        javafx.beans.property.StringProperty title =
+                new javafx.beans.property.SimpleStringProperty(i18n("modpack.export"));
+        settings.put("title", title);
+        java.util.function.Consumer<String> report =
+                line -> org.jackhuang.hmcl.ui.FXUtils.runInFX(() -> title.set(line));
 
         if (packforge) {
             org.jackhuang.hmcl.dsh.DshPackForge.Options options =
@@ -130,16 +173,51 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                             string(settings, NAME, instance.id()),
                             string(settings, DESCRIPTION, ""),
                             string(settings, AUTHOR, ""));
-            ModpackFilesPage.runPackForge(instance, target, options);
-        } else {
-            ModpackFilesPage.run(instance, target, optionsOf(settings));
+            return org.jackhuang.hmcl.task.Task.runAsync(i18n("modpack.export"),
+                    () -> ModpackFilesPage.writePackForge(instance, target, options, report));
         }
-        return null;
+        org.jackhuang.hmcl.dsh.DshModpacks.Options options = optionsOf(settings);
+        return org.jackhuang.hmcl.task.Task.runAsync(i18n("modpack.export"),
+                () -> ModpackFilesPage.write(instance, target, options, report));
     }
 
     @Override
     public boolean cancel() {
         return true;
+    }
+
+    /// Reads the bundles the person chose to leave out.
+    ///
+    /// @param settings the wizard's settings
+    /// @return the names, never `null`
+    @SuppressWarnings("unchecked")
+    public static java.util.Set<String> excludedBundlesOf(org.jackhuang.hmcl.util.SettingsMap settings) {
+        Object value = settings.get(EXCLUDED_BUNDLES);
+        return value instanceof java.util.Set<?> set
+                ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
+    }
+
+    /// Reads the settings sections the person chose to carry.
+    ///
+    /// @param settings the wizard's settings
+    /// @return the names, never `null`
+    @SuppressWarnings("unchecked")
+    public static java.util.Set<String> settingsOf(
+            org.jackhuang.hmcl.util.SettingsMap settings) {
+        Object value = settings.get(SETTINGS);
+        return value instanceof java.util.Set<?> set
+                ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
+    }
+
+    /// Reads the skill packs the pages collected.
+    ///
+    /// @param settings the wizard's settings
+    /// @return the names of the skills that travel, empty for none
+    @SuppressWarnings("unchecked")
+    public static java.util.Set<String> skillsOf(org.jackhuang.hmcl.util.SettingsMap settings) {
+        Object value = settings.get(SKILLS);
+        return value instanceof java.util.Set<?> set
+                ? java.util.Set.copyOf((java.util.Set<String>) set) : java.util.Set.of();
     }
 
     /// Reads the options the pages collected.
@@ -153,7 +231,12 @@ public final class ModpackExportWizardProvider implements WizardProvider {
                 string(settings, VERSION, "1.0"),
                 string(settings, AUTHOR, ""),
                 string(settings, DESCRIPTION, ""),
-                Boolean.TRUE.equals(settings.get(SESSIONS)));
+                string(settings, URL, ""),
+                string(settings, REFERENCE_URL, ""),
+                Boolean.TRUE.equals(settings.get(SESSIONS)),
+                excludedBundlesOf(settings),
+                settingsOf(settings),
+                skillsOf(settings));
     }
 
     /// Reads a string setting.

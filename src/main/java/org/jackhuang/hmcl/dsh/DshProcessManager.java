@@ -91,6 +91,34 @@ public final class DshProcessManager {
     /// @throws DshException when the instance is still stopping, the runtime is
     ///                       missing, or the process cannot start
     public static DshProcess launch(DshInstance instance) throws DshException {
+        return launch(instance, null);
+    }
+
+    /// Launches an instance with an account.
+    ///
+    /// @param instance the instance
+    /// @param account  the account to hand the harness, or `null` for none
+    /// @return the process
+    /// @throws DshException when it cannot be started
+    public static DshProcess launch(DshInstance instance, @Nullable DshAccount account)
+            throws DshException {
+        return launch(instance, account, null);
+    }
+
+    /// Launches an instance from a plan that has already been built.
+    ///
+    /// Building a plan is not free of consequence: it writes the account's route into the profile's
+    /// own patch layer and asks the supplier for its models. A caller that built one — to print what
+    /// was about to run, which is what the command line interface does — hands that same plan over
+    /// rather than paying for a second one.
+    ///
+    /// @param instance the instance
+    /// @param account  the account, or `null` for none
+    /// @param prepared the plan to use, or `null` to build one
+    /// @return the process
+    /// @throws DshException when it cannot be started
+    public static DshProcess launch(DshInstance instance, @Nullable DshAccount account,
+                                    @Nullable DshLauncher.LaunchPlan prepared) throws DshException {
         synchronized (LAUNCH_LOCK) {
             DshProcess existing = RUNNING.get(instance.id());
             if (existing != null) {
@@ -111,11 +139,44 @@ public final class DshProcessManager {
 
             // The runtime is resolved inside the launcher, so an instance pinned
             // to a managed Node runtime is honoured here too.
-            DshProcess process = DshProcess.start(instance);
+            DshProcess process = prepared == null
+                    ? DshProcess.start(instance, account)
+                    : DshProcess.startPrepared(instance, prepared);
             RUNNING.put(instance.id(), process);
             process.setStateListener(state -> {
                 if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
                     RUNNING.remove(instance.id(), process);
+                    // Whatever this launch put into the home's own settings goes back to what it
+                    // was, so the next launch — of any kind, with an account or with none — starts
+                    // on the person's own configuration rather than on this launch's leftovers.
+                    try {
+                        DshInjectedSettings.settle(process.plan().instance());
+                    } catch (DshException e) {
+                        org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                                "Could not put back what the launch of " + process.plan().instance().id()
+                                        + " left in its settings", e);
+                    }
+                    // An instance that dies **after** it was up is the case a message box is least
+                    // able to help with and the crash dialog most: it was working a moment ago, so
+                    // the question is what it said on the way out, and the answer is in the output
+                    // the dialog carries. Reported from here rather than from the launch path
+                    // because this listener is the one place that sees every ending, whenever it
+                    // happens — a server that fell over an hour after it started never goes through
+                    // the launch path again.
+                    // `isCrash` rather than `state == FAILED`, and that distinction is the whole
+                    // reason this did not work the first time: `DshProcess` maps the exit of a
+                    // process that had been **ready** to `STOPPED` whatever its exit code, because
+                    // for its own purposes "it was up and now it is not" is the same thing either
+                    // way. So a crash after a successful start arrives here as `STOPPED`, and
+                    // testing for `FAILED` misses exactly the case this dialog was written for.
+                    if (org.jackhuang.hmcl.ui.dsh.DshCrashDialog.isCrash(process)) {
+                        javafx.application.Platform.runLater(() ->
+                                org.jackhuang.hmcl.ui.dsh.DshCrashDialog.show(
+                                        instance,
+                                        org.jackhuang.hmcl.ui.dsh.DshCrashDialog.bannerOf(process),
+                                        org.jackhuang.hmcl.ui.dsh.DshCrashDialog.describe(process),
+                                        process));
+                    }
                 }
             });
             return process;

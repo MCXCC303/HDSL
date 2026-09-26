@@ -168,25 +168,6 @@ public abstract class LineComponent extends StackPane implements NoPaddingCompon
 
     private Node[] nodes = new Node[2];
 
-    /// Puts a node beside the row's title.
-    ///
-    /// Some rows say something about themselves beside their name rather than at
-    /// their end — the globe that means "follow the launcher" is one — and the title
-    /// line is a row of its own, so what belongs there is added to it rather than
-    /// replacing the whole slot.
-    ///
-    /// @param node the node to add
-    protected final void addTitleNode(Node node) {
-        titleLine.getChildren().add(node);
-    }
-
-    /// Removes a node that was added beside the title.
-    ///
-    /// @param node the node to remove
-    protected final void removeTitleNode(Node node) {
-        titleLine.getChildren().remove(node);
-    }
-
     protected void setNode(int idx, Node node) {
         if (nodes.length <= idx)
             nodes = Arrays.copyOf(nodes, idx + 1);
@@ -210,6 +191,13 @@ public abstract class LineComponent extends StackPane implements NoPaddingCompon
         setNode(IDX_TRAILING, node);
     }
 
+    /// Puts a node immediately after the row's name.
+    ///
+    /// The slot a row keeps beside its title, which is where a setting says who chose it — the
+    /// globe on an inheritable row, for instance. Unlike [#setRowTrailing(Node)], which pins the
+    /// node to the far right of the row, this one sits with the name.
+    ///
+    /// @param node the node, or `null` to clear
     public final void setTitleTrailing(@Nullable Node node) {
         if (titleTrailing == node) {
             return;
@@ -219,6 +207,13 @@ public abstract class LineComponent extends StackPane implements NoPaddingCompon
         titleLabel.setGraphic(node);
         titleLabel.setMouseTransparent(node == null);
         titleContainer.setMouseTransparent(node == null);
+    }
+
+    /// Returns the node this row keeps beside its name.
+    ///
+    /// @return the node, or `null` when there is none
+    public final @Nullable Node getTitleTrailing() {
+        return titleTrailing;
     }
 
     public void setLargeTitle(boolean largeTitle) {

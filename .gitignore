@@ -4,6 +4,17 @@ build/
 .idea/
 *.iml
 out/
+dist/
+
+# Working notes, verification captures and references. Not part of the product: the plan is a
+# scratch pad, the screenshots are evidence for one review, the reference images belong to HMCL.
+.dev/
+.verify/
+# Everything under docs/ stays out of the product except the guides, which are written
+# for other people rather than for this desk.
+docs/*
+!docs/plugin-guide/
+!docs/account-life-cycle/
 
 # build outputs, but keep the vendored JFoenix patch base
 *.jar

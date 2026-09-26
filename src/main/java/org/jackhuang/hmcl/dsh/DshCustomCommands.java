@@ -64,7 +64,7 @@ public final class DshCustomCommands {
         environment.put("DSH_HOME", instance.homeDirectory().toString());
         environment.put("DSH_INSTANCE", instance.id());
         environment.put("DSH_VERSION", instance.version());
-        environment.putAll(instance.environment());
+        environment.putAll(DshEnvironment.of(instance));
 
         try {
             // A command is a shell line, not a program and its arguments: that is what a

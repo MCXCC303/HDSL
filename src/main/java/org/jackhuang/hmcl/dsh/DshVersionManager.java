@@ -30,10 +30,14 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -60,6 +64,24 @@ public final class DshVersionManager {
     /// published together, and a mismatch between them is a failure at import
     /// rather than a degradation.
     public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
+
+    /// The line that pins the boot library, as the file writes it.
+    ///
+    /// Anchored on the key rather than looked for anywhere in a line, and that is the whole point:
+    /// the workspace file also *lists* packages, in entries spelled "- '@scope/name@1.2.3'", and a
+    /// scan for the name alone reads the boot library out of one of those. What it answers with then
+    /// still carries the "@" that separated the two halves of that list entry — and that value
+    /// travels: an exported pack records it, and installing it writes a workspace file whose pin is
+    /// not a version at all, which pnpm then refuses.
+    private static final Pattern APP_BOOT_PIN = Pattern.compile(
+            "^[ \\t]*['\"]?" + Pattern.quote(APP_BOOT_PACKAGE) + "['\"]?[ \\t]*:[ \\t]*(\\S+)[ \\t]*$",
+            Pattern.MULTILINE);
+
+    /// The characters YAML reserves at the start of a plain scalar.
+    ///
+    /// A scalar beginning with one of these is an indicator to the reader rather than text, so
+    /// anything starting with one has to be quoted.
+    private static final String RESERVED_FIRST = "-?:,[]{}#&*!|>'\"%@`";
 
     /// Reports whether an instance's own DeepSeek Harness is in place.
     ///
@@ -186,12 +208,18 @@ public final class DshVersionManager {
     /// @param version     the DeepSeek Harness version
     /// @param appBoot     the application boot library version to hold it to
     /// @throws DshException when the manifest cannot be written
-    static void writeManifest(Path prefix, String version, String appBoot) throws DshException {
+    static void writeManifest(Path prefix, String version, String appBoot,
+                              @Nullable DshNodeRuntime runtime, DshDependencyPolicy policy)
+            throws DshException {
         JsonObject dependencies = new JsonObject();
         dependencies.addProperty(PACKAGE_NAME, version);
 
-        JsonObject overrides = new JsonObject();
-        overrides.addProperty(APP_BOOT_PACKAGE, appBoot);
+        // One map, and both files are written from it. Two computations — one per file — is how the
+        // same key came to be written twice: the boot library is put in explicitly *and* it is one of
+        // the vendor's packages, so the policy named it again and pnpm refused the file with
+        // `duplicated mapping key`. Building the answer once makes that unrepresentable.
+        Map<String, String> overrides = mergeOverrides(appBoot,
+                heldDependencies(runtime, version, appBoot, policy));
 
         JsonObject manifest = new JsonObject();
         manifest.addProperty("private", true);
@@ -204,17 +232,164 @@ public final class DshVersionManager {
         // left the pinning silently not applied, and a runtime came out with the
         // launcher at one version and its boot library at another — a pairing that
         // fails at import rather than degrading. The tests cover the pair.
-        String workspace = "overrides:\n"
-                + "  '" + APP_BOOT_PACKAGE + "': " + appBoot + "\n";
+        StringBuilder workspace = new StringBuilder("overrides:\n");
+        overrides.forEach((name, held) -> workspace.append("  ").append(yamlScalar(name)).append(": ")
+                .append(yamlScalar(held)).append('\n'));
 
         try {
             Files.createDirectories(prefix);
             var gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
             Files.writeString(prefix.resolve("package.json"), gson.toJson(manifest));
-            Files.writeString(prefix.resolve("pnpm-workspace.yaml"), workspace);
+            Files.writeString(prefix.resolve("pnpm-workspace.yaml"), workspace.toString());
         } catch (IOException e) {
             throw new DshException("Failed to write the manifest for " + version, e);
         }
+    }
+
+    /// Combines the boot library's pin with the ones the policy holds.
+    ///
+    /// The boot library wins where the two name the same package, and that is not a tie-break but the
+    /// point: it is the one the **caller** chose — the create page offers it — while the policy only
+    /// knows what the harness's ranges say. Keeping them in one map is also what stops the same key
+    /// being written twice, which is a file pnpm refuses outright.
+    ///
+    /// @param appBoot the boot library version the caller asked for
+    /// @param held    the versions the policy holds
+    /// @return the overrides, boot library first
+    static Map<String, String> mergeOverrides(String appBoot, Map<String, String> held) {
+        Map<String, String> overrides = new LinkedHashMap<>();
+        overrides.put(APP_BOOT_PACKAGE, appBoot);
+        held.forEach(overrides::putIfAbsent);
+        return overrides;
+    }
+
+    /// Returns a value written so that YAML reads it back as the string it is.
+    ///
+    /// The file is built by hand rather than through an emitter, so a value that is not a plain
+    /// scalar has to be quoted here or the file stops being YAML. Both halves of an override can be
+    /// such a value: a package name starts with `@`, which YAML reserves, and a pin can be a range
+    /// or a protocol as readily as a version. One this cannot write plainly is single-quoted, which
+    /// is where a quote of its own is doubled — the one escape that style has.
+    ///
+    /// @param value the value
+    /// @return it as a YAML scalar
+    private static String yamlScalar(String value) {
+        boolean plain = !value.isEmpty()
+                && RESERVED_FIRST.indexOf(value.charAt(0)) < 0
+                && value.equals(value.trim())
+                && !value.contains(": ")
+                && !value.contains(" #")
+                && value.indexOf('\n') < 0;
+        return plain ? value : "'" + value.replace("'", "''") + "'";
+    }
+
+    /// Returns the dependencies to hold to the versions the harness declares.
+    ///
+    /// The declared value is a range — `^4.0.2` — and its **floor** is the version the author built
+    /// against: a caret asks for that version or anything newer that claims compatibility, and
+    /// "anything newer" is what has twice broken a launch. So the floor is read out and written as an
+    /// override, which is not a guess about what works but a statement of what the package itself
+    /// says it was written for.
+    ///
+    /// Read from the **published manifests** rather than from disk: this runs before `pnpm install`,
+    /// when the harness's own `package.json` is not on the machine yet. Both packages that take part
+    /// in the pairing are asked — the harness, and the boot library it is held to — because each
+    /// declares part of the tree and the boot library is where the plugin framework is named.
+    ///
+    /// **A failure here must not fail the install.** A registry that cannot be reached, or a range
+    /// this does not recognise, leaves that dependency to resolve freely — which is exactly the
+    /// behaviour of [DshDependencyPolicy#LATEST] and better than refusing to install at all.
+    ///
+    /// @param runtime the runtime whose npm reads the registry
+    /// @param version the harness version
+    /// @param appBoot the boot library version
+    /// @param policy  how much of the tree to hold
+    /// @return the name-to-version overrides
+    private static Map<String, String> heldDependencies(@Nullable DshNodeRuntime runtime, String version,
+                                                        String appBoot, DshDependencyPolicy policy) {
+        Map<String, String> held = new LinkedHashMap<>();
+        // No runtime means no npm, which means no registry to read the declarations from. Nothing is
+        // held, which is the same answer as `LATEST` and better than refusing to install.
+        if (policy == DshDependencyPolicy.LATEST || runtime == null) {
+            return held;
+        }
+        for (String asked : List.of(PACKAGE_NAME + "@" + version, APP_BOOT_PACKAGE + "@" + appBoot)) {
+            try {
+                JsonObject declared = declaredDependencies(
+                        runNpmView(runtime.npm(), asked, "dependencies").text());
+                if (declared == null) {
+                    continue;
+                }
+                for (Map.Entry<String, JsonElement> entry : declared.entrySet()) {
+                    String name = entry.getKey();
+                    // First answer wins: the harness's own declaration is the one that matters, and
+                    // the boot library is asked second only for what the harness did not name.
+                    if (!policy.pins(name) || held.containsKey(name)
+                            || !entry.getValue().isJsonPrimitive()) {
+                        continue;
+                    }
+                    String floor = floorOf(entry.getValue().getAsString());
+                    if (floor != null) {
+                        held.put(name, floor);
+                    }
+                }
+            } catch (DshException | RuntimeException e) {
+                LOG.warning("Could not read what " + asked + " declares; leaving its dependencies "
+                        + "to resolve freely", e);
+            }
+        }
+        return held;
+    }
+
+    /// Reads a `dependencies` object out of what npm answered.
+    ///
+    /// npm answers a question about a **version specifier** with an array — one entry per version it
+    /// matched — even when the specifier names exactly one, so `npm view pkg@1.2.3 dependencies
+    /// --json` gives `[{…}]` rather than `{…}`. Reading only the object shape therefore found
+    /// nothing, silently: the policy would have been offered, selected, saved, and applied to
+    /// nothing at all. Hence a method of its own with the real shape written down, and a test that
+    /// feeds it the real answer.
+    ///
+    /// A primitive is npm's answer for a package that declares no dependencies at all.
+    ///
+    /// @param json npm's answer
+    /// @return the dependencies, or `null` when there are none to read
+    static @Nullable JsonObject declaredDependencies(@Nullable String json) {
+        JsonElement parsed = parseJson(json);
+        if (parsed == null || parsed.isJsonNull()) {
+            return null;
+        }
+        if (parsed.isJsonObject()) {
+            return parsed.getAsJsonObject();
+        }
+        if (parsed.isJsonArray()) {
+            for (JsonElement element : parsed.getAsJsonArray()) {
+                if (element.isJsonObject()) {
+                    return element.getAsJsonObject();
+                }
+            }
+        }
+        return null;
+    }
+
+    /// Reads the floor out of a declared version range.
+    ///
+    /// Only the shapes that have a floor are answered: `4.0.2`, `^4.0.2`, `~4.0.2` and `>=4.0.2`.
+    /// Anything else — `*`, `latest`, a tag, a git address, a compound range — is answered with
+    /// `null` and left alone, because a range whose floor this cannot name is one it must not guess
+    /// at.
+    ///
+    /// @param range the declared range
+    /// @return the version, or `null`
+    static @Nullable String floorOf(@Nullable String range) {
+        String text = range == null ? "" : range.trim();
+        for (String prefix : List.of("^", "~", ">=")) {
+            if (text.startsWith(prefix)) {
+                text = text.substring(prefix.length()).trim();
+                break;
+            }
+        }
+        return text.matches("\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?") ? text : null;
     }
 
     /// The directory an instance's copy is staged in while it is installed.
@@ -280,7 +455,8 @@ public final class DshVersionManager {
             throw new DshException("pnpm was not found on PATH; changing the boot library requires it");
         }
 
-        writeManifest(target, instance.version(), appBoot);
+        writeManifest(target, instance.version(), appBoot, runtime,
+                org.jackhuang.hmcl.setting.SettingsManager.settings().dependencyPolicy());
 
         List<String> command = buildInstallCommand(runtime, target);
 
@@ -303,6 +479,27 @@ public final class DshVersionManager {
         }
     }
 
+    /// Returns the boot library version the workspace file pins, or null when it pins none.
+    ///
+    /// The seam the reader is written against, so the parse can be tested on a file's own text
+    /// rather than through an instance that has to exist first.
+    ///
+    /// @param workspace the file's text
+    /// @return the pinned version, or null
+    static @Nullable String appBootPin(String workspace) {
+        Matcher pin = APP_BOOT_PIN.matcher(workspace);
+        if (!pin.find()) {
+            return null;
+        }
+        String version = pin.group(1).trim();
+        if (version.length() > 1
+                && (version.charAt(0) == '\'' || version.charAt(0) == '"')
+                && version.charAt(version.length() - 1) == version.charAt(0)) {
+            version = version.substring(1, version.length() - 1);
+        }
+        return version.isEmpty() ? null : version;
+    }
+
     /// Returns the boot library version an instance is held to.
     ///
     /// The pin is read back from where it was written, because that is the
@@ -323,14 +520,9 @@ public final class DshVersionManager {
         Path workspace = prefix.resolve("pnpm-workspace.yaml");
         if (Files.isRegularFile(workspace)) {
             try {
-                for (String line : Files.readAllLines(workspace)) {
-                    if (line.contains(APP_BOOT_PACKAGE)) {
-                        String version = line.substring(line.indexOf(APP_BOOT_PACKAGE) + APP_BOOT_PACKAGE.length());
-                        version = version.replaceFirst("^['\"]?\\s*:\\s*", "").trim().replaceAll("^['\"]|['\"]$", "");
-                        if (!version.isEmpty()) {
-                            return version;
-                        }
-                    }
+                String pinned = appBootPin(Files.readString(workspace));
+                if (pinned != null) {
+                    return pinned;
                 }
             } catch (IOException e) {
                 LOG.warning("Failed to read the boot library pin of " + instance.id(), e);
@@ -439,7 +631,8 @@ public final class DshVersionManager {
         // Pinning the launcher to its exact version and holding the application
         // boot library to the same one keeps a tree consistent. The override is
         // the value the create page offers, and it defaults to the matching one.
-        writeManifest(staging, version, version);
+        writeManifest(staging, version, version, runtime,
+                org.jackhuang.hmcl.setting.SettingsManager.settings().dependencyPolicy());
 
         List<String> command = buildInstallCommand(runtime, staging);
 
@@ -659,20 +852,37 @@ public final class DshVersionManager {
         }
     }
 
-    /// Parses JSON, returning `null` rather than throwing on malformed input.
+    /// Parses JSON out of a command's output, returning `null` rather than throwing.
     ///
-    /// @param text the JSON text
-    /// @return the parsed element, or `null`
+    /// npm writes warnings, deprecation notices and progress lines to the same stream as the
+    /// answer, so the output is not JSON — it is some number of lines that are not JSON followed by
+    /// the JSON. Reading from the first line that begins a value is what makes the answer findable
+    /// whatever npm has decided to say first; parsing the whole output works only until the day npm
+    /// has something to say, and then the version list is empty and the error blames the network.
+    ///
+    /// @param text the command's output
+    /// @return the parsed element, or `null` when there is no value in it
     private static @Nullable JsonElement parseJson(String text) {
-        if (text.isEmpty()) {
+        if (text.isBlank()) {
             return null;
         }
-        try {
-            return JsonParser.parseString(text);
-        } catch (RuntimeException e) {
-            LOG.warning("Failed to parse npm output as JSON", e);
-            return null;
+        java.util.List<String> lines = text.lines().toList();
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i).stripLeading();
+            if (line.isEmpty() || (line.charAt(0) != '{' && line.charAt(0) != '[')) {
+                continue;
+            }
+            try {
+                return JsonParser.parseString(String.join("\n", lines.subList(i, lines.size())));
+            } catch (RuntimeException e) {
+                // The first line that looked like a value was not the whole of it; the next one
+                // that does may be.
+                LOG.info("npm output from line " + (i + 1) + " did not parse as JSON; trying the next");
+            }
         }
+        LOG.warning("No JSON value in the command's output: "
+                + text.substring(0, Math.min(200, text.length())));
+        return null;
     }
 
     /// Deletes a directory, ignoring failures.

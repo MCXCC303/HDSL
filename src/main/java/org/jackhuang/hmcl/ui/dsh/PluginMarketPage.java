@@ -35,6 +35,7 @@ import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
@@ -103,14 +104,15 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
     private final JFXTextField nameField = new JFXTextField();
 
     /// Which category to keep.
-    private final JFXComboBox<String> categoryBox = new JFXComboBox<>();
+    ///
+    /// Its own type with an "all" member rather than an empty string: an empty value is drawn
+    /// together with the prompt, because the prompt is a second node rather than a placeholder for
+    /// the value, so the box showed the word twice. It is also what lets the filter be a filter —
+    /// an empty string cannot be told apart from "nothing chosen" when the search asks.
+    private final JFXComboBox<CategoryFilter> categoryBox = new JFXComboBox<>();
 
     /// The version picker, in the position the original keeps its game version in.
     private final JFXComboBox<String> versionBox = new JFXComboBox<>();
-
-    /// Says how many plugins the filter is holding back, so a shorter list is not
-    /// mistaken for a smaller catalogue.
-    private final Label note = new Label();
 
     /// The harness version the search is filtered by, or `null` for all of them.
     private String chosenVersion;
@@ -183,6 +185,17 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 
     /// Builds the search form.
     ///
+    /// The first row is the original's version-list toolbar, row for row: the name on
+    /// the left with its box taking what is left, then the filter's own name and its
+    /// capped box, then the button. That is what the original's download page looks
+    /// like — its plugins are reached from the same page as its game versions, and
+    /// both lead with 名称 — so a version list and a plugin list that are opened from
+    /// the same place are searched the same way.
+    ///
+    /// What is left over goes on a second row: the instance the install will go into,
+    /// and the two ways of narrowing the catalogue further, which the original's
+    /// version list does not have because it has nothing to narrow by.
+    ///
     /// @return the form, on the surface the original puts it on
     private Node buildSearchPane() {
         GridPane pane = new GridPane();
@@ -191,56 +204,78 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         pane.setVgap(10);
         pane.setPadding(new Insets(10));
 
-        ColumnConstraints first = new ColumnConstraints();
-        ColumnConstraints second = new ColumnConstraints();
-        second.setHgrow(Priority.ALWAYS);
-        ColumnConstraints third = new ColumnConstraints();
-        ColumnConstraints fourth = new ColumnConstraints();
-        fourth.setHgrow(Priority.ALWAYS);
-        pane.getColumnConstraints().setAll(first, second, third, fourth);
+        // The original's own search panel, from the tab it keeps its mods in: the thing everything
+        // below is about takes a line of its own across the whole card, then two rows of
+        // name-and-box — what to search for and which version, then which category and how to order
+        // the answers — and the paging with the button at the end.
+        //
+        //   [ 游戏                                   ▾ ]
+        //   [ 名称 ............ ] [ 游戏版本 ......... ▾ ]
+        //   [ 类别 ......... ▾  ] [ 排序 ........... ▾ ]
+        //   [ 分页 … ]                                     [ 搜索 ]
+        //
+        // Four columns: a name, a box that takes what is left, another name, another such box.
+        ColumnConstraints nameColumn = new ColumnConstraints();
+        nameColumn.setMinWidth(Region.USE_PREF_SIZE);
+        ColumnConstraints fieldColumn = new ColumnConstraints();
+        fieldColumn.setHgrow(Priority.ALWAYS);
+        ColumnConstraints secondFieldColumn = new ColumnConstraints();
+        secondFieldColumn.setHgrow(Priority.ALWAYS);
+        pane.getColumnConstraints().setAll(nameColumn, fieldColumn, nameColumn, secondFieldColumn);
 
         nameField.setPromptText(i18n("search.hint.chinese"));
-        HBox.setHgrow(nameField, Priority.ALWAYS);
-        FXUtils.onChangeAndOperate(nameField.textProperty(), text -> search());
+        // A grid cell gives a child what it asks for, and a field asks for the width of its prompt;
+        // without this the box stops short of the column it is in.
+        nameField.setMaxWidth(Double.MAX_VALUE);
+        // The form searches when it is told to, and not while somebody is typing: a button
+        // that is not what searches is a button with nothing to do. Enter is the form's own
+        // way of submitting, so it does the same thing.
+        nameField.setOnAction(event -> refresh());
+
         instanceBox.setMaxWidth(Double.MAX_VALUE);
         instanceBox.setConverter(FXUtils.stringConverter(
                 instance -> instance == null ? i18n("dsh.market.no_instance") : instance.id()));
         instanceBox.getItems().setAll(DshInstanceManager.list());
         instanceBox.setValue(GameDirectoryManager.selectedInstanceProperty().get());
-        pane.addRow(0, new Label(i18n("dsh.download.instance")), instanceBox,
-                new Label(""), new Label(""));
-        pane.addRow(1, new Label(i18n("mods.name")), nameField,
-                new Label(i18n("dsh.market.dsh_version")), versionBox);
+
         versionBox.setMaxWidth(Double.MAX_VALUE);
         versionBox.setConverter(FXUtils.stringConverter(choice -> choice));
         versionBox.getItems().setAll(i18n("download.type.all"));
         versionBox.setValue(i18n("download.type.all"));
         versionBox.valueProperty().addListener((observable, was, value) -> {
             chosenVersion = value == null || value.equals(i18n("download.type.all")) ? null : value;
+            // The cache of what fits is dropped here because the answer depends on the
+            // choice; the list is redrawn when the form is submitted.
             fitting.clear();
-            search();
         });
         loadVersions();
-        pane.addRow(2, new Label(i18n("addon.category")), categoryBox,
-                new Label(i18n("search.sort")), sortBox);
 
         categoryBox.setMaxWidth(Double.MAX_VALUE);
-        categoryBox.setConverter(FXUtils.stringConverter(Function.identity()));
-        categoryBox.valueProperty().addListener((observable, was, value) -> search());
+        categoryBox.setConverter(FXUtils.stringConverter(CategoryFilter::displayName));
+        categoryBox.getItems().add(CategoryFilter.ALL);
+        categoryBox.getSelectionModel().select(CategoryFilter.ALL);
 
         sortBox.setMaxWidth(Double.MAX_VALUE);
         sortBox.setConverter(FXUtils.stringConverter(this::sortName));
         sortBox.getItems().setAll("downloads", "stars", "added");
         sortBox.setValue("downloads");
-        sortBox.valueProperty().addListener((observable, was, value) -> search());
 
+        // The instance the install goes into, across the top: it is what every filter below is
+        // narrowing a list *for*, which is why the original leads with it and gives it the width.
+        pane.add(new Label(i18n("dsh.download.instance")), 0, 0);
+        pane.add(instanceBox, 1, 0, 3, 1);
+
+        pane.addRow(1, new Label(i18n("mods.name")), nameField,
+                new Label(i18n("dsh.market.dsh_version")), versionBox);
+        pane.addRow(2, new Label(i18n("addon.category")), categoryBox,
+                new Label(i18n("search.sort")), sortBox);
 
         JFXButton search = new JFXButton(i18n("search"));
         search.getStyleClass().add("jfx-button-raised");
-        search.setOnAction(event -> search());
-
-        note.getStyleClass().add("desc");
-        pane.add(note, 0, 4, 4, 1);
+        // Reading is what a refresh means the first time and filtering is what it means
+        // afterwards, which is what pressing search should do: the catalogue is one document,
+        // and what changes between two presses is the form.
+        search.setOnAction(event -> refresh());
 
         HBox paging = new HBox(8);
         paging.setAlignment(Pos.CENTER_LEFT);
@@ -344,13 +379,15 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
                 return;
             }
 
-            List<String> categories = new ArrayList<>();
-            categories.add("");
-            categories.addAll(catalogue.categories());
+            // The categories the catalogue publishes, after the "all" member the box starts on.
+            List<CategoryFilter> categories = new ArrayList<>();
+            categories.add(CategoryFilter.ALL);
+            for (String category : catalogue.categories()) {
+                categories.add(new CategoryFilter(category));
+            }
+            CategoryFilter chosen = categoryBox.getValue();
             categoryBox.getItems().setAll(categories);
-            categoryBox.setConverter(FXUtils.stringConverter(
-                    key -> key == null || key.isEmpty() ? i18n("download.type.all") : key));
-            categoryBox.setValue("");
+            categoryBox.getSelectionModel().select(chosen == null ? CategoryFilter.ALL : chosen);
 
             all.setAll(catalogue.plugins());
             loaded = true;
@@ -360,12 +397,43 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         }));
     }
 
+    /// One category, or every one of them.
+    ///
+    /// The "all" answer is a member rather than a null or an empty string so that it can be the
+    /// box's selection: the original's version filter is built the same way, and for the same
+    /// reason — a filter that is "not chosen yet" draws differently from one that says "all".
+    ///
+    /// @param name the catalogue's category, or `null` for the member that keeps every one
+    record CategoryFilter(@Nullable String name) {
+        /// The member that keeps everything.
+        static final CategoryFilter ALL = new CategoryFilter(null);
+
+        /// Reports whether a plugin's category passes this filter.
+        ///
+        /// @param category the plugin's category
+        /// @return whether to keep it
+        boolean accepts(@Nullable String category) {
+            return name == null || name.equals(category);
+        }
+
+        /// Returns what the box shows for this member.
+        ///
+        /// @return the category's name, or the word for all of them
+        String displayName() {
+            return name == null ? i18n("download.type.all") : name;
+        }
+    }
+
     /// Filters, sorts and pages what the catalogue holds.
     private void search() {
         String query = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase();
+        CategoryFilter category = categoryBox.getValue();
         List<DshPluginCatalog.Plugin> matching = new ArrayList<>();
         for (DshPluginCatalog.Plugin plugin : DshPluginCatalog.sorted(all, sortBox.getValue())) {
             if (!query.isEmpty() && !matches(plugin, query)) {
+                continue;
+            }
+            if (category != null && !category.accepts(plugin.category())) {
                 continue;
             }
             matching.add(plugin);
@@ -536,18 +604,18 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
             content.addTags(List.of(plugin.category(), plugin.owner()));
             content.addTag(plugin.sourceKind());
 
-            JFXButton open = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
-            open.setMouseTransparent(true);
-            // The original's row: an HBox with the content growing beside what leads
-            // it, a hand cursor because the whole row is pressable, and the surface
-            // the list's cards wear. There is no icon here, because the catalogue
-            // publishes none — a made-up one would be a picture of nothing.
+            // The original's row: content that grows to fill it, a hand cursor because the whole
+            // row is pressable, and the surface the list's cards wear. There is no icon here,
+            // because the catalogue publishes none — a made-up one would be a picture of nothing.
+            // Nor is there an arrow at the end: the row is pressable in its entirety, and the
+            // original's mod rows have nothing there either. It was carried over from a list whose
+            // rows led somewhere else and read as a button that was not one.
             HBox row = new HBox(8);
             row.setPadding(new Insets(8));
             row.setAlignment(Pos.CENTER_LEFT);
             row.setCursor(javafx.scene.Cursor.HAND);
             HBox.setHgrow(content, Priority.ALWAYS);
-            row.getChildren().addAll(content, open);
+            row.getChildren().add(content);
             getContainer().getChildren().setAll(row);
             if (!getContainer().getStyleClass().contains("card-no-padding")) {
                 getContainer().getStyleClass().add("card-no-padding");

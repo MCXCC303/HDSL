@@ -42,8 +42,14 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 @NotNullByDefault
 public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.UnknownNullability Object>
         extends LineSelectButton<T> {
-    /// The size of the globe, matching the original's.
+    /// The size of the mark beside a row's name.
     private static final int INHERIT_ICON_SIZE = 12;
+
+    /// The mark shown once a row has taken the setting over, when the icon set has one.
+    private static final SVG MANUAL_ICON = SVG.EDIT;
+
+    /// How faint the mark is while the launcher is the one deciding.
+    private static final double INHERIT_FAINT = 0.45;
 
     /// Whether this row has taken the setting over from the launcher.
     private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden", false);
@@ -53,27 +59,65 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
         // The launcher's own small icon button, so the globe is drawn in the theme's
         // colour like every other icon in a row: a bare SVG button takes the default
         // fill, which on these rows is a dark shape that looks like a smudge.
+        // A class of this control's own, so the stylesheet can key on it without knowing what
+        // the classes it inherits call themselves.
+        getStyleClass().add("line-inheritable-value");
+
         JFXButton inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
-        // The helper's style is what colours the icon; its size is this row's, and the original's
-        // globe is a small mark beside the name rather than a control as tall as the row.
+        // The helper's style is what colours it; its size is the row's, and the original's mark is
+        // small — thirty pixels of globe beside a name is a control, not a mark.
         inheritButton.setGraphic(SVG.PUBLIC.createIcon(INHERIT_ICON_SIZE));
+        inheritButton.setPrefSize(22, 22);
+        inheritButton.setMaxSize(22, 22);
+        inheritButton.setMinSize(javafx.scene.layout.Region.USE_PREF_SIZE,
+                javafx.scene.layout.Region.USE_PREF_SIZE);
         FXUtils.installFastTooltip(inheritButton, i18n("dsh.settings.inherit"));
-        inheritButton.setOnAction(event -> {
+        inheritButton.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_CLICKED, event -> {
             setOverridden(!isOverridden());
             event.consume();
         });
-        addTitleNode(inheritButton);
+        setTitleTrailing(inheritButton);
+        // The row's own skeleton marks parts of itself mouse-transparent so that a press goes to the
+        // row rather than to its content; the globe is inside that content, and has to be reachable
+        // for the setting to have a way back.
+        makeClickable(inheritButton);
 
         // Following the launcher is not a choice of this row's, so the value is not editable while
         // it does — but the row itself stays enabled, because the globe on it is the way in, and a
         // disabled row disables what is on it.
-        addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
-            if (!isOverridden()) {
-                event.consume();
-            }
+        Runnable showState = () -> {
+            boolean overridden = isOverridden();
+            inheritButton.setGraphic((overridden ? SVG.TUNE : SVG.PUBLIC).createIcon(INHERIT_ICON_SIZE));
+            inheritButton.pseudoClassStateChanged(
+                    javafx.css.PseudoClass.getPseudoClass("overridden"), overridden);
+            FXUtils.installFastTooltip(inheritButton,
+                    i18n(overridden ? "dsh.settings.override.tooltip" : "dsh.settings.inherit.tooltip"));
+        };
+        overridden.addListener((observable, was, value) -> {
+            showState.run();
+            applyEditable();
         });
-        overridden.addListener((observable, was, value) -> applyEditable());
+        showState.run();
         applyEditable();
+    }
+
+    /// Clears mouse-transparency from a node up to this row.
+    ///
+    /// @param node the node to make reachable
+    private void makeClickable(javafx.scene.Node node) {
+        javafx.scene.Node current = node;
+        while (current != null && current != this) {
+            current.setMouseTransparent(false);
+            current = current.getParent();
+        }
+    }
+
+    @Override
+    public void fire() {
+        // Pressing the row is taking the setting over — the original's rows behave this way, and
+        // it means there is no state in which a press writes a value without saying whose it is.
+        setOverridden(true);
+        super.fire();
     }
 
     /// Returns whether this row has taken the setting over.
@@ -102,6 +146,15 @@ public class LineInheritableSelectButton<T extends @org.jetbrains.annotations.Un
     /// Following the launcher is not a choice of this row's, so the row does not offer to
     /// change it: the globe is the way in, and the value is read-only until it is pressed.
     private void applyEditable() {
+        // Both, deliberately: the stylesheet rule says it for a row that a theme styles the way
+        // this one expects, and this says it whatever the stylesheet does — because a setting that
+        // is following the launcher has to look like one.
+        javafx.application.Platform.runLater(() -> {
+            javafx.scene.Node value = lookup(".trailing-label");
+            if (value != null) {
+                value.setOpacity(isOverridden() ? 1.0 : 0.55);
+            }
+        });
         // What says the value is the launcher's is the globe, not a greyed-out row: the row stays
         // usable so the globe can be pressed, and its action is consumed while it follows.
         pseudoClassStateChanged(javafx.css.PseudoClass.getPseudoClass("inherited"), !isOverridden());

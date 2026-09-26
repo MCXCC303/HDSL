@@ -23,7 +23,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.file.Path;
 
-/// Stores metadata about the Hello DeepSeek Launcher application and the
+/// Stores metadata about the Hello DeepSeek! Launcher application and the
 /// directories it owns.
 ///
 /// All launcher-owned data lives under a single user home so that HDSL can
@@ -38,9 +38,14 @@ public final class Metadata {
     public static final String NAME = "HDSL";
 
     /// The full product name shown in window titles.
-    public static final String FULL_NAME = "Hello DeepSeek Launcher";
+    public static final String FULL_NAME = "Hello DeepSeek! Launcher";
 
     /// The running version.
+    ///
+    /// The build script decides what this string says: a release carries the tag's
+    /// version, and anything else carries the commit it was built from, as in
+    /// `0.1.0+g1a613c5`. A package built here is therefore never mistaken for one a tag
+    /// published, which is what the window title shows.
     ///
     /// Resolution order: an explicit override (used by `gradlew run`, which has
     /// no packaged manifest to read), then the jar manifest written by the
@@ -69,8 +74,9 @@ public final class Metadata {
     /// The full window title including the version.
     public static final String FULL_TITLE = FULL_NAME + " v" + VERSION;
 
-    /// The documentation and help entry point shown in the title bar.
-    public static final String CONTACT_URL = "https://github.com/";
+    /// The HDSL project page. The title bar's help button, the crash window's help
+    /// button and the About page's product row all open it.
+    public static final String HOMEPAGE_URL = "https://github.com/MCXCC303/HDSL";
 
     /// The identifier used for Linux desktop integration and window grouping.
     public static final String APPLICATION_ID = "run.hdsl.HDSL";

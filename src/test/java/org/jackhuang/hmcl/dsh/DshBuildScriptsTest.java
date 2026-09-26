@@ -140,6 +140,34 @@ class DshBuildScriptsTest {
         assertEquals(DshBuildScriptPolicy.MANUAL, DshBuildScriptPolicy.of(instance));
     }
 
+    /// A fresh instance runs under the launcher-wide answer, whichever of the three it is.
+    ///
+    /// Installing a pack is what makes the instance, so there is no per-instance answer to find and
+    /// the launcher's is the one that decides: run install scripts without asking, ask, or never run
+    /// them. A pack that answered for itself — always asking, or answering yes — would be deciding
+    /// about running somebody else's code on the person's behalf, which is the one thing this
+    /// setting exists to prevent.
+    ///
+    /// @throws Exception when the instance cannot be made
+    @Test
+    void aFreshInstanceRunsUnderTheLauncherWideAnswer() throws Exception {
+        DshInstance instance = makeInstance("""
+                packages:
+                  - .
+                """);
+        var launcher = org.jackhuang.hmcl.setting.SettingsManager.settings().buildScriptPolicyProperty();
+        DshBuildScriptPolicy before = launcher.get();
+        try {
+            for (DshBuildScriptPolicy launcherWide : DshBuildScriptPolicy.values()) {
+                launcher.set(launcherWide);
+                assertEquals(launcherWide, DshBuildScriptPolicy.of(instance),
+                        "an instance that has answered nothing runs under " + launcherWide.id());
+            }
+        } finally {
+            launcher.set(before);
+        }
+    }
+
     /// Creates an instance whose profile holds the given workspace file.
     ///
     /// @param workspace the file's contents

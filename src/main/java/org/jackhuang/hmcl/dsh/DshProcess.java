@@ -53,6 +53,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// has settled and the required entries have been audited:
 /// `dsh web: http://127.0.0.1:<port>/?token=<token>`. That line is the only
 /// stdout contract the launcher relies on.
+///
+/// The token arrived with the browser-trust fence; the earliest releases print the same line
+/// without it (`dsh web: http://127.0.0.1:<port>`). Both are the same announcement, so both are
+/// accepted — a launcher that insisted on the token showed those versions as starting for ever,
+/// because the line it was waiting for is one they never learned to print.
 @NotNullByDefault
 public final class DshProcess {
     /// How long the child is given to drain before it is killed.
@@ -65,8 +70,49 @@ public final class DshProcess {
     private static final Duration FORCE_GRACE = Duration.ofSeconds(2);
 
     /// The readiness line for the browser surface, including its optional LAN suffix.
+    ///
+    /// Three spellings are in the wild, and all three have to be read:
+    ///
+    /// ```text
+    /// dsh web: http://127.0.0.1:4061                            ← before the browser-trust fence
+    /// dsh web: http://127.0.0.1:4061/
+    /// dsh web: http://127.0.0.1:4061/?token=…                  ← with the fence
+    /// ```
+    ///
+    /// **The token is part of the address, not decoration on it.** It is the credential the browser
+    /// presents, and a version behind the fence refuses a request without one — so the capture has to
+    /// take it. It very nearly did not: the first spelling of this pattern put the query in a
+    /// *non-capturing* group, which matched the token and then threw it away, and every address the
+    /// launcher stored was one that could not authenticate. Nothing showed it while the releases in
+    /// use printed no token at all, because there was then nothing to lose.
+    ///
+    /// The trailing slash and the token are matched together (`/?` then an optional query) rather
+    /// than as two independent optionals, because that is how they occur: a bare slash with no token
+    /// is the older spelling, and a query without a slash has never been printed.
     private static final Pattern WEB_READY = Pattern.compile(
-            "^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+/\\?token=[A-Za-z0-9_-]+)\\s*(?:\\(LAN:.*\\))?$");
+            "^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+/?(?:\\?token=[A-Za-z0-9_-]+)?)"
+                    + "\\s*(?:\\(LAN:.*\\))?$");
+
+    /// Reads the browser address out of a readiness line.
+    ///
+    /// A method of its own so that the three spellings above can be tested without a child process:
+    /// the pattern is the whole of the parsing, and the bug it carried was invisible for exactly as
+    /// long as nothing checked the *value* it produced.
+    ///
+    /// @param line one line of child output
+    /// @return the address, or empty when the line is not a readiness line
+    static java.util.Optional<java.net.URI> parseWebUrl(String line) {
+        Matcher matcher = WEB_READY.matcher(line.trim());
+        if (!matcher.matches()) {
+            return java.util.Optional.empty();
+        }
+        try {
+            return java.util.Optional.of(new java.net.URI(matcher.group(1)));
+        } catch (URISyntaxException e) {
+            LOG.warning("DeepSeek Harness printed an unparsable URL: " + matcher.group(1), e);
+            return java.util.Optional.empty();
+        }
+    }
 
     /// How many log lines are retained for the log window.
     private static final int MAX_LOG_LINES = 2000;
@@ -146,6 +192,28 @@ public final class DshProcess {
     /// @return the running handle
     /// @throws DshException when the plan cannot be built or the process cannot start
     public static DshProcess start(DshInstance instance) throws DshException {
+        return start(instance, null);
+    }
+
+    /// Starts an instance, handing the harness an account if one was chosen.
+    ///
+    /// @param instance the instance
+    /// @param account  the account, or `null` for none
+    /// @return the started process
+    /// @throws DshException when it cannot be started
+    public static DshProcess start(DshInstance instance, @Nullable DshAccount account)
+            throws DshException {
+        return startPrepared(instance, DshLauncher.plan(instance, account));
+    }
+
+    /// Starts an instance from a plan that has already been built.
+    ///
+    /// @param instance the instance
+    /// @param plan     the plan
+    /// @return the started process
+    /// @throws DshException when it cannot be started
+    public static DshProcess startPrepared(DshInstance instance, DshLauncher.LaunchPlan plan)
+            throws DshException {
         // An instance may answer for itself about debug lines, so the switch is applied here
         // rather than once at startup: what is written while this instance runs is what its
         // own answer says.
@@ -154,11 +222,24 @@ public final class DshProcess {
         // Whatever was asked to happen before this instance starts happens first, and a
         // failure stops the launch: it was asked for, and starting anyway would ignore it.
         DshCustomCommands.run(instance,
-                org.jackhuang.hmcl.setting.SettingsManager.settings().preLaunchCommandProperty().get(),
+                org.jackhuang.hmcl.setting.SettingsManager.settings().preLaunchCommandFor(instance.id()),
                 "pre-launch", null);
-        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
         LOG.info("Launching instance " + instance.id() + ": " + plan.commandLine());
-        return new DshProcess(plan);
+        try {
+            return new DshProcess(plan);
+        } catch (DshException | RuntimeException e) {
+            // The note the plan wrote is the only thing a failed launch leaves behind, and putting
+            // back what it disturbed — the account's route in the profile patch, and the two shapes
+            // in the home's own settings — is the whole of this cleanup. A launch that never got as
+            // far as a process has no state listener to do it, so it is done here.
+            try {
+                DshInjectedSettings.settle(plan.instance());
+            } catch (DshException settleFailure) {
+                LOG.info("Could not put back what the failed launch of " + plan.instance().id()
+                        + " left in its settings", settleFailure);
+            }
+            throw e;
+        }
     }
 
     /// Returns the instance this process runs.
@@ -249,9 +330,16 @@ public final class DshProcess {
 
     /// Installs a listener notified on every state transition.
     ///
+    /// A listener installed **after** the process has already ended is told about that ending at once.
+    /// The listener is what reports a crash, and the process is started before its listener is
+    /// attached — a child that dies in that window would otherwise end in silence.
+    ///
     /// @param listener the listener, or `null` to detach
     public void setStateListener(@Nullable Consumer<State> listener) {
         this.stateListener = listener;
+        if (listener != null && (state == State.STOPPED || state == State.FAILED)) {
+            listener.accept(state);
+        }
     }
 
     /// Stops the process, allowing upstream's bounded drain before killing it.
@@ -261,7 +349,7 @@ public final class DshProcess {
         // The command that follows an instance runs once it has gone, whether it was
         // stopped or had already ended: what it is for is knowing that a session is over.
         DshCustomCommands.runQuietly(plan.instance(),
-                org.jackhuang.hmcl.setting.SettingsManager.settings().postExitCommandProperty().get(),
+                org.jackhuang.hmcl.setting.SettingsManager.settings().postExitCommandFor(plan.instance().id()),
                 "post-exit", null);
         stopRequested = true;
         if (!isRunning()) {
@@ -322,16 +410,12 @@ public final class DshProcess {
     ///
     /// @param line one line of child output
     private void detectReadiness(String line) {
-        Matcher matcher = WEB_READY.matcher(line.trim());
-        if (!matcher.matches()) {
+        java.util.Optional<java.net.URI> parsed = parseWebUrl(line);
+        if (parsed.isEmpty()) {
             return;
         }
-        try {
-            webUrl = new URI(matcher.group(1));
-            transitionTo(State.READY);
-        } catch (URISyntaxException e) {
-            LOG.warning("DeepSeek Harness printed an unparsable URL: " + matcher.group(1), e);
-        }
+        webUrl = parsed.get();
+        transitionTo(State.READY);
     }
 
     /// Appends a line to the bounded log buffer.

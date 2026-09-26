@@ -74,6 +74,63 @@ echo "== tar.zst =="
 tar --zstd -cf "${out_dir}/${name}-linux-x64.tar.zst" -C "${stage}" "${name}"
 tar --zstd -tf "${out_dir}/${name}-linux-x64.tar.zst"
 
+# ------------------------------------------------------- the Arch package ---
+# A pacman package, which is a different thing from the tar.zst above and has to be built
+# separately: `pacman -U` reads `.PKGINFO` out of the archive and refuses anything without it, so a
+# plain tarball can never be installed however it is named. The two exist because they answer
+# different questions — one is "unpack this anywhere", the other is "install this on Arch".
+#
+# Built by hand rather than with `makepkg`, which would require a PKGBUILD and a build directory and
+# would rebuild what is already built. What pacman needs is a zstd tarball whose members are the
+# paths the files will be installed to, plus `.PKGINFO`.
+arch_stage="${stage}/arch"
+mkdir -p "${arch_stage}/usr/bin" "${arch_stage}/usr/share/applications" \
+         "${arch_stage}/usr/share/icons/hicolor/256x256/apps" \
+         "${arch_stage}/usr/share/licenses/${desktop_id}"
+
+cp "${sh_artifact}" "${arch_stage}/usr/bin/${desktop_id}"
+chmod 0755 "${arch_stage}/usr/bin/${desktop_id}"
+cp "${icon}" "${arch_stage}/usr/share/icons/hicolor/256x256/apps/${desktop_id}.png"
+chmod 0644 "${arch_stage}/usr/share/icons/hicolor/256x256/apps/${desktop_id}.png"
+write_desktop_entry "${arch_stage}/usr/share/applications/${desktop_id}.desktop" "${desktop_id}"
+# The launcher is run from the user's home, not from `/usr`: DeepSeek Harness scopes a session to the
+# process's working directory, and a launcher started inside a package directory would file the first
+# session under a path that belongs to the package.
+for file in LICENSE NOTICE; do
+    [ -f "${repo_dir}/${file}" ] && cp "${repo_dir}/${file}" "${arch_stage}/usr/share/licenses/${desktop_id}/" \
+        && chmod 0644 "${arch_stage}/usr/share/licenses/${desktop_id}/${file}"
+done
+
+# `.PKGINFO` is the whole of what pacman reads first, and two of its fields have a shape it
+# enforces rather than merely reads:
+#
+# - `pkgver` must be `<version>-<pkgrel>`. A bare `0.1.0` is refused with "invalid package version";
+#   the release number is what distinguishes a repackaging of the same upstream version, and 1 is the
+#   first packaging of this one.
+# - `size` is the installed size in bytes, which pacman shows. A wrong one is reported rather than
+#   fatal, but there is no reason to write a wrong one.
+installed_size="$(du -sb "${arch_stage}" | cut -f1)"
+cat > "${arch_stage}/.PKGINFO" <<EOF
+pkgname = ${desktop_id}
+pkgbase = ${desktop_id}
+pkgver = ${version}-1
+pkgdesc = DeepSeek Harness launcher
+url = https://github.com/
+builddate = $(date +%s)
+packager = HMCL-DSH contributors
+size = ${installed_size}
+arch = x86_64
+license = GPL-3.0-or-later
+depend = java-runtime>=21
+EOF
+
+# The licence files are already in the tree, so the members are the paths plus `.PKGINFO`, and
+# `.PKGINFO` comes first because that is the order pacman's own packages use.
+arch_pkg="${out_dir}/${desktop_id}-${version}-1-x86_64.pkg.tar.zst"
+tar --zstd -cf "${arch_pkg}" -C "${arch_stage}" .PKGINFO usr
+echo "arch package: ${arch_pkg}"
+tar --zstd -tf "${arch_pkg}" > /dev/null
+
 # ------------------------------------------------------------- the AppImage ---
 # An AppDir is the tree above plus an AppRun; appimagetool turns it into the
 # single-file image. The launcher is run from the user's home, as the `.deb`'s
@@ -102,20 +159,39 @@ appimagetool="${APPIMAGETOOL:-}"
 if [ -z "${appimagetool}" ]; then
     appimagetool="$(command -v appimagetool || true)"
 fi
-[ -n "${appimagetool}" ] || { echo "error: appimagetool not found; set APPIMAGETOOL" >&2; exit 1; }
 
-echo "== AppImage =="
-# ARCH is normally read from the host; naming it keeps the artifact's name stable
-# on a runner whose uname says something else.
-ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "${appimagetool}" \
-    --no-appstream \
-    "${appdir}" "${out_dir}/HDSL-${version}-x86_64.AppImage"
+# The AppImage is the one artifact that needs a tool this repository does not carry, and its absence
+# must not cost the others: a release whose checksums were never written because a download failed is
+# worse than a release with one artifact fewer, which is what the caller is told about here. The CI
+# job fetches the tool before running this, so it is the local run that skips.
+if [ -n "${appimagetool}" ]; then
+    echo "== AppImage =="
+    # ARCH is normally read from the host; naming it keeps the artifact's name stable
+    # on a runner whose uname says something else.
+    ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "${appimagetool}" \
+        --no-appstream \
+        "${appdir}" "${out_dir}/HDSL-${version}-x86_64.AppImage"
+else
+    echo "== AppImage skipped: appimagetool not found (set APPIMAGETOOL to build it) =="
+fi
 
 # ------------------------------------------------------------- the sums -------
 # One checksum file per artifact, as HMCL publishes them, so a download can be
 # verified without a table.
-for artifact in "${out_dir}/${name}-linux-x64.tar.zst" "${out_dir}/HDSL-${version}-x86_64.AppImage"; do
-    ( cd "${out_dir}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
+# The `.deb` is written by Gradle rather than by this script, so it is summed here too: one loop that
+# knows every artifact is easier to keep honest than two that each know some of them.
+for artifact in "${out_dir}/${name}-linux-x64.tar.zst" \
+                "${out_dir}/${desktop_id}-${version}-1-x86_64.pkg.tar.zst" \
+                "${out_dir}/${name}.deb" \
+                "${out_dir}/HDSL-${version}-x86_64.AppImage"; do
+    # Skipped when the artifact is not there, and any stale sum is removed with it: a checksum file
+    # for a file that does not exist is worse than no checksum file, because it looks like an answer.
+    if [ -f "${artifact}" ]; then
+        ( cd "${out_dir}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
+    else
+        rm -f "${artifact}.sha256"
+        echo "no checksum for $(basename "${artifact}"): it was not built"
+    fi
 done
 
-ls -l "${out_dir}"/*.tar.zst "${out_dir}"/*.AppImage
+ls -l "${out_dir}"/*.tar.zst "${out_dir}"/*.pkg.tar.zst "${out_dir}"/HDSL-*.AppImage 2>/dev/null || true

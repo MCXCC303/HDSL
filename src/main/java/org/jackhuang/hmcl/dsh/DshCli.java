@@ -68,6 +68,7 @@ public final class DshCli {
         STOP(false),
         /// Lists the Node runtimes the launcher installed.
         LIST_RUNTIMES(true),
+        PRINT_LAUNCH_ARGS(true),
         /// Lists the Node releases available for this platform.
         LIST_NODE_VERSIONS(true),
         /// Installs a Node runtime.
@@ -178,6 +179,7 @@ public final class DshCli {
                 && !args.contains("--list-running")
                 && !args.contains("--stop")
                 && !args.contains("--list-runtimes")
+                && !args.contains("--print-launch-args")
                 && !args.contains("--list-node-versions")
                 && !args.contains("--install-node")
                 && !args.contains("--uninstall-node")
@@ -239,6 +241,7 @@ public final class DshCli {
                 }
                 case "--list-running" -> command = Command.LIST_RUNNING;
                 case "--list-runtimes" -> command = Command.LIST_RUNTIMES;
+                case "--print-launch-args" -> command = Command.PRINT_LAUNCH_ARGS;
                 case "--list-node-versions" -> command = Command.LIST_NODE_VERSIONS;
                 case "--install-node" -> {
                     command = Command.INSTALL_NODE;
@@ -459,6 +462,9 @@ public final class DshCli {
                     }
                     return 0;
                 }
+                case PRINT_LAUNCH_ARGS -> {
+                    return printLaunchArguments(invocation, out, err);
+                }
                 case LIST_RUNTIMES -> {
                     List<NodeRuntime> runtimes = NodeRuntimeManager.listInstalled();
                     if (runtimes.isEmpty()) {
@@ -653,8 +659,14 @@ public final class DshCli {
                     }
                     java.nio.file.Path target = java.nio.file.Path.of(invocation.arguments().get(1));
                     boolean withSessions = invocation.arguments().contains("--with-sessions");
-                    DshModpacks.Options options = new DshModpacks.Options(instance.id(), "1.0", "", "",
-                            withSessions);
+                    // Everything a pack carries by default is what a person asked for by not being
+                    // asked: the plugins' own settings travel, because a pack that named a sidebar but
+                    // not the stylesheet somebody configured it with is the difference nobody notices
+                    // until they open it. The conversations are the one thing that is opt-in, because
+                    // they are the one thing that is somebody's own.
+                    DshModpacks.Options defaults = DshModpacks.Options.of(instance);
+                    DshModpacks.Options options = new DshModpacks.Options(instance.id(), "1.0", "", "", "", "",
+                            withSessions, java.util.Set.of(), defaults.settings(), defaults.skills());
                     DshModpacks.ExportResult exported = DshModpacks.export(instance, target, options, out::println);
                     out.println("Wrote " + exported.plugins() + " plugin(s), " + exported.bytes() + " byte(s)");
                     return 0;
@@ -878,6 +890,41 @@ public final class DshCli {
     /// @param out        the stream for normal output
     /// @param err        the stream for error output
     /// @return the process exit code
+    /// Prints what a typed argument line comes to, without launching anything.
+    ///
+    /// The split between the launcher's flags and the app's, the profile a line names, and the
+    /// arguments that are refused are all decided by reading the line, so they can be shown without
+    /// starting a process. That makes the rules checkable, which matters because a wrong split
+    /// produces a command that either fails to start or starts the wrong thing.
+    ///
+    /// @param invocation the parsed command line
+    /// @param out        where the report goes
+    /// @param err        where an error goes
+    /// @return the exit code
+    private static int printLaunchArguments(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --print-launch-args needs an instance");
+            return 1;
+        }
+        DshInstance instance = DshInstanceManager.find(invocation.arguments().get(0));
+        if (instance == null) {
+            err.println("error: instance " + invocation.arguments().get(0) + " does not exist");
+            return 1;
+        }
+        DshLaunchArguments.Parsed parsed =
+                DshLaunchArguments.parseArguments(instance.extraArguments());
+        out.println("instance   : " + instance.id() + " (profile " + instance.profile() + ")");
+        out.println("typed      : " + instance.extraArguments());
+        out.println("launcher   : " + parsed.launcherArguments());
+        out.println("app        : " + parsed.appArguments());
+        out.println("profile    : " + (parsed.profile() != null ? parsed.profile() : instance.profile()));
+        out.println("no-open    : " + parsed.asksNoOpen());
+        for (String refusal : parsed.refusals()) {
+            out.println("refused    : " + refusal);
+        }
+        return 0;
+    }
+
     private static int testLaunch(Invocation invocation, PrintStream out, PrintStream err) {
         if (invocation.arguments().isEmpty()) {
             err.println("error: --test-launch needs an instance");
@@ -889,7 +936,18 @@ public final class DshCli {
             return 1;
         }
         try {
-            DshProcess process = DshProcessManager.launch(instance);
+            // What is about to run, before it runs: the argument list is assembled from the
+            // version's own help, the instance's settings and the launcher's defaults, and when a
+            // launch goes wrong the first question is which of those decided the flags. Reading it
+            // off the process table afterwards is not always possible — the child exits, or the
+            // tooling cannot see another process's arguments.
+            // Built once and handed on. Building it is what asks the supplier for its models, so a
+            // second build — which is what printing and then launching used to do — costs a second
+            // round trip to the vendor.
+            DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
+            out.println("command: " + plan.commandLine());
+
+            DshProcess process = DshProcessManager.launch(instance, null, plan);
             for (int i = 0; i < 120 && process.state() == DshProcess.State.STARTING; i++) {
                 Thread.sleep(500);
                 if (!process.isRunning()) {
@@ -1055,7 +1113,14 @@ public final class DshCli {
             return 1;
         }
 
-        DshProcess process = DshProcessManager.launch(instance);
+        // What is about to run, before it runs: the argument list is assembled from the version's
+        // own help, the instance's settings and the launcher's defaults, and when a launch goes
+        // wrong the first question is which of those decided the flags. Reading it off the process
+        // table afterwards is not always possible.
+        DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
+        out.println("command: " + plan.commandLine());
+
+        DshProcess process = DshProcessManager.launch(instance, null, plan);
         process.setLogSink(line -> System.out.println("[" + instance.id() + "] " + line));
 
         long deadline = System.currentTimeMillis() + java.time.Duration.ofSeconds(90).toMillis();

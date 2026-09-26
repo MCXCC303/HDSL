@@ -18,10 +18,13 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
 import java.nio.file.Files;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -117,8 +120,25 @@ public final class DshLauncher {
         return DshNodeRuntime.fromManaged(managed);
     }
 
-    /// The versions whose help has been read, and whether it mentions `--no-open`.
+    /// How long a version is given to answer a help request.
+    private static final java.time.Duration PROBE_TIMEOUT = java.time.Duration.ofSeconds(5);
+
+    /// The help that has been read, keyed by version **and profile**, and whether it mentions
+    /// `--no-open`.
+    ///
+    /// Keyed by both because the answer belongs to both: what is read is
+    /// `dsh --profile <name> --help`, and two profiles of one release accept different flags. Cached
+    /// by version alone, the first profile to be launched would answer for every other one.
     private static final Map<String, Boolean> NO_OPEN_SUPPORT = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// Returns the key the help of a version and profile is remembered under.
+    ///
+    /// @param version the version
+    /// @param profile the profile
+    /// @return the key
+    static String capabilityKey(String version, String profile) {
+        return version + "/" + profile;
+    }
 
     /// Reports whether a version's interface accepts `--no-open`.
     ///
@@ -126,35 +146,69 @@ public final class DshLauncher {
     /// release accepts is what its own help says, and a list of version numbers that
     /// once needed the flag is a list that goes stale.
     ///
+    /// The help that has to be read is the **profile's**, not the launcher's:
+    /// `dsh --help` lists the profile selection and the launcher's own flags, and says nothing about
+    /// what the booted app accepts. Reading that one always answers "no", which is why every launch
+    /// passed no `--no-open` and the harness opened a tab of its own on top of the launcher's —
+    /// two tabs for one instance. `dsh --profile <name> --help` is the request the tool documents
+    /// for this ("`dsh --profile web -h` prints the web app's help, not this one's").
+    ///
     /// @param instance the instance
     /// @return whether the flag may be passed
     private static boolean acceptsNoOpen(DshInstance instance) {
         String version = instance.version();
-        Boolean cached = NO_OPEN_SUPPORT.get(version);
+        String key = capabilityKey(version, instance.profile());
+        Boolean cached = NO_OPEN_SUPPORT.get(key);
         if (cached != null) {
             return cached;
         }
 
         boolean accepted = false;
+        Process probe = null;
         try {
             DshNodeRuntime runtime = resolveRuntime(instance);
             Path script = instance.dshEntryPoint();
-            DshCommand.Result result = DshCommand.run(
-                    List.of(runtime.node().toString(), script.toString(), "--help"),
-                    instance.workspacePath(), Map.of("DSH_HOME", instance.homeDirectory().toString()),
-                    null);
-            accepted = helpMentionsNoOpen(String.join("\n", result.output()));
+            ProcessBuilder builder = new ProcessBuilder(
+                    runtime.node().toString(), script.toString(),
+                    "--profile", instance.profile(), "--help");
+            builder.redirectErrorStream(true);
+            builder.environment().put("DSH_HOME", instance.homeDirectory().toString());
+            if (instance.workspacePath() != null) {
+                builder.directory(instance.workspacePath().toFile());
+            }
+            probe = builder.start();
+
+            // Bounded, because what is being asked may not be what a program that only wants to
+            // start would answer: a help request that is ignored leaves a process running for as
+            // long as it likes, and waiting for it would be waiting for an instance to finish.
+            String output;
+            try (InputStream stream = probe.getInputStream()) {
+                if (!probe.waitFor(PROBE_TIMEOUT.toSeconds(), java.util.concurrent.TimeUnit.SECONDS)) {
+                    // Left out rather than waited for — and remembered, like every other answer:
+                    // returning here would ask the same question again on the next launch.
+                    LOG.info("DeepSeek Harness " + version + " did not answer --help within "
+                            + PROBE_TIMEOUT.toSeconds() + "s; leaving the flag out");
+                    NO_OPEN_SUPPORT.put(key, false);
+                    return false;
+                }
+                output = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            accepted = helpMentionsNoOpen(output);
         } catch (DshException | IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
-            // Not knowing is not permission: a flag a version does not accept stops
-            // it from starting at all, and the cost of leaving it out is a browser
-            // tab the harness opens for itself.
+            // Not knowing is not permission: a flag a version does not accept stops it from
+            // starting at all, and the cost of leaving it out is a browser tab the harness opens
+            // for itself.
             LOG.warning("Could not read the help of DeepSeek Harness " + version, e);
+        } finally {
+            if (probe != null && probe.isAlive()) {
+                probe.destroyForcibly();
+            }
         }
 
-        NO_OPEN_SUPPORT.put(version, accepted);
+        NO_OPEN_SUPPORT.put(key, accepted);
         return accepted;
     }
 
@@ -173,6 +227,36 @@ public final class DshLauncher {
     /// @throws DshException when the pinned version or runtime is missing, the
     ///                       entry script is absent, or the workspace cannot be created
     public static LaunchPlan plan(DshInstance instance) throws DshException {
+        return plan(instance, null);
+    }
+
+    /// Builds the launch plan for an instance, with an account if one was chosen.
+    ///
+    /// @param instance the instance to launch
+    /// @param account  the account to hand the harness, or `null` for none
+    /// @return the launch plan
+    /// @throws DshException when the pinned version or runtime is missing, the
+    ///                       entry script is absent, or the workspace cannot be created
+    public static LaunchPlan plan(DshInstance instance, @Nullable DshAccount account)
+            throws DshException {
+        return plan(instance, account, null);
+    }
+
+    /// Builds the launch plan for an instance, with an account whose route is already described.
+    ///
+    /// A caller that has to show the person what it is doing — the launch dialog, which names each
+    /// step as it happens — describes the account itself, asks the supplier for its models, and hands
+    /// the result here. A caller with nothing to show passes `null` and the route is written here.
+    ///
+    /// @param instance  the instance to launch
+    /// @param account   the account to hand the harness, or `null` for none
+    /// @param prepared  the described route, or `null` to write it in this call
+    /// @return the launch plan
+    /// @throws DshException when the pinned version or runtime is missing, the
+    ///                       entry script is absent, or the workspace cannot be created
+    public static LaunchPlan plan(DshInstance instance, @Nullable DshAccount account,
+                                  @Nullable DshAccountRoute.Prepared prepared)
+            throws DshException {
         DshNodeRuntime runtime = resolveRuntime(instance);
         // The instance runs its own copy, so there is nothing to look up: either
         // its copy is there or the instance is not ready to run.
@@ -198,32 +282,167 @@ public final class DshLauncher {
             }
         }
 
-        DshSurface surface = DshSurface.ofProfile(instance.profile());
+        // From what the profile boots, not from what it is called: a pack's profile is named after
+        // the pack and still boots the browser app.
+        DshSurface surface = DshSurface.of(instance);
 
         // The port is settled here rather than left to the child, and it is the
         // same one on every launch of this instance.
         int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
 
+        // What the instance runs with, as the user typed it. Its launcher flags go before the
+        // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported. Read
+        // first because which profile is booted decides which profile every file below belongs to.
+        DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
+        String profile = typed.profile() != null ? typed.profile() : instance.profile();
+
+        // Anything a launch that was killed before it could tidy up left behind, put back first: the
+        // note beside the harness's own settings says the last launch never got to its own cleanup,
+        // so it is dealt with here — **before** this launch decides what to inject, and whatever kind
+        // of launch this is: one with no account tidies up after one that had a key, which is what
+        // keeps a supplier out of a launch that wants none.
+        // Every name the launcher builds routes under: the accounts that carry a key, which are the
+        // ones it makes a supplier for.
+        java.util.List<String> accountRoutes = new java.util.ArrayList<>();
+        for (DshAccount known : org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts()) {
+            if (known.carriesAKey()) {
+                accountRoutes.add(known.displayName());
+            }
+        }
+        // And the route this launch itself will build, if it builds one.
+        String injecting = account != null && account.carriesAKey() ? account.displayName() : null;
+
+        try {
+            DshInjectedSettings.settle(instance);
+            // Then the launcher's own work from launches that are long over, taken away without
+            // asking: a route left behind is a supplier the harness offers with nothing behind it,
+            // and a launch that wants no supplier must not inherit one.
+            DshInjectedSettings.clean(instance, profile, accountRoutes, injecting);
+        } catch (DshException e) {
+            LOG.warning("Could not put back what the last launch of " + instance.id()
+                    + " left in its settings", e);
+        }
+
+        // And the same contract in the home's own .env, which outlives this launch: a
+        // person who starts the harness by hand — or from the terminal this launcher opens
+        // on it — gets the answers a launcher's own launch gives. Not fatal when it cannot
+        // be written: this run already carries the values in its environment.
+        try {
+            DshAccountContract.publish(instance, account);
+        } catch (DshException e) {
+            LOG.warning("Could not write the account contract into the home of " + instance.id(), e);
+        }
+
+        // What this launch is about to disturb, noted before it does. Written here because it lives
+        // exactly as long as the launch does.
+        if (account != null && account.carriesAKey()) {
+            DshInjectedSettings.capture(instance, account.displayName(), account.key(), profile);
+            // Then the profile object, so the route is one the harness's own models page can see and
+            // edit while it runs. The note written just above is what takes it away again — which is
+            // why this comes second and not before.
+            try {
+                DshInjectedSettings.publish(instance, account.displayName(),
+                        DshAccountRoute.environmentVariable(account.displayName()));
+            } catch (DshException e) {
+                // Not fatal: the route still works, it is only not on that page.
+                LOG.warning("Could not make " + account.displayName() + " visible on the models page", e);
+            }
+        }
+
+        // The account's supplier, as a route in the profile's **own** patch layer — the file the
+        // harness's own configuration editor writes. Not a `--patch` overlay: an overlay is applied
+        // over that file and replaces the entry's whole config, which is what made adding a supplier
+        // impossible and hid the person's own suppliers. It stays there for this launch only; the
+        // note captured above is what takes it back out. See DshAccountRoute.
+        //
+        // A caller that described the route already — so it could say so while the supplier is asked
+        // — wrote its own copy, and is not asked a second time.
+        DshAccountRoute.Prepared route = prepared;
+        if (route == null && account != null && account.carriesAKey()) {
+            route = DshAccountRoute.prepare(account).orElse(null);
+            if (route != null) {
+                route.resolveModels(account);
+            }
+        }
+        if (route != null) {
+            DshAccountRoute.apply(home, profile, route);
+        }
+
+        // A route says what the harness is offered; it cannot make the harness *use* one, because
+        // the person's own answer outranks a route the launcher wrote. So the default model is
+        // written where that answer lives — and, when the account names no model, not written at all.
+        //
+        // The provider written here is the **account's name**, which is the route name just created.
+        // It used to be the vendor's id, which stopped being the route name when routes became the
+        // person's own suppliers — and a default naming a route that does not exist is a harness that
+        // will not start.
+        //
+        // For the launcher's own vendor there is nothing to write either way: the harness knows that
+        // vendor's catalogue and picks from it, so naming a model would be naming one of a list it
+        // can already read.
+        if (account != null && account.carriesAKey()
+                && account.kind() != DshAccount.AccountKind.OFFICIAL) {
+            try {
+                DshDefaultModel.apply(home, account.displayName(), account.modelOrDefault());
+            } catch (DshException e) {
+                // Not fatal: the route is still there and can be chosen by hand. What must not
+                // happen is a launch that does not start because a convenience could not be set.
+                LOG.warning("Could not set the default model for " + instance.id(), e);
+            }
+        }
+
         List<String> command = new ArrayList<>();
         command.add(runtime.node().toString());
         command.add(script.toString());
+        command.addAll(typed.launcherArguments());
+        // The profile is stated after the user's launcher flags, so one they named wins; when they
+        // named none this is the instance's own.
         command.add("--profile");
-        command.add(instance.profile());
-        // `--no-open` is newer than the browser surface is: an old release that does
-        // not know the flag exits rather than starting, so it is only passed to a
-        // version whose own help mentions it. The launcher opens the browser once the
-        // readiness line arrives either way.
+        command.add(profile);
+
         List<String> surfaceArguments = new ArrayList<>(surface.arguments(port));
-        if (surfaceArguments.remove("--no-open") && acceptsNoOpen(instance)) {
+        // Whether to leave the browser alone is the user's to decide once they have said anything
+        // at all about how the instance starts: a line that mentions `--no-open` gets it and one
+        // that does not gets nothing, so the harness opens the tab itself and the launcher does not
+        // add a second one. With no line typed the launcher asks the version whether it knows the
+        // flag, because passing one an old release rejects is what stops a launch outright.
+        boolean noOpen = surfaceArguments.remove("--no-open")
+                && (typed.appArguments().isEmpty()
+                        ? acceptsNoOpen(instance)
+                        : typed.asksNoOpen());
+        if (noOpen) {
             surfaceArguments.add("--no-open");
         }
         command.addAll(surfaceArguments);
-        command.addAll(instance.extraArguments());
+        // The app arguments as typed. A `--no-open` in them belongs to the app and stays where the
+        // user put it, which is why it is not filtered out here.
+        command.addAll(typed.appArguments());
 
         Map<String, String> environment = new LinkedHashMap<>();
         environment.put("DSH_HOME", home.toString());
+        // The key travels here and nowhere else: an inherited variable is the highest-precedence
+        // source the harness reads, and it is gone when the process is. One variable per route, so
+        // that a route left in the profile by another account names a variable nothing sets rather
+        // than picking this key up. See DshAccountRoute.
+        if (account != null && account.carriesAKey()) {
+            String key = account.apiKey().trim();
+            environment.put(DshAccountRoute.environmentVariable(account.displayName()), key);
+            // And the harness's own web search, which reads a name of the vendor's rather than a
+            // route's — and only for a DeepSeek route, because the service behind that entry is
+            // DeepSeek's and another vendor's key would be refused by it. The entry itself is not
+            // touched: the launcher used to patch it, which made it unsavable in the settings page
+            // for exactly the reason the supplier route was.
+            if (route != null && route.deepSeek()) {
+                environment.put(DshAccountRoute.WEB_SEARCH_ENVIRONMENT_VARIABLE, key);
+            }
+        }
         environment.putAll(runtime.pathEnvironment());
-        environment.putAll(instance.environment());
+        environment.putAll(DshEnvironment.of(instance));
+        // What a plugin needs to show who this instance is running as. Last, so the
+        // contract states what is rather than what somebody typed: it is a description of
+        // this launch, and a description that can be quietly overwritten is a lie waiting
+        // to happen. See DshAccountContract for the same values in the home's .env.
+        environment.putAll(DshAccountContract.values(instance, account));
 
         LOG.debug("Launching " + instance.id() + " with the command: " + String.join(" ", command));
         return new LaunchPlan(instance, surface, List.copyOf(command), workspace,

@@ -41,6 +41,9 @@ import javafx.util.Duration;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
+import org.jackhuang.hmcl.dsh.DshPorts;
+import org.jackhuang.hmcl.dsh.DshProcess;
+import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
 import org.jackhuang.hmcl.setting.GameDirectory;
@@ -141,7 +144,8 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 // The original puts both of these at the foot of its game list, and
                 // this is the same pair: build an instance, or build one from a pack
                 // somebody made.
-                .addNavigationDrawerItem(i18n("install.modpack"), SVG.PACKAGE2, this::installModpack)
+                .addNavigationDrawerItem(i18n("install.modpack"), SVG.PACKAGE2,
+                        () -> Controllers.navigate(new PackInstallPage()))
                 .addNavigationDrawerItem(i18n("dsh.settings.global"), SVG.SETTINGS_FILL,
                         () -> Controllers.navigate(new SettingsPage()));
 
@@ -389,6 +393,33 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     ///
     /// @param instance the instance
     /// @param anchor   the button the popup is anchored to
+    /// Opens an instance's browser interface.
+    ///
+    /// The address is the instance's own, not something to be looked up: its port is settled when
+    /// it is created and never changes, so "open the interface" means the same address whether the
+    /// instance is running or not. A running one is asked for the address it actually bound, which
+    /// carries the trust token — but only while that is the instance's own port: an instance the
+    /// harness moved elsewhere, which a patch layer restating the `webserver` row can do, is still
+    /// opened at the port it is recorded at. A stopped one is opened at the plain address, where
+    /// the browser says the site cannot be reached, which is the truthful answer to asking for a
+    /// page nobody is serving yet.
+    ///
+    /// The item is not hidden while an instance is stopped: an address that is not answering is a
+    /// different answer from a menu entry that is not there, and the second one leaves the person
+    /// wondering whether they misremembered.
+    ///
+    /// @param instance the instance
+    private void openInBrowser(DshInstance instance) {
+        if (instance.portOrDefault() <= 0) {
+            Controllers.dialog(i18n("dsh.instance.port.auto.none"),
+                    i18n("message.error"), MessageType.ERROR);
+            return;
+        }
+        java.util.Optional<DshProcess> running = DshProcessManager.find(instance.id());
+        FXUtils.openLink(DshPorts.openAddress(instance,
+                running.flatMap(DshProcess::webUrl).orElse(null)).toString());
+    }
+
     private void showMenu(DshInstance instance, JFXButton anchor) {
         AdvancedListBox menu = new AdvancedListBox();
         JFXPopup[] popupRef = new JFXPopup[1];
@@ -405,6 +436,10 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         menu.add(buildMenuRow(i18n("dsh.instance.manage"), SVG.SETTINGS_FILL, () -> {
             close.run();
             Controllers.navigate(new InstancePage(instance));
+        }));
+        menu.add(buildMenuRow(i18n("dsh.instance.open_browser"), SVG.PUBLIC, () -> {
+            close.run();
+            openInBrowser(instance);
         }));
         menu.add(buildMenuRow(i18n("dsh.instance.open_home"), SVG.FOLDER_OPEN, () -> {
             close.run();
@@ -449,42 +484,6 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
         Controllers.navigate(Controllers.getDownloadPage());
     }
 
-    /// Builds an instance from a pack the user chooses.
-    ///
-    /// The pack carries the harness version it pins, the boot library it was paired
-    /// with and the profile's plugins; nothing installed travels with it, so the
-    /// instance is built by installing the version and resolving the plugin list.
-    /// An instance with the pack's own id has to be dealt with first: writing over
-    /// one would be replacing somebody's instance with somebody else's.
-    private void installModpack() {
-        javafx.stage.FileChooser chooser = new javafx.stage.FileChooser();
-        chooser.setTitle(i18n("install.modpack"));
-        chooser.getExtensionFilters().add(new javafx.stage.FileChooser.ExtensionFilter(
-                i18n("dsh.modpack.filter"), "*.zip"));
-        java.io.File chosen = chooser.showOpenDialog(Controllers.getStage());
-        if (chosen == null) {
-            return;
-        }
-
-        java.nio.file.Path pack = chosen.toPath();
-        org.jackhuang.hmcl.dsh.DshModpacks.Manifest manifest;
-        try {
-            manifest = org.jackhuang.hmcl.dsh.DshModpacks.readManifest(pack);
-        } catch (org.jackhuang.hmcl.dsh.DshException e) {
-            Controllers.dialog(e.getMessage(), i18n("install.modpack"), MessageType.ERROR);
-            return;
-        }
-
-        String id = manifest.instanceId();
-        if (org.jackhuang.hmcl.dsh.DshInstanceManager.find(id) != null) {
-            Controllers.dialog(i18n("dsh.modpack.exists", id), i18n("install.modpack"), MessageType.ERROR);
-            return;
-        }
-
-        ProgressDialog.run(i18n("install.modpack"), progress -> org.jackhuang.hmcl.dsh.DshModpacks.install(
-                pack, id, java.nio.file.Path.of(System.getProperty("user.home")), progress::accept),
-                this::refresh);
-    }
 
     /// Removes an instance after confirmation.
     ///

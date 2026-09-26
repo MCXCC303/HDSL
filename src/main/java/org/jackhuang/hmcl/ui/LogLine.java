@@ -19,15 +19,21 @@ package org.jackhuang.hmcl.ui;
 
 import org.jackhuang.hmcl.util.Log4jLevel;
 
-import static org.jackhuang.hmcl.setting.SettingsManager.settings;
-
 /// One captured line of child-process output together with its inferred log level.
 public final class LogLine {
+    /// How many lines the log view keeps.
+    ///
+    /// A constant rather than a setting: the log window's own line-count box is
+    /// where the count is chosen, which is where the original keeps it, so a
+    /// second control for the same number in the launcher's settings was a
+    /// setting with nothing of its own to decide.
     public static final int DEFAULT_LOG_LINES = 2000;
 
+    /// Returns how many lines the log view keeps.
+    ///
+    /// @return the line count
     public static int getLogLines() {
-        Integer lines = settings().logLinesProperty().get();
-        return lines != null && lines > 0 ? lines : DEFAULT_LOG_LINES;
+        return DEFAULT_LOG_LINES;
     }
 
     private final String log;

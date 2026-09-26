@@ -177,7 +177,7 @@ final class MainWindowPane extends StackPane {
         helpButton.setFocusTraversable(false);
         helpButton.setGraphic(SVG.HELP.createIcon(Themes.titleFillProperty()));
         helpButton.getStyleClass().add("jfx-decorator-button");
-        helpButton.setOnAction(event -> FXUtils.openLink(Metadata.CONTACT_URL));
+        helpButton.setOnAction(event -> FXUtils.openLink(Metadata.HOMEPAGE_URL));
         decorator.forbidDraggingWindow(helpButton);
 
         JFXButton minimizeButton = new JFXButton();

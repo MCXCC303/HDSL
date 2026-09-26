@@ -28,8 +28,10 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshAccount;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshInstanceTerminal;
 import org.jackhuang.hmcl.dsh.DshNodeRuntime;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
@@ -95,11 +97,14 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// The components tab: what this instance runs, and what can be installed into it.
     private final TabHeader.Tab<InstanceInstallersPage> installersTab = new TabHeader.Tab<>("dshInstanceInstallers");
 
-    /// The sessions tab.
-    private final TabHeader.Tab<SessionListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
+    /// The sessions tab: the workspaces its conversations were recorded in.
+    private final TabHeader.Tab<WorkspaceListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
 
     /// The plugins tab.
     private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
+
+    /// The skill packs tab: the instructions the agent can be given here.
+    private final TabHeader.Tab<SkillListPage> skillsTab = new TabHeader.Tab<>("dshInstanceSkills");
 
     /// The details tab.
     private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
@@ -134,7 +139,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     ///
     /// @param instance   the instance to show
     /// @param initialTab the tab to open: `settings`, `installers`, `plugins`,
-    ///                   `sessions` or `details`, or `null` for the first
+    ///                   `skills`, `sessions` or `details`, or `null` for the first
     public InstancePage(DshInstance instance, @Nullable String initialTab) {
         this.instance = instance;
         // The original titles this page with the page's name and the instance's,
@@ -146,8 +151,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
         settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
         installersTab.setNodeSupplier(() -> new InstanceInstallersPage(instance));
-        sessionsTab.setNodeSupplier(() -> new SessionListPage(instance));
+        sessionsTab.setNodeSupplier(() -> new WorkspaceListPage(instance));
         pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
+        skillsTab.setNodeSupplier(() -> new SkillListPage(instance));
         detailsTab.setNodeSupplier(this::buildDetailsTab);
         // Every tab the sidebar offers has to be in this list. A tab that is not
         // is one the selection model cannot find: selecting it falls back to
@@ -155,10 +161,12 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         // the tabs' own selected flags behind — and the next request for the tab
         // whose index that was is then refused as a selection of what is already
         // selected, while the page it asked for is shown anyway.
-        tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, sessionsTab, detailsTab);
+        tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, skillsTab,
+                sessionsTab, detailsTab);
         TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
             case "installers" -> installersTab;
             case "plugins" -> pluginsTab;
+            case "skills" -> skillsTab;
             case "sessions" -> sessionsTab;
             case "details" -> detailsTab;
             default -> settingsTab;
@@ -180,6 +188,12 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                         SVG.DEPLOYED_CODE, SVG.DEPLOYED_CODE_FILL)
                 .addNavigationDrawerTab(tab, pluginsTab, i18n("dsh.instance.plugins"),
                         SVG.EXTENSION, SVG.EXTENSION_FILL)
+                // The original marks its resource packs with the texture mark, and a skill
+                // pack is the same kind of thing: a folder of files that changes how the
+                // harness behaves. It has no solid version either, which the original allows
+                // for the same reason.
+                .addNavigationDrawerTab(tab, skillsTab, i18n("dsh.instance.skills"),
+                        SVG.TEXTURE)
                 // The folder-with-a-copy mark has no solid version in the icon set,
                 // so this entry would keep one mark either way. The pair the
                 // original uses for a pack of things is the one to take instead.
@@ -381,6 +395,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 actionLabel(state), this::testLaunch, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.OUTPUT, i18n("dsh.instance.terminal"), this::openTerminal, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.MenuSeparator());
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.PACKAGE2, i18n("modpack.export"), this::exportModpack, popup));
@@ -466,16 +482,35 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     }
 
     /// Copies this instance's configuration into a new one.
+    ///
+    /// The copy is filled from a pack the launcher writes and reads back — version, profile, plugin
+    /// list, patch layer, local plugin files, plugin settings, skills — and the work runs behind a
+    /// progress dialog, because installing a harness and resolving its plugins takes minutes rather
+    /// than a click. That dialog is also what asks about install scripts, and the copy it made is
+    /// kept for the answer: see [DshInstanceManager#duplicate]. Saying that it finished is the
+    /// dialog's own toast, the same one every other installation ends with.
     private void duplicateInstance() {
+        String newId = DshInstanceManager.nextId(instance.id());
+        PluginInstalls.runCreating(i18n("dsh.instance.duplicating", instance.id()),
+                () -> DshInstanceManager.find(newId),
+                report -> DshInstanceManager.duplicate(instance.id(), newId, report::accept),
+                null);
+    }
+
+    /// Starts or stops this instance from its own page.
+    /// Opens a terminal on this instance, set up the way a launch sets it up.
+    ///
+    /// The way out of a launch that will not start: the same home, the same environment and
+    /// the instance's own toolchain, in a shell where the harness can be run by hand.
+    private void openTerminal() {
         try {
-            DshInstanceManager.duplicate(instance.id(), DshInstanceManager.nextId(instance.id()));
-            Controllers.showToast(i18n("dsh.instance.duplicated"));
+            DshInstanceTerminal.open(instance, DshAccount.forInstance(instance));
         } catch (DshException e) {
+            LOG.warning("Could not open a terminal on " + instance.id(), e);
             Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
         }
     }
 
-    /// Starts or stops this instance from its own page.
     private void testLaunch() {
         // Test launch shows the output: the point of launching from here is to
         // see what the program does, which is what the original's test game does

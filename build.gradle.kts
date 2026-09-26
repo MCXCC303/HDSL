@@ -17,11 +17,53 @@ plugins {
 }
 
 group = "org.jackhuang.hmcl"
-// The version is the release tag's when one is given, `-PreleaseVersion=1.2.3`; a
-// plain build falls back to the number checked in here. The property is not called
-// `version`, because Gradle already answers that name with the project's own
-// version — reading it would turn every build into "unspecified".
-version = (findProperty("releaseVersion") as String?) ?: "0.1.0"
+
+// The version a build with no tag to stand on carries. A release takes its version from the
+// tag, `-PreleaseVersion=1.2.3`; a build whose own commit is tagged takes the tag's version; a
+// build past a tag carries that tag's version, how many commits past it stands, and the commit
+// it came from, `0.2.0+r42+g1a613c5`, so a package built here is never mistaken for one a tag
+// published and two builds of one commit are one version. Only a repository with no tags at all
+// falls back to this.
+val untaggedVersion = "0.1.0"
+
+// Runs git in the repository and returns its trimmed output, or null when git is
+// missing, the directory is not a repository, or the command fails. The version below
+// asks git once, at configuration time, so the answer is baked into the jar's manifest
+// and the running launcher never needs git.
+fun git(vararg arguments: String): String? = try {
+    val process = ProcessBuilder(listOf("git", *arguments))
+        .directory(projectDir)
+        .redirectErrorStream(true)
+        .start()
+    val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
+    if (process.waitFor() == 0 && output.isNotEmpty()) output else null
+} catch (exception: Exception) {
+    null
+}
+
+// A release is the build that was handed the tag's version. A build of a commit that is
+// itself tagged is that tag's version too. Everything else is a git build, and names how far
+// past the nearest tag it stands — read from git, not from a constant — so a build forty-two
+// commits past `v0.2.0` says `0.2.0+r42+g…` and not the version this file happened to be
+// written at.
+val releaseVersion = (findProperty("releaseVersion") as String?)?.takeIf { it.isNotBlank() }
+val taggedVersion = releaseVersion
+    ?: git("describe", "--tags", "--exact-match", "HEAD")?.removePrefix("v")
+version = taggedVersion ?: run {
+    val sha = git("rev-parse", "--short=7", "HEAD")
+    val tag = git("describe", "--tags", "--abbrev=0", "HEAD")
+    val base = tag?.removePrefix("v") ?: untaggedVersion
+    // How many commits this build stands past that tag. It is what tells two test builds apart
+    // when the tag alone does not: the count only grows as the branch does, so a later build
+    // always sorts after an earlier one. A repository with no tag at all counts every commit,
+    // which keeps the same promise.
+    val commits = git("rev-list", "--count", tag?.let { "$it..HEAD" } ?: "HEAD")
+    when {
+        sha != null && commits != null -> "$base+r$commits+g$sha"
+        sha != null -> "$base+g$sha"
+        else -> "$base-dev"
+    }
+}
 
 application {
     // HMCL-DSH application entry point.

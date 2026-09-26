@@ -1907,6 +1907,17 @@
     -fx-padding: 10 16 10 16;
 }
 
+/* A row that follows the launcher shows the launcher's value rather than its own, and the
+   difference has to be visible: the value is dimmed until somebody takes the setting over with
+   the globe beside the row's name. */
+.line-inheritable-value:inherited .trailing-label {
+    -fx-opacity: 0.55;
+}
+
+/* Kept out of the way of the rule above: this marks the stylesheet as one that knows the state. */
+.line-inheritable-value {
+}
+
 .line-component .subtitle-label {
     -fx-text-fill: -monet-on-surface-variant;
 }
@@ -2047,4 +2058,89 @@
    few pixels wider. */
 .installer-item-wrapper .installer-item:list-item > .installer-item-name.wide {
     -fx-pref-width: 140px;
+}
+
+/* The monogram that stands in for a picture on an account row.
+   The original draws a skin head there because a Minecraft account has a skin; a model vendor has
+   nothing to draw, and an invented picture would be a picture of nothing. The vendor's initial on
+   the surface the other rows use is a real answer to "which of these is which" at a glance. */
+.dsh-account-monogram {
+    -fx-background-color: -monet-surface-container-high;
+    -fx-background-radius: 16px;
+    -fx-font-size: 14px;
+    -fx-text-fill: -monet-on-surface;
+}
+
+/* The account list: one card per account, separated by space rather than by a hairline.
+   The original draws each of its accounts as its own card on a translucent surface. Only the row's
+   surface is restyled here; the list keeps the card-list padding it already had, because a rule on
+   the list cell's own box is what changed its measurements and made the rows disappear. */
+.dsh-account-card {
+    -fx-background-color: -monet-surface-container-low-transparent-80;
+    -fx-background-radius: 4;
+    -fx-border-width: 0;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.26), 10, 0.12, -1, 2);
+}
+
+.dsh-account-card-list .list-cell:filled:selected,
+.dsh-account-card-list .list-cell:filled:hover {
+    -fx-background-color: transparent;
+}
+
+/*******************************************************************************
+*                                                                              *
+* DSH: adding a supplier by address                                            *
+*                                                                              *
+*******************************************************************************/
+
+/* The two panes of the add-supplier dialog. The address pane is the original's own
+   (`AddAuthlibInjectorServerPane`): a plain text field with the warning under it, no frame.
+   The confirm pane needs the same 15-pixel inset the original gives it, so the first row of
+   values does not sit against the heading. */
+.dsh-vendor-confirm {
+    -fx-padding: 15 0 0 0;
+}
+
+/* A warning rather than a red validator message: the address itself may be perfectly well
+   formed and the service simply not be there, which is not something the field can say. The
+   original colours its own `account.injector.http` warning with `-monet-error`. */
+.dsh-vendor-warning {
+    -fx-text-fill: -monet-error;
+}
+
+/*******************************************************************************
+*                                                                              *
+* DSH: the dialog shown when an instance does not come up                      *
+*                                                                              *
+*******************************************************************************/
+
+/* What failed, at the top: the name and version, given more weight than the sentence under it
+   because it is the part a person scans for when several instances are in the list. */
+.dsh-crash-heading {
+    -fx-font-weight: bold;
+}
+
+/* The output tail. Monospace, because it is a stack trace and its indentation is how it is read,
+   and wrapped only by the scroll pane's own scrolling so that the columns stay where the program
+   put them. */
+.dsh-crash-log {
+    -fx-font-family: "monospace";
+    -fx-font-size: 11px;
+    -fx-text-fill: -monet-on-surface-variant;
+    -fx-padding: 8;
+}
+
+/* The output tail under the crash reason: monospace, because it is a stack trace and its
+   indentation is how it is read. The rest of the window wears the original's own classes —
+   `game-crash-window`, `jfx-tool-bar-second`, `two-line-item-second-large` and
+   `crash-reason-text-flow` — whose rules were transplanted with the rest of the stylesheet, so the
+   window follows the theme rather than having a look of its own. */
+/* The output tail: monospace, because it is a stack trace and its indentation is how it is read. */
+.dsh-crash-log {
+    -fx-font-family: "monospace";
+    -fx-font-size: 11px;
+    -fx-text-fill: -monet-on-surface-variant;
+    -fx-padding: 8;
+    -fx-background-color: -monet-surface-container-high;
+    -fx-background-radius: 4;
 }

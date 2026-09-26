@@ -112,6 +112,7 @@ class DshPackForgeTest {
                  "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
                 """);
 
+        try {
         JsonObject manifest = DshPackForge.buildManifest(instance,
                 new DshPackForge.Options("My Pack", "2.1.0", "我的整合包", "a description", "someone"),
                 null);
@@ -130,7 +131,73 @@ class DshPackForgeTest {
                 "the bundle order is what the profile loads in");
         assertEquals("1.52.0", manifest.getAsJsonObject("dependencies").get("dshmarket").getAsString());
 
-        DshInstanceManager.delete("packforge-test");
+        } finally {
+            DshInstanceManager.delete("packforge-test");
+        }
+    }
+
+    /// The profile's own files sit at the root, and everything else under `overrides/`.
+    ///
+    /// The two places are not a style: the installer copies the root files **before** it resolves
+    /// the dependencies and the overrides afterwards, so a `package.json` written under
+    /// `overrides/` arrives after the install that needed it — the pack then installs cleanly and
+    /// boots with none of its plugins.
+    ///
+    /// @throws Exception when the pack cannot be written, read, or landed
+    @Test
+    void theProfilesOwnFilesSitAtTheRootAndTheRestUnderOverrides() throws Exception {
+        String id = "packforge-layout";
+        DshInstance instance = DshInstanceManager.find(id);
+        if (instance == null) {
+            instance = DshInstanceManager.create(id, "0.1.6-alpha.2",
+                    DshInstance.DEFAULT_PROFILE, Files.createTempDirectory("packforge-layout-home"),
+                    DshHomeMode.ISOLATED, null, java.util.List.of(), java.util.Map.of());
+        }
+        Path profile = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
+        Files.createDirectories(profile);
+        Files.writeString(profile.resolve("package.json"), """
+                {"name":"dsh-profile-web","private":true,
+                 "dependencies":{"dshmarket":"1.52.0"},
+                 "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","dshmarket"]}}}
+                """);
+        Files.writeString(profile.resolve("pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+        Files.writeString(profile.resolve("cordis.patch.yml"), "- id: title\n");
+
+        Path pack = Files.createTempFile("packforge-layout", ".dspack");
+        try {
+            DshPackForge.export(instance, pack, DshPackForge.Options.of(instance), null);
+
+            java.util.Set<String> members = new java.util.TreeSet<>();
+            try (java.util.zip.ZipFile zip = new java.util.zip.ZipFile(pack.toFile())) {
+                zip.stream().map(java.util.zip.ZipEntry::getName).forEach(members::add);
+            }
+            assertTrue(members.contains("package.json"),
+                    "the manifest belongs at the root, where the resolve reads it: " + members);
+            assertTrue(members.contains("pnpm-lock.yaml"), "and so does the lock file");
+            assertTrue(members.contains("overrides/cordis.patch.yml"),
+                    "the patch is composition, so it is an override");
+            assertFalse(members.contains("overrides/package.json"),
+                    "a manifest under overrides lands after the install that needed it");
+
+            // And what the installer does with each place, in the order it does it.
+            Path destination = Files.createTempDirectory("packforge-landed");
+            DshPackInstaller.Landed machine = DshPackInstaller.land(pack, destination,
+                    Files.createTempDirectory("packforge-target-home"),
+                    java.util.EnumSet.of(DshPackInstaller.Part.MACHINE));
+            assertEquals(2, machine.machine(), "the pack carries two machine files");
+            assertTrue(Files.isRegularFile(destination.resolve("package.json")),
+                    "they land first, because the dependency install reads them");
+            assertFalse(Files.exists(destination.resolve("cordis.patch.yml")),
+                    "and the overrides do not land with them");
+
+            DshPackInstaller.land(pack, destination, null,
+                    java.util.EnumSet.of(DshPackInstaller.Part.OVERRIDES));
+            assertTrue(Files.isRegularFile(destination.resolve("cordis.patch.yml")),
+                    "the composition lands afterwards, on top of what the install wrote");
+        } finally {
+            Files.deleteIfExists(pack);
+            DshInstanceManager.delete(id);
+        }
     }
 
     @Test

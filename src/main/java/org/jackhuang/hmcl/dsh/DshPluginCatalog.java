@@ -26,6 +26,8 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -57,6 +59,15 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 public final class DshPluginCatalog {
     /// Where the catalogue is published.
     public static final String CATALOG_URL = "https://awesome-dsh-plugin.com/plugins.json";
+
+    /// The npm package the same catalogue is also published as.
+    ///
+    /// The community host is GitHub Pages, and a network that cannot reach GitHub can still reach
+    /// an npm mirror — which is exactly the network this launcher is most likely to run on, since
+    /// it installs everything else through npm. The package carries the same `plugins.json`, so it
+    /// is the catalogue rather than a copy of it, and reading it goes through whichever registry
+    /// the machine's `npm` is already configured to use.
+    public static final String NPM_CATALOG_PACKAGE = "dsh-plugin-catalog";
 
     /// The address actually read, which the `hdsl.pluginCatalog` property may
     /// point at a mirror of the catalogue. The marketplace's own deployment reads
@@ -236,15 +247,38 @@ public final class DshPluginCatalog {
     /// @throws DshException when it cannot be read or does not parse
     public static Catalog fetch() throws DshException {
         String url = catalogUrl();
+        Path cached = cachedFile(url);
         String body;
         try {
             body = NetworkUtils.doGet(URI.create(url));
-        } catch (IOException | RuntimeException e) {
-            // The address is in the message for the same reason it is in the Node
-            // index's: a network that reaches one host may not reach another, and
-            // which host failed is the one thing that says so.
-            throw new DshException("Failed to read the plugin catalogue from " + url
-                    + " (" + e.getMessage() + ")", e);
+            keepCopy(cached, body);
+        } catch (IOException | RuntimeException direct) {
+            // The community host is GitHub Pages. Where that is unreachable the catalogue is
+            // still published as an npm package, and npm is how this launcher reaches everything
+            // else — so the second source is tried before giving up, and before falling back to a
+            // stale copy.
+            LOG.info("The plugin catalogue at " + url + " could not be read (" + direct.getMessage()
+                    + "); trying the npm package " + NPM_CATALOG_PACKAGE);
+            try {
+                body = fetchFromNpm();
+                keepCopy(cached, body);
+                LOG.info("Read the plugin catalogue from the npm package " + NPM_CATALOG_PACKAGE);
+            } catch (IOException | RuntimeException viaNpm) {
+                // The addresses are in the message for the same reason they are in the Node
+                // index's: a network that reaches one host may not reach another, and which host
+                // failed is the one thing that says so. But the last copy is worth more than
+                // nothing: a launcher that cannot reach the catalogue can still show what it
+                // showed yesterday.
+                String kept = readCached(cached);
+                if (kept == null) {
+                    throw new DshException("Failed to read the plugin catalogue from " + url
+                            + " (" + direct.getMessage() + ") or from the npm package "
+                            + NPM_CATALOG_PACKAGE + " (" + viaNpm.getMessage() + ")",
+                            viaNpm);
+                }
+                LOG.info("The plugin catalogue could not be fetched; using the copy kept at " + cached);
+                body = kept;
+            }
         }
         try {
             Catalog catalog = parse(body);
@@ -253,6 +287,193 @@ public final class DshPluginCatalog {
         } catch (RuntimeException e) {
             throw new DshException("The plugin catalogue had an unexpected shape", e);
         }
+    }
+
+    /// Keeps a copy of the catalogue so a later fetch has something to fall back on.
+    ///
+    /// @param cached where to keep it
+    /// @param body   the catalogue
+    private static void keepCopy(Path cached, String body) {
+        try {
+            Files.createDirectories(cached.getParent());
+            Files.writeString(cached, body);
+        } catch (IOException e) {
+            LOG.warning("Could not keep a copy of the plugin catalogue", e);
+        }
+    }
+
+    /// Reads the catalogue out of the npm package that publishes it.
+    ///
+    /// Two requests: the package's metadata names the archive, and the archive holds the same
+    /// `plugins.json` the community host serves. Both go to the registry the machine's own `npm`
+    /// is configured to use, which is why this works on a network where the community host does
+    /// not.
+    ///
+    /// @return the catalogue
+    /// @throws IOException when either request fails or the archive holds no catalogue
+    private static String fetchFromNpm() throws IOException {
+        String registry = npmRegistry();
+        String metadataUrl = registry + "/" + NPM_CATALOG_PACKAGE + "/latest";
+        String metadata = NetworkUtils.doGet(URI.create(metadataUrl));
+        JsonObject object = JsonParser.parseString(metadata).getAsJsonObject();
+        JsonElement tarball = object.getAsJsonObject("dist") == null
+                ? null : object.getAsJsonObject("dist").get("tarball");
+        if (tarball == null || !tarball.isJsonPrimitive()) {
+            throw new IOException("the registry's answer for " + NPM_CATALOG_PACKAGE
+                    + " names no archive");
+        }
+
+        byte[] archive = downloadBytes(URI.create(tarball.getAsString()));
+
+        // The tar reader wants the whole archive rather than a stream, so the gzip layer is taken
+        // off first. The catalogue is about a megabyte compressed, which is a fine size to hold.
+        byte[] tar;
+        try (java.io.InputStream unzipped =
+                     new java.util.zip.GZIPInputStream(new java.io.ByteArrayInputStream(archive))) {
+            tar = unzipped.readAllBytes();
+        }
+        try (kala.compress.archivers.tar.TarArchiveReader reader =
+                     new kala.compress.archivers.tar.TarArchiveReader(tar)) {
+            for (kala.compress.archivers.tar.TarArchiveEntry entry : reader.getEntries()) {
+                if (entry.getName().endsWith("plugins.json")) {
+                    try (java.io.InputStream content = reader.getInputStream(entry)) {
+                        return new String(content.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                }
+            }
+        }
+        throw new IOException("the archive holds no plugins.json");
+    }
+
+    /// Downloads an address into memory.
+    ///
+    /// The catalogue's archive is small and is parsed from a byte array, so it is read whole
+    /// rather than spilled to a file that would then have to be cleaned up.
+    ///
+    /// @param uri the address
+    /// @return its body
+    /// @throws IOException when it cannot be read
+    private static byte[] downloadBytes(URI uri) throws IOException {
+        java.net.URLConnection connection = NetworkUtils.createConnection(uri);
+        if (connection instanceof java.net.HttpURLConnection http) {
+            connection = NetworkUtils.resolveConnection(http);
+        }
+        try (java.io.InputStream input = connection.getInputStream()) {
+            return input.readAllBytes();
+        }
+    }
+
+    /// Returns the registry the machine's npm is configured to use.
+    ///
+    /// Read from `npm config get registry` rather than from a file, because that is the command
+    /// whose answers npm itself acts on: it accounts for the project's `.npmrc`, the user's, the
+    /// global one and the built-in default, in the order npm does. Falling back to the public
+    /// registry keeps this working when npm is missing.
+    ///
+    /// @return the registry's base address, without a trailing slash
+    private static String npmRegistry() {
+        try {
+            DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
+            if (runtime != null && runtime.npm() != null) {
+                DshCommand.Result result = DshCommand.run(
+                        List.of(runtime.npm().toString(), "config", "get", "registry"));
+                if (result.isSuccess()) {
+                    String configured = result.text().strip();
+                    // npm prints a warning on the same stream when it dislikes something, so the
+                    // answer is the last line that looks like an address rather than the whole
+                    // output.
+                    for (String line : configured.lines().toList().reversed()) {
+                        String candidate = line.strip();
+                        if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
+                            return candidate.endsWith("/")
+                                    ? candidate.substring(0, candidate.length() - 1) : candidate;
+                        }
+                    }
+                }
+            }
+        } catch (IOException | InterruptedException | RuntimeException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            LOG.info("Could not read npm's registry; using the public one", e);
+        }
+        return "https://registry.npmjs.org";
+    }
+
+    /// Returns the directory the launcher keeps fetched catalogues in.
+    ///
+    /// @return the directory, which may not exist
+    public static Path cacheDirectory() {
+        try {
+            org.jackhuang.hmcl.setting.LauncherSettings settings =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings();
+            String configured = settings.cacheDirectoryProperty().get();
+            if (settings.cacheDirectoryCustomProperty().get() && configured != null && !configured.isBlank()) {
+                return Path.of(configured.trim());
+            }
+        } catch (RuntimeException e) {
+            LOG.warning("Could not read the cache directory", e);
+        }
+        return DshPaths.CATALOG;
+    }
+
+    /// Returns the file one address's copy is kept in.
+    ///
+    /// The name comes from the address, so pointing the launcher at another catalogue does not
+    /// overwrite the copy of the first one.
+    ///
+    /// @param url the address
+    /// @return the file, which may not exist
+    static Path cachedFile(String url) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            StringBuilder name = new StringBuilder();
+            for (byte value : digest.digest(url.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+                name.append(String.format("%02x", value));
+            }
+            return cacheDirectory().resolve(name.substring(0, 16) + ".json");
+        } catch (java.security.NoSuchAlgorithmException e) {
+            return cacheDirectory().resolve("catalog.json");
+        }
+    }
+
+    /// Reads a kept copy.
+    ///
+    /// @param file the file
+    /// @return its text, or `null` when it is not there or cannot be read
+    private static @org.jetbrains.annotations.Nullable String readCached(Path file) {
+        try {
+            return Files.isRegularFile(file) ? Files.readString(file) : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /// Removes every kept copy.
+    ///
+    /// @return how many files were removed
+    public static int clearCache() {
+        Path directory = cacheDirectory();
+        if (!Files.isDirectory(directory)) {
+            return 0;
+        }
+        int removed = 0;
+        try (java.util.stream.Stream<Path> files = Files.list(directory)) {
+            for (Path file : files.toList()) {
+                try {
+                    if (Files.isDirectory(file)) {
+                        continue;
+                    }
+                    Files.delete(file);
+                    removed++;
+                } catch (IOException e) {
+                    LOG.warning("Could not remove " + file, e);
+                }
+            }
+        } catch (IOException e) {
+            LOG.warning("Could not list " + directory, e);
+        }
+        return removed;
     }
 
     /// Parses a catalogue document.

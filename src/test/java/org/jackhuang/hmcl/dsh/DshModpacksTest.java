@@ -220,6 +220,82 @@ class DshModpacksTest {
         Files.deleteIfExists(pack);
     }
 
+    @Test
+    void theSkillPacksAnInstanceHasTravelInsideThePack() throws Exception {
+        DshInstance instance = makeInstance(SOURCE_ID);
+        writeProfile(instance, "{}");
+        Path skills = DshSkills.directory(instance.homeDirectory());
+        Files.createDirectories(skills.resolve("alpha"));
+        Files.writeString(skills.resolve("alpha").resolve("SKILL.md"),
+                "---\nname: alpha\ndescription: First\n---\n");
+        Files.writeString(skills.resolve("alpha").resolve("notes.txt"), "extra");
+        Path shipped = skills.resolve(".system").resolve("shipped");
+        Files.createDirectories(shipped);
+        Files.writeString(shipped.resolve("SKILL.md"), "---\nname: shipped\ndescription: x\n---\n");
+
+        Path pack = Files.createTempFile("modpack", ".zip");
+        DshModpacks.export(instance, pack, null);
+
+        DshModpacks.Manifest manifest = DshModpacks.readManifest(pack);
+        assertEquals(3, manifest.version(), "skills are what the third version of the format added");
+        assertEquals(List.of("alpha"), manifest.skills(),
+                "the manifest names what travels, and only what a person could have chosen");
+        try (ZipFile zip = new ZipFile(pack.toFile())) {
+            assertTrue(zip.getEntry("skills/alpha/SKILL.md") != null, "the skill is in the archive");
+            assertTrue(zip.getEntry("skills/alpha/notes.txt") != null,
+                    "and so is the rest of the pack, which is not a skill file by name");
+            assertFalse(zip.stream().anyMatch(entry -> entry.getName().contains(".system")),
+                    "the skills the harness ships stay where they are");
+        }
+
+        Path restored = Files.createTempDirectory("modpack-target-home");
+        assertEquals(2, DshSkills.restoreInto(pack, restored, null));
+        assertTrue(Files.isRegularFile(DshSkills.directory(restored).resolve("alpha").resolve("SKILL.md")));
+        Files.deleteIfExists(pack);
+    }
+
+    @Test
+    void aSkillThePersonLeftOutDoesNotTravel() throws Exception {
+        DshInstance instance = makeInstance(SOURCE_ID);
+        writeProfile(instance, "{}");
+        Path skills = DshSkills.directory(instance.homeDirectory());
+        for (String name : List.of("kept", "dropped")) {
+            Files.createDirectories(skills.resolve(name));
+            Files.writeString(skills.resolve(name).resolve("SKILL.md"),
+                    "---\nname: " + name + "\ndescription: x\n---\n");
+        }
+
+        Path pack = Files.createTempFile("modpack", ".zip");
+        DshModpacks.Options options = new DshModpacks.Options("chosen", "1.0", "", "", "", "", false,
+                java.util.Set.of(), java.util.Set.of(), java.util.Set.of("kept"));
+        DshModpacks.export(instance, pack, options, null);
+
+        assertEquals(List.of("kept"), DshModpacks.readManifest(pack).skills());
+        try (ZipFile zip = new ZipFile(pack.toFile())) {
+            assertTrue(zip.getEntry("skills/kept/SKILL.md") != null);
+            assertTrue(zip.getEntry("skills/dropped/SKILL.md") == null,
+                    "a skill nobody ticked is not in the pack");
+        }
+        Files.deleteIfExists(pack);
+    }
+
+    @Test
+    void aPackFromANewerLauncherIsRefused() throws Exception {
+        Path pack = Files.createTempFile("modpack", ".zip");
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(pack))) {
+            zip.putNextEntry(new ZipEntry(DshModpacks.MANIFEST));
+            zip.write("""
+                    {"format":"hdsl-modpack","version":4,"createdAt":"now","instanceId":"x",
+                     "dshVersion":"0.1.6-alpha.2","profile":"web","plugins":[],"bundles":[]}
+                    """.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+        }
+
+        assertThrows(DshException.class, () -> DshModpacks.install(pack, "newer-pack",
+                Path.of(System.getProperty("user.home")), null));
+        Files.deleteIfExists(pack);
+    }
+
     /// Uses the same write the loader uses, without the resolve that follows it.
     ///
     /// @param instance the instance
@@ -227,9 +303,9 @@ class DshModpacksTest {
     private static void writeProfileManifestForTest(DshInstance instance, DshModpacks.Manifest manifest)
             throws Exception {
         java.lang.reflect.Method method = DshModpacks.class.getDeclaredMethod(
-                "writeProfileManifest", Path.class, DshModpacks.Manifest.class);
+                "writeProfileManifest", Path.class, DshModpacks.Manifest.class, java.util.Map.class);
         method.setAccessible(true);
-        method.invoke(null, profileDirectory(instance).resolve("package.json"), manifest);
+        method.invoke(null, profileDirectory(instance).resolve("package.json"), manifest, java.util.Map.of());
     }
 
     /// Returns an instance's profile directory.

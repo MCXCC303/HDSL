@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import java.util.Set;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -65,6 +67,19 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// resolve the whole list in one run — installing bundles one at a time would
 /// append each at the end and lose the order the pack was made with.
 ///
+/// What a plugin was *configured* with travels too: the harness keeps one section per plugin in
+/// `settings.yaml`, and that file is most of what "the same environment" means for a plugin — a
+/// sidebar's custom CSS, a market's preferences. The sections travel, the values that look like
+/// credentials do not, and a section is merged key by key into the next home so that a value the pack
+/// left out cannot delete the one that machine already had. See [DshPluginSettings].
+///
+/// A plugin the instance installed from a file is the one thing that cannot be named and fetched, so
+/// it travels as its own files and is put back into the next instance's plugin directory. That is the
+/// exception to *configuration only*, and it is a deliberate one: a pack that named a path from the
+/// machine it was made on would describe an installation nobody can make. A local plugin that the
+/// registry *does* publish at the version the instance has is not carried — the pack names
+/// `name@version` instead, which installs the same thing from the registry.
+///
 /// Credentials never travel. The harness keeps provider keys in `.credentials.yaml`
 /// beside the sessions, and this reads nothing from there; the profile's patch
 /// layer is included because it is composition, and the launcher says so when it
@@ -74,8 +89,37 @@ public final class DshModpacks {
     /// What a pack says it is.
     public static final String FORMAT = "hdsl-modpack";
 
+    /// The file extension this launcher's own packs are written with.
+    ///
+    /// The container is a plain ZIP, so `.zip` opened it — and told nobody anything. A pack written
+    /// by this launcher is a different thing from an archive somebody zipped by hand, and the name
+    /// is the only place that can say so before anything is unzipped: it is what a file manager
+    /// shows, what a browser offers to download, and what somebody types into the import box.
+    ///
+    /// `.dspack` is the community's and stays theirs; this is the launcher's own format.
+    public static final String FILE_EXTENSION = ".hdslp";
+
+    /// The extensions an import accepts.
+    ///
+    /// `.zip` is kept because packs written before the extension existed are `.zip`, and refusing
+    /// them would be refusing the user's own files to make a naming point. What a file *is* is
+    /// decided by its manifest, which both spellings carry.
+    public static final java.util.List<String> ACCEPTED_EXTENSIONS = java.util.List.of(".hdslp", ".zip");
+
     /// The format's version.
-    public static final int FORMAT_VERSION = 1;
+    ///
+    /// Version 2 added the plugins a pack carries — a plugin installed from a file that the registry
+    /// does not publish now travels inside the pack, under `plugins/`, and is put back into the
+    /// instance's own plugin directory on install. A version 2 pack is therefore one a version 1
+    /// launcher cannot install correctly: it would read the plugin as a local one it cannot fetch and
+    /// leave it out, so the pack is refused instead, which is the honest answer.
+    ///
+    /// Version 3 added the skill packs a pack carries — the skills an instance had under its
+    /// home, under `skills/`, put back into the next home on install. Skills are content rather
+    /// than configuration, which is why they are the second exception to the rule at the top of
+    /// this file: they cannot be named and fetched, so they travel as their own files. A version
+    /// 2 launcher would leave them out in silence, so a version 3 pack is refused by it instead.
+    public static final int FORMAT_VERSION = 3;
 
     /// The manifest's name inside the archive.
     public static final String MANIFEST = "manifest.json";
@@ -94,7 +138,16 @@ public final class DshModpacks {
     /// @param active  whether the package is in the profile's bundle list
     /// @param local   whether the plugin was installed from a file this instance
     ///                keeps, and so cannot be fetched by anyone else
-    public record Plugin(String name, String version, boolean active, boolean local) {
+    /// One plugin a pack names.
+    ///
+    /// @param name    the package name
+    /// @param version the version the pack pins, or a local specification for a plugin that was not
+    ///                fetched — which is a path, and only meaningful on the machine it names
+    /// @param active  whether the pack boots it as a bundle
+    /// @param local   whether the instance installed it from a file rather than a registry
+    /// @param bundled whether the pack carries the plugin's own files, which is what makes a local
+    ///                plugin installable somewhere else
+    public record Plugin(String name, String version, boolean active, boolean local, boolean bundled) {
     }
 
     /// What a pack describes.
@@ -114,11 +167,17 @@ public final class DshModpacks {
     /// @param author      who made it, or an empty string
     /// @param description what it is for, or an empty string
     /// @param sessionCount how many conversations it carries, zero for none
+    /// @param settings        the `settings.yaml` sections the pack carries, in the file's order
+    /// @param settingsOmitted the `section.key` paths left out of them because they look like
+    ///                        credentials, so whoever opens the pack can see what it does not hold
+    /// @param skills          the skill packs the pack carries, by the name each has on disk
     public record Manifest(String format, int version, String createdAt, String instanceId,
                            String dshVersion, @Nullable String appBoot, String profile,
                            List<Plugin> plugins, List<String> bundles, boolean hasPatch,
                            String name, String packVersion, String author, String description,
-                           int sessionCount) {
+                           String url, String referenceUrl, int sessionCount,
+                           List<String> settings, List<String> settingsOmitted,
+                           List<String> skills) {
 
         /// Returns the plugins that should be installed, in the order they are
         /// listed in.
@@ -153,6 +212,24 @@ public final class DshModpacks {
         public List<Plugin> localPlugins() {
             return plugins.stream().filter(Plugin::local).toList();
         }
+
+        /// Returns the local plugins a pack carries the files of.
+        ///
+        /// @return the plugins whose files travel inside the pack
+        public List<Plugin> bundledPlugins() {
+            return plugins.stream().filter(Plugin::bundled).toList();
+        }
+
+        /// Returns the local plugins a pack cannot install.
+        ///
+        /// A pack written before it carried local plugin files names one, and so does a pack whose
+        /// instance had already lost the file: either way there is nothing to install from, and
+        /// saying which plugin it is beats a resolve that fails on a path from another machine.
+        ///
+        /// @return the plugins that cannot be installed
+        public List<Plugin> uninstallablePlugins() {
+            return plugins.stream().filter(plugin -> plugin.local() && !plugin.bundled()).toList();
+        }
     }
 
     /// What an export wrote.
@@ -180,14 +257,76 @@ public final class DshModpacks {
     /// @param author          who made it
     /// @param description     what it is for
     /// @param includeSessions whether the instance's conversations travel with it
+    /// @param excludedBundles the bundles the person chose to leave out
+    /// @param settings        the `settings.yaml` sections that travel: a plugin's own settings, and
+    ///                        most of what "the same environment" means for it
+    /// @param skills          the skill packs that travel, by the name each has under the home's
+    ///                        skills directory; names rather than packs, so the choice is a small
+    ///                        thing to hold and is read against what is there when the pack is
+    ///                        written
     public record Options(String name, String version, String author, String description,
-                          boolean includeSessions) {
+                          String url, String referenceUrl,
+                          boolean includeSessions, Set<String> excludedBundles, Set<String> settings,
+                          Set<String> skills) {
+        /// Returns options that carry no addresses.
+        ///
+        /// @param name            what the pack is called
+        /// @param version         the pack's own version
+        /// @param author          who made it
+        /// @param description     what it is for
+        /// @param includeSessions whether the conversations travel
+        public Options(String name, String version, String author, String description,
+                       boolean includeSessions) {
+            this(name, version, author, description, "", "", includeSessions, Set.of(), Set.of(),
+                    Set.of());
+        }
+
+        /// Returns options that carry every bundle.
+        ///
+        /// @param name            what the pack is called
+        /// @param version         the pack's own version
+        /// @param author          who made it
+        /// @param description     what it is for
+        /// @param includeSessions whether the conversations travel
+
         /// Returns the options a pack is written with when nobody chose any.
+        ///
+        /// Everything a plugin keeps in the harness's settings travels, because that is what makes a
+        /// pack an environment rather than a list of packages — and because the alternative, a pack
+        /// that names a sidebar but not the stylesheet it was configured with, is the difference
+        /// nobody notices until they open it. Values that look like credentials are removed on the
+        /// way out; see [DshPluginSettings].
+        ///
+        /// The same is true of the skill packs an instance has: a pack that reproduces an
+        /// environment without the skills it was set up around is missing the part that took the
+        /// longest to assemble, and a skill is content rather than configuration, so there is
+        /// nowhere else for it to come from.
         ///
         /// @param instance the instance
         /// @return the options
         public static Options of(DshInstance instance) {
-            return new Options(instance.id(), "1.0", "", "", false);
+            Set<String> settings = Set.of();
+            try {
+                settings = new java.util.LinkedHashSet<>(DshPluginSettings.sectionsOf(instance.homeDirectory()));
+            } catch (DshException e) {
+                LOG.warning("Failed to read the settings of " + instance.id(), e);
+            }
+            Set<String> skills = Set.of();
+            try {
+                skills = new java.util.LinkedHashSet<>(DshSkills.packableNames(instance.homeDirectory()));
+            } catch (DshException e) {
+                LOG.warning("Failed to read the skills of " + instance.id(), e);
+            }
+            return new Options(instance.id(), "1.0", "", "", "", "", false, Set.of(), settings,
+                    skills);
+        }
+
+        /// Returns whether a bundle travels.
+        ///
+        /// @param bundle the bundle's name
+        /// @return whether it does
+        public boolean includesBundle(String bundle) {
+            return !excludedBundles.contains(bundle);
         }
     }
 
@@ -214,12 +353,26 @@ public final class DshModpacks {
         Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
         Map<String, String> dependencies = DshPluginInstaller.readDependencies(
                 instance.homeDirectory(), instance.profile());
-        List<String> bundles = DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile());
+        List<String> bundles = new ArrayList<>(
+                DshPluginInstaller.readBundles(instance.homeDirectory(), instance.profile()));
+        // A bundle somebody unticked is not in the pack and is not recorded as one of its plugins:
+        // a pack that named a plugin it does not install would describe an installation nobody can
+        // make, and an import would try.
+        bundles.removeIf(bundle -> !options.includesBundle(bundle));
 
         List<Plugin> plugins = new ArrayList<>();
+        List<DshPluginBundle.Payload> carried = new ArrayList<>();
         for (Map.Entry<String, String> entry : dependencies.entrySet()) {
-            plugins.add(new Plugin(entry.getKey(), entry.getValue(), bundles.contains(entry.getKey()),
-                    isLocalSpec(entry.getValue())));
+            if (!options.includesBundle(entry.getKey())) {
+                continue;
+            }
+            boolean active = bundles.contains(entry.getKey());
+            if (!isLocalSpec(entry.getValue())) {
+                plugins.add(new Plugin(entry.getKey(), entry.getValue(), active, false, false));
+                continue;
+            }
+            plugins.add(localPlugin(profileDirectory, entry.getKey(), entry.getValue(), active,
+                    carried, onStage));
         }
 
         Path patch = profileDirectory.resolve("cordis.patch.yml");
@@ -236,10 +389,31 @@ public final class DshModpacks {
                 ? DshSessions.list(instance.homeDirectory())
                 : List.of();
 
+        DshPluginSettings.Carried settings = options.settings().isEmpty()
+                ? new DshPluginSettings.Carried("", List.of(), List.of())
+                : DshPluginSettings.extract(instance.homeDirectory(), options.settings());
+        if (!settings.sections().isEmpty()) {
+            report(onStage, "Carrying the settings of " + settings.sections().size() + " plugin(s): "
+                    + String.join(", ", settings.sections()));
+        }
+        if (!settings.omitted().isEmpty()) {
+            // Named rather than counted: whoever opens the pack should be able to see what was left
+            // out, and whoever made it should be able to see that a setting did not travel.
+            report(onStage, "Left out " + settings.omitted().size() + " value(s) that look like credentials: "
+                    + String.join(", ", settings.omitted()));
+        }
+
+        // The pack carries the skill packs the options asked for and the home actually has:
+        // a name for a skill that is no longer there is not something to fail over, because the
+        // alternative is a pack that cannot be written after a skill was deleted.
+        List<DshSkill> skills = DshSkills.packable(instance.homeDirectory(), options.skills());
+        List<String> skillNames = skills.stream().map(DshSkill::fileName).toList();
+
         Manifest manifest = new Manifest(FORMAT, FORMAT_VERSION, Instant.now().toString(), instance.id(),
                 instance.version(), appBoot, instance.profile(), List.copyOf(plugins), List.copyOf(bundles),
                 hasPatch, options.name(), options.version(), options.author(), options.description(),
-                sessions.size());
+                options.url(), options.referenceUrl(),
+                sessions.size(), settings.sections(), settings.omitted(), skillNames);
 
         report(onStage, "Recording " + plugins.size() + " plugin(s), " + bundles.size() + " active bundle(s)");
         Path parent = target.toAbsolutePath().getParent();
@@ -249,10 +423,26 @@ public final class DshModpacks {
             }
             try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
                 if (hasPatch) {
-                    byte[] body = Files.readAllBytes(patch);
+                    // The copy goes in repaired, for the same reason the installer repairs it on the
+                    // way out: a profile that both boots a plugin as a bundle and inserts it applies
+                    // it twice and does not start. Fixing it only on install would leave every pack
+                    // made from such an instance carrying the defect forward.
+                    byte[] body = DshProfilePatch.withoutRedundantInserts(
+                            Files.readString(patch, StandardCharsets.UTF_8), bundles).text()
+                            .getBytes(StandardCharsets.UTF_8);
                     zip.putNextEntry(new ZipEntry(PATCH));
                     zip.write(body);
                     zip.closeEntry();
+                }
+                if (!settings.text().isEmpty()) {
+                    zip.putNextEntry(new ZipEntry(DshPluginSettings.ENTRY));
+                    zip.write(settings.text().getBytes(StandardCharsets.UTF_8));
+                    zip.closeEntry();
+                }
+                for (DshPluginBundle.Payload payload : carried) {
+                    // A local plugin nobody publishes travels as its own files, and there is no
+                    // smaller way to say it: the alternative is a pack that cannot be installed.
+                    DshPluginBundle.writeInto(zip, payload, onStage);
                 }
                 if (!sessions.isEmpty()) {
                     // The conversations are written the way a session pack writes
@@ -260,6 +450,12 @@ public final class DshModpacks {
                     // rules are the same either way.
                     DshSessionPacks.writeInto(zip, instance.homeDirectory(), sessions, onStage);
                     DshSessionPacks.writeAttachmentsInto(zip, instance.homeDirectory(), sessions, onStage);
+                }
+
+                if (!skills.isEmpty()) {
+                    // The layout under the home is the layout in the pack, which is what makes
+                    // restoring one a copy rather than a translation.
+                    DshSkills.writeInto(zip, skills, onStage);
                 }
                 zip.putNextEntry(new ZipEntry(MANIFEST));
                 zip.write(JsonUtils.GSON.toJson(manifest).getBytes(StandardCharsets.UTF_8));
@@ -275,6 +471,48 @@ public final class DshModpacks {
                 + ", " + plugins.size() + " plugin(s)");
         LOG.info("Wrote a modpack for " + instance.id() + " to " + target);
         return new ExportResult(plugins.size(), size);
+    }
+
+    /// Records a plugin the instance installed from a file.
+    ///
+    /// The registry is asked first, because a plugin that is published at the version the instance
+    /// has does not need to travel: the pack names `name@version` and the install fetches it, which is
+    /// smaller and is the same code either way. Only when the registry does not publish it — or cannot
+    /// be asked at all, which is not the same as an answer — are the files carried, because a pack
+    /// that named a package nobody can fetch would be a pack that does not install.
+    ///
+    /// @param profileDirectory the profile the plugin was installed into
+    /// @param name             the dependency name
+    /// @param declared         what the profile declares for it
+    /// @param active           whether it is in the bundle list
+    /// @param carried          collects the payloads the pack has to carry
+    /// @param onStage          receives progress lines, or `null`
+    /// @return what the pack records for it
+    private static Plugin localPlugin(Path profileDirectory, String name, String declared, boolean active,
+                                      List<DshPluginBundle.Payload> carried,
+                                      @Nullable Consumer<String> onStage) {
+        DshPluginBundle.Payload payload = DshPluginBundle.locate(profileDirectory, name, declared);
+        if (payload == null) {
+            report(onStage, "Note: " + name + " was installed from a file this instance no longer has,"
+                    + " so the pack cannot carry it");
+            return new Plugin(name, declared, active, true, false);
+        }
+
+        DshPackageRegistry.Availability availability =
+                DshPackageRegistry.availability(name, payload.version());
+        if (availability == DshPackageRegistry.Availability.PUBLISHED) {
+            report(onStage, name + " " + payload.version() + " is published, so the pack fetches it"
+                    + " from the registry rather than carrying it");
+            return new Plugin(name, payload.version(), active, false, false);
+        }
+        if (availability == DshPackageRegistry.Availability.UNKNOWN) {
+            report(onStage, "Could not ask the registry about " + name + " " + payload.version()
+                    + "; carrying its files instead");
+        } else {
+            report(onStage, name + " " + payload.version() + " is not published, so the pack must carry it");
+        }
+        carried.add(payload);
+        return new Plugin(name, payload.version(), active, true, true);
     }
 
     /// Reads a pack's manifest.
@@ -343,6 +581,12 @@ public final class DshModpacks {
         if (manifest.sessionCount() > 0) {
             DshSessionPacks.restoreInto(pack, existing.homeDirectory(), onStage);
         }
+        if (!manifest.skills().isEmpty()) {
+            // Content rather than configuration, so it is put back the way it came out: a copy
+            // under the home's own skills directory. The harness reads that directory when it
+            // starts, so nothing else has to be told.
+            DshSkills.restoreInto(pack, existing.homeDirectory(), onStage);
+        }
         return new InstallResult(existing, !installed, plugins, manifest.bundles().size());
     }
 
@@ -383,14 +627,22 @@ public final class DshModpacks {
             writePatch(pack, patch);
         }
 
+        String settings = readSettings(pack);
+        if (!settings.isBlank()) {
+            List<String> merged = DshPluginSettings.merge(instance.homeDirectory(), settings);
+            report(onStage, "Put the pack's settings for " + merged.size() + " plugin(s) into"
+                    + " settings.yaml: " + String.join(", ", merged));
+        }
+
         if (!manifest.plugins().isEmpty() || !manifest.bundles().isEmpty()) {
             report(onStage, "Writing the pack's plugin list");
-            writeProfileManifest(manifestFile, manifest);
-            if (!manifest.localPlugins().isEmpty()) {
-                report(onStage, "Note: " + manifest.localPlugins().size()
-                        + " plugin(s) were installed from a file on the instance this pack came from, and"
-                        + " cannot be fetched here: " + String.join(", ",
-                                manifest.localPlugins().stream().map(Plugin::name).toList()));
+            Map<String, Path> released = releaseCarried(instance, manifest, pack, onStage);
+            writeProfileManifest(manifestFile, manifest, released);
+            if (!manifest.uninstallablePlugins().isEmpty()) {
+                report(onStage, "Note: " + manifest.uninstallablePlugins().size()
+                        + " plugin(s) were installed from a file the pack does not carry, so they are left"
+                        + " out rather than pointed at a path from another machine: " + String.join(", ",
+                                manifest.uninstallablePlugins().stream().map(Plugin::name).toList()));
             }
             report(onStage, "Resolving " + manifest.installSpecs().size() + " plugin(s)");
             DshPluginInstaller.resolve(instance, onStage);
@@ -399,16 +651,55 @@ public final class DshModpacks {
         return manifest.plugins().size();
     }
 
+    /// Puts the plugins a pack carries back into the instance.
+    ///
+    /// They are written under the directory the launcher keeps local plugin files in, which is where
+    /// an instance that installed one by hand would hold it, and the path returned is what the profile
+    /// then depends on.
+    ///
+    /// @param instance the instance being filled
+    /// @param manifest the pack's manifest
+    /// @param pack     the archive
+    /// @param onStage  receives progress lines, or `null`
+    /// @return where each carried plugin was put, by package name
+    /// @throws DshException when the files cannot be written
+    private static Map<String, Path> releaseCarried(DshInstance instance, Manifest manifest, Path pack,
+                                                    @Nullable Consumer<String> onStage) throws DshException {
+        List<Plugin> bundled = manifest.bundledPlugins();
+        if (bundled.isEmpty()) {
+            return Map.of();
+        }
+        Path pluginsDirectory = instance.instanceDirectory().resolve(DshLocalPlugins.DIRECTORY);
+        Map<String, Path> released = new LinkedHashMap<>();
+        for (Plugin plugin : bundled) {
+            Path path = DshPluginBundle.release(pack, pluginsDirectory, plugin.name(), plugin.version());
+            if (path == null) {
+                report(onStage, "Note: the pack says it carries " + plugin.name()
+                        + ", but it holds no files for it");
+                continue;
+            }
+            report(onStage, "Put " + plugin.name() + " " + plugin.version() + " into the instance");
+            released.put(plugin.name(), path);
+        }
+        return released;
+    }
+
     /// Writes a pack's dependencies and bundle list into a profile manifest.
     ///
     /// Only those two fields are touched: everything else in the file — the
     /// profile's name, and anything a harness version puts there that this launcher
     /// does not know about — is left as it is.
     ///
+    /// A plugin the pack carries is declared by the path its files were put back at, on *this*
+    /// machine: a profile records the file it installed from and resolves it again on every later
+    /// operation, so a path from the machine the pack was made on would break every one of them.
+    ///
     /// @param manifestFile the profile's `package.json`
     /// @param pack         the pack's manifest
+    /// @param released     where the pack's carried plugins were put, by package name
     /// @throws DshException when the file cannot be read or written
-    private static void writeProfileManifest(Path manifestFile, Manifest pack) throws DshException {
+    private static void writeProfileManifest(Path manifestFile, Manifest pack, Map<String, Path> released)
+            throws DshException {
         JsonObject manifest;
         try {
             manifest = JsonUtils.fromJsonFile(manifestFile, JsonObject.class);
@@ -420,11 +711,7 @@ public final class DshModpacks {
         }
 
         JsonObject dependencies = new JsonObject();
-        Map<String, String> ordered = new LinkedHashMap<>();
-        for (Plugin plugin : pack.plugins()) {
-            ordered.put(plugin.name(), plugin.version() == null ? "" : plugin.version());
-        }
-        for (Map.Entry<String, String> entry : ordered.entrySet()) {
+        for (Map.Entry<String, String> entry : dependenciesOf(pack, released).entrySet()) {
             dependencies.addProperty(entry.getKey(), entry.getValue());
         }
         manifest.add("dependencies", dependencies);
@@ -434,7 +721,7 @@ public final class DshModpacks {
         JsonObject profile = dsh.has("profile") && dsh.get("profile").isJsonObject()
                 ? dsh.getAsJsonObject("profile") : new JsonObject();
         JsonArray bundles = new JsonArray();
-        pack.bundles().forEach(bundles::add);
+        listsBootable(pack, dependencies).forEach(bundles::add);
         profile.add("bundles", bundles);
         dsh.add("profile", profile);
         manifest.add("dsh", dsh);
@@ -450,7 +737,81 @@ public final class DshModpacks {
                 + ": " + pack.plugins().size() + " plugin(s), " + pack.bundles().size() + " bundle(s)");
     }
 
-    /// Writes a pack's patch layer into a profile.
+    /// Returns the dependencies a pack's profile should declare.
+    ///
+    /// Three cases, and the difference between them is the whole of what a local plugin needs:
+    ///
+    /// - **Carried and put back.** The value is the path *this* machine now holds the files at. A
+    ///   profile records the file it installed from and resolves it again on every later operation,
+    ///   so the path has to be one that exists here; a path from the machine the pack was made on is
+    ///   the bug this replaces.
+    /// - **Carried but not found in the pack.** Nothing to install from, so nothing is declared.
+    /// - **Local and not carried.** A pack written before packs carried local plugins names one. Its
+    ///   path is another machine's, and declaring it would make every later operation on the profile
+    ///   fail with a message about a missing file. It is left out instead.
+    ///
+    /// @param pack     the pack's manifest
+    /// @param released where the pack's carried plugins were put, by package name
+    /// @return the dependency name to declaration map, in the pack's order
+    static Map<String, String> dependenciesOf(Manifest pack, Map<String, Path> released) {
+        Map<String, String> ordered = new LinkedHashMap<>();
+        for (Plugin plugin : pack.plugins()) {
+            if (plugin.bundled()) {
+                Path path = released.get(plugin.name());
+                if (path != null) {
+                    ordered.put(plugin.name(), path.toString());
+                }
+                continue;
+            }
+            if (plugin.local()) {
+                continue;
+            }
+            ordered.put(plugin.name(), plugin.version() == null ? "" : plugin.version());
+        }
+        return ordered;
+    }
+
+    /// Returns the bundles a profile with these dependencies can boot.
+    ///
+    /// A bundle that could not be installed is not booted either: naming a package the profile does
+    /// not have stops the instance from starting, which is a worse answer than starting without a
+    /// plugin that was never there. A bundle the pack does not name as a plugin is kept — the
+    /// harness's own bundles are packages a profile does not declare.
+    ///
+    /// @param pack         the pack's manifest
+    /// @param dependencies what the profile will declare
+    /// @return the bundle list, in the pack's order
+    static List<String> listsBootable(Manifest pack, JsonObject dependencies) {
+        List<String> bootable = new ArrayList<>();
+        for (String bundle : pack.bundles()) {
+            boolean named = pack.plugins().stream().anyMatch(plugin -> plugin.name().equals(bundle));
+            if (!named || dependencies.has(bundle)) {
+                bootable.add(bundle);
+            }
+        }
+        return bootable;
+    }
+
+    /// Reads the settings a pack carries.
+    ///
+    /// @param pack the archive
+    /// @return the text, or an empty string when the pack carries none
+    /// @throws DshException when the archive cannot be read
+    private static String readSettings(Path pack) throws DshException {
+        try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (DshPluginSettings.ENTRY.equals(entry.getName())) {
+                    return new String(zip.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            }
+        } catch (IOException e) {
+            throw new DshException("Failed to read " + pack, e);
+        }
+        return "";
+    }
+
+    /// Reads a pack's patch layer into a profile.
     ///
     /// @param pack   the archive
     /// @param target the file to write
@@ -492,7 +853,7 @@ public final class DshModpacks {
                     continue;
                 }
                 plugins.add(new Plugin(name, string(object, "version"), bool(object, "active"),
-                        bool(object, "local")));
+                        bool(object, "local"), bool(object, "bundled")));
             }
         }
 
@@ -519,7 +880,28 @@ public final class DshModpacks {
                 string(root, "packVersion") == null ? "1.0" : string(root, "packVersion"),
                 string(root, "author") == null ? "" : string(root, "author"),
                 string(root, "description") == null ? "" : string(root, "description"),
-                integer(root, "sessionCount"));
+                string(root, "url") == null ? "" : string(root, "url"),
+                string(root, "referenceUrl") == null ? "" : string(root, "referenceUrl"),
+                integer(root, "sessionCount"), strings(root, "settings"), strings(root, "settingsOmitted"),
+                strings(root, "skills"));
+    }
+
+    /// Reads an array of strings.
+    ///
+    /// @param root the object
+    /// @param name the field
+    /// @return the strings, empty when the field is absent or not an array
+    private static List<String> strings(JsonObject root, String name) {
+        List<String> values = new ArrayList<>();
+        JsonElement element = root.get(name);
+        if (element != null && element.isJsonArray()) {
+            for (JsonElement item : element.getAsJsonArray()) {
+                if (item.isJsonPrimitive() && item.getAsJsonPrimitive().isString()) {
+                    values.add(item.getAsString());
+                }
+            }
+        }
+        return List.copyOf(values);
     }
 
     /// Reports whether a declared version is really the path of a local file.

@@ -55,6 +55,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// it changes a running installation and deleting it stops the instance from
 /// starting. Packing one is `pnpm pack`, which the caller can do; taking the file
 /// keeps this simple and the instance self-contained.
+///
+/// Keeping the file inside the instance is what makes the recorded path stable, but
+/// not immovable: the instance's own directory is named after the instance, so a
+/// renamed instance carries its plugin files to a new path and the records have to
+/// follow — see [DshLocalPluginPaths].
 @NotNullByDefault
 public final class DshLocalPlugins {
     /// Where an instance's local plugin files are kept.
@@ -288,6 +293,14 @@ public final class DshLocalPlugins {
     /// @return the sanitised value
     private static String safeFileName(String value) {
         return value.replaceAll("[^A-Za-z0-9._-]", "_");
+    }
+
+    /// Returns a name that can be used as a file name, for a package a pack carries.
+    ///
+    /// @param value the package name or version
+    /// @return the sanitised value
+    static String safeName(String value) {
+        return safeFileName(value);
     }
 
     /// Reports whether a tar header block is all zeroes.

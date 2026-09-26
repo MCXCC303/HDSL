@@ -263,13 +263,26 @@ public final class DshPackForge {
 
     /// Writes an instance as a `.dspack`.
     ///
-    /// @param instance the instance to write
-    /// @param target   the container to create
+    /// Both of the container's places are used the way the specification says. The files that
+    /// describe the profile rather than override anything — `package.json`, the lock file, the
+    /// workspace file — are written at the archive root, which is where the installer copies them
+    /// **before** it resolves the dependencies; everything else goes under `overrides/`, which lands
+    /// afterwards. Writing the first group under `overrides/` as well would be a pack that installs
+    /// and then boots with none of its plugins: the resolve that installs them ran while the profile
+    /// was still empty, because the manifest it needed had not been copied yet.
+    ///
+    /// `home/` is not written. The container defines it, and the installer lands it at the DSH_HOME
+    /// root, which is where anything outside the profile belongs — the skills under `skills/` among
+    /// them. That is a question for the format repository rather than one to answer here alone, and
+    /// it is also why [DENY_PREFIXES], whose entries are home-relative paths, matches nothing under
+    /// the profile this scans today.
+    ///
+    /// @param instance the instance
+    /// @param target   the archive to create
     /// @param options  what it should say about itself
     /// @param onStage  receives progress lines, or `null`
     /// @return what was written
-    /// @throws DshException when the profile cannot be read, a dependency cannot be pinned, or the
-    ///                      container cannot be written
+    /// @throws DshException when the profile cannot be read or written
     public static Result export(DshInstance instance, Path target, Options options,
                                @Nullable Consumer<String> onStage) throws DshException {
         Path profile = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
@@ -293,7 +306,14 @@ public final class DshPackForge {
                 put(zip, MARKER, "{\"format\":\"dspack\",\"version\":" + CONTAINER_VERSION + "}");
                 put(zip, MANIFEST, JsonUtils.GSON.toJson(manifest));
                 for (Entry entry : scan.files()) {
-                    copy(zip, profile.resolve(entry.relative()), OVERRIDES + entry.relative());
+                    // The two places are not a matter of taste: the root files are copied before the
+                    // dependency install and the overrides after it, so a manifest under
+                    // `overrides/` arrives too late to be installed from. One predicate decides
+                    // which is which, and the installer reads the archive with the same one.
+                    copy(zip, profile.resolve(entry.relative()),
+                            DshPackInstaller.isMachineFile(entry.relative())
+                                    ? entry.relative()
+                                    : OVERRIDES + entry.relative());
                 }
             }
         } catch (IOException e) {
@@ -346,14 +366,42 @@ public final class DshPackForge {
                 : DshPluginInstaller.readDependencies(instance.homeDirectory(), instance.profile())
                         .entrySet()) {
             if (DshModpacks.isLocalSpec(entry.getValue())) {
-                throw new DshException("The plugin " + entry.getKey() + " was installed from a file "
-                        + "this instance keeps (" + entry.getValue() + "), which another machine "
-                        + "cannot fetch. Install it from a published source before exporting a pack.");
+                // A specification this instance installed from a file. This format names sources, and
+                // a file on this machine is not one — unless the registry publishes the same version,
+                // in which case the source it names is the one the file was built from and the pack
+                // stays a pack of published sources.
+                dependencies.addProperty(entry.getKey(),
+                        publishedVersionOf(instance, entry.getKey(), entry.getValue()));
+                report(onStage, entry.getKey() + " was installed from a file and is published, so the"
+                        + " pack names its published version");
+                continue;
             }
             dependencies.addProperty(entry.getKey(), pin(entry.getKey(), entry.getValue(), onStage));
         }
         manifest.add("dependencies", dependencies);
         return manifest;
+    }
+
+    /// Returns the published version of a plugin an instance installed from a file.
+    ///
+    /// @param instance the instance the plugin belongs to
+    /// @param name     the dependency name
+    /// @param declared what the profile declares for it
+    /// @return the published version
+    /// @throws DshException when the registry does not publish it, which this format cannot express
+    private static String publishedVersionOf(DshInstance instance, String name, String declared)
+            throws DshException {
+        Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
+        DshPluginBundle.Payload payload = DshPluginBundle.locate(profileDirectory, name, declared);
+        if (payload != null
+                && DshPackageRegistry.availability(name, payload.version())
+                        == DshPackageRegistry.Availability.PUBLISHED) {
+            return payload.version();
+        }
+        throw new DshException("The plugin " + name + " was installed from a file this instance keeps ("
+                + declared + "), and the registry does not publish that version, so a pack of published"
+                + " sources cannot name it. Export a pack this launcher reads (.hdslp) to carry the files"
+                + " themselves, or install a published version first.");
     }
 
     /// Pins a dependency to what the specification requires.

@@ -111,6 +111,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     /// The instance icon shown on the manage entry.
     private final ImageContainer currentInstanceIcon = new ImageContainer(AdvancedListItem.LEFT_GRAPHIC_SIZE);
 
+    /// The account entry at the head of the sidebar.
+    ///
+    /// The original's home page leads with the account, and shows **which** one: its icon is the
+    /// account's skin and its second line names the kind of account it is. A launcher whose first
+    /// question is "who am I doing this for" has to be able to answer it without being asked, and an
+    /// entry that only said "Accounts" would leave the person opening a page to find out what they
+    /// could have been told.
+    private final AdvancedListItem accountItem = new AdvancedListItem();
+
+    /// The account's picture, drawn from the skin when one has been chosen.
+    private final javafx.scene.canvas.Canvas accountAvatar = new javafx.scene.canvas.Canvas(32, 32);
+
     /// Lazily created destination pages.
     private @Nullable DownloadPage downloadPage;
     private @Nullable SettingsPage settingsPage;
@@ -126,10 +138,18 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstanceItem.setSubtitle(i18n("dsh.launch.no_instance.hint"));
         currentInstanceItem.setOnAction(event -> openCurrentInstance());
 
-        // The original groups by what a thing is, not by where it sits in the
-        // page: the instance you are about to launch leads its own group, and
-        // the launcher's own settings sit apart from the game's.
+        accountAvatar.setMouseTransparent(true);
+        accountItem.setLeftGraphic(accountAvatar);
+        accountItem.setOnAction(event ->
+                Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage()));
+
+        // The original's order, which is an order of importance rather than of implementation: the
+        // account leads, because without one nothing can be launched; then the game; then the
+        // launcher's own settings. An account is its own group rather than a row under the settings,
+        // because it is not a setting — it is the thing everything else is done on behalf of.
         AdvancedListBox sideBar = new AdvancedListBox()
+                .startCategory(i18n("dsh.account.list").toUpperCase(Locale.ROOT))
+                .add(accountItem)
                 .startCategory(i18n("instance").toUpperCase(Locale.ROOT))
                 .add(currentInstanceItem)
                 .addNavigationDrawerItem(i18n("dsh.instance.list"), SVG.FORMAT_LIST_BULLETED,
@@ -155,11 +175,24 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         currentInstance.addListener((observable, was, now) -> refresh());
         GameDirectoryManager.registerVersionsListener(this::onRepositoryChanged);
 
+        // The account too, and for the same reason. This page is made **once**, at startup
+        // (`Launcher`), so `refresh()` runs when it is built and on navigation — and the account is
+        // chosen on another page, which this one then never hears about. Somebody who adds or picks
+        // an account and comes back here would still be shown the old one, which is exactly what was
+        // reported. Observing both the choice and the list covers both ways it can change: picking a
+        // different account, and adding one.
+        org.jackhuang.hmcl.setting.SettingsManager.settings()
+                .activeAccountKeyProperty().addListener((observable, was, now) -> refreshAccountItem());
+        org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts()
+                .addListener((javafx.collections.ListChangeListener<org.jackhuang.hmcl.dsh.DshAccount>)
+                        change -> javafx.application.Platform.runLater(this::refreshAccountItem));
+
         ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshActionState()));
         ticker.setCycleCount(Animation.INDEFINITE);
         ticker.play();
 
         refresh();
+        instance = this;
     }
 
     /// Redraws the page for the folder that just published its instances.
@@ -264,6 +297,20 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
             // original does: the version is chosen there, and the wizard that
             // follows only fills in what that choice left open.
             case "create" -> Controllers.navigate(getDownloadPage());
+            case "accounts" -> Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage());
+            case "skin" -> {
+                // A skin belongs to an account, so the deep link opens the chooser for whichever
+                // account is in force — which is what a person would reach it through.
+                org.jackhuang.hmcl.dsh.DshAccount chosen =
+                        org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
+                if (chosen == null) {
+                    Controllers.dialog(i18n("dsh.launch.needs_account"),
+                            i18n("dsh.account.list"), org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType.WARNING);
+                } else {
+                    Controllers.dialog(new org.jackhuang.hmcl.ui.dsh.settings.SkinDialog(
+                            chosen, this::refreshAccountItem));
+                }
+            }
             case "settings" -> Controllers.navigate(getSettingsPage());
             default -> {
                 return false;
@@ -328,6 +375,24 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
         return state.getReadOnlyProperty();
     }
 
+    /// The page the launcher made at startup.
+    ///
+    /// Held because it is made **once** (`Launcher`) and several pages need to reach it — to open the
+    /// instance list after an installation, among other things. A second one would be a second
+    /// sidebar with its own idea of what is selected.
+    private static @org.jetbrains.annotations.Nullable MainPage instance;
+
+    /// Returns the page the launcher made at startup.
+    ///
+    /// @return the page
+    public static MainPage instance() {
+        MainPage page = instance;
+        if (page == null) {
+            throw new IllegalStateException("The main page has not been made yet");
+        }
+        return page;
+    }
+
     /// Redraws the page for the instance it currently acts on.
     ///
     /// The instance is not chosen here: it is the selected folder's selection,
@@ -349,6 +414,7 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
                 ? DshInstanceIcon.DEFAULT.load()
                 : DshInstanceIcons.load(current));
 
+        refreshAccountItem();
         refreshActionState();
     }
 
@@ -378,6 +444,46 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
     ///
     /// With no instance chosen there is nothing to manage, so the list is shown
     /// instead of an empty editor.
+    /// Redraws the account entry: which account is in force, and whose face it is.
+    ///
+    /// The account is **asked for by name**, not taken from the top of the list: the entry has to
+    /// follow the choice, and the choice is no longer encoded in the list's order.
+    private void refreshAccountItem() {
+        org.jackhuang.hmcl.dsh.DshAccount account =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
+        if (account == null) {
+            accountItem.setTitle(i18n("dsh.account.none.short"));
+            accountItem.setSubtitle(i18n("dsh.account.none.hint"));
+        } else {
+            accountItem.setTitle(account.displayName());
+            accountItem.setSubtitle(account.vendorId());
+        }
+        drawAccountAvatar();
+    }
+
+    /// Draws the skin's head on the account entry, or a monogram when there is none to draw.
+    ///
+    /// The skin belongs to the **launcher**, not to an account: it is chosen once and drawn beside
+    /// whatever account is in force. So when there is no account, there is nothing for it to be
+    /// beside — and drawing it anyway is how a deleted account's face stayed on the home page. The
+    /// skin was never the account's to begin with, but it reads as the account's when it sits where
+    /// the account's face was.
+    private void drawAccountAvatar() {
+        org.jackhuang.hmcl.dsh.DshAccount active =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().activeAccount();
+        accountAvatar.getGraphicsContext2D().clearRect(0, 0, 32, 32);
+
+        // Nothing to show when there is nobody to show it for.
+        if (active == null) {
+            return;
+        }
+
+        // The account's own face, whether or not one has been chosen: an account with no skin wears
+        // the picture its identity selects, as it does in the original's own sidebar.
+        AccountAvatar.draw(accountAvatar,
+                org.jackhuang.hmcl.dsh.skin.DshSkin.headImage(active.key()));
+    }
+
     private void openCurrentInstance() {
         DshInstance instance = currentInstance.get();
         if (instance == null) {

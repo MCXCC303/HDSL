@@ -80,6 +80,17 @@ public final class DshSessionPacks {
     /// What a pack says it is, so that it is not mistaken for anything else.
     public static final String FORMAT = "hdsl-session-pack";
 
+    /// The file extension a session pack is written with.
+    ///
+    /// `sspack` reads as "session pack", and a name of its own is what keeps a session pack from
+    /// looking like any other archive — it is a record of conversations, not a set of files.
+    ///
+    /// @see DshModpacks#FILE_EXTENSION for why a launcher's own packs do not use `.zip`
+    public static final String FILE_EXTENSION = ".sspack";
+
+    /// The extensions an import accepts, for the reason [DshModpacks#ACCEPTED_EXTENSIONS] gives.
+    public static final java.util.List<String> ACCEPTED_EXTENSIONS = java.util.List.of(".sspack", ".zip");
+
     /// The pack format's version.
     public static final int FORMAT_VERSION = 1;
 
@@ -387,7 +398,19 @@ public final class DshSessionPacks {
 
             if (name.startsWith(SESSIONS)) {
                 String[] parts = name.substring(SESSIONS.length()).split("/");
-                if (parts.length != 3) {
+                // A pack is an archive somebody may have edited, and every part of this path is
+                // interpolated into a `resolve`. A member named `sessions/../planted/session.jsonl`
+                // leaves the sessions directory and lands in the home — the prefix is matched before
+                // the path is resolved, and `..` is a legal element. Each part is checked on its own
+                // because any one of them is the one that can escape.
+                // An archive is something somebody may have edited, and every part of this path is
+                // interpolated into a `resolve`. A member named `sessions/../planted/session.jsonl`
+                // passes the prefix test and is a legal path, so it leaves the sessions directory
+                // and lands in the home — anywhere the archive says. Each part is checked on its
+                // own, because any one of them is the one that can climb out.
+                if (parts.length != 3
+                        || !safeRelative(parts[0]) || !safeRelative(parts[1]) || !safeRelative(parts[2])) {
+                    LOG.warning("Skipping " + name + " in a session pack: unsafe path");
                     continue;
                 }
                 if (wanted != null) {
@@ -426,6 +449,10 @@ public final class DshSessionPacks {
                     continue;
                 }
                 String id = file.substring("sessions/".length(), file.length() - ".json".length());
+                if (!safeRelative(id)) {
+                    LOG.warning("Skipping " + name + " in a session pack: unsafe path");
+                    continue;
+                }
                 if (!wantedIds.isEmpty() && !wantedIds.contains(id)) {
                     continue;
                 }
@@ -542,6 +569,11 @@ public final class DshSessionPacks {
     private static @Nullable Set<String> referencedAttachments(Path home, List<DshSession> sessions) {
         Path zstd = org.jackhuang.hmcl.util.platform.SystemUtils.which("zstd");
         if (zstd == null) {
+            // Without a decompressor the referenced ids of a compressed log cannot be read, and a
+            // log that cannot be read is not a log with no attachments. Returning null says "not
+            // known", which the caller answers by carrying the whole store — the safe direction,
+            // because a pack that carries too much still restores, and one that carries too little
+            // loses pictures with nothing to say so.
             LOG.info("zstd is not installed, so a session pack carries the whole attachment store");
             return null;
         }
@@ -549,18 +581,27 @@ public final class DshSessionPacks {
         Set<String> ids = new LinkedHashSet<>();
         for (DshSession session : sessions) {
             for (Path log : logsOf(session.directory())) {
-                if (!log.getFileName().toString().endsWith(".zstd")) {
-                    continue;
-                }
+                // A home may hold either spelling — the harness decides per root — and this used to
+                // read only the compressed one. An uncompressed log was skipped, so the ids it named
+                // were never collected and its attachments were left out of the pack **silently**:
+                // the export reported success and the pictures were simply gone at the other end.
+                // Which spelling a log has says nothing about whether it names attachments.
+                boolean compressed = log.getFileName().toString().endsWith(".zstd");
                 try {
-                    List<String> output = new ArrayList<>();
-                    int exit = DshCommand.run(List.of(zstd.toString(), "-d", "-c", log.toString()),
-                            null, output::add).exitCode();
-                    if (exit != 0) {
-                        LOG.warning("zstd could not read " + log + ", so the whole store is carried");
-                        return null;
+                    String text;
+                    if (compressed) {
+                        List<String> output = new ArrayList<>();
+                        int exit = DshCommand.run(List.of(zstd.toString(), "-d", "-c", log.toString()),
+                                null, output::add).exitCode();
+                        if (exit != 0) {
+                            LOG.warning("zstd could not read " + log + ", so the whole store is carried");
+                            return null;
+                        }
+                        text = String.join("\n", output);
+                    } else {
+                        text = Files.readString(log, java.nio.charset.StandardCharsets.UTF_8);
                     }
-                    Matcher matcher = OBJECT_ID.matcher(String.join("\n", output));
+                    Matcher matcher = OBJECT_ID.matcher(text);
                     while (matcher.find()) {
                         ids.add(matcher.group());
                     }
@@ -759,6 +800,9 @@ public final class DshSessionPacks {
     /// @return whether it is safe to resolve
     private static boolean safeRelative(String relative) {
         if (relative.isBlank() || relative.startsWith("/") || relative.contains("\\")) {
+            return false;
+        }
+        if (relative.equals(".") || relative.equals("..")) {
             return false;
         }
         for (String part : relative.split("/")) {

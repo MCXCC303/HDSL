@@ -181,6 +181,36 @@ public final class SettingsManager {
         }
     }
 
+    /// Renders a background colour for the settings file.
+    ///
+    /// Only a flat colour is stored: the appearance page's pickers produce one, and a
+    /// gradient in a settings file would be a value nothing can edit.
+    ///
+    /// @param paint the colour, or `null`
+    /// @return its hex form, or `null` when there is nothing to store
+    private static @Nullable String paintToString(@Nullable javafx.scene.paint.Paint paint) {
+        if (!(paint instanceof javafx.scene.paint.Color color)) {
+            return null;
+        }
+        return String.format("#%02X%02X%02X",
+                Math.round(color.getRed() * 255),
+                Math.round(color.getGreen() * 255),
+                Math.round(color.getBlue() * 255));
+    }
+
+    /// Reads a background colour written by [SettingsManager#paintToString].
+    ///
+    /// @param value the stored hex string
+    /// @return the colour, or `null` when it cannot be read
+    private static javafx.scene.paint.@Nullable Paint paintOf(String value) {
+        try {
+            return javafx.scene.paint.Color.web(value.trim());
+        } catch (IllegalArgumentException e) {
+            LOG.warning("Unknown background colour in settings: " + value);
+            return null;
+        }
+    }
+
     /// Writes the current launcher settings to disk.
     ///
     /// Failures are logged rather than propagated so that a read-only home
@@ -192,8 +222,33 @@ public final class SettingsManager {
                 Files.createDirectories(parent);
             }
             JsonUtils.writeToJsonFile(SETTINGS_PATH, Snapshot.of(settings()));
+            restrictPermissions();
         } catch (IOException e) {
             LOG.warning("Failed to save launcher settings to " + SETTINGS_PATH, e);
+        }
+    }
+
+    /// Makes the settings file readable only by its owner.
+    ///
+    /// The file holds the accounts' API keys, and the harness keeps its own credentials in a file
+    /// with the same restriction for the same reason. A default `umask` writes it `0644`, which on a
+    /// machine with more than one person on it is a key given away — and the key is not a preference
+    /// that can be reset, it is a credential that bills somebody.
+    ///
+    /// A filesystem that cannot express the mode (Windows, some mounts) fails here and is ignored:
+    /// the key still works, and refusing to save settings over an unavailable permission bit would
+    /// be trading the whole file for a hardening step.
+    private static void restrictPermissions() {
+        try {
+            java.nio.file.attribute.PosixFileAttributeView view = Files.getFileAttributeView(
+                    SETTINGS_PATH, java.nio.file.attribute.PosixFileAttributeView.class);
+            if (view != null) {
+                view.setPermissions(java.util.EnumSet.of(
+                        java.nio.file.attribute.PosixFilePermission.OWNER_READ,
+                        java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
+            }
+        } catch (IOException | UnsupportedOperationException e) {
+            LOG.info("Could not restrict the permissions of " + SETTINGS_PATH, e);
         }
     }
 
@@ -281,6 +336,15 @@ public final class SettingsManager {
         @SerializedName("backgroundFallbackType")
         private @Nullable String backgroundFallbackType;
 
+        // Both are colours the appearance page's pickers edit, so both are settings the user
+        // can change. They are stored as a hex string, which is what a colour picker
+        // round-trips and what a settings file written by hand can say.
+        @SerializedName("customBackgroundPaint")
+        private @Nullable String customBackgroundPaint;
+
+        @SerializedName("backgroundFallbackPaint")
+        private @Nullable String backgroundFallbackPaint;
+
         @SerializedName("backgroundLoadPolicy")
         private @Nullable String backgroundLoadPolicy;
 
@@ -290,8 +354,57 @@ public final class SettingsManager {
         @SerializedName("logFontSize")
         private @Nullable Double logFontSize;
 
-        @SerializedName("logLines")
-        private @Nullable Integer logLines;
+        @SerializedName("fontAntiAliasing")
+        private @Nullable String fontAntiAliasing;
+
+        @SerializedName("defaultLaunchArguments")
+        private @Nullable String defaultLaunchArguments;
+
+        @SerializedName("accounts")
+        private @Nullable java.util.List<AccountSnapshot> accounts;
+
+        /// The suppliers added by address, in the order they were added.
+        private @Nullable java.util.List<VendorSnapshot> vendors;
+
+        /// Which account the launcher uses, by its key. Written to the snapshot because a choice with
+        /// no field here is a choice that silently reverts on the next start — the trap that lost
+        /// seventeen settings once already.
+        @SerializedName("activeAccountKey")
+        private @Nullable String activeAccountKey;
+
+        /// One account as it is stored.
+        ///
+        /// @param vendorId the vendor's id
+        /// @param apiKey   the key
+        /// @param baseUrl  the endpoint, for a vendor whose address is per account
+        /// @param label    what the person calls it
+        private record AccountSnapshot(
+                @Nullable org.jackhuang.hmcl.dsh.DshAccount.AccountKind kind,
+                String vendorId, String apiKey,
+                @Nullable String baseUrl, @Nullable String label,
+                @Nullable String model,
+                @Nullable String skinType,
+                @Nullable String skinModel,
+                @Nullable String skinPath,
+                @Nullable String skinCapePath) {
+        }
+
+        /// A supplier somebody added by address.
+        ///
+        /// All five fields, because all five are what the harness needs to route it: the id becomes
+        /// the route name, the address is where the calls go, the protocol is what the route
+        /// declares, and the variable is where the key is read from.
+        private record VendorSnapshot(
+                String id, String displayName, String apiKeyEnv, String api, String baseUrl) {
+        }
+
+        /// The language the interface speaks, by the name the locale helper uses.
+        ///
+        /// The name rather than the locale: the helper resolves a name back to the
+        /// supported locale it stands for, which a bare language tag cannot do for every
+        /// variant it offers.
+        @SerializedName("language")
+        private @Nullable String language;
 
         @SerializedName("animationDisabled")
         private @Nullable Boolean animationDisabled;
@@ -312,6 +425,81 @@ public final class SettingsManager {
 
         @SerializedName("openBrowserOnLaunch")
         private @Nullable Boolean openBrowserOnLaunch;
+
+        // Everything below belongs to a control that exists on one of the settings pages,
+        // and each one was written to this file by nothing at all: the snapshot is what
+        // `save()` writes and the only thing `load()` reads, so a property with no field
+        // here is a setting somebody can change, watch take effect, and lose at the next
+        // start. The rows are the ones on the general, download-source and global
+        // instance-settings tabs.
+
+        // Stored as the lowercase id the enum itself publishes, the way `nodeSource` is:
+        // Gson's enum adapter would write `MANUAL`, so a file written by the interface and
+        // one written by hand would disagree about the spelling of the same value.
+        @SerializedName("buildScriptPolicy")
+        private @Nullable String buildScriptPolicy;
+
+        @SerializedName("launcherVisibility")
+        private @Nullable String launcherVisibility;
+
+        @SerializedName("isolationPolicy")
+        private @Nullable String isolationPolicy;
+
+        @SerializedName("showLogs")
+        private @Nullable Boolean showLogs;
+
+        @SerializedName("debugLog")
+        private @Nullable Boolean debugLog;
+
+        @SerializedName("preLaunchCommand")
+        private @Nullable String preLaunchCommand;
+
+        @SerializedName("postExitCommand")
+        private @Nullable String postExitCommand;
+
+        @SerializedName("globalEnvironment")
+        private @Nullable java.util.Map<String, String> globalEnvironment;
+
+        @SerializedName("pluginCatalogUrl")
+        private @Nullable String pluginCatalogUrl;
+
+        /// Where the modpack market's index is read from, or absent for the published one.
+        @SerializedName("packMarketUrl")
+        private @Nullable String packMarketUrl;
+
+        /// How much of a new instance's dependency tree is held, by the enum's own name.
+        @SerializedName("dependencyPolicy")
+        private @Nullable String dependencyPolicy;
+
+        @SerializedName("cacheDirectory")
+        private @Nullable String cacheDirectory;
+
+        @SerializedName("cacheDirectoryCustom")
+        private @Nullable Boolean cacheDirectoryCustom;
+
+        @SerializedName("autoDownloadThreads")
+        private @Nullable Boolean autoDownloadThreads;
+
+        @SerializedName("downloadConcurrency")
+        private @Nullable Integer downloadConcurrency;
+
+        @SerializedName("proxyMode")
+        private @Nullable String proxyMode;
+
+        @SerializedName("proxyHost")
+        private @Nullable String proxyHost;
+
+        @SerializedName("proxyPort")
+        private @Nullable String proxyPort;
+
+        @SerializedName("proxyAuthenticated")
+        private @Nullable Boolean proxyAuthenticated;
+
+        @SerializedName("proxyUser")
+        private @Nullable String proxyUser;
+
+        @SerializedName("proxyPassword")
+        private @Nullable String proxyPassword;
 
         /// Captures the current settings into a serialisable snapshot.
         ///
@@ -342,14 +530,54 @@ public final class SettingsManager {
             snapshot.backgroundOpacity = settings.backgroundOpacityProperty().get();
             snapshot.networkBackgroundImageCachePolicy = settings.networkBackgroundImageCachePolicyProperty().get().name();
             snapshot.backgroundFallbackType = settings.backgroundFallbackTypeProperty().get().name();
+            snapshot.customBackgroundPaint = paintToString(settings.customBackgroundPaintProperty().get());
+            snapshot.backgroundFallbackPaint = paintToString(settings.backgroundFallbackPaintProperty().get());
             snapshot.backgroundLoadPolicy = settings.backgroundLoadPolicyProperty().get().name();
             snapshot.logFontFamily = settings.logFontFamilyProperty().get();
             snapshot.logFontSize = settings.logFontSizeProperty().get();
-            snapshot.logLines = settings.logLinesProperty().get();
+            snapshot.fontAntiAliasing = settings.fontAntiAliasing().id();
+            snapshot.defaultLaunchArguments = settings.defaultLaunchArgumentsProperty().get();
+            snapshot.activeAccountKey = settings.activeAccountKey();
+            snapshot.accounts = settings.getAccounts().stream()
+                    .map(account -> new AccountSnapshot(account.kind(), account.vendorId(),
+                            account.apiKey(), account.baseUrl(), account.label(), account.model(),
+                            account.skinOrDefault().type().name(),
+                            account.skinOrDefault().model().modelName,
+                            account.skinOrDefault().localSkinPath(),
+                            account.skinOrDefault().localCapePath()))
+                    .toList();
+            snapshot.vendors = settings.getCustomVendors().stream()
+                    .map(vendor -> new VendorSnapshot(vendor.id(), vendor.displayName(),
+                            vendor.apiKeyEnv(), vendor.api(), vendor.baseUrl()))
+                    .toList();
+            snapshot.language = settings.languageProperty().get() == null
+                    ? null : settings.languageProperty().get().getName();
             snapshot.animationDisabled = settings.animationDisabledProperty().get();
             snapshot.nodeSource = settings.nodeSourceProperty().get().id();
             snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
             snapshot.openBrowserOnLaunch = settings.openBrowserOnLaunchProperty().get();
+            snapshot.buildScriptPolicy = settings.buildScriptPolicy().id();
+            snapshot.launcherVisibility = settings.launcherVisibility().id();
+            snapshot.isolationPolicy = settings.isolationPolicy().id();
+            snapshot.showLogs = settings.showLogsProperty().get();
+            snapshot.debugLog = settings.debugLogProperty().get();
+            snapshot.preLaunchCommand = settings.preLaunchCommandProperty().get();
+            snapshot.postExitCommand = settings.postExitCommandProperty().get();
+            snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
+            snapshot.pluginCatalogUrl = settings.pluginCatalogUrlProperty().get();
+            snapshot.packMarketUrl = settings.packMarketUrlProperty().get();
+            snapshot.dependencyPolicy = settings.dependencyPolicy().name();
+            snapshot.cacheDirectory = settings.cacheDirectoryProperty().get();
+            snapshot.cacheDirectoryCustom = settings.cacheDirectoryCustomProperty().get();
+            snapshot.autoDownloadThreads = settings.autoDownloadThreadsProperty().get();
+            snapshot.downloadConcurrency = settings.downloadConcurrencyProperty().get();
+            snapshot.proxyMode = (settings.proxyModeProperty().get() == null
+                    ? org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM : settings.proxyModeProperty().get()).id();
+            snapshot.proxyHost = settings.proxyHostProperty().get();
+            snapshot.proxyPort = settings.proxyPortProperty().get();
+            snapshot.proxyAuthenticated = settings.proxyAuthenticatedProperty().get();
+            snapshot.proxyUser = settings.proxyUserProperty().get();
+            snapshot.proxyPassword = settings.proxyPasswordProperty().get();
             return snapshot;
         }
 
@@ -424,6 +652,18 @@ public final class SettingsManager {
             if (backgroundFallbackType != null) {
                 settings.backgroundFallbackTypeProperty().set(parseEnum(BackgroundType.class, backgroundFallbackType, BackgroundType.BUILTIN));
             }
+            if (customBackgroundPaint != null) {
+                javafx.scene.paint.Paint paint = paintOf(customBackgroundPaint);
+                if (paint != null) {
+                    settings.customBackgroundPaintProperty().set(paint);
+                }
+            }
+            if (backgroundFallbackPaint != null) {
+                javafx.scene.paint.Paint paint = paintOf(backgroundFallbackPaint);
+                if (paint != null) {
+                    settings.backgroundFallbackPaintProperty().set(paint);
+                }
+            }
             if (backgroundLoadPolicy != null) {
                 settings.backgroundLoadPolicyProperty().set(parseEnum(BackgroundLoadPolicy.class, backgroundLoadPolicy, BackgroundLoadPolicy.WAIT_FOR_BACKGROUND));
             }
@@ -433,8 +673,58 @@ public final class SettingsManager {
             if (logFontSize != null) {
                 settings.logFontSizeProperty().set(logFontSize);
             }
-            if (logLines != null) {
-                settings.logLinesProperty().set(logLines);
+            if (fontAntiAliasing != null) {
+                settings.fontAntiAliasingProperty().set(
+                        org.jackhuang.hmcl.setting.FontAntiAliasing.of(fontAntiAliasing));
+            }
+            if (activeAccountKey != null) {
+                settings.activeAccountKeyProperty().set(activeAccountKey);
+            }
+            if (accounts != null) {
+                for (AccountSnapshot account : accounts) {
+                    settings.getAccounts().add(new org.jackhuang.hmcl.dsh.DshAccount(
+                            account.kind() == null
+                                    ? org.jackhuang.hmcl.dsh.DshAccount.AccountKind.THIRD_PARTY
+                                    : account.kind(),
+                            account.vendorId(), account.apiKey(), account.baseUrl(),
+                            account.label(), account.model(),
+                            new org.jackhuang.hmcl.dsh.skin.DshSkinChoice(
+                                    // Read through the forgiving reader rather than the enum's own:
+                                    // a name this launcher does not know — a file written by a later
+                                    // version, or one edited by hand — must not stop the whole
+                                    // settings file from loading.
+                                    java.util.Objects.requireNonNullElse(
+                                            org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type
+                                                    .fromStorage(account.skinType()),
+                                            org.jackhuang.hmcl.dsh.skin.DshSkinChoice.Type.DEFAULT),
+                                    org.jackhuang.hmcl.dsh.skin.DshSkinChoice.TextureModel
+                                            .fromStorage(account.skinModel()),
+                                    account.skinPath(),
+                                    account.skinCapePath())));
+                }
+            }
+            if (vendors != null) {
+                for (VendorSnapshot vendor : vendors) {
+                    // A supplier with no address cannot be routed, so a row that has lost one — a
+                    // hand-edited file, or a version that wrote it differently — is dropped rather
+                    // than offered as something that cannot work.
+                    if (vendor.id() == null || vendor.baseUrl() == null || vendor.baseUrl().isBlank()) {
+                        continue;
+                    }
+                    settings.getCustomVendors().add(new org.jackhuang.hmcl.dsh.DshVendor(
+                            vendor.id(),
+                            vendor.displayName() == null ? vendor.id() : vendor.displayName(),
+                            vendor.apiKeyEnv() == null ? "" : vendor.apiKeyEnv(),
+                            vendor.api() == null ? org.jackhuang.hmcl.dsh.DshVendor.APIS.get(0) : vendor.api(),
+                            vendor.baseUrl(), false));
+                }
+            }
+            if (defaultLaunchArguments != null) {
+                settings.defaultLaunchArgumentsProperty().set(defaultLaunchArguments);
+            }
+            if (language != null) {
+                settings.languageProperty().set(
+                        org.jackhuang.hmcl.util.i18n.SupportedLocale.getLocaleByName(language));
             }
             if (animationDisabled != null) {
                 settings.animationDisabledProperty().set(animationDisabled);
@@ -450,6 +740,80 @@ public final class SettingsManager {
             }
             if (openBrowserOnLaunch != null) {
                 settings.openBrowserOnLaunchProperty().set(openBrowserOnLaunch);
+            }
+            if (buildScriptPolicy != null) {
+                settings.buildScriptPolicyProperty().set(org.jackhuang.hmcl.dsh.DshBuildScriptPolicy.of(buildScriptPolicy));
+            }
+            if (launcherVisibility != null) {
+                settings.launcherVisibilityProperty().set(org.jackhuang.hmcl.dsh.DshLauncherVisibility.of(launcherVisibility));
+            }
+            if (isolationPolicy != null) {
+                settings.isolationPolicyProperty().set(org.jackhuang.hmcl.dsh.DshIsolationPolicy.of(isolationPolicy));
+            }
+            if (showLogs != null) {
+                settings.showLogsProperty().set(showLogs);
+            }
+            if (debugLog != null) {
+                settings.debugLogProperty().set(debugLog);
+                // The switch decides whether lines are written, so the logger has to be
+                // told as well: without this it stays as the interface left it, which
+                // after a restart is off.
+                org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(debugLog);
+            }
+            if (preLaunchCommand != null) {
+                settings.preLaunchCommandProperty().set(preLaunchCommand);
+            }
+            if (postExitCommand != null) {
+                settings.postExitCommandProperty().set(postExitCommand);
+            }
+            if (globalEnvironment != null) {
+                settings.globalEnvironmentProperty().set(new java.util.LinkedHashMap<>(globalEnvironment));
+            }
+            if (packMarketUrl != null) {
+                settings.packMarketUrlProperty().set(packMarketUrl);
+            }
+            if (dependencyPolicy != null) {
+                // A name this launcher does not know is left at the default rather than refusing the
+                // whole settings file: a policy is a preference, and losing it costs one choice.
+                try {
+                    settings.dependencyPolicyProperty().set(
+                            org.jackhuang.hmcl.dsh.DshDependencyPolicy.valueOf(dependencyPolicy));
+                } catch (IllegalArgumentException e) {
+                    LOG.warning("Unknown dependency policy in the settings: " + dependencyPolicy);
+                }
+            }
+            if (pluginCatalogUrl != null) {
+                settings.pluginCatalogUrlProperty().set(pluginCatalogUrl);
+            }
+            if (cacheDirectory != null) {
+                settings.cacheDirectoryProperty().set(cacheDirectory);
+            }
+            if (cacheDirectoryCustom != null) {
+                settings.cacheDirectoryCustomProperty().set(cacheDirectoryCustom);
+            }
+            if (autoDownloadThreads != null) {
+                settings.autoDownloadThreadsProperty().set(autoDownloadThreads);
+            }
+            if (downloadConcurrency != null) {
+                settings.downloadConcurrencyProperty().set(downloadConcurrency);
+            }
+            if (proxyMode != null) {
+                settings.proxyModeProperty().set(org.jackhuang.hmcl.dsh.DshProxyMode.of(proxyMode));
+            }
+            if (proxyHost != null) {
+                settings.proxyHostProperty().set(proxyHost);
+            }
+            if (proxyPort != null) {
+                settings.proxyPortProperty().set(proxyPort);
+            }
+            if (proxyAuthenticated != null) {
+                settings.proxyAuthenticatedProperty().set(proxyAuthenticated);
+            }
+            if (proxyUser != null) {
+                settings.proxyUserProperty().set(proxyUser);
+            }
+            if (proxyPassword != null) {
+                settings.proxyPasswordProperty().set(proxyPassword);
             }
         }
     }

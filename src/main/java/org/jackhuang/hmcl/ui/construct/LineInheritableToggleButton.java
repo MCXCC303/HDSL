@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.ui.construct;
 
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXToggleButton;
 import javafx.beans.property.BooleanProperty;
@@ -31,10 +33,12 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// A line component that edits an inheritable boolean while showing the effective toggle state.
+/// A line component that edits an inheritable boolean.
 ///
-/// The override state is represented separately from the direct boolean value. The toggle always
-/// reflects the effective value currently applied by the setting hierarchy.
+/// One value and one override flag, the way the sibling inheritable rows are built: the caller puts
+/// the value **in force** into [#rawValueProperty] — this instance's own when it has one, the
+/// launcher's otherwise — and the control shows that value and flips it. [#overriddenProperty] says
+/// only whether the value is this instance's own, which is what decides if it is stored.
 @NotNullByDefault
 public final class LineInheritableToggleButton extends LineButtonBase {
     /// The style class applied to inheritable toggle rows.
@@ -49,23 +53,35 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     /// The icon size used by the compact inheritance state button.
     private static final int INHERIT_BUTTON_ICON_SIZE = 12;
 
+    /// How faint the switch is drawn while this row is showing the launcher's answer.
+    private static final double INHERIT_FAINT = 0.45;
+
     /// The button that toggles between inherited and overridden mode.
     private final JFXButton inheritButton;
 
     /// The tooltip shown on the inheritance button.
     private final Tooltip inheritTooltip;
 
-    /// The visual toggle that displays the effective value.
+    /// The visual toggle that displays the value in force.
     private final JFXToggleButton toggleButton;
 
     /// Creates an inheritable boolean toggle row.
     public LineInheritableToggleButton() {
         this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-toggle-button");
+        // The same class the inheritable choice rows wear, so a theme that styles "this row is
+        // following the launcher" reaches this row too. The dimming itself is done in `refresh()`
+        // rather than by that rule: the rule keys on `.trailing-label`, and this row's value is a
+        // toggle, which is not a label.
+        this.getStyleClass().add("line-inheritable-value");
 
         // The launcher's own small icon button, so the globe takes the theme's colour
         // rather than the SVG's default fill.
         this.inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
         this.inheritTooltip = new Tooltip();
+        // The control knows what its globe means, so it says so unless a caller has its own words:
+        // a globe with an empty tooltip is a control nobody dares press.
+        setInheritedTooltip(i18n("dsh.settings.inherit.tooltip"));
+        setOverriddenTooltip(i18n("dsh.settings.override.tooltip"));
         FXUtils.installFastTooltip(inheritButton, inheritTooltip);
         inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
             if (!isInheritAvailable()) {
@@ -73,7 +89,8 @@ public final class LineInheritableToggleButton extends LineButtonBase {
             }
 
             if (!isOverridden()) {
-                setRawValue(isEffectiveValue());
+                // Taking the row over adopts the value that was in force, so the switch does not
+                // move until somebody moves it.
                 setOverridden(true);
             } else {
                 setOverridden(false);
@@ -92,7 +109,6 @@ public final class LineInheritableToggleButton extends LineButtonBase {
 
         rawValue.addListener(observable -> refresh());
         overridden.addListener(observable -> refresh());
-        effectiveValue.addListener(observable -> refresh());
         inheritAvailable.addListener(observable -> refresh());
         inheritedTooltip.addListener(observable -> refresh());
         overriddenTooltip.addListener(observable -> refresh());
@@ -102,7 +118,7 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     @Override
     public void fire() {
         setOverridden(true);
-        setRawValue(!isEffectiveValue());
+        setRawValue(!getRawValue());
         super.fire();
     }
 
@@ -118,7 +134,11 @@ public final class LineInheritableToggleButton extends LineButtonBase {
         inheritButton.setManaged(inheritAvailable);
         inheritTooltip.setText(inherited ? getInheritedTooltip() : getOverriddenTooltip());
 
-        toggleButton.setSelected(isEffectiveValue());
+        toggleButton.setSelected(getRawValue());
+        // Following the launcher shows the launcher's answer, and the row has to look like one that
+        // is showing somebody else's value: the switch is dimmed until this instance decides for
+        // itself, which is what pressing the globe does.
+        toggleButton.setOpacity(inherited ? INHERIT_FAINT : 1.0);
     }
 
     /// The raw value stored in this setting.
@@ -155,24 +175,6 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     /// Sets whether the direct value overrides the inherited value.
     public void setOverridden(boolean overridden) {
         overriddenProperty().set(overridden);
-    }
-
-    /// The effective value displayed by the toggle.
-    private final BooleanProperty effectiveValue = new SimpleBooleanProperty(this, "effectiveValue");
-
-    /// Returns the effective value displayed by the toggle.
-    public BooleanProperty effectiveValueProperty() {
-        return effectiveValue;
-    }
-
-    /// Returns the effective value displayed by the toggle.
-    public boolean isEffectiveValue() {
-        return effectiveValueProperty().get();
-    }
-
-    /// Sets the effective value displayed by the toggle.
-    public void setEffectiveValue(boolean effectiveValue) {
-        effectiveValueProperty().set(effectiveValue);
     }
 
     /// Whether inherited mode can be selected.

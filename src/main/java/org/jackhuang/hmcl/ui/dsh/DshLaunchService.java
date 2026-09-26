@@ -17,8 +17,11 @@
  */
 package org.jackhuang.hmcl.ui.dsh;
 
+import org.jackhuang.hmcl.dsh.DshAccount;
+import org.jackhuang.hmcl.dsh.DshAccountRoute;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
+import org.jackhuang.hmcl.dsh.DshLauncher;
 import org.jackhuang.hmcl.dsh.DshPorts;
 import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
@@ -26,6 +29,7 @@ import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
+import org.jackhuang.hmcl.util.function.ExceptionalRunnable;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
@@ -76,6 +80,48 @@ public final class DshLaunchService {
     /// failure: without this the task would still end unsuccessfully and the
     /// user would be told the launch failed at the moment they cancelled it.
     private static final java.util.Set<String> CANCELLED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /// Asks the vendor whether the account's key still works, before the launcher relies on it.
+    ///
+    /// The original does the same thing at the same moment, and for the same reason: a launch that
+    /// gets as far as starting the game and *then* discovers the credential is dead has spent the
+    /// whole startup on a failure it could have named in a second. Its step is a login; this one is a
+    /// model list, which is the smallest call that answers the same question.
+    ///
+    /// Two of the three outcomes let the launch continue, and that is deliberate:
+    ///
+    /// - **valid** — nothing to say.
+    /// - **unknown** — the vendor could not be reached, or does not answer this question. A network
+    ///   that cannot reach a supplier today may reach it in a minute, and refusing to start because a
+    ///   *check* failed would make the launcher less able than the harness it launches. It is logged.
+    /// - **rejected** — the vendor said no. This is the one worth stopping for, and it stops with a
+    ///   message naming whose key, so the person knows which row to fix.
+    ///
+    /// An account that carries no key is not checked at all — there is nothing to check — which is
+    /// exactly what offline mode is.
+    ///
+    /// @param instance the instance being launched
+    /// @param account  the account it will launch with, or `null`
+    /// @throws java.util.concurrent.CompletionException when the vendor refused the key
+    private static void checkAccount(DshInstance instance,
+                                     @Nullable org.jackhuang.hmcl.dsh.DshAccount account) {
+        if (account == null || !account.carriesAKey()) {
+            return;
+        }
+        org.jackhuang.hmcl.dsh.DshAccount.Check result = account.check();
+        switch (result.outcome()) {
+            case VALID -> LOG.info("The account " + account.displayName() + " is valid");
+            case UNREACHABLE, UNKNOWN -> LOG.warning("Could not confirm the account "
+                    + account.displayName() + " before launching " + instance.id() + ": "
+                    + result.message());
+            case REJECTED -> {
+                LOG.warning("The account " + account.displayName() + " was refused: " + result.message());
+                throw new java.util.concurrent.CompletionException(
+                        new DshException(i18n("dsh.account.rejected.before_launch",
+                                account.displayName(), result.message())));
+            }
+        }
+    }
 
     /// Reports whether an instance is currently being launched.
     ///
@@ -180,8 +226,8 @@ public final class DshLaunchService {
     /// Launches an instance in the background.
     ///
     /// When the instance becomes ready and the user has asked for it, the
-    /// browser is opened at the reported URL. Failures are surfaced through
-    /// [Controllers] rather than thrown.
+    /// browser is opened at the instance's own address. Failures are surfaced
+    /// through [Controllers] rather than thrown.
     ///
     /// @param instance the instance to launch
     /// @param onDone   invoked on the JavaFX thread once the launch settles, or `null`
@@ -203,6 +249,21 @@ public final class DshLaunchService {
                     i18n("dsh.stop"), MessageType.WARNING);
             return;
         }
+
+        // A launcher with no account cannot launch anything, and saying so before the work starts is
+        // better than a harness that comes up unconfigured and asks the person to set a supplier up
+        // by hand. This mirrors the original, which will not start a game without an account either:
+        // the account is what everything else is done on behalf of, and there is no meaningful
+        // "nothing" to do it for.
+        //
+        // Checked here rather than in each control that offers to start, because every one of them
+        // leads to this method and a rule stated once cannot be forgotten by the next button.
+        if (org.jackhuang.hmcl.setting.SettingsManager.settings().getAccounts().isEmpty()) {
+            Controllers.dialog(i18n("dsh.launch.needs_account"),
+                    i18n("dsh.account.list"), MessageType.WARNING);
+            Controllers.navigate(new org.jackhuang.hmcl.ui.dsh.AccountListPage());
+            return;
+        }
         if (!LAUNCHING.add(instance.id())) {
             return;
         }
@@ -213,25 +274,53 @@ public final class DshLaunchService {
         // label reads a meaningless "0 B/s". The launch becomes a task so the
         // pane has something to show, and the pane closes itself when the task
         // stops.
-        // Held rather than looked up again when the launch ends: an instance that
-        // dies before it is ready is no longer a process the manager reports, so
-        // asking it for one is how a failed launch came to say nothing at all —
-        // no log window, no dialog, nothing to look at.
+        //
+        // A launch is four steps, and each is named as it happens rather than the
+        // whole thing sitting under one title: the account is described, its
+        // supplier is asked which models it serves, the child is started, and it
+        // is waited for. The list marks a stage running when the task carrying it
+        // becomes ready and done when that task finishes, so each step needs a
+        // task of its own — which is also why asking the supplier was moved out of
+        // writing the route: while it is out there on the network is exactly when
+        // there is something worth saying.
+        //
+        // The process is held rather than looked up again when the launch ends: an
+        // instance that dies before it is ready is no longer a process the manager
+        // reports, so asking it for one is how a failed launch came to say nothing
+        // at all — no log window, no dialog, nothing to look at.
         DshProcess[] started = new DshProcess[1];
-        Task<DshProcess> launch = Task.supplyAsync(() -> {
-            try {
-                DshProcess process = DshProcessManager.launch(instance);
-                started[0] = process;
-                awaitReady(process);
-                return process;
-            } catch (DshException e) {
-                throw new CompletionException(e);
+        DshAccount[] chosen = new DshAccount[1];
+        DshAccountRoute.Prepared[] route = new DshAccountRoute.Prepared[1];
+
+        // Each step names the step that runs before it, and the last one carries the hint list — so
+        // the executor is handed the end of the chain and works backwards through it.
+        //
+        // Backwards is what makes the list move. The executor runs a task's *dependents* before the
+        // task and its *dependencies* after, and a task is reported finished only once everything
+        // hung off it has finished too. Chained forwards through `getDependencies`, every step would
+        // still be running when the last one started, and all four rows would turn done together at
+        // the end. Chained backwards, each step is finished — and its row marked done — before the
+        // next one begins, which is what a person watching expects to see.
+        Task<Void> account = new StageTask("dsh.launch.stage.account", null, () -> {
+            chosen[0] = DshAccount.forInstance(instance);
+            checkAccount(instance, chosen[0]);
+            route[0] = DshAccountRoute.prepare(chosen[0]).orElse(null);
+        });
+        Task<Void> models = new StageTask("dsh.launch.stage.models", account, () -> {
+            if (route[0] != null) {
+                route[0].resolveModels(chosen[0]);
             }
-        }).setName(i18n("dsh.launch.launching", instance.id()))
-                // The pane's list renders stage hints, not tasks, so a task with
-                // none leaves the dialog an empty box. One stage is what this
-                // launch has: start the child and wait for it to say it is ready.
-                .withStagesHints("dsh.launch.stage.starting");
+        });
+        Task<Void> starting = new StageTask("dsh.launch.stage.starting", models, () -> {
+            DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, chosen[0], route[0]);
+            started[0] = DshProcessManager.launch(instance, chosen[0], plan);
+        });
+        Task<Void> ready = new StageTask("dsh.launch.stage.ready", starting,
+                () -> awaitReady(started[0]));
+
+        Task<Void> launch = ready.withStagesHints(
+                "dsh.launch.stage.account", "dsh.launch.stage.models",
+                "dsh.launch.stage.starting", "dsh.launch.stage.ready");
 
         TaskExecutor executor = launch.executor();
         executor.addTaskListener(new TaskListener() {
@@ -280,9 +369,19 @@ public final class DshLaunchService {
             } else {
                 LOG.warning("Failed to launch instance " + instance.id(), failure);
                 boolean portTaken = portOf(failure) > 0;
-                Controllers.dialog(failureMessage(instance, failure),
-                        i18n("dsh.launch.failed"),
-                        portTaken ? MessageType.WARNING : MessageType.ERROR);
+                if (portTaken) {
+                    // A port that is already taken is not a crash: it is a setting to change, and
+                    // the message already says which. The crash dialog would add a log tail about
+                    // nothing.
+                    Controllers.dialog(failureMessage(instance, failure),
+                            i18n("dsh.launch.failed"), MessageType.WARNING);
+                } else {
+                    // It never got as far as a process, so there is no output to show — but the
+                    // reason is the launcher's own and the dialog is still the place a person looks
+                    // for what to do next.
+                    DshCrashDialog.show(instance, i18n("launch.failed.cannot_create_jvm"),
+                            failureMessage(instance, failure), null);
+                }
             }
         } else if (process != null) {
             if (showOutput) {
@@ -294,17 +393,20 @@ public final class DshLaunchService {
                 // window, another workspace, or turned off in the settings, and
                 // the launcher is the only thing that knows the instance is up.
                 Controllers.showToast(i18n("dsh.launch.ready", instance.id()));
-                applyLauncherVisibility();
+                applyLauncherVisibility(instance.id());
                 if (settings().openBrowserOnLaunchProperty().get()) {
-                    FXUtils.openLink(url.get().toString());
+                    // The instance's own address. The address the harness printed carries the
+                    // token, and is the one to use while it is the port the instance is recorded
+                    // at; when a patch layer moved the server, sending the browser there would
+                    // key everything it stores to an origin this instance does not own. See
+                    // [DshPorts#openAddress].
+                    FXUtils.openLink(DshPorts.openAddress(instance, url.get()).toString());
                 }
-            } else if (!process.isRunning() && !process.isStopRequested()) {
-                // Stopped by the user while it was still coming up: that is what
-                // was asked for, and not a failure to report.
-                Controllers.dialog(
-                        i18n("dsh.launch.exited", process.exitCode().orElse(-1)),
-                        i18n("dsh.launch.failed"), MessageType.ERROR);
             }
+            // An instance that ended before ever answering is **not** reported here. The manager's
+            // own listener reports every ending — including the ones that happen long after a launch
+            // is over, which this path never sees — so reporting it here as well put two identical
+            // crash dialogs on the screen for one crash.
         }
 
         if (onDone != null && process != null) {
@@ -336,9 +438,14 @@ public final class DshLaunchService {
     }
 
     /// Moves the launcher out of the way, if it was asked to.
-    private static void applyLauncherVisibility() {
+    ///
+    /// The choice is the one in force for the instance being started: its own when it has
+    /// one, and the launcher's otherwise.
+    ///
+    /// @param instanceId the instance being started
+    private static void applyLauncherVisibility(String instanceId) {
         org.jackhuang.hmcl.dsh.DshLauncherVisibility choice =
-                settings().launcherVisibilityProperty().get();
+                settings().launcherVisibilityFor(instanceId);
         switch (choice == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : choice) {
             case HIDE -> Controllers.getStage().hide();
             case MINIMIZE -> Controllers.getStage().setIconified(true);
@@ -396,6 +503,27 @@ public final class DshLaunchService {
         return 0;
     }
 
+    /// Says so when the harness came up on a port other than the one it was asked for.
+    ///
+    /// The port travels to the server as `--port`, and it is what the instance is recorded at,
+    /// but inside the composition it is only the default for the `webserver` row: a patch layer
+    /// that restates that row replaces the expression that reads the flag with a literal port,
+    /// and the launcher's number is then ignored — silently, because the launch itself succeeded.
+    /// Which layer did that is not knowable from the outside, so the least the launcher can do is
+    /// say which port the instance really came up on and where the row that owns it lives.
+    ///
+    /// @param instance the instance that was launched
+    /// @param process  the process, for the port that was asked for
+    /// @param observed the port the harness reported
+    private static void reportPortDrift(DshInstance instance, DshProcess process, int observed) {
+        LOG.warning("Instance " + instance.id() + " was launched on port " + process.plan().port()
+                + ", but DeepSeek Harness is serving on " + observed
+                + ". A profile patch layer is restating the webserver row, which is the row `--port`"
+                + " is read from, so the launcher's number was ignored; look for a row with id"
+                + " \"webserver\" in " + process.plan().homeDirectory().resolve("profiles")
+                .resolve(instance.profile()).resolve("cordis.patch.yml"));
+    }
+
     /// Opens HMCL's log window on a process.
     ///
     /// The window is the original's, reused unchanged: it asks the process
@@ -425,15 +553,67 @@ public final class DshLaunchService {
             }
         }
 
-        // Remember the port an automatic instance settled on, so its next launch
-        // binds the same one. The browser interface keys session state by
-        // origin, so a moving port would let two writers reach one history.
-        if (process.state() == DshProcess.State.READY && process.plan().port() > 0) {
-            try {
-                DshPorts.remember(process.plan().instance(), process.plan().port());
-            } catch (DshException e) {
-                LOG.warning("Failed to record the port of " + process.plan().instance().id(), e);
+        // Remember the port an automatic instance settled on, so its next launch binds the same
+        // one. The browser interface keys session state by origin, so a moving port would let two
+        // writers reach one history — and the port it settled on is the one it *reported*, not the
+        // one it was asked for. A patch layer can restate the `webserver` row and take the launcher's
+        // number out of the composition entirely, and then the number it asked for is a promise it
+        // did not keep; recording what the harness said keeps the record true.
+        if (process.state() == DshProcess.State.READY) {
+            int planned = process.plan().port();
+            int observed = DshPorts.observedPort(process.webUrl().orElse(null), planned);
+            if (observed > 0) {
+                if (observed != planned) {
+                    reportPortDrift(process.plan().instance(), process, observed);
+                }
+                try {
+                    DshPorts.remember(process.plan().instance(), observed);
+                } catch (DshException e) {
+                    LOG.warning("Failed to record the port of " + process.plan().instance().id(), e);
+                }
             }
+        }
+    }
+
+    /// One step of a launch, named in the progress dialog's stage list.
+    ///
+    /// A task cannot be given a stage from outside: `setStage` is not public, and the stage has to be
+    /// settled before the task runs, because the list begins a stage when the task carrying it
+    /// becomes ready and finishes it when that task ends. So a step that is to appear in the list has
+    /// to be a task of its own — which is the whole of what this class adds.
+    ///
+    /// Nothing is named and nothing is of showable significance: a task that is both also draws a
+    /// line of its own in the same list — and, unnamed, that line reads as this class's own name —
+    /// while the stage rows already say what is happening.
+    private static final class StageTask extends Task<Void> {
+        private final ExceptionalRunnable<?> work;
+        private final @Nullable Task<?> before;
+
+        /// @param stage  the stage this step marks, as an i18n key
+        /// @param before the step that runs before this one, or `null` for the first
+        /// @param work   what the step does
+        private StageTask(String stage, @Nullable Task<?> before, ExceptionalRunnable<?> work) {
+            this.work = work;
+            this.before = before;
+            setStage(stage);
+            setSignificance(Task.TaskSignificance.MINOR);
+            setExecutor(Schedulers.defaultScheduler());
+        }
+
+        @Override
+        public void execute() throws Exception {
+            work.run();
+            setResult(null);
+        }
+
+        /// The step that runs before this one. It goes in `getDependents`, which the executor runs
+        /// ahead of the task — the name reads backwards, and HMCL's own `allOf` puts the tasks it
+        /// runs first there too.
+        @Override
+        public java.util.Collection<? extends Task<?>> getDependents() {
+            return before == null
+                    ? java.util.Collections.emptySet()
+                    : java.util.Collections.singleton(before);
         }
     }
 }

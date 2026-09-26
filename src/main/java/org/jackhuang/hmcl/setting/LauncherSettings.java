@@ -17,6 +17,8 @@
  */
 package org.jackhuang.hmcl.setting;
 
+import java.util.Map;
+
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.ObjectProperty;
@@ -32,6 +34,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
 import org.glavo.monetfx.ColorStyle;
 import org.jackhuang.hmcl.dsh.NodeSource;
+import org.jackhuang.hmcl.util.i18n.SupportedLocale;
 import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
 import org.jackhuang.hmcl.theme.BuiltinBackground;
 import org.jackhuang.hmcl.theme.NetworkBackgroundImageCachePolicy;
@@ -129,6 +132,52 @@ public final class LauncherSettings {
         return pluginCatalogUrl;
     }
 
+    /// Where the modpack market's index is read from, or empty for the one the ecosystem publishes.
+    ///
+    /// The same three-source arrangement the plugin catalogue has, and for the same reason: the market
+    /// and the catalogue are both on GitHub Pages, so the network that cannot reach one cannot reach
+    /// the other, and both need a way to be pointed somewhere else.
+    private final javafx.beans.property.StringProperty packMarketUrl =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns where the modpack market's index is read from.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty packMarketUrlProperty() {
+        return packMarketUrl;
+    }
+
+    /// How much of a new instance's dependency tree is held to the versions the harness declares.
+    ///
+    /// Read when a harness is installed, and only then: an instance already on disk keeps the tree it
+    /// was installed with, so changing this decides what the **next** install does rather than
+    /// rewriting what is there. That is the honest behaviour — the alternative would be reinstalling
+    /// a working instance because somebody opened a settings page.
+    ///
+    /// Defaults to [org.jackhuang.hmcl.dsh.DshDependencyPolicy#CORE_PINNED], and that default is the
+    /// point of the setting: the harness's own ranges let a package the launcher never chose arrive
+    /// underneath it, which has twice stopped an instance from starting. Shipping "whatever resolves"
+    /// as the default would be shipping that.
+    private final javafx.beans.property.ObjectProperty<org.jackhuang.hmcl.dsh.DshDependencyPolicy>
+            dependencyPolicy = new javafx.beans.property.SimpleObjectProperty<>(
+                    org.jackhuang.hmcl.dsh.DshDependencyPolicy.CORE_PINNED);
+
+    /// Returns how much of a new instance's dependency tree is held.
+    ///
+    /// @return the property
+    public javafx.beans.property.ObjectProperty<org.jackhuang.hmcl.dsh.DshDependencyPolicy>
+            dependencyPolicyProperty() {
+        return dependencyPolicy;
+    }
+
+    /// Returns how much of a new instance's dependency tree is held.
+    ///
+    /// @return the policy
+    public org.jackhuang.hmcl.dsh.DshDependencyPolicy dependencyPolicy() {
+        var value = dependencyPolicy.get();
+        return value == null ? org.jackhuang.hmcl.dsh.DshDependencyPolicy.CORE_PINNED : value;
+    }
+
     /// Whether a new instance keeps its own home.
     private final ObjectProperty<org.jackhuang.hmcl.dsh.DshIsolationPolicy> isolationPolicy =
             new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshIsolationPolicy.WITH_PLUGINS);
@@ -159,41 +208,146 @@ public final class LauncherSettings {
         return launcherVisibility;
     }
 
-    /// The proxy the launcher's downloads go through, or empty for none.
-    private final javafx.beans.property.StringProperty httpProxy =
+    /// Returns what the launcher does with itself once an instance is running.
+    ///
+    /// The launcher's own answer, without consulting any instance. This is what is
+    /// stored, so it must be the value the row shows rather than what an instance
+    /// happens to resolve to.
+    ///
+    /// @return the choice, never `null`
+    public org.jackhuang.hmcl.dsh.DshLauncherVisibility launcherVisibility() {
+        org.jackhuang.hmcl.dsh.DshLauncherVisibility choice = launcherVisibility.get();
+        return choice == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : choice;
+    }
+
+    /// The variables every instance runs with, unless it sets its own.
+    ///
+    /// Edited as lines of `NAME=VALUE`, because that is what people paste into a box.
+    private final ObjectProperty<Map<String, String>> globalEnvironment =
+            new SimpleObjectProperty<>(Map.of());
+
+    /// Returns the variables every instance runs with.
+    ///
+    /// @return the property
+    public ObjectProperty<Map<String, String>> globalEnvironmentProperty() {
+        return globalEnvironment;
+    }
+
+    /// Returns the variables every instance runs with.
+    ///
+    /// @return the variables, never `null`
+    public Map<String, String> globalEnvironment() {
+        Map<String, String> variables = globalEnvironment.get();
+        return variables == null ? Map.of() : variables;
+    }
+
+    /// Whether the cache folder was chosen rather than left where the launcher puts it.
+    private final BooleanProperty cacheDirectoryCustom = new SimpleBooleanProperty(false);
+
+    /// Returns whether the cache folder was chosen.
+    ///
+    /// @return the property
+    public BooleanProperty cacheDirectoryCustomProperty() {
+        return cacheDirectoryCustom;
+    }
+
+    /// Where the launcher keeps what it fetched, or empty for the default place.
+    private final javafx.beans.property.StringProperty cacheDirectory =
             new javafx.beans.property.SimpleStringProperty("");
 
-    /// The proxy secure downloads go through, or empty for none.
-    private final javafx.beans.property.StringProperty httpsProxy =
+    /// Returns where the launcher keeps what it fetched.
+    ///
+    /// @return the property, empty for the default place
+    public javafx.beans.property.StringProperty cacheDirectoryProperty() {
+        return cacheDirectory;
+    }
+
+    /// How the launcher reaches the network.
+    private final ObjectProperty<org.jackhuang.hmcl.dsh.DshProxyMode> proxyMode =
+            new SimpleObjectProperty<>(org.jackhuang.hmcl.dsh.DshProxyMode.SYSTEM);
+
+    /// The proxy's host.
+    private final javafx.beans.property.StringProperty proxyHost =
             new javafx.beans.property.SimpleStringProperty("");
 
-    /// Hosts that are reached without a proxy, or empty for none.
-    private final javafx.beans.property.StringProperty noProxy =
+    /// The proxy's port.
+    private final javafx.beans.property.StringProperty proxyPort =
             new javafx.beans.property.SimpleStringProperty("");
 
-    /// How many downloads may happen at once, or `null` for the tool's own choice.
-    private final ObjectProperty<@Nullable Integer> downloadConcurrency = new SimpleObjectProperty<>();
+    /// Whether the proxy wants a name and a password.
+    private final BooleanProperty proxyAuthenticated = new SimpleBooleanProperty(false);
+
+    /// The name the proxy wants, when it wants one.
+    private final javafx.beans.property.StringProperty proxyUser =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// The password the proxy wants, when it wants one.
+    private final javafx.beans.property.StringProperty proxyPassword =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns how the launcher reaches the network.
+    ///
+    /// @return the property
+    public ObjectProperty<org.jackhuang.hmcl.dsh.DshProxyMode> proxyModeProperty() {
+        return proxyMode;
+    }
+
+    /// Returns the proxy's host.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyHostProperty() {
+        return proxyHost;
+    }
+
+    /// Returns the proxy's port.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyPortProperty() {
+        return proxyPort;
+    }
+
+    /// Returns whether the proxy wants a name and a password.
+    ///
+    /// @return the property
+    public BooleanProperty proxyAuthenticatedProperty() {
+        return proxyAuthenticated;
+    }
+
+    /// Returns the name the proxy wants.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyUserProperty() {
+        return proxyUser;
+    }
+
+    /// Returns the password the proxy wants.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty proxyPasswordProperty() {
+        return proxyPassword;
+    }
+
+    /// Whether the launcher chooses how many downloads happen at once.
+    private final BooleanProperty autoDownloadThreads = new SimpleBooleanProperty(true);
+
+    /// How many downloads may happen at once, when the launcher is not choosing.
+    private final ObjectProperty<@Nullable Integer> downloadConcurrency = new SimpleObjectProperty<>(64);
+
+    /// Returns whether the launcher chooses how many downloads happen at once.
+    ///
+    /// @return the property
+    public BooleanProperty autoDownloadThreadsProperty() {
+        return autoDownloadThreads;
+    }
 
     /// Returns the proxy downloads go through.
     ///
-    /// @return the property, empty for none
-    public javafx.beans.property.StringProperty httpProxyProperty() {
-        return httpProxy;
-    }
 
     /// Returns the proxy secure downloads go through.
     ///
-    /// @return the property, empty for none
-    public javafx.beans.property.StringProperty httpsProxyProperty() {
-        return httpsProxy;
-    }
 
     /// Returns the hosts reached without a proxy.
     ///
-    /// @return the property, empty for none
-    public javafx.beans.property.StringProperty noProxyProperty() {
-        return noProxy;
-    }
 
     /// Returns how many downloads may happen at once.
     ///
@@ -303,8 +457,163 @@ public final class LauncherSettings {
     /// The font size used by the log view.
     private final DoubleProperty logFontSize = new SimpleDoubleProperty(12);
 
-    /// The number of log lines retained, or `null` for unlimited.
-    private final ObjectProperty<@Nullable Integer> logLines = new SimpleObjectProperty<>();
+    /// How the launcher draws text.
+    ///
+    /// Read before the toolkit starts rather than while it runs: the property it becomes
+    /// is one the renderer reads as it initialises, so the choice takes effect at the next
+    /// start — which is what the row says.
+    private final ObjectProperty<FontAntiAliasing> fontAntiAliasing =
+            new SimpleObjectProperty<>(FontAntiAliasing.AUTO);
+
+    /// The arguments a new instance is launched with, as one line.
+    ///
+    /// A default rather than a setting the launcher itself obeys: what an instance runs is its own
+    /// list, and this is what an instance that has stated nothing of its own shows and follows.
+    private final StringProperty defaultLaunchArguments = new SimpleStringProperty("");
+
+    /// Returns the arguments a new instance is launched with.
+    ///
+    /// @return the property
+    public StringProperty defaultLaunchArgumentsProperty() {
+        return defaultLaunchArguments;
+    }
+
+    /// Returns the arguments a new instance is launched with.
+    ///
+    /// @return the line, never `null`
+    public String defaultLaunchArguments() {
+        String value = defaultLaunchArguments.get();
+        return value == null ? "" : value;
+    }
+
+    /// The accounts this machine has been given.
+    ///
+    /// A DeepSeek Harness account is a key and the vendor it belongs to; the original stores logins
+    /// it performs on the user's behalf, and this stands in the same place. Kept in the launcher's
+    /// own settings — which already holds this machine's proxy password — and never written into an
+    /// instance, a profile or a pack.
+    private final javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshAccount> accounts =
+            javafx.collections.FXCollections.observableArrayList();
+
+    /// Returns the accounts.
+    ///
+    /// @return the list
+    public javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshAccount> getAccounts() {
+        return accounts;
+    }
+
+    /// The suppliers this machine has been told about, beside the ones the launcher offers.
+    ///
+    /// A person pastes the address of a service that is not in the dropdown — an aggregator of their
+    /// own, a gateway inside their network — and it joins the list of ways to add an account, so the
+    /// next account on it is two fields rather than the same address typed again. Kept here rather
+    /// than in a file of its own because there is no more to one than the four things the harness
+    /// needs in order to route it.
+    private final javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshVendor> customVendors =
+            javafx.collections.FXCollections.observableArrayList();
+
+    /// Returns the suppliers this machine has been told about.
+    ///
+    /// @return the list
+    public javafx.collections.ObservableList<org.jackhuang.hmcl.dsh.DshVendor> getCustomVendors() {
+        return customVendors;
+    }
+
+    /// Returns every supplier the interface should offer: the launcher's own, then the added ones.
+    ///
+    /// The launcher's own lead, because they are the ones that need nothing typed. An added supplier
+    /// whose id one of them already uses is left out: two rows for one supplier, one of which cannot
+    /// be told from the other, is worse than ignoring the second.
+    ///
+    /// @return the list
+    public java.util.List<org.jackhuang.hmcl.dsh.DshVendor> allVendors() {
+        java.util.List<org.jackhuang.hmcl.dsh.DshVendor> all =
+                new java.util.ArrayList<>(org.jackhuang.hmcl.dsh.DshVendor.offered());
+        for (org.jackhuang.hmcl.dsh.DshVendor vendor : customVendors) {
+            boolean known = all.stream().anyMatch(known0 -> known0.id().equalsIgnoreCase(vendor.id()));
+            if (!known) {
+                all.add(vendor);
+            }
+        }
+        return java.util.List.copyOf(all);
+    }
+
+    /// Which account the launcher uses, by its key, or empty.
+    ///
+    /// A named choice rather than a position. The list's first entry used to *be* the answer, which
+    /// meant choosing an account moved it: the list reordered itself under the pointer, and every
+    /// reader had to remember that "first" meant "in force". A key can name an account that has moved,
+    /// or been removed — in which case there is no choice, which is a state the launcher should be
+    /// able to be in rather than one it has to hide by keeping a stale row.
+    private final javafx.beans.property.StringProperty activeAccountKey =
+            new javafx.beans.property.SimpleStringProperty("");
+
+    /// Returns which account the launcher uses.
+    ///
+    /// @return the property
+    public javafx.beans.property.StringProperty activeAccountKeyProperty() {
+        return activeAccountKey;
+    }
+
+    /// Returns which account the launcher uses, or empty when none is chosen.
+    ///
+    /// @return the key
+    public @Nullable String activeAccountKey() {
+        String key = activeAccountKey.get();
+        return key == null || key.isEmpty() ? null : key;
+    }
+
+    /// Returns the account the launcher uses.
+    ///
+    /// A chosen account that is gone falls back to the first one, because a launcher with exactly one
+    /// account means it for everything and does not need to be told so.
+    ///
+    /// @return the account, or `null` when there are none
+    public @Nullable org.jackhuang.hmcl.dsh.DshAccount activeAccount() {
+        java.util.List<org.jackhuang.hmcl.dsh.DshAccount> all = getAccounts();
+        if (all.isEmpty()) {
+            return null;
+        }
+        String chosen = activeAccountKey();
+        if (chosen != null) {
+            for (org.jackhuang.hmcl.dsh.DshAccount account : all) {
+                if (account.matchesKey(chosen)) {
+                    return account;
+                }
+            }
+        }
+        return all.get(0);
+    }
+
+    /// Returns how the launcher draws text.
+    ///
+    /// @return the property
+    public ObjectProperty<FontAntiAliasing> fontAntiAliasingProperty() {
+        return fontAntiAliasing;
+    }
+
+    /// Returns how the launcher draws text.
+    ///
+    /// @return the choice, never `null`
+    public FontAntiAliasing fontAntiAliasing() {
+        FontAntiAliasing choice = fontAntiAliasing.get();
+        return choice == null ? FontAntiAliasing.AUTO : choice;
+    }
+
+    /// The language the interface speaks.
+    ///
+    /// Stored here rather than only in the internationalisation helper because that helper
+    /// keeps its choice in memory: without a setting to write it to, choosing a language
+    /// lasted until the launcher was closed.
+    private final ObjectProperty<SupportedLocale> language =
+            new SimpleObjectProperty<>(SupportedLocale.DEFAULT);
+
+    /// Returns the language the interface speaks.
+    ///
+    /// @return the property
+    public ObjectProperty<SupportedLocale> languageProperty() {
+        return language;
+    }
 
     /// Whether animations are disabled; `null` follows the platform setting.
     private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
@@ -436,6 +745,40 @@ public final class LauncherSettings {
     /// Whether an instance's log window opens when it launches.
     private final BooleanProperty showLogs = new SimpleBooleanProperty(false);
 
+    /// Returns the command that runs before an instance starts.
+    ///
+    /// The instance's own command wins; without one, the launcher's applies.
+    ///
+    /// @param instanceId the instance
+    /// @return the command, or an empty string for none
+    public String preLaunchCommandFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            String own = org.jackhuang.hmcl.dsh.DshInstanceSettings.preLaunchCommand(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return preLaunchCommand.get() == null ? "" : preLaunchCommand.get();
+    }
+
+    /// Returns the command that runs after an instance has ended.
+    ///
+    /// @param instanceId the instance
+    /// @return the command, or an empty string for none
+    public String postExitCommandFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            String own = org.jackhuang.hmcl.dsh.DshInstanceSettings.postExitCommand(instance);
+            if (own != null) {
+                return own;
+            }
+        }
+        return postExitCommand.get() == null ? "" : postExitCommand.get();
+    }
+
     /// Returns whether an instance's log window opens when it launches.
     ///
     /// @return the property
@@ -478,6 +821,27 @@ public final class LauncherSettings {
             }
         }
         return debugLog.get();
+    }
+
+    /// Returns what the launcher does with itself while an instance runs.
+    ///
+    /// The instance's own choice wins; without one, the launcher's applies. One method, so
+    /// the interface and the launch cannot disagree about which is in force.
+    ///
+    /// @param instanceId the instance
+    /// @return the choice
+    public org.jackhuang.hmcl.dsh.DshLauncherVisibility launcherVisibilityFor(String instanceId) {
+        org.jackhuang.hmcl.dsh.DshInstance instance =
+                org.jackhuang.hmcl.dsh.DshInstanceManager.find(instanceId);
+        if (instance != null) {
+            String own = org.jackhuang.hmcl.dsh.DshInstanceSettings.launcherVisibility(instance);
+            if (own != null) {
+                return org.jackhuang.hmcl.dsh.DshLauncherVisibility.of(own);
+            }
+        }
+        org.jackhuang.hmcl.dsh.DshLauncherVisibility launcher =
+                launcherVisibility.get();
+        return launcher == null ? org.jackhuang.hmcl.dsh.DshLauncherVisibility.KEEP : launcher;
     }
 
     /// Returns the launcher's policy.
@@ -571,13 +935,6 @@ public final class LauncherSettings {
     /// @return the log font size property
     public DoubleProperty logFontSizeProperty() {
         return logFontSize;
-    }
-
-    /// Returns the retained log line count property.
-    ///
-    /// @return the log line count property
-    public ObjectProperty<@Nullable Integer> logLinesProperty() {
-        return logLines;
     }
 
     /// Returns whether animations are disabled.

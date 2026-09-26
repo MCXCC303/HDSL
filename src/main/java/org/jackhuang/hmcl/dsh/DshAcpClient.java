@@ -179,7 +179,7 @@ public final class DshAcpClient implements AutoCloseable {
         Map<String, String> environment = new java.util.LinkedHashMap<>();
         // DSH_* cannot come from a .env file: upstream rejects those names there.
         environment.put("DSH_HOME", instance.homeDirectory().toString());
-        environment.putAll(instance.environment());
+        environment.putAll(DshEnvironment.of(instance));
         return environment;
     }
 

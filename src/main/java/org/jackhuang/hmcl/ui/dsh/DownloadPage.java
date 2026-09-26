@@ -100,6 +100,20 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     /// The tab showing the community's plugins.
     private final TabHeader.Tab<PluginMarketPage> marketTab = new TabHeader.Tab<>("dshDownloadPlugins");
 
+    /// The tab showing the community's modpacks.
+    ///
+    /// A tab of its own rather than a section of the plugin market, because the two are different
+    /// kinds of thing: a plugin is installed *into* an instance and a pack *brings* one. The
+    /// original separates them the same way, its content tab listing packs, mods and resource packs
+    /// as separate pages.
+    private final TabHeader.Tab<PackMarketPage> packTab = new TabHeader.Tab<>("dshDownloadPacks");
+
+    /// The tab showing the community's skill packs.
+    ///
+    /// A skill pack is content for an instance, like a plugin, but it comes from a git
+    /// repository rather than a package registry, so it needs its own list.
+    private final TabHeader.Tab<SkillMarketPage> skillsTab = new TabHeader.Tab<>("dshDownloadSkills");
+
     /// The pane the two tabs are shown in.
     private final TransitionPane tabs = new TransitionPane();
 
@@ -150,12 +164,23 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
                 .startCategory(i18n("download.new_game").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, versionsTab, i18n("dsh.download.instance"),
                         SVG.STADIA_CONTROLLER, SVG.STADIA_CONTROLLER_FILL)
+                // A pack is a **new game**, not content for one: it brings a whole profile with it,
+                // and the original files it in this category rather than the next one — second,
+                // directly under the version list, with the package icon. Putting it under 游戏内容
+                // beside the plugins was my own arrangement, and the wrong one: installing a pack is
+                // the other way of getting an instance, which is what this category is about.
+                .addNavigationDrawerTab(tab, packTab, i18n("dsh.download.packs"),
+                        SVG.PACKAGE2, SVG.PACKAGE2_FILL)
                 // The community's plugins are content, not a game: the original
-                // files its mods under the same second category, above the packs
-                // and texture packs this launcher has no counterpart of.
+                // files its mods under the second category.
                 .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
                 .addNavigationDrawerTab(tab, marketTab, i18n("dsh.download.plugins"),
-                        SVG.EXTENSION, SVG.EXTENSION_FILL);
+                        SVG.EXTENSION, SVG.EXTENSION_FILL)
+                // The texture mark, which is what the original gives its resource packs and
+                // what the instance page's own skills entry wears: a skill pack and a
+                // resource pack are the same kind of thing.
+                .addNavigationDrawerTab(tab, skillsTab, i18n("dsh.download.skills"),
+                        SVG.TEXTURE);
         FXUtils.setLimitWidth(sideBar, 200);
         setLeft(sideBar);
 
@@ -214,7 +239,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
         versionsTab.setNodeSupplier(() -> layout);
         marketTab.setNodeSupplier(PluginMarketPage::new);
-        tab.getTabs().setAll(versionsTab, marketTab);
+        packTab.setNodeSupplier(PackMarketPage::new);
+        skillsTab.setNodeSupplier(SkillMarketPage::new);
+        tab.getTabs().setAll(versionsTab, packTab, marketTab, skillsTab);
         tab.select(versionsTab, false);
 
         setCenter(tabs);
@@ -231,7 +258,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
     public boolean openTab(String name) {
         switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
             case "versions" -> tab.select(versionsTab, false);
+            case "packs" -> tab.select(packTab, false);
             case "plugins" -> tab.select(marketTab, false);
+            case "skills" -> tab.select(skillsTab, false);
             default -> {
                 return false;
             }

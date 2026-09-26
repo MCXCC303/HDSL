@@ -52,7 +52,9 @@ public final class AboutPage extends ScrollPane {
         FXUtils.smoothScrolling(this);
 
         ComponentList aboutList = new ComponentList();
-        aboutList.getContent().add(buildInfoRow(Metadata.FULL_NAME, Metadata.VERSION, "/assets/img/icon.png"));
+        LineButton product = buildInfoRow(Metadata.FULL_NAME, Metadata.VERSION, "/assets/img/icon.png");
+        product.setOnAction(event -> FXUtils.openLink(Metadata.HOMEPAGE_URL));
+        aboutList.getContent().add(product);
         aboutList.getContent().add(buildInfoRow(i18n("dsh.about.runtime"),
                 System.getProperty("java.vm.name") + " " + System.getProperty("java.version"), null));
 

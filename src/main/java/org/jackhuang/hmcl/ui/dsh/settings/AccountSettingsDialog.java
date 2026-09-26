@@ -1,0 +1,423 @@
+/*
+ * HMCL-DSH
+ * Copyright (C) 2026  HMCL-DSH contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package org.jackhuang.hmcl.ui.dsh.settings;
+
+import com.jfoenix.controls.JFXButton;
+import com.jfoenix.controls.JFXComboBox;
+import com.jfoenix.controls.JFXPasswordField;
+import com.jfoenix.controls.JFXTextField;
+import com.jfoenix.controls.JFXDialogLayout;
+import javafx.scene.control.Label;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.geometry.Pos;
+import javafx.scene.layout.VBox;
+import org.jackhuang.hmcl.dsh.DshAccount;
+import org.jackhuang.hmcl.dsh.DshVendor;
+import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.task.Schedulers;
+import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.construct.ComponentList;
+import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
+import org.jackhuang.hmcl.ui.construct.LinePane;
+import org.jackhuang.hmcl.ui.construct.LineTextPane;
+import org.jackhuang.hmcl.ui.construct.SpinnerPane;
+import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
+/// Adds an account, and manages the ones already there.
+///
+/// A dialog, and a `JFXDialogLayout` rather than a bare pane. The second part is not decoration:
+/// the launcher attaches a dialog's close handler to **the node it is handed**, so a pane that
+/// fires the close event from a child of itself fires it past the handler and the dialog never
+/// closes. Extending the layout the launcher already knows, and firing on `this`, is what makes the
+/// buttons work.
+///
+/// Which vendor is being added is the caller's to say. The accounts page asks by offering one row
+/// per vendor, so a dialog opened from there needs no vendor question; the "another vendor" row
+/// opens the same dialog without an answer, and then it asks.
+///
+/// A key is checked before it is kept, against the vendor itself rather than by asking the harness:
+/// the harness answers out of a local catalogue for a vendor it knows and never makes the request,
+/// so asking it would accept any string. A key that cannot be checked — the network cannot reach the
+/// vendor, the endpoint does not offer a model list — is **not** refused: a network that cannot
+/// reach a supplier today may reach it tomorrow, and the refusal that matters is the vendor's.
+@NotNullByDefault
+public final class AccountSettingsDialog extends JFXDialogLayout {
+    /// The vendor being added, or `null` when the dialog has to ask.
+    private final @Nullable DshVendor preselected;
+
+    /// Which kind of account this dialog adds.
+    private final DshAccount.AccountKind kind;
+
+    /// Whether this dialog adds an offline account, which is a name and nothing else.
+    private final boolean offline;
+
+    /// The vendor, when it has to be asked for.
+    private final JFXComboBox<DshVendor> vendorBox = new JFXComboBox<>();
+
+    /// What the account is called.
+    private final JFXTextField usernameField = new JFXTextField();
+
+    /// The key.
+    private final JFXPasswordField keyField = new JFXPasswordField();
+
+    /// The endpoint, for a vendor whose address is per account.
+    private final JFXTextField baseUrlField = new JFXTextField();
+
+    /// The form, kept so a row of it can be taken away.
+    private javafx.scene.layout.GridPane form;
+
+    /// The grid row holding the endpoint, or `-1` when there is none.
+    private int endpointRow = -1;
+
+    /// Where the verdict on a key is shown.
+    private final Label verdict = new Label();
+
+    /// The button that accepts, and the spinner shown while a key is being checked.
+    private final SpinnerPane acceptPane = new SpinnerPane();
+
+    /// Creates the dialog.
+    ///
+    /// @param preselected the vendor to add, or `null` to ask
+    public AccountSettingsDialog(@Nullable DshVendor preselected) {
+        // The kind follows the vendor, rather than being assumed from the fact that a vendor was
+        // named. Hardcoding `THIRD_PARTY` here is what made the launcher's own vendor behave like
+        // somebody else's: the checks that ask `kind != OFFICIAL` — whether to show the model field,
+        // whether to write a default model — never fired, because "opened from a vendor row" was
+        // being read as "is a third party".
+        this(preselected,
+                preselected != null && preselected.preferred()
+                        ? DshAccount.AccountKind.OFFICIAL : DshAccount.AccountKind.THIRD_PARTY,
+                false);
+    }
+
+    /// Creates a dialog that adds an offline account: a name, and nothing to check.
+    ///
+    /// @return the dialog
+    public static AccountSettingsDialog offline() {
+        return new AccountSettingsDialog(null, DshAccount.AccountKind.OFFLINE, true);
+    }
+
+    /// Creates the dialog.
+    ///
+    /// @param preselected the vendor to add, or `null` to ask
+    /// @param kind        which kind of account this adds
+    /// @param offline     whether it adds an offline account
+    private AccountSettingsDialog(@Nullable DshVendor preselected,
+                                  DshAccount.AccountKind kind, boolean offline) {
+        this.preselected = preselected;
+        this.kind = kind;
+        this.offline = offline;
+
+        setHeading(new Label(offline
+                ? i18n("account.create.offline")
+                : preselected == null
+                        ? i18n("dsh.account.add.custom")
+                        // Named, because the page's row that opened this already said which vendor and
+                        // a dialog repeating only "add an account" would not say what is being added.
+                        : i18n("dsh.account.add.named", preselected.displayName())));
+
+        VBox body = new VBox(10, buildForm());
+        setBody(body);
+        setActions(buildActions());
+
+        // After the body is assembled, so that hiding the endpoint row takes it out of the layout
+        // rather than leaving a gap where it was.
+        javafx.application.Platform.runLater(this::syncEndpointRow);
+    }
+
+    /// Builds the form.
+    ///
+    /// Three shapes, and each asks for exactly what its kind needs:
+    ///
+    /// - **offline** — a name. Nothing is handed to anybody and nothing is checked, so every other
+    ///   field would be a question about something that does not exist.
+    /// - **the launcher's own vendor** — a name and a key. The endpoint and the protocol are that
+    ///   vendor's and the harness already knows them; the model is the harness's catalogue to
+    ///   describe, which is also why a model is not asked for here.
+    /// - **another vendor** — a name, a key, and the model, because the harness may not know what
+    ///   models that supplier serves and it refuses to start on a default it cannot resolve. Its
+    ///   endpoint is asked for only when the vendor does not publish one.
+    ///
+    /// @return the form
+    private javafx.scene.Node buildForm() {
+        // The original's form, ported as it stands: a `GridPane` of two columns, the name in one and
+        // the box in the other, with `vgap` 22 and `hgap` 15.
+        //
+        // I had built it out of `LinePane` rows instead, and that is what the two complaints about
+        // this form are: a `LinePane` puts the box on the *right* of a wide surface, so the fields
+        // did not line up with the original's, and the row I added for the verdict kept its height
+        // even with nothing in it — which is the empty strip under the fields.
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setVgap(22);
+        grid.setHgap(15);
+        grid.setAlignment(Pos.CENTER);
+
+        javafx.scene.layout.ColumnConstraints nameColumn = new javafx.scene.layout.ColumnConstraints();
+        nameColumn.setMinWidth(Region.USE_PREF_SIZE);
+        grid.getColumnConstraints().add(nameColumn);
+        javafx.scene.layout.ColumnConstraints fieldColumn = new javafx.scene.layout.ColumnConstraints();
+        fieldColumn.setHgrow(Priority.ALWAYS);
+        grid.getColumnConstraints().add(fieldColumn);
+
+        int row = 0;
+
+        // The vendor is asked for only when there is a vendor to ask about and the caller did not say
+        // which. An offline account has no supplier at all, which is the whole of what it is, so
+        // offering a list of them is offering something that cannot apply.
+        if (preselected == null && !offline) {
+            vendorBox.getItems().setAll(DshVendor.offered());
+            vendorBox.setConverter(FXUtils.stringConverter(DshVendor::label));
+            vendorBox.getSelectionModel().selectFirst();
+            vendorBox.setMaxWidth(Double.MAX_VALUE);
+            vendorBox.valueProperty().addListener(observable -> syncEndpointRow());
+            grid.add(new Label(i18n("dsh.account.vendor")), 0, row);
+            grid.add(vendorBox, 1, row);
+            row++;
+        }
+
+        // The offline hint is the original's own `account.username.placeholder`, which every bundle
+        // already carries: it says the name is a role name rather than an account's.
+        usernameField.setPromptText(i18n(offline
+                ? "account.methods.offline.name.special_characters" : "dsh.account.label.prompt"));
+        keyField.setPromptText(i18n("dsh.account.key.prompt"));
+        baseUrlField.setPromptText(i18n("dsh.account.base_url.prompt"));
+
+        grid.add(new Label(offline ? i18n("account.character") : i18n("account.username")), 0, row);
+        grid.add(usernameField, 1, row);
+        row++;
+
+        // The original's own arrangement for telling somebody a field is wrong: validators on the
+        // field plus `setValidateWhileTextChanged`, which paints the underline red and prints the
+        // message under the box **as it is typed**. Doing the same checks only when the button is
+        // pressed — which is what this did — means a person fills in four fields and is told about
+        // the first one afterwards.
+        //
+        // The name is required of both kinds of account. A name that the harness cannot address is
+        // refused on the name field too, rather than as a verdict: it is a fact about that field.
+        usernameField.setValidators(new org.jackhuang.hmcl.ui.construct.RequiredValidator());
+        if (!offline) {
+            usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                    i18n("dsh.account.name_unusable"),
+                    // Empty is the required validator's business; answering for it here too would
+                    // put two messages under one box.
+                    name -> name == null || name.isBlank() || DshAccount.isUsableName(name.trim())));
+        }
+        // Two accounts under one name are two accounts nothing downstream can tell apart: the name is
+        // what a supplier route is called, what an instance names when it chooses an account, and
+        // what a person reads in the list. The launcher's own tidying is the sharpest case — what it
+        // injected is recognised by the name it injected it under, so a second account answering to
+        // that name would make its own leftovers unreadable.
+        //
+        // Refused rather than allowed and told apart later, because there is nothing here to tell
+        // them apart **with**: an account is a name in this system, and asking a person to pick
+        // another one is a question they can answer.
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_taken"),
+                name -> name == null || name.isBlank() || !isNameTaken(name.trim())));
+
+        // A name a supplier already answers to is refused as well. Routes are named after accounts, so
+        // an account called `deepseek` would build a route under a name the harness already serves —
+        // and the launcher's own tidying, which takes away the routes it made, would take that one
+        // with them. This is the only place it can be prevented: once such an account exists, every
+        // later launch is a launch that might delete a supplier nobody asked it to touch.
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_reserved_deepseek"),
+                name -> !DshVendor.answersTo(name,
+                        vendor -> "deepseek".equalsIgnoreCase(vendor.id()))));
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_reserved_openai"),
+                name -> !DshVendor.answersTo(name,
+                        vendor -> vendor.id().toLowerCase(java.util.Locale.ROOT).contains("openai"))));
+        usernameField.getValidators().add(new org.jackhuang.hmcl.ui.construct.Validator(
+                i18n("dsh.account.name_reserved_other"),
+                name -> !DshVendor.answersTo(name, vendor -> {
+                    String id = vendor.id().toLowerCase(java.util.Locale.ROOT);
+                    return !id.contains("openai") && !id.equals("deepseek");
+                })));
+        FXUtils.setValidateWhileTextChanged(usernameField, true);
+
+        // An offline account has no key, no endpoint and no model: it is a name and a face, and the
+        // fields that would describe a supplier are not merely optional here — they would be asking
+        // about something that does not exist.
+        if (!offline) {
+            keyField.setValidators(new org.jackhuang.hmcl.ui.construct.RequiredValidator());
+            FXUtils.setValidateWhileTextChanged(keyField, true);
+
+            grid.add(new Label(i18n("dsh.account.key")), 0, row);
+            grid.add(keyField, 1, row);
+            row++;
+
+            // Nullable: a vendor that publishes its own address does not need one here, and an empty
+            // box that is allowed to be empty must not be painted red for being empty.
+            baseUrlField.setValidators(new org.jackhuang.hmcl.ui.construct.URLValidator(true));
+            FXUtils.setValidateWhileTextChanged(baseUrlField, true);
+
+            grid.add(new Label(i18n("dsh.account.base_url")), 0, row);
+            grid.add(baseUrlField, 1, row);
+            endpointRow = row;
+            row++;
+
+            // No model field, for either kind of supplier.
+            //
+            // A model list is the vendor's to state and it changes quickly, so neither the person nor
+            // the launcher should be writing one down: the launcher asks the vendor at every launch
+            // and writes what it answers. Asking here would produce a list that is wrong within weeks
+            // at best, and — because a route the harness does not know cannot have its list filled in
+            // from the catalogue — a wrong list is not corrected by anything.
+            //
+            // The launcher's own vendor was already exempt from this question; the exemption is now
+            // the rule.
+        }
+
+        // The verdict takes no room until there is something to say. A label with no text still asks
+        // for the height of a line, which is exactly the empty strip that was there before.
+        verdict.getStyleClass().add("desc");
+        verdict.setWrapText(true);
+        verdict.managedProperty().bind(verdict.textProperty().isNotEmpty());
+        verdict.visibleProperty().bind(verdict.textProperty().isNotEmpty());
+        grid.add(verdict, 0, row, 2, 1);
+
+        form = grid;
+        return grid;
+    }
+
+    /// Builds the buttons.
+    ///
+    /// @return the actions
+    private HBox buildActions() {
+        JFXButton accept = new JFXButton(i18n("dsh.account.add.button"));
+        accept.getStyleClass().add("dialog-accept");
+        accept.setOnAction(event -> addAccount());
+        acceptPane.getStyleClass().add("small-spinner-pane");
+        acceptPane.setContent(accept);
+
+        JFXButton cancel = new JFXButton(i18n("button.cancel"));
+        cancel.getStyleClass().add("dialog-cancel");
+        cancel.setOnAction(event -> fireEvent(new DialogCloseEvent()));
+
+        HBox actions = new HBox(8, acceptPane, cancel);
+        actions.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        return actions;
+    }
+
+    /// Takes the endpoint row away for a vendor that publishes its own address.
+    private void syncEndpointRow() {
+        if (form == null || endpointRow < 0) {
+            return;
+        }
+        DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
+        boolean needed = vendor == null || !vendor.hasBaseUrl();
+        // Both cells of the row, and the row itself stops taking space once they are gone — a grid
+        // row whose children are unmanaged collapses, which is what keeps the form from growing a gap
+        // where a field used to be.
+        for (javafx.scene.Node node : form.getChildren()) {
+            if (javafx.scene.layout.GridPane.getRowIndex(node) != null
+                    && javafx.scene.layout.GridPane.getRowIndex(node) == endpointRow) {
+                node.setVisible(needed);
+                node.setManaged(needed);
+            }
+        }
+    }
+
+    /// Checks what was typed and, if it is not refused, keeps it.
+    ///
+    /// The per-field checks have already been made, and said so, while the fields were being filled
+    /// in. Asking them once more here is what puts the marks back for somebody who pressed the button
+    /// anyway, and it is the original's own arrangement: it validates its fields, returns silently if
+    /// any of them is wrong, and keeps its own message label for what a single field cannot answer.
+    ///
+    /// The check runs off the interface thread: it is a network call, and a dialog that stops
+    /// responding while a supplier is asked a question is a dialog that looks broken.
+    private void addAccount() {
+        if (!usernameField.validate()) {
+            return;
+        }
+        String username = usernameField.getText() == null ? "" : usernameField.getText().trim();
+
+        if (offline) {
+            // Nothing to check and nothing to hand over. The name is required only because a row with
+            // no name would be a row nobody could tell from another, and the field says so itself.
+            keep(DshAccount.offline(username));
+            return;
+        }
+
+        if (!keyField.validate()) {
+            return;
+        }
+
+        DshVendor vendor = preselected != null ? preselected : vendorBox.getValue();
+        if (vendor == null) {
+            verdict.setText(i18n("dsh.account.need_vendor_and_key"));
+            return;
+        }
+        String key = keyField.getText() == null ? "" : keyField.getText().trim();
+        // Left as a verdict rather than moved onto the key field: this is a question about the pair,
+        // and its answer names the vendor, which a field's own message cannot do.
+        if (!vendor.looksLikeItsKey(key)) {
+            verdict.setText(i18n("dsh.account.key_looks_wrong", vendor.displayName()));
+            return;
+        }
+
+        // Read only when the row is showing: a field that is not offered is not an answer.
+        String baseUrl = baseUrlField.isVisible() && baseUrlField.getText() != null
+                ? baseUrlField.getText().trim() : "";
+        keep(new DshAccount(kind, vendor.id(), key,
+                baseUrl.isEmpty() ? null : baseUrl, username, null, null));
+    }
+
+    /// Reports whether an account already answers to a name.
+    ///
+    /// Compared exactly, because exactly is how the name is used: it names a route, and two names
+    /// differing only in case are two different routes.
+    ///
+    /// @param name the name, trimmed
+    /// @return whether some account already has it
+    private static boolean isNameTaken(String name) {
+        for (DshAccount account : SettingsManager.settings().getAccounts()) {
+            if (name.equals(account.displayName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Stores an account and makes it the one the launcher uses.
+    ///
+    /// Both halves are the original's. It selects the account it has just made
+    /// (`Accounts.setSelectedAccount`), and the home page reads that selection — so an account added
+    /// and left unselected is an account the person does not get, which is what happened here.
+    ///
+    /// @param account the account
+    private void keep(DshAccount account) {
+        SettingsManager.settings().getAccounts().add(account);
+        SettingsManager.settings().activeAccountKeyProperty().set(account.key());
+        SettingsManager.save();
+        fireEvent(new DialogCloseEvent());
+    }
+}

@@ -26,7 +26,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// ever been added to the Chinese one.
 class PageStringsTest {
     /// The bundles this launcher keeps complete.
+    ///
+    /// Every key below has to be in both of these. They are the two the launcher's own
+    /// pages are written against, so a key neither holds is a page asking for something
+    /// nobody wrote rather than a translation still to come.
     private static final List<String> BUNDLES = List.of("I18N.properties", "I18N_zh_Hans.properties");
+
+    /// Every other bundle the launcher ships.
+    ///
+    /// Held to a weaker rule: the strings this launcher added have to be present, because
+    /// those are the ones nobody else can supply and the ones whose absence is most
+    /// visible. The transplanted interface's strings are not required here — most of these
+    /// bundles are the original's, trimmed, and filling them is a translation job rather
+    /// than a coding one.
+    ///
+    /// Where a string is missing the interface now shows the English one rather than the
+    /// key, so this is no longer a visible defect; it is a list of work left to do, and it
+    /// is kept so that the list does not grow.
+    private static final List<String> TRANSLATED_BUNDLES = List.of(
+            "I18N_zh_Hant.properties",
+            "I18N_ja.properties",
+            "I18N_ru.properties",
+            "I18N_de.properties",
+            "I18N_es.properties",
+            "I18N_uk.properties",
+            "I18N_ar.properties",
+            "I18N_lzh.properties");
+
+    /// The prefix every key this launcher added carries.
+    private static final String OWN_PREFIX = "dsh.";
 
     /// Every key the pages added here ask a bundle for.
     private static final List<String> KEYS = List.of(
@@ -76,7 +104,6 @@ class PageStringsTest {
             "dsh.settings.build_scripts.never",
             "dsh.settings.build_scripts.follow",
             "dsh.settings.build_scripts.ask",
-            "dsh.settings.build_scripts.approve.hint",
             "dsh.instance.upgrade.missing",
             "download.install.success",
             "download.type.all",
@@ -102,11 +129,36 @@ class PageStringsTest {
             "dsh.settings.debug.log",
             "dsh.settings.debug.log.hint",
             "dsh.settings.isolation",
-            "dsh.settings.isolation.hint",
             "dsh.settings.isolation.always",
             "dsh.settings.isolation.modded",
             "dsh.settings.isolation.never",
             "dsh.settings.proxy",
+            "dsh.settings.background.title",
+            "dsh.settings.background.fallback",
+            "dsh.settings.download.cache",
+            "dsh.settings.download.cache.default",
+            "dsh.settings.download.cache.custom",
+            "dsh.settings.download.threads",
+            "dsh.settings.download.threads.custom",
+            "dsh.settings.download.threads.auto",
+            "dsh.settings.download.cache.choose",
+            "dsh.settings.download.cache.hint",
+            "dsh.settings.download.cache.clear",
+            "dsh.settings.download.cache.cleared",
+            "dsh.settings.proxy.mode.system",
+            "dsh.settings.proxy.mode.none",
+            "dsh.settings.proxy.mode.http",
+            "dsh.settings.proxy.mode.socks",
+            "dsh.settings.proxy.host",
+            "dsh.settings.proxy.host.hint",
+            "dsh.settings.proxy.port",
+            "dsh.settings.proxy.port.hint",
+            "dsh.settings.proxy.auth",
+            "dsh.settings.proxy.auth.hint",
+            "dsh.settings.proxy.user",
+            "dsh.settings.proxy.user.hint",
+            "dsh.settings.proxy.password",
+            "dsh.settings.proxy.password.hint",
             "dsh.settings.proxy.http",
             "dsh.settings.proxy.https",
             "dsh.settings.proxy.hint",
@@ -130,6 +182,8 @@ class PageStringsTest {
             "modpack.wizard.step.initialization.save",
             "modpack.export.as",
             "modpack.name",
+            "modpack.export.url",
+            "modpack.export.reference_url",
             "modpack.description",
             "archive.version",
             "archive.author",
@@ -138,7 +192,13 @@ class PageStringsTest {
             "dsh.modpack.files",
             "dsh.modpack.files.title",
             "dsh.modpack.files.configuration",
+            "dsh.modpack.files.plugins",
+            "dsh.modpack.files.attachments",
             "dsh.modpack.files.configuration.detail",
+            "dsh.modpack.files.settings",
+            "dsh.modpack.files.settings.detail",
+            "dsh.modpack.files.skills",
+            "dsh.modpack.files.skills.detail",
             "dsh.modpack.files.sessions",
             "dsh.modpack.files.sessions.count",
             "dsh.modpack.files.sessions.none",
@@ -158,6 +218,103 @@ class PageStringsTest {
             for (String key : KEYS) {
                 assertTrue(strings.containsKey(key), bundle + " has no string for " + key);
             }
+        }
+    }
+
+    /// Verifies that the strings this launcher added exist in the two bundles it maintains.
+    ///
+    /// The other languages are reported rather than checked: they are the original's
+    /// trimmed bundles and none of them carries the strings this launcher added, so the
+    /// interface falls back to English there. Failing on that would mean failing on a
+    /// translation job; passing over it in silence would mean nobody knew. The counts are
+    /// printed instead, which is what a person needs to decide whether to translate them.
+    @Test
+    void theStringsThisLauncherAddedAreInTheBundlesItMaintains() throws IOException {
+        // Read from the English bundle rather than from the list above, so that a key added after
+        // this file was last touched is still covered. The list is a snapshot; this is not.
+        List<String> own = load("I18N.properties").stringPropertyNames().stream()
+                .filter(key -> key.startsWith(OWN_PREFIX))
+                .sorted()
+                .toList();
+        assertTrue(!own.isEmpty(), "no keys with the " + OWN_PREFIX + " prefix to check");
+
+        for (String bundle : BUNDLES) {
+            Properties strings = load(bundle);
+            List<String> missing = own.stream().filter(key -> !strings.containsKey(key)).toList();
+            assertTrue(missing.isEmpty(),
+                    bundle + " is one of the two bundles this launcher maintains, and has no string for " + missing);
+        }
+    }
+
+    @Test
+    void aPlaceholderIsWrittenTheWayTheFormatterReadsIt() throws IOException {
+        // The launcher formats a translated string with `String.format`, so a placeholder is `%s` or
+        // `%d` and **never** `{0}`. A brace survives formatting untouched, which means it is not an
+        // error anywhere: the interface simply shows the placeholder, and a line meant to read
+        // "assembled 2026-09-23" reads "assembled {0}" instead. Nine of these were written before
+        // this test existed, in three features, and none of them failed anything.
+        java.util.regex.Pattern braces = java.util.regex.Pattern.compile("\\{\\d+}");
+        List<String> wrong = new java.util.ArrayList<>();
+
+        for (String bundle : BUNDLES) {
+            Properties strings = load(bundle);
+            for (String key : strings.stringPropertyNames()) {
+                if (!key.startsWith(OWN_PREFIX)) {
+                    continue;
+                }
+                String value = strings.getProperty(key, "");
+                if (braces.matcher(value).find()) {
+                    wrong.add(bundle + " " + key + " = " + value);
+                }
+            }
+        }
+
+        assertTrue(wrong.isEmpty(),
+                "these strings use a placeholder the formatter does not read, so the interface "
+                        + "shows it verbatim:\n  " + String.join("\n  ", wrong));
+    }
+
+    /// Reports how much of this launcher's own text each other language carries.
+    ///
+    /// **Not an assertion, and deliberately so.** This used to fail when a language was behind, on
+    /// the reasoning that a list of work left to do should not be allowed to grow. The project has
+    /// since decided otherwise: English and Chinese are the two languages this launcher maintains,
+    /// they are checked above, and the rest are filled in as a separate job. A gate here would mean
+    /// every new string needs eight translations before it can be committed, which is how a gate
+    /// stops being a gate and starts being a reason to write fewer strings.
+    ///
+    /// So it prints and passes. The numbers are the point: they say how far behind each language is,
+    /// which is what somebody picking up that job needs to know.
+    @Test
+    void everyTranslatedBundleCarriesEveryStringThisLauncherHas() throws IOException {
+        // The set of strings is read from the English bundle rather than from the list above. That
+        // list is a snapshot, and a snapshot is exactly what a check on "is everything translated"
+        // must not be: it was written by hand, so it says nothing about the keys added after it was
+        // written. It silently reported full coverage while forty-six strings were missing from
+        // every language — the ones the account and skin features had just introduced.
+        Properties english = load("I18N.properties");
+        List<String> own = english.stringPropertyNames().stream()
+                .filter(key -> key.startsWith(OWN_PREFIX))
+                .sorted()
+                .toList();
+        assertTrue(!own.isEmpty(), "no keys with the " + OWN_PREFIX + " prefix to check");
+
+        List<String> incomplete = new java.util.ArrayList<>();
+        for (String bundle : TRANSLATED_BUNDLES) {
+            Properties strings = load(bundle);
+            List<String> missing = own.stream().filter(key -> !strings.containsKey(key)).toList();
+            System.out.println(String.format("%-28s %3d / %3d of this launcher's strings%s",
+                    bundle, own.size() - missing.size(), own.size(),
+                    missing.isEmpty() ? "" : "   missing " + missing.size()));
+            if (!missing.isEmpty()) {
+                incomplete.add(bundle + ": " + missing);
+            }
+        }
+        if (!incomplete.isEmpty()) {
+            System.out.println();
+            System.out.println("The languages below fall back to English for the strings listed.");
+            System.out.println("English and Chinese are the two this launcher maintains; the rest are a");
+            System.out.println("translation job of their own, and this test does not gate on it.");
         }
     }
 

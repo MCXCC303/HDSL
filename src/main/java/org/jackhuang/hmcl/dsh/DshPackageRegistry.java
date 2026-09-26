@@ -171,6 +171,68 @@ public final class DshPackageRegistry {
         return new JsonObject();
     }
 
+    /// What the registry says about a package at a version.
+    ///
+    /// Three answers, because two would be a lie: a registry that is not reachable, or an `npm` that
+    /// is not installed, has not said the package is absent — and the caller decides what to do about
+    /// that, which for a pack is to carry the files rather than to trust a silence.
+    public enum Availability {
+        /// The registry publishes this exact version.
+        PUBLISHED,
+
+        /// The registry says there is no such package, or no such version of it.
+        ABSENT,
+
+        /// The registry could not be asked.
+        UNKNOWN
+    }
+
+    /// Asks the registry whether a package is published at a version.
+    ///
+    /// The query is `npm view <name>@<version> version`, which is one request, honours whatever
+    /// registry and proxy the user has configured, and answers with an error precisely when the
+    /// version does not exist — `E404`, which is an answer, unlike a timeout.
+    ///
+    /// @param packageName the package
+    /// @param version     the version
+    /// @return what the registry says
+    public static Availability availability(String packageName, String version) {
+        DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
+        if (runtime == null || runtime.npm() == null) {
+            return Availability.UNKNOWN;
+        }
+        try {
+            DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(),
+                    "view", packageName + "@" + version, "version", "--json"), null, null);
+            return availabilityOf(result.exitCode(), result.text());
+        } catch (IOException e) {
+            LOG.warning("Could not ask the registry about " + packageName + "@" + version, e);
+            return Availability.UNKNOWN;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Availability.UNKNOWN;
+        }
+    }
+
+    /// Reads what a registry answer means.
+    ///
+    /// Kept apart from the command that produces it so the reading can be pinned: exit zero is the
+    /// version, and a 404 in the output is the registry saying there is no such thing — anything else
+    /// (a missing network, a registry that is down, a package name the registry rejects the syntax
+    /// of) is not an answer at all.
+    ///
+    /// @param exitCode the command's exit code
+    /// @param output   what it printed
+    /// @return what the registry says
+    static Availability availabilityOf(int exitCode, String output) {
+        if (exitCode == 0) {
+            return Availability.PUBLISHED;
+        }
+        String text = output == null ? "" : output;
+        return text.contains("E404") || text.contains("404 Not Found") || text.contains("is not in this registry")
+                ? Availability.ABSENT : Availability.UNKNOWN;
+    }
+
     /// Reads the peer requirements a published package declares.
     ///
     /// Asked of the package rather than of the catalogue, because the catalogue does not
