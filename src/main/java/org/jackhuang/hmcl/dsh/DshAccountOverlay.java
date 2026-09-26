@@ -154,7 +154,17 @@ public final class DshAccountOverlay {
         ///
         /// @param account the account whose supplier is asked
         public void resolveModels(DshAccount account) {
-            this.served = account.fetchModels();
+            resolveModels(account.fetchModels());
+        }
+
+        /// Records the models the supplier served, for a caller that already asked it.
+        ///
+        /// The launch asks through [#resolveModels(DshAccount)]; this is the same answer arriving
+        /// from anywhere else — a retry, or a test that has a payload and no network.
+        ///
+        /// @param models the model ids
+        void resolveModels(List<String> models) {
+            this.served = models;
         }
 
         /// Writes the overlay.
@@ -182,7 +192,7 @@ public final class DshAccountOverlay {
         /// test's to touch.
         ///
         /// @return the YAML to pass through `--patch`
-        String render() {
+        String render() throws DshException {
             String model = fallbackModel;
             StringBuilder yaml = new StringBuilder();
             yaml.append("# Written by Hello DeepSeek! Launcher for one launch; removed when it ends.\n");
@@ -219,20 +229,28 @@ public final class DshAccountOverlay {
             // once, by the person or by a launcher that cached it, goes stale in both directions, showing
             // models that are gone and hiding the ones that arrived.
             //
-            // What this replaced was inventing a model called `default` whenever no model had been named
-            // — which was every official account, since the form does not ask those for one. The result
-            // was a supplier whose only model was called `default`: not a model any vendor serves, and
-            // not one a request can be made against.
+            // A model stored on the account survives as a fallback for a supplier that cannot be
+            // reached at this moment — something has to be written, and a name this account used
+            // before guesses better than an invented one. It is a fallback, not a source; nothing
+            // asks for it any more.
             //
-            // A model stored on the account survives as a fallback for a vendor that cannot be reached at
-            // this moment — something has to be written, and a name this account used before guesses
-            // better than `default` does. It is a fallback, not a source; nothing asks for it any more.
+            // With neither, the launch stops here rather than inventing a name. The harness fills a
+            // route's models in only for a supplier it ships, and a route is named after the account
+            // — so a list this could not read is a list the harness cannot fill in either, and both
+            // ways of getting past that are worse than saying so: an empty list is refused for
+            // naming no models, and a made-up one is refused for what that model lacks. Both
+            // sentences are about something the person never chose.
             List<String> models = new java.util.ArrayList<>(served == null ? List.of() : served);
             if (models.isEmpty() && !model.isEmpty()) {
                 models.add(model);
             }
             if (models.isEmpty()) {
-                models.add("default");
+                throw new DshException("Could not read the models of " + endpoint + ", so there is"
+                        + " no route to write for " + route + ". The harness fills a route's models in"
+                        + " only for a supplier it ships, and this route is named after the account:"
+                        + " check that the address answers and that this machine can reach it, or"
+                        + " launch on an account that hands nothing over and set the supplier up inside"
+                        + " the harness instead.");
             }
             for (String one : models) {
                 yaml.append("          - id: ").append(YamlScalar.of(one)).append("\n");

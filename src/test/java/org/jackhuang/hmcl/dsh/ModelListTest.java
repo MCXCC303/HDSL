@@ -58,4 +58,55 @@ class ModelListTest {
         assertEquals(List.of("a"),
                 DshAccount.readModelIds("{\"data\":[{\"id\":\"a\"},{\"object\":\"model\"},{\"id\":\"a\"},{\"id\":\"\"}]}"));
     }
+
+    @Test
+    void theEnrichedMapSomeGatewaysAnswerWithIsReadToo() {
+        // The other published shape, and the one the harness's own reader accepts as well: a map
+        // whose **keys** are the ids. Reading only the `data` array is how a gateway that answers
+        // this way ends up looking like a supplier with no models.
+        String body = """
+                {"object":"list","models":{
+                  "deepseek-chat":{"name":"DeepSeek Chat"},
+                  "deepseek-reasoner":{"name":"DeepSeek Reasoner"}
+                }}""";
+
+        assertEquals(List.of("deepseek-chat", "deepseek-reasoner"), DshAccount.readModelIds(body));
+    }
+
+    @Test
+    void aMapsKeyNamesTheModelAndItsOwnIdDoesNotRenameIt() {
+        // The harness reads the key first for the same reason: the key is what the gateway indexes
+        // the model by, and an entry's `id` is a label it may or may not carry.
+        assertEquals(List.of("by-key"),
+                DshAccount.readModelIds("{\"models\":{\"by-key\":{\"id\":\"something-else\"}}}"));
+        assertEquals(List.of("from-the-entry"),
+                DshAccount.readModelIds("{\"models\":{\"\":{\"id\":\"from-the-entry\"}}}"),
+                "an entry with no key still names a model by its own id");
+        assertEquals(List.of("only-objects"),
+                DshAccount.readModelIds("{\"models\":{\"only-objects\":{},\"ignored\":\"not an object\"}}"),
+                "a value that is not an object is not a model");
+    }
+
+    @Test
+    void theListingAddressFollowsTheProtocol() {
+        // The harness's own discovery, which is the authority on this: an OpenAI protocol lists
+        // beside the address, Anthropic Messages lists under a `/v1` root. Asking Anthropic's
+        // dialect at `/models` is a 404, and a 404 here is a route with no models at all.
+        assertEquals("https://api.opencode.ai/v1/models",
+                DshAccount.listingUrl("https://api.opencode.ai/v1", "openai-completions"));
+        assertEquals("https://api.openai.com/v1/models",
+                DshAccount.listingUrl("https://api.openai.com/v1", "openai-responses"));
+        assertEquals("https://api.opencode.ai/v1/models",
+                DshAccount.listingUrl("https://api.opencode.ai/v1///", "openai-completions"),
+                "trailing slashes do not become a second path segment");
+
+        assertEquals("https://api.anthropic.com/v1/models?limit=1000",
+                DshAccount.listingUrl("https://api.anthropic.com", "anthropic-messages"));
+        assertEquals("https://api.anthropic.com/v1/models?limit=1000",
+                DshAccount.listingUrl("https://api.anthropic.com/v1", "anthropic-messages"),
+                "one trailing /v1 is the root's, and is not counted twice");
+        assertEquals("https://api.z.ai/api/coding/paas/v4/v1/models?limit=1000",
+                DshAccount.listingUrl("https://api.z.ai/api/coding/paas/v4", "anthropic-messages"),
+                "a deployment path keeps its segments");
+    }
 }

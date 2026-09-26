@@ -266,7 +266,7 @@ public record DshAccount(
         }
         DshVendor vendor = vendor();
         String api = vendor == null ? "openai-completions" : vendor.api();
-        String url = address.replaceAll("/+$", "") + "/models";
+        String url = listingUrl(address, api);
 
         try {
             HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
@@ -396,7 +396,7 @@ public record DshAccount(
         }
         DshVendor vendor = vendor();
         String api = vendor == null ? "openai-completions" : vendor.api();
-        String url = address.replaceAll("/+$", "") + "/models";
+        String url = listingUrl(address, api);
 
         try {
             HttpRequest.Builder request = HttpRequest.newBuilder(URI.create(url))
@@ -430,12 +430,40 @@ public record DshAccount(
         }
     }
 
-    /// Reads model ids out of what a `/models` endpoint answered.
+    /// Returns the address a supplier lists its models at.
     ///
-    /// The shape is the one OpenAI-compatible services share — `{"data":[{"id":…},…]}` — and it is
-    /// read defensively because "compatible" is a claim rather than a promise: a service that answers
-    /// something else is a service whose list this cannot use, and saying so by returning nothing is
-    /// better than writing a model the harness will fail to find.
+    /// The protocols do not agree on where that is, and the harness's own discovery module is the
+    /// authority on the difference: an OpenAI protocol lists at `{baseURL}/models`, while Anthropic
+    /// Messages lists at `{root}/v1/models`, the root being the address without its trailing slashes
+    /// and without one trailing `/v1` — gateway documentation publishes both spellings of the same
+    /// root. Asking Anthropic's dialect at `{baseURL}/models` is a 404, and a 404 here is a route
+    /// with no models at all. The query bound is Anthropic's own, and one page is read.
+    ///
+    /// @param address the account's endpoint
+    /// @param api     the wire protocol the supplier speaks
+    /// @return the address to list from
+    static String listingUrl(String address, String api) {
+        String base = address.replaceAll("/+$", "");
+        if (!ANTHROPIC_API.equals(api)) {
+            return base + "/models";
+        }
+        String root = base.endsWith("/v1") ? base.substring(0, base.length() - "/v1".length()) : base;
+        return root + "/v1/models?limit=" + ANTHROPIC_MODEL_LIMIT;
+    }
+
+    /// The protocol whose listing lives under a `/v1` root rather than beside the address.
+    private static final String ANTHROPIC_API = "anthropic-messages";
+
+    /// The largest model-list page Anthropic's public endpoint accepts.
+    private static final int ANTHROPIC_MODEL_LIMIT = 1000;
+
+    /// Reads model ids out of what a listing endpoint answered.
+    ///
+    /// Two shapes are read, because two are published: the `data` array OpenAI-compatible services
+    /// share, and the `models` map some gateways expose instead. In the map the **key** is the id —
+    /// that is what the harness's own reader takes it for — and an entry's own `id` is read only
+    /// where the key says nothing. Anything else is not a model list, and saying so by returning
+    /// nothing is better than writing a model the harness will fail to find.
     ///
     /// @param body the answer
     /// @return the ids, or empty when the body is not a model list
@@ -448,26 +476,58 @@ public record DshAccount(
             if (!parsed.isJsonObject()) {
                 return List.of();
             }
-            com.google.gson.JsonElement data = parsed.getAsJsonObject().get("data");
-            if (data == null || !data.isJsonArray()) {
-                return List.of();
-            }
+            com.google.gson.JsonObject root = parsed.getAsJsonObject();
             List<String> ids = new java.util.ArrayList<>();
-            for (com.google.gson.JsonElement element : data.getAsJsonArray()) {
-                if (!element.isJsonObject()) {
-                    continue;
+            com.google.gson.JsonElement data = root.get("data");
+            if (data != null && data.isJsonArray()) {
+                for (com.google.gson.JsonElement element : data.getAsJsonArray()) {
+                    if (element.isJsonObject()) {
+                        addModelId(ids, idOf(element.getAsJsonObject()));
+                    }
                 }
-                com.google.gson.JsonElement id = element.getAsJsonObject().get("id");
-                if (id != null && id.isJsonPrimitive()) {
-                    String text = id.getAsString();
-                    if (!text.isBlank() && !ids.contains(text)) {
-                        ids.add(text);
+            } else {
+                com.google.gson.JsonElement models = root.get("models");
+                if (models != null && models.isJsonObject()) {
+                    for (java.util.Map.Entry<String, com.google.gson.JsonElement> entry
+                            : models.getAsJsonObject().entrySet()) {
+                        com.google.gson.JsonElement value = entry.getValue();
+                        if (value == null || !value.isJsonObject()) {
+                            // What the harness's own reader skips, for the same reason: a value that
+                            // is not an object describes no model.
+                            continue;
+                        }
+                        String key = entry.getKey();
+                        addModelId(ids, key != null && !key.isBlank()
+                                ? key : idOf(value.getAsJsonObject()));
                     }
                 }
             }
             return List.copyOf(ids);
         } catch (RuntimeException e) {
             return List.of();
+        }
+    }
+
+    /// Returns the `id` an entry carries, or `null` when it carries none.
+    ///
+    /// @param entry the entry
+    /// @return the id
+    private static @Nullable String idOf(com.google.gson.JsonObject entry) {
+        com.google.gson.JsonElement id = entry.get("id");
+        if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
+            return null;
+        }
+        String text = id.getAsString();
+        return text.isBlank() ? null : text;
+    }
+
+    /// Adds an id to a list, once, ignoring one that is not an id.
+    ///
+    /// @param ids the list
+    /// @param id  the candidate, or `null`
+    private static void addModelId(List<String> ids, @Nullable String id) {
+        if (id != null && !id.isBlank() && !ids.contains(id)) {
+            ids.add(id);
         }
     }
 
