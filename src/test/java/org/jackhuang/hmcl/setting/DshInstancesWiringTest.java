@@ -22,12 +22,16 @@ import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
 import org.jackhuang.hmcl.dsh.DshPaths;
 import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,14 +66,98 @@ class DshInstancesWiringTest {
         DshInstanceManager.delete(id);
     }
 
+    /// Reads the folder and waits for the read to be published.
+    ///
+    /// Publishing goes through the interface thread whenever one is running,
+    /// so looking straight after reading races the publication. The latch is
+    /// counted down by the publication itself, whichever thread it lands on.
+    ///
+    /// @param repository the repository to read
+    private static void refreshAndWait(DshInstanceRepository repository) throws Exception {
+        CountDownLatch published = new CountDownLatch(1);
+        repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
+        repository.refresh();
+        if (!published.await(15, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting for the read to be published");
+        }
+    }
+
+    /// Waits until the folder publishes a snapshot that names — or stops
+    /// naming — the given instance.
+    ///
+    /// Making and removing instances publishes through the interface thread
+    /// whenever one is running, exactly as an explicit read does, so the same
+    /// waiting applies. The listener goes on before the write is awaited, and
+    /// the state is also read once through it, so a publication that already
+    /// happened counts as much as one still to come; the
+    /// `java.util.concurrent` hand-off carries the memory visibility a re-read
+    /// of the property would not promise.
+    ///
+    /// @param repository the folder to watch
+    /// @param id         the instance to wait for
+    /// @param present    whether to wait for it to be listed or to be gone
+    private static void awaitListing(DshInstanceRepository repository, String id, boolean present) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        repository.snapshotProperty().addListener((observable, was, now) -> {
+            if (now.instances().stream().anyMatch(i -> i.id().equals(id)) == present) {
+                done.countDown();
+            }
+        });
+        if (repository.getSnapshot().instances().stream().anyMatch(i -> i.id().equals(id)) == present) {
+            done.countDown();
+        }
+        if (!done.await(15, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting for the folder to "
+                    + (present ? "list " : "drop ") + id);
+        }
+    }
+
+    /// Waits until something is selected.
+    ///
+    /// @see #awaitSelectionOf
+    private static void awaitSelection() throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        GameDirectoryManager.selectedInstanceProperty().addListener((observable, was, now) -> {
+            if (now != null) {
+                done.countDown();
+            }
+        });
+        if (GameDirectoryManager.getSelectedInstance() != null) {
+            done.countDown();
+        }
+        if (!done.await(15, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting for a selection to be published");
+        }
+    }
+
+    /// Waits until the selection is the given instance, or nothing.
+    ///
+    /// @param id the instance to wait for, or `null` to wait for no selection
+    private static void awaitSelectionOf(@Nullable String id) throws Exception {
+        CountDownLatch done = new CountDownLatch(1);
+        GameDirectoryManager.selectedInstanceProperty().addListener((observable, was, now) -> {
+            if (Objects.equals(now == null ? null : now.id(), id)) {
+                done.countDown();
+            }
+        });
+        DshInstance current = GameDirectoryManager.getSelectedInstance();
+        if (Objects.equals(current == null ? null : current.id(), id)) {
+            done.countDown();
+        }
+        if (!done.await(15, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting for the selection to become " + id);
+        }
+    }
+
     @Test
     void anInstanceMadeByTheWizardIsListedWithoutBeingAskedFor() throws Exception {
         DshInstanceRepository repository = GameDirectoryManager.getSelectedRepository();
-        repository.refresh();
+        refreshAndWait(repository);
         int before = repository.getInstances().size();
 
         DshInstance created = createAsWizard("wiring-made-by-the-wizard");
         try {
+            awaitListing(repository, created.id(), true);
             assertEquals(before + 1, repository.getInstances().size(),
                     "the folder has to publish what was written to it, without a refresh");
             assertTrue(repository.getInstances().stream().anyMatch(i -> i.id().equals(created.id())));
@@ -77,6 +165,7 @@ class DshInstancesWiringTest {
             remove(created.id());
         }
 
+        awaitListing(repository, created.id(), false);
         assertEquals(before, repository.getInstances().size(),
                 "removing one has to reach the interface the same way");
     }
@@ -89,6 +178,7 @@ class DshInstancesWiringTest {
 
         DshInstance created = createAsWizard("wiring-first-instance");
         try {
+            awaitSelectionOf(created.id());
             DshInstance selected = GameDirectoryManager.getSelectedInstance();
             assertNotNull(selected, "the home page must have something to act on");
             assertEquals(created.id(), selected.id(),
@@ -97,6 +187,7 @@ class DshInstancesWiringTest {
             remove(created.id());
         }
 
+        awaitSelectionOf(null);
         assertNull(GameDirectoryManager.getSelectedInstance(),
                 "an empty folder leaves nothing selected");
     }
@@ -107,9 +198,10 @@ class DshInstancesWiringTest {
         DshInstance second = createAsWizard("wiring-selection-b");
         try {
             // Something is chosen already — the newest instance, chosen by the
-            // folder itself. What the list's radio button then does is choose the
-            // other one, and the home page is expected to follow without being
-            // navigated to again.
+            // folder itself, once that choice has been published. What the
+            // list's radio button then does is choose the other one, and the
+            // home page is expected to follow without being navigated to again.
+            awaitSelection();
             DshInstance current = GameDirectoryManager.getSelectedInstance();
             assertNotNull(current);
             DshInstance other = current.id().equals(first.id()) ? second : first;

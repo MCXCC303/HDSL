@@ -33,6 +33,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -84,13 +86,33 @@ class DshInstanceRepositoryTest {
         return new DshInstanceRepository(GameDirectory.of(folder));
     }
 
+    /// Reads the folder and waits for the read to be published.
+    ///
+    /// A repository that is not on the interface thread publishes onto it, so
+    /// looking straight after reading races the publication — and whether a
+    /// run's tests share a JVM with a started interface is not this suite's to
+    /// choose. The latch is what makes looking deterministic either way: it is
+    /// counted down by the publication itself, which is already over when the
+    /// publication was synchronous, and the `java.util.concurrent` hand-off
+    /// carries the memory visibility a polled property read would not promise.
+    ///
+    /// @param repository the repository to read
+    private static void refresh(DshInstanceRepository repository) throws Exception {
+        CountDownLatch published = new CountDownLatch(1);
+        repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
+        repository.refresh();
+        if (!published.await(15, TimeUnit.SECONDS)) {
+            throw new AssertionError("Timed out waiting for the read to be published");
+        }
+    }
+
     @Test
     void aSnapshotHoldsTheInstancesTheFolderHolds() throws Exception {
         write(root, "alpha", 1L);
         write(root, "beta", 2L);
 
         DshInstanceRepository repository = repository(root);
-        repository.refresh();
+        refresh(repository);
 
         assertEquals(List.of("beta", "alpha"),
                 repository.getInstances().stream().map(DshInstance::id).toList(),
@@ -106,8 +128,8 @@ class DshInstanceRepositoryTest {
         repository.snapshotProperty().addListener(
                 (observable, was, now) -> published.add(now.revision()));
 
-        repository.refresh();
-        repository.refresh();
+        refresh(repository);
+        refresh(repository);
 
         // Reading a folder twice without it changing produces two equal reads,
         // and a page that is only told about changes would never hear the
@@ -123,7 +145,7 @@ class DshInstanceRepositoryTest {
         write(root, "beta", 2L);
 
         DshInstanceRepository repository = repository(root);
-        repository.refresh();
+        refresh(repository);
 
         // This is what used to be missing: an instance the user just created was
         // listed but not selected, so the home page still said there was none.
@@ -137,7 +159,7 @@ class DshInstanceRepositoryTest {
     @Test
     void anEmptyFolderSelectsNothing() throws Exception {
         DshInstanceRepository repository = repository(root);
-        repository.refresh();
+        refresh(repository);
 
         assertNull(repository.getSelectedInstance());
         assertNull(settings().getSelectedInstance(repository.getDirectory().id()));
@@ -149,14 +171,14 @@ class DshInstanceRepositoryTest {
         DshInstance beta = write(root, "beta", 2L);
 
         DshInstanceRepository repository = repository(root);
-        repository.refresh();
+        refresh(repository);
         repository.setSelectedInstance(repository.getSnapshot().findInstance("alpha"));
         assertEquals("alpha", repository.getSelectedInstance().id());
 
         // The instance the selection names is deleted, as removing it from the
         // list does; the folder must not keep pointing at something that is gone.
         Files.delete(root.resolve("alpha").resolve(DshInstanceManager.MANIFEST_NAME));
-        repository.refresh();
+        refresh(repository);
 
         assertNotNull(repository.getSelectedInstance());
         assertEquals(beta.id(), repository.getSelectedInstance().id());
@@ -168,9 +190,9 @@ class DshInstanceRepositoryTest {
         DshInstance gamma = write(otherRoot, "gamma", 2L);
 
         DshInstanceRepository first = repository(root);
-        first.refresh();
+        refresh(first);
         DshInstanceRepository second = repository(otherRoot);
-        second.refresh();
+        refresh(second);
 
         first.setSelectedInstance(alpha);
         second.setSelectedInstance(gamma);
@@ -186,7 +208,7 @@ class DshInstanceRepositoryTest {
         write(root, "beta", 2L);
 
         DshInstanceRepository repository = repository(root);
-        repository.refresh();
+        refresh(repository);
         assertEquals("beta", repository.getSelectedInstance().id(), "the newest one is chosen first");
 
         List<String> seen = new java.util.ArrayList<>();

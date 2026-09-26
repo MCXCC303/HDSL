@@ -22,11 +22,14 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import kala.compress.archivers.ArchiveEntry;
+import org.jackhuang.hmcl.util.io.CompressingUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jackhuang.hmcl.util.platform.Architecture;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.tree.ArchiveFileTree;
 import org.jackhuang.hmcl.util.tree.TarFileTree;
+import org.jackhuang.hmcl.util.tree.ZipFileTree;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.tukaani.xz.XZInputStream;
@@ -57,7 +60,10 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 ///
 /// Runtimes come from the official `nodejs.org` distribution, so extraction has
 /// to reproduce the archive faithfully — including the symlinks that make
-/// `bin/npm` and `bin/npx` work.
+/// `bin/npm` and `bin/npx` work on Linux. The Windows distribution is a `.zip`
+/// with the executables in the archive's root directory and no symlinks at all,
+/// which is the same difference the platform tag and the extraction path below
+/// carry.
 @NotNullByDefault
 public final class NodeRuntimeManager {
     private NodeRuntimeManager() {
@@ -67,15 +73,43 @@ public final class NodeRuntimeManager {
     /// The download base for a specific release.
     /// Returns the platform tag used in Node distribution file names.
     ///
-    /// @return `linux-x64` or `linux-arm64`
+    /// @return `linux-x64`, `linux-arm64`, `win-x64` or `win-arm64`
     /// @throws DshException when the current architecture has no Node build
     public static String platformTag() throws DshException {
         return switch (Architecture.SYSTEM_ARCH) {
-            case X86_64 -> "linux-x64";
-            case ARM64 -> "linux-arm64";
+            case X86_64 -> OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
+                    ? "win-x64" : "linux-x64";
+            case ARM64 -> OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
+                    ? "win-arm64" : "linux-arm64";
             default -> throw new DshException(
-                    "Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on Linux");
+                    "Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on "
+                            + OperatingSystem.SYSTEM_NAME);
         };
+    }
+
+    /// Returns the tag a release's `files` array carries for the archive this
+    /// platform downloads.
+    ///
+    /// The index lists the Linux builds bare (`linux-x64`) and the Windows ones
+    /// per packaging (`win-x64-zip`, `win-x64-7z`), so the tag the index answers
+    /// with is not always the tag the file name uses.
+    ///
+    /// @return the file tag the release index carries
+    /// @throws DshException when the platform has no Node build
+    public static String indexFileTag() throws DshException {
+        return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
+                ? platformTag() + "-zip"
+                : platformTag();
+    }
+
+    /// Returns the extension of the archive this platform downloads.
+    ///
+    /// Node publishes Windows as `.zip` and Linux as `.tar.xz`; the extraction
+    /// below follows the same choice.
+    ///
+    /// @return `zip` or `tar.xz`
+    public static String archiveExtension() {
+        return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? "zip" : "tar.xz";
     }
 
     /// Lists the Node runtimes installed under [DshPaths#RUNTIMES].
@@ -120,7 +154,7 @@ public final class NodeRuntimeManager {
     /// @return the available releases, newest first
     /// @throws DshException when the index cannot be read
     public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
-        String platform = platformTag();
+        String platform = indexFileTag();
 
         // The chosen source first, then the other one. A source is a host, and a host can be
         // unreachable for reasons that have nothing to do with the source being wrong — a route, a
@@ -205,7 +239,8 @@ public final class NodeRuntimeManager {
         String platform = platformTag();
         Path target = DshPaths.runtimeDirectory(normalized);
         Path staging = target.resolveSibling(target.getFileName() + ".installing");
-        Path archive = DshPaths.RUNTIMES.resolve("node-v" + normalized + "-" + platform + ".tar.xz");
+        String fileName = "node-v" + normalized + "-" + platform + "." + archiveExtension();
+        Path archive = DshPaths.RUNTIMES.resolve(fileName);
 
         try {
             Files.createDirectories(DshPaths.RUNTIMES);
@@ -215,7 +250,6 @@ public final class NodeRuntimeManager {
             throw new DshException("Failed to prepare " + staging, e);
         }
 
-        String fileName = "node-v" + normalized + "-" + platform + ".tar.xz";
         String url = source.archiveUrl(normalized, fileName);
 
         try {
@@ -223,7 +257,11 @@ public final class NodeRuntimeManager {
             download(url, archive, onStage);
 
             stage(onStage, "Unpacking " + fileName);
-            extractTarXz(archive, staging);
+            if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+                extractZip(archive, staging);
+            } else {
+                extractTarXz(archive, staging);
+            }
         } catch (IOException e) {
             deleteQuietly(staging);
             deleteQuietly(archive);
@@ -270,11 +308,15 @@ public final class NodeRuntimeManager {
     /// A failure is reported but does not fail the install: the runtime is
     /// usable without pnpm, and the plugin installer explains what is missing.
     ///
+    /// On Windows `npm` is `npm.cmd`, which the JVM starts through
+    /// `cmd.exe` — the same interpreter the file itself asks for — so the
+    /// command stays a program and its arguments all the way down.
+    ///
     /// @param runtime the freshly installed runtime
     /// @param onStage receives progress lines, or `null`
     private static void provisionPnpm(NodeRuntime runtime, @Nullable Consumer<String> onStage) {
-        Path npm = runtime.directory().resolve("bin").resolve("npm");
-        if (!Files.isExecutable(npm)) {
+        Path npm = NodeRuntime.npmIn(runtime.directory());
+        if (!Files.isRegularFile(npm)) {
             stage(onStage, "npm is missing, so pnpm was not installed");
             return;
         }
@@ -282,9 +324,15 @@ public final class NodeRuntimeManager {
         stage(onStage, "Installing pnpm " + PNPM_MAJOR + ".x");
         List<String> command = List.of(npm.toString(), "install", "--global", "pnpm@" + PNPM_MAJOR);
 
+        // The directory npm's shims live in, ahead of everything else, so a
+        // pnpm installed here is found before whatever the system has. That
+        // directory is `bin` on Linux and the distribution root on Windows,
+        // which is exactly where npm's entry point already is.
+        String shimDirectory = npm.getParent().toString();
+
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.environment().put("PATH",
-                runtime.directory().resolve("bin") + java.io.File.pathSeparator
+                shimDirectory + java.io.File.pathSeparator
                         + String.valueOf(System.getenv("PATH")));
         builder.redirectErrorStream(true);
 
@@ -317,10 +365,10 @@ public final class NodeRuntimeManager {
     /// The version is asked of the binary rather than parsed from the directory
     /// name, because a directory the user chose has no naming contract.
     ///
-    /// @param directory the directory holding `bin/node`
+    /// @param directory the directory holding the platform's node executable
     /// @return the version, or `null` when there is no usable node there
     public static @Nullable String versionOfDirectory(Path directory) {
-        Path node = directory.resolve("bin").resolve("node");
+        Path node = NodeRuntime.nodeIn(directory);
         if (!Files.isExecutable(node)) {
             return null;
         }
@@ -351,7 +399,7 @@ public final class NodeRuntimeManager {
     /// installation happened to live — the same reasoning behind HMCL copying a
     /// chosen Java home into its own store.
     ///
-    /// @param source  the directory holding `bin/node`
+    /// @param source  the directory holding the platform's node executable
     /// @param version the version the directory reports
     /// @return the managed runtime
     /// @throws DshException when the directory is unusable or already managed
@@ -396,7 +444,15 @@ public final class NodeRuntimeManager {
                 } else if (Files.isSymbolicLink(path)) {
                     // Preserve links: a Node distribution links npm and npx into
                     // lib/node_modules, and copying the targets would break them.
-                    Files.createSymbolicLink(target, Files.readSymbolicLink(path));
+                    // A link cannot be made where the filesystem or the
+                    // privileges refuse one — which is the Windows case — so the
+                    // link's target is copied instead: what a link pointed at is
+                    // a better stand-in than nothing at all.
+                    try {
+                        Files.createSymbolicLink(target, Files.readSymbolicLink(path));
+                    } catch (IOException | UnsupportedOperationException e) {
+                        Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING);
+                    }
                 } else {
                     Files.copy(path, target, StandardCopyOption.REPLACE_EXISTING,
                             StandardCopyOption.COPY_ATTRIBUTES);
@@ -485,6 +541,22 @@ public final class NodeRuntimeManager {
         }
     }
 
+    /// Unpacks a `.zip` archive into a directory.
+    ///
+    /// The Windows Node distribution is a zip: executables in the archive's
+    /// root, no symlinks, no permission bits worth keeping. The same walker
+    /// unpacks it, because the zip entries that do carry a link or an exec bit
+    /// — a zip made on Linux, say — answer the same questions the tar one does.
+    ///
+    /// @param archive the `.zip` file
+    /// @param target  the directory to unpack into
+    /// @throws IOException when extraction fails
+    private static void extractZip(Path archive, Path target) throws IOException {
+        try (ZipFileTree tree = CompressingUtils.openZipTree(archive)) {
+            extract(tree, tree.getRoot(), target);
+        }
+    }
+
     /// Recursively unpacks one directory of an archive tree.
     ///
     /// @param tree   the archive being read
@@ -501,7 +573,15 @@ public final class NodeRuntimeManager {
             E archiveEntry = entry.getValue();
             if (tree.isLink(archiveEntry)) {
                 Files.deleteIfExists(destination);
-                Files.createSymbolicLink(destination, Path.of(tree.getLink(archiveEntry)));
+                try {
+                    Files.createSymbolicLink(destination, Path.of(tree.getLink(archiveEntry)));
+                } catch (IOException | UnsupportedOperationException e) {
+                    // A symlink the filesystem refuses is copied as the file it
+                    // points at instead: the zip of the Windows distribution has
+                    // none, but one made elsewhere might, and refusing to unpack
+                    // over it would fail an install that could have succeeded.
+                    tree.extractTo(archiveEntry, destination);
+                }
                 continue;
             }
             Files.createDirectories(destination.getParent());
@@ -540,7 +620,7 @@ public final class NodeRuntimeManager {
     /// Reports whether a release publishes a build for a platform tag.
     ///
     /// @param object   the release object
-    /// @param platform the platform tag
+    /// @param platform the platform tag as the index spells it
     /// @return whether the `files` array contains the tag
     private static boolean hasPlatform(JsonObject object, String platform) {
         JsonElement files = object.get("files");

@@ -75,17 +75,25 @@ public final class DshLauncher {
 
         /// Renders the plan as a single shell-ready line, for logs and bug reports.
         ///
+        /// The prefix is spelled the way the platform's own shell would spell
+        /// it, so a line copied out of the log into a terminal means the same
+        /// thing on the machine that reads it.
+        ///
         /// @return the command line
         public String commandLine() {
             StringBuilder builder = new StringBuilder();
-            builder.append("DSH_HOME=").append(homeDirectory).append(' ');
-            for (String part : command) {
-                if (!builder.isEmpty()) {
-                    builder.append(' ');
-                }
-                builder.append(part.indexOf(' ') >= 0 ? '"' + part + '"' : part);
+            boolean windows = org.jackhuang.hmcl.util.platform.OperatingSystem.CURRENT_OS
+                    == org.jackhuang.hmcl.util.platform.OperatingSystem.WINDOWS;
+            if (windows) {
+                builder.append("set \"DSH_HOME=").append(homeDirectory).append("\" && ");
+            } else {
+                builder.append("DSH_HOME=").append(homeDirectory).append(' ');
             }
-            return builder.toString();
+            for (String part : command) {
+                builder.append(part.indexOf(' ') >= 0 ? '"' + part + '"' : part);
+                builder.append(' ');
+            }
+            return builder.toString().trim();
         }
     }
 

@@ -1,0 +1,25 @@
+# 默认让 Git 自动识别文本文件，二进制不转换
+* text=auto
+
+# GitHub Actions workflow 用 LF
+.github/workflows/*.yml text eol=lf
+.github/workflows/*.yaml text eol=lf
+
+# Shell 脚本必须 LF
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows 批处理保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew.bat text eol=crlf
+
+# 常见源码/文本用 LF
+*.java text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.gradle text eol=lf
+*.properties text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf

@@ -76,6 +76,8 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// │ 实例非正常退出。请查看日志文件，或联系他人寻求帮助。 │   ← the banner, in the accent colour
 /// │ 启动器   实例     DeepSeek Harness  操作系统  架构 │   ← a name with its value under it
 /// │ HMCL-DSH pokemon  0.1.5-alpha.2      Linux    x86-64
+/// │                                                │   ← whatever `os.name` and the platform
+/// │                                                │      detector report on this machine
 /// │ 配置                                             │
 /// │ pokemon · 独立 DSH_HOME
 /// │ 实例文件夹路径                                    │

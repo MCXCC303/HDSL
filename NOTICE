@@ -52,8 +52,11 @@ The original work has been modified as follows:
     to HMCL's servers, documentation, community links and branding have been
     removed or replaced.
 
-6.  Platform.  Only Linux is supported.  Windows- and macOS-specific code
-    paths are not maintained.
+6.  Platform.  Linux and Windows are supported.  The Linux artifact is a
+    self-executing shell script carrying the jar; the Windows artifact is a
+    launch4j-wrapped executable, built by the `edu.sc.seis.launch4j` Gradle
+    plugin from `net.sf.launch4j:launch4j` (BSD-style licence, unchanged and
+    unmodified).  macOS-specific code paths are not maintained.
 
 The full source code of this modified version is available from the project
 repository in which this notice is distributed.

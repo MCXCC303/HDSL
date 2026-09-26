@@ -17,13 +17,16 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /// Describes the JavaScript toolchain the launcher found on this machine.
@@ -81,8 +84,9 @@ public record DshNodeRuntime(
 
     /// Describes a launcher-managed runtime in the same shape as a probed one.
     ///
-    /// `pnpm` is deliberately left unset: a managed runtime has no `pnpm` of its
-    /// own, so plugin management falls back to whatever the system provides.
+    /// `pnpm` is deliberately left unset when the runtime has none: a runtime
+    /// without pnpm is still a runtime, so plugin management falls back to
+    /// whatever the system provides.
     ///
     /// @param runtime the installed runtime
     /// @return the descriptor
@@ -90,11 +94,7 @@ public record DshNodeRuntime(
         // pnpm lives beside node, not in the distribution metadata, so it is
         // probed directly. Leaving it unresolved made every managed runtime look
         // incapable of plugin management even after pnpm was installed into it.
-        Path bin = runtime.node().getParent();
-        Path pnpm = bin == null ? null : bin.resolve("pnpm");
-        if (pnpm != null && !Files.isExecutable(pnpm)) {
-            pnpm = null;
-        }
+        Path pnpm = NodeRuntime.pnpmIn(runtime.directory());
 
         return new DshNodeRuntime(
                 runtime.node(),
@@ -104,6 +104,7 @@ public record DshNodeRuntime(
                 pnpm,
                 pnpm == null ? null : versionOf(pnpm));
     }
+
 
     /// Probes the toolchain on the current `PATH`.
     ///
@@ -171,9 +172,11 @@ public record DshNodeRuntime(
     /// Returns the directory holding this runtime's executables.
     ///
     /// Used to put the runtime ahead of the system's tooling on the child's
-    /// PATH, which is what makes a managed runtime self-contained.
+    /// PATH, which is what makes a managed runtime self-contained. That
+    /// directory is `bin` on Linux and the distribution root on Windows, which
+    /// is where the platform's own node executable already sits.
     ///
-    /// @return the `bin` directory
+    /// @return the directory of the `node` executable
     public Path binDirectory() {
         Path parent = node.getParent();
         return parent == null ? node : parent;
@@ -248,6 +251,13 @@ public record DshNodeRuntime(
 
     /// Resolves an executable on `PATH`.
     ///
+    /// On Windows a program is not one file name but a family of them: `node`
+    /// is `node.exe`, and `npm` and `pnpm` are `.cmd` shims. Every extension
+    /// `PATHEXT` names is tried, and `.exe`/`.cmd`/`.bat` with it, because a
+    /// `PATHEXT` that has been edited is not a `PATHEXT` that can be trusted to
+    /// still name the common three. The file's existence is the test there —
+    /// Windows has no execute bit for `Files#isExecutable` to read.
+    ///
     /// @param name the executable name
     /// @return the resolved path, or empty when it is not on `PATH`
     public static Optional<Path> which(String name) {
@@ -255,15 +265,58 @@ public record DshNodeRuntime(
         if (path == null || path.isBlank()) {
             return Optional.empty();
         }
+        List<String> candidates = executableNames(name);
         for (String entry : path.split(java.io.File.pathSeparator)) {
             if (entry.isBlank()) {
                 continue;
             }
-            Path candidate = Path.of(entry).resolve(name);
-            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return Optional.of(candidate);
+            Path directory = Path.of(entry);
+            for (String candidate : candidates) {
+                Path file = directory.resolve(candidate);
+                if (Files.isRegularFile(file) && isExecutable(file)) {
+                    return Optional.of(file);
+                }
             }
         }
         return Optional.empty();
+    }
+
+    /// Returns the file names one program name can be found under.
+    ///
+    /// @param name the program name as typed
+    /// @return the names to look for, the plain one first
+    private static List<String> executableNames(String name) {
+        if (OperatingSystem.CURRENT_OS != OperatingSystem.WINDOWS) {
+            return List.of(name);
+        }
+        // A name that already carries an extension is looked for as it is; the
+        // caller that spelled `npm.cmd` out knows which file it means.
+        for (String suffix : new String[]{".exe", ".cmd", ".bat", ".com"}) {
+            if (name.toLowerCase(Locale.ROOT).endsWith(suffix)) {
+                return List.of(name);
+            }
+        }
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        names.add(name + ".exe");
+        names.add(name + ".cmd");
+        names.add(name + ".bat");
+        String pathExt = System.getenv("PATHEXT");
+        if (pathExt != null) {
+            for (String extension : pathExt.split(";")) {
+                String trimmed = extension.trim();
+                if (!trimmed.isEmpty()) {
+                    names.add(name + trimmed.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return List.copyOf(names);
+    }
+
+    /// Reports whether a file can be run as a program.
+    ///
+    /// @param file the file
+    /// @return whether it is executable, which every regular file is on Windows
+    private static boolean isExecutable(Path file) {
+        return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS || Files.isExecutable(file);
     }
 }

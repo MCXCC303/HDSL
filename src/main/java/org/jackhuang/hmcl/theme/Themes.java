@@ -59,6 +59,7 @@ import org.jackhuang.hmcl.task.CacheFileTask;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.WindowsNativeUtils;
 import org.jackhuang.hmcl.util.MathUtils;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.platform.NativeUtils;
@@ -89,6 +90,9 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// Provides the current launcher MonetFX theme and derived color bindings.
 @NotNullByDefault
 public final class Themes {
+    /// The stage property retaining the listener for native appearance updates and marking completed registration.
+    private static final String NATIVE_DARK_MODE_LISTENER = "Themes.applyNativeDarkMode.listener";
+
     /// The seed color extracted from the last loaded wallpaper image.
     private static final ReadOnlyObjectWrapper<@Nullable ThemeColor> wallpaperThemeColor = new ReadOnlyObjectWrapper<>();
 
@@ -1147,8 +1151,49 @@ public final class Themes {
     }
 
     /// Applies native dark-mode integration to a JavaFX stage where the platform supports it.
+    ///
+    /// Windows 11 updates the stage's native frame so the title bar follows the launcher's
+    /// brightness; the stage retains its listener, which observes theme changes weakly.
+    /// Repeated calls for an already registered stage do nothing, including after hiding the
+    /// stage or replacing its scene.
+    ///
+    /// @param stage the stage retaining the registration, accessed on the JavaFX application thread
     public static void applyNativeDarkMode(Stage stage) {
-        // HMCL-DSH targets Linux only, so no native dark-mode integration is needed.
+        if (stage.getProperties().containsKey(NATIVE_DARK_MODE_LISTENER)) {
+            return;
+        }
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
+                && OperatingSystem.SYSTEM_VERSION.isAtLeast(OSVersion.WINDOWS_11)
+                && NativeUtils.USE_JNA && Dwmapi.INSTANCE != null) {
+            ChangeListener<Boolean> listener = FXUtils.onWeakChange(Themes.darkModeProperty(), darkMode -> {
+                if (stage.isShowing()) {
+                    WindowsNativeUtils.getWindowHandle(stage).ifPresent(handle -> {
+                        if (handle == WinTypes.HANDLE.INVALID_VALUE)
+                            return;
+
+                        Dwmapi.INSTANCE.DwmSetWindowAttribute(
+                                new WinTypes.HANDLE(Pointer.createConstant(handle)),
+                                WinConstants.DWMWA_USE_IMMERSIVE_DARK_MODE,
+                                new WinTypes.BOOLByReference(new WinTypes.BOOL(darkMode)),
+                                WinTypes.BOOL.SIZE
+                        );
+                    });
+                }
+            });
+            stage.getProperties().put(NATIVE_DARK_MODE_LISTENER, listener);
+
+            if (stage.isShowing()) {
+                listener.changed(null, false, Themes.darkModeProperty().get());
+            } else {
+                stage.addEventFilter(WindowEvent.WINDOW_SHOWN, new EventHandler<>() {
+                    @Override
+                    public void handle(WindowEvent event) {
+                        stage.removeEventFilter(WindowEvent.WINDOW_SHOWN, this);
+                        listener.changed(null, false, Themes.darkModeProperty().get());
+                    }
+                });
+            }
+        }
     }
 
     /// Prevents instantiation.

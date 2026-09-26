@@ -6,39 +6,88 @@ on:
     paths-ignore:
       - '**.md'
 
+# The failing-tests comment is posted with the build's own token; everything
+# else only reads.
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # One job per supported platform, each building with its own JavaFX
+        # natives and packaging its own artifacts. The tests that need the
+        # toolkit run under xvfb on Linux; the Windows runners' own desktop
+        # session is what they run under there.
+        os: [ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set up JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: '21'
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v5
       with:
         cache-cleanup: never
-    # The launcher is a JavaFX application, and a few of its tests touch the
-    # toolkit; a headless server needs a display for them.
+    - name: Set up Node 22
+      # The lifecycle tests start instances through the system Node; the range
+      # the launcher accepts (^22.19.0 || >=24.0.0) is what the runners have to
+      # hold for them to run rather than skip.
+      uses: actions/setup-node@v5
+      with:
+        node-version: '22'
+    - name: Install test dependencies (Linux)
+      # JavaFX needs GTK even under xvfb; without it the toolkit wedges and the
+      # tests hang rather than fail. The t64 name is the one newer Ubuntu uses.
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y xvfb libgtk-3-0t64 libgl1 || sudo apt-get install -y xvfb libgtk-3-0 libgl1
     - name: Build with Gradle
       run: xvfb-run --auto-servernum ./gradlew build --no-daemon --parallel
-      env:
-        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      if: runner.os == 'Linux'
+    - name: Build with Gradle
+      # PowerShell runs nothing from the working directory without its path,
+      # which is what the backslash is for; the runner's own desktop session
+      # is what the JavaFX tests run under.
+      run: .\gradlew.bat build --no-daemon --parallel
+      if: runner.os == 'Windows'
     - name: Get short SHA
+      shell: bash
       run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
     - name: Upload SH
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
+      if: runner.os == 'Linux'
       with:
         name: HDSL-${{ env.SHORT_SHA }}-sh
         path: build/libs/hdsl-*.sh
         archive: false
     - name: Upload DEB
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
+      if: runner.os == 'Linux'
       with:
         name: HDSL-${{ env.SHORT_SHA }}-deb
         path: build/libs/hdsl-*.deb
+        archive: false
+    - name: Upload EXE
+      uses: actions/upload-artifact@v7
+      if: runner.os == 'Windows'
+      with:
+        name: HDSL-${{ env.SHORT_SHA }}-exe
+        path: build/libs/hdsl-*.exe
+        archive: false
+    - name: Upload JAR
+      uses: actions/upload-artifact@v7
+      if: runner.os == 'Windows'
+      with:
+        name: HDSL-${{ env.SHORT_SHA }}-jar
+        path: build/libs/hdsl-*.jar
         archive: false
