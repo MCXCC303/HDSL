@@ -228,9 +228,10 @@ public final class DshProcess {
         try {
             return new DshProcess(plan);
         } catch (DshException | RuntimeException e) {
-            // The note the plan wrote is the only thing a failed launch leaves behind — the account's
-            // route in the profile is the account's and stays — and putting back what the launch
-            // disturbed is the whole of this cleanup.
+            // The note the plan wrote is the only thing a failed launch leaves behind, and putting
+            // back what it disturbed — the account's route in the profile patch, and the two shapes
+            // in the home's own settings — is the whole of this cleanup. A launch that never got as
+            // far as a process has no state listener to do it, so it is done here.
             try {
                 DshInjectedSettings.settle(plan.instance());
             } catch (DshException settleFailure) {
