@@ -86,15 +86,18 @@ class DshInstanceRepositoryTest {
         return new DshInstanceRepository(GameDirectory.of(folder));
     }
 
-    /// Reads the folder and waits for the read to be published.
+    /// Reads the folder and waits for the read and the choice that follows it to be published.
     ///
-    /// A repository that is not on the interface thread publishes onto it, so
-    /// looking straight after reading races the publication — and whether a
-    /// run's tests share a JVM with a started interface is not this suite's to
-    /// choose. The latch is what makes looking deterministic either way: it is
-    /// counted down by the publication itself, which is already over when the
-    /// publication was synchronous, and the `java.util.concurrent` hand-off
-    /// carries the memory visibility a polled property read would not promise.
+    /// A repository that is not on the interface thread publishes onto it, so looking straight after
+    /// reading races the publication — and whether a run's tests share a JVM with a started
+    /// interface is not this suite's to choose. The latch is what makes looking deterministic either
+    /// way: it is counted down by the publication itself, which is already over when the publication
+    /// was synchronous, and the `java.util.concurrent` hand-off carries the memory visibility a
+    /// polled property read would not promise.
+    ///
+    /// The choice is written down as part of publishing, a moment after the snapshot itself, so it is
+    /// waited for rather than assumed: a test that does not wait sees whichever of the two happened
+    /// to have run by then, which is a suite that passes or fails by machine load.
     ///
     /// @param repository the repository to read
     private static void refresh(DshInstanceRepository repository) throws Exception {
@@ -104,6 +107,32 @@ class DshInstanceRepositoryTest {
         if (!published.await(15, TimeUnit.SECONDS)) {
             throw new AssertionError("Timed out waiting for the read to be published");
         }
+        waitUntilSettled(repository);
+    }
+
+    /// Waits until the choice the read implies has been applied.
+    ///
+    /// The choice is applied where the snapshot is published, which is the interface thread when one
+    /// is running, so there is one frame between the two. What settles it is the property the pages
+    /// bind to, not the setting behind it: the setting is written first and a test that waits for
+    /// that is waiting for the half that is already done.
+    ///
+    /// @param repository the repository that has just been read
+    private static void waitUntilSettled(DshInstanceRepository repository) throws Exception {
+        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(15);
+        while (System.currentTimeMillis() < deadline) {
+            if (repository.getSelectedInstance() != null) {
+                return;
+            }
+            if (repository.getInstances().isEmpty()
+                    && settings().getSelectedInstance(repository.getDirectory().id()) == null) {
+                // Nothing to choose, and the folder has stopped pointing at anything: that is the
+                // whole of what an empty folder has to say.
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("Timed out waiting for the choice to be published");
     }
 
     @Test
