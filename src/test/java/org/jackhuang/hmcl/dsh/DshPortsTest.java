@@ -22,8 +22,11 @@ import org.junit.jupiter.api.Test;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -114,6 +117,87 @@ class DshPortsTest {
         try (ServerSocket probe = new ServerSocket(port, 1, InetAddress.getLoopbackAddress())) {
             assertTrue(probe.isBound());
         }
+    }
+
+    @Test
+    void namingAPortIsADetourAndAutomaticComesBackToTheLaunchersPort() throws Exception {
+        // The whole point of the two numbers. The port in the record is the one **in effect**, so a
+        // named port takes it over; the port the launcher gave the instance has to survive that,
+        // because it is the origin this instance's browser state lives at.
+        DshInstance instance = managedInstance("ports-detour");
+        try {
+            int given = instance.portOrDefault();
+            assertTrue(given > 0, "creating an instance settles its port");
+
+            // Naming one starts at the number the instance already has, so the field is an edit of a
+            // real port rather than a blank; the launcher's own choice is written down on the way.
+            DshInstance named = DshPorts.withMode(instance, DshPortMode.FIXED);
+            assertEquals(given, named.portOrDefault(), "the field starts at the port it had");
+            DshInstanceManager.update(named.withPortPolicy(DshPortMode.FIXED, 34567));
+
+            DshInstance back = DshPorts.withMode(DshInstanceManager.find(instance.id()),
+                    DshPortMode.AUTO);
+
+            assertEquals(given, back.portOrDefault(),
+                    "automatic gives back the port the launcher gave, not the named one");
+            assertEquals(given, DshPorts.autoPort(DshInstanceManager.find(instance.id())),
+                    "and it is written down, so the next switch survives a restart too");
+        } finally {
+            DshInstanceManager.delete(instance.id());
+        }
+    }
+
+    @Test
+    void anInstanceThatLostItsAutomaticPortIsGivenAFreshOne() throws Exception {
+        // What an earlier version left behind: an instance switched to a named port without its own
+        // ever being written down, so the launcher's number is gone. The best that can be done is a
+        // new one from the launcher's own band — what must not happen is the named port coming back
+        // wearing an automatic label, which is what this test is here for.
+        DshInstance instance = managedInstance("ports-lost");
+        try {
+            DshInstanceManager.update(instance.withPortPolicy(DshPortMode.FIXED, 34567));
+
+            DshInstance back = DshPorts.withMode(DshInstanceManager.find(instance.id()),
+                    DshPortMode.AUTO);
+
+            assertNotEquals(34567, back.portOrDefault(), "automatic is not the named port in disguise");
+            assertTrue(back.portOrDefault() >= 3081 && back.portOrDefault() <= 4081,
+                    "a fresh one comes from the launcher's band, got " + back.portOrDefault());
+        } finally {
+            DshInstanceManager.delete(instance.id());
+        }
+    }
+
+    @Test
+    void aPortANamedOnePutAsideIsNotGivenToAnotherInstance() throws Exception {
+        DshInstance instance = managedInstance("ports-put-aside");
+        try {
+            int given = instance.portOrDefault();
+            DshInstanceManager.update(DshPorts.withMode(instance, DshPortMode.FIXED)
+                    .withPortPolicy(DshPortMode.FIXED, 34567));
+
+            Set<Integer> claimed = DshPorts.claimedPorts(null);
+
+            assertTrue(claimed.contains(34567), "the port in effect is claimed: " + claimed);
+            assertTrue(claimed.contains(given),
+                    "and so is the one put aside, which this instance comes back to: " + claimed);
+        } finally {
+            DshInstanceManager.delete(instance.id());
+        }
+    }
+
+    /// Creates an instance that exists on disk, which is where the two port facts are kept.
+    ///
+    /// @param id the instance id
+    /// @return the instance
+    private static DshInstance managedInstance(String id) throws Exception {
+        Path workspace = Files.createTempDirectory("ports-workspace");
+        DshInstance existing = DshInstanceManager.find(id);
+        if (existing != null) {
+            DshInstanceManager.delete(id);
+        }
+        return DshInstanceManager.create(id, "0.1.6-alpha.2", DshInstance.DEFAULT_PROFILE,
+                workspace, DshHomeMode.ISOLATED, null, List.of(), Map.of());
     }
 
     @Test

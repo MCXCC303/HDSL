@@ -106,6 +106,46 @@ public final class DshInstanceSettings {
         write(instance, "postExitCommand", command == null ? null : new com.google.gson.JsonPrimitive(command));
     }
 
+    /// Reads the port the launcher gave this instance, which is what "automatic" means.
+    ///
+    /// Kept apart from the port in the instance's own record because the two are different facts. The
+    /// record holds the port **in effect**, which a person who names one takes over; this is the one
+    /// the launcher picked. It is the answer to "stop naming one": the instance goes back to the
+    /// origin its browser state lives at, rather than to a number invented at that moment.
+    ///
+    /// @param instance the instance
+    /// @return the port, or `0` when the launcher's choice was never written down
+    public static int autoPort(DshInstance instance) {
+        Integer port = intOf(instance, "autoPort");
+        return port == null || port <= 0 ? 0 : port;
+    }
+
+    /// Writes down the port the launcher gave this instance.
+    ///
+    /// @param instance the instance
+    /// @param port     the port, or `0` to forget it
+    /// @throws DshException when the file cannot be written
+    public static void setAutoPort(DshInstance instance, int port) throws DshException {
+        write(instance, "autoPort", port <= 0 ? null : new com.google.gson.JsonPrimitive(port));
+    }
+
+    /// Reads an integer member.
+    ///
+    /// @param instance the instance
+    /// @param name     the member
+    /// @return the value, or `null` when it is absent or not a number
+    private static @Nullable Integer intOf(DshInstance instance, String name) {
+        JsonObject root = read(instance);
+        if (root == null || !root.has(name) || !root.get(name).isJsonPrimitive()) {
+            return null;
+        }
+        try {
+            return root.get(name).getAsInt();
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
     /// Reads a string member.
     ///
     /// @param instance the instance

@@ -594,21 +594,17 @@ public final class InstanceSettingsPage extends ScrollPane {
 
     /// Returns the instance under a new port policy.
     ///
-    /// An instance that has no port yet is given one here, so that choosing to
-    /// name the port offers a number the instance can actually use instead of a
-    /// zero. That is what makes the reserved port the starting point of the
-    /// choice rather than something to look up elsewhere.
+    /// The switch belongs to [DshPorts], which owns both numbers: the one in effect, which a named
+    /// port takes over, and the one the launcher gave the instance, which naming a port must not
+    /// lose. What is left here is saying so when neither can be settled on.
     ///
     /// @param mode the policy to record
     /// @return the instance to store
     private DshInstance withPortMode(DshPortMode mode) {
-        if (instance.portOrDefault() > 0) {
-            return instance.withPortPolicy(mode, instance.port());
-        }
         try {
-            return instance.withPortPolicy(mode, DshPorts.reserve(instance.id()));
+            return DshPorts.withMode(instance, mode);
         } catch (DshException e) {
-            LOG.warning("Could not reserve a port for " + instance.id(), e);
+            LOG.warning("Could not choose a port for " + instance.id(), e);
             return instance.withPortPolicy(mode, instance.port());
         }
     }
