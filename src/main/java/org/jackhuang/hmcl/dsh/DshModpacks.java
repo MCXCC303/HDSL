@@ -554,6 +554,27 @@ public final class DshModpacks {
     ///                      installation fails
     public static InstallResult install(Path pack, String id, Path workspace,
                                         @Nullable Consumer<String> onStage) throws DshException {
+        return install(pack, id, workspace, null, onStage);
+    }
+
+    /// Builds an instance from a pack, in a folder of the caller's choosing.
+    ///
+    /// The folder is where the instance is **made**, and it matters for the same reason it does
+    /// everywhere else: an instance lives in one of the folders the launcher lists, and a copy of one
+    /// belongs beside it rather than in whichever folder happens to be selected. An instance that
+    /// already exists is left where it is — this says where a new one goes, not where an old one has
+    /// to be.
+    ///
+    /// @param pack      the archive
+    /// @param id        the id to give the instance
+    /// @param workspace the working directory the instance starts sessions in
+    /// @param folder    the folder to make the instance in, or `null` for the selected one
+    /// @param onStage   receives progress lines, or `null`
+    /// @return what was built
+    /// @throws DshException when the pack cannot be read, the id is taken, or an
+    ///                      installation fails
+    public static InstallResult install(Path pack, String id, Path workspace, @Nullable Path folder,
+                                        @Nullable Consumer<String> onStage) throws DshException {
         Manifest manifest = readManifest(pack);
         requireFormat(manifest);
 
@@ -561,7 +582,8 @@ public final class DshModpacks {
         if (existing == null) {
             report(onStage, "Creating instance " + id);
             existing = DshInstanceManager.create(id, manifest.dshVersion(), manifest.profile(), workspace,
-                    DshHomeMode.ISOLATED, null, List.of(), Map.of());
+                    null, DshHomeMode.ISOLATED, null, List.of(), Map.of(),
+                    folder != null ? folder : DshInstanceManager.currentFolder());
         }
 
         boolean installed = DshVersionManager.isInstalled(existing);

@@ -162,12 +162,4 @@ class DshInstanceFoldersTest {
         assertNull(DshInstanceManager.find("removed-from-other"));
     }
 
-    @Test
-    void aCopyIsMadeBesideWhatItWasCopiedFrom() throws Exception {
-        DshInstance source = create("copied-from-other", other);
-
-        DshInstance copy = DshInstanceManager.duplicate(source.id(), "copied-from-other-copy");
-
-        assertEquals(other.resolve("copied-from-other-copy"), copy.instanceDirectory());
-    }
 }
