@@ -300,7 +300,16 @@ public record DshAccount(
                                     String.valueOf(status), url));
                 }
                 if (status == 401 || status == 403) {
-                    return new Check(Outcome.REJECTED, i18n("dsh.account.check.rejected", String.valueOf(status)));
+                    // What this can and cannot say. An address that did not accept the key is not the
+                    // same thing as a key that is wrong, and the status does not tell them apart: one
+                    // service answers the identical `401 Token is invalid.` to a request with no key,
+                    // with a wrong one, and with a key issued for its other region — the last of which
+                    // is a correct key at an address that will never take it. So the sentence names
+                    // both possibilities, and repeats whatever the vendor was willing to say.
+                    String said = saidIn(response.body());
+                    return new Check(Outcome.REJECTED, i18n("dsh.account.check.not_accepted",
+                            String.valueOf(status),
+                            said == null ? "" : i18n("dsh.account.check.vendor_said", said)));
                 }
                 // 404 and 400 are the endpoint answering, which is not the same as the key being
                 // wrong: some gateways do not serve a model list at all.
@@ -515,6 +524,59 @@ public record DshAccount(
 
     /// The largest model-list page Anthropic's public endpoint accepts.
     private static final int ANTHROPIC_MODEL_LIMIT = 1000;
+
+    /// The longest reason from a vendor that is repeated under an account's name.
+    private static final int SAID_LIMIT = 120;
+
+    /// Reads what a vendor said about a request it refused.
+    ///
+    /// The fields services put their reason in and no others: `message`, `error.message`, or a bare
+    /// `error` string. A body that is a page rather than an answer carries none of them, and a reason
+    /// longer than a sentence is cut short — this ends up on one line under a row.
+    ///
+    /// @param body the answer
+    /// @return what it said, or `null` when it said nothing readable
+    static @Nullable String saidIn(@Nullable String body) {
+        if (body == null || body.isBlank()) {
+            return null;
+        }
+        try {
+            com.google.gson.JsonElement parsed = com.google.gson.JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) {
+                return null;
+            }
+            com.google.gson.JsonObject root = parsed.getAsJsonObject();
+            String said = saidInValue(root.get("message"));
+            if (said == null) {
+                com.google.gson.JsonElement error = root.get("error");
+                said = error != null && error.isJsonObject()
+                        ? saidInValue(error.getAsJsonObject().get("message"))
+                        : saidInValue(error);
+            }
+            if (said == null) {
+                return null;
+            }
+            String oneLine = said.replaceAll("\\s+", " ").trim();
+            if (oneLine.isEmpty()) {
+                return null;
+            }
+            return oneLine.length() <= SAID_LIMIT ? oneLine : oneLine.substring(0, SAID_LIMIT) + "...";
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /// Returns a reason held in one JSON value, when it is one.
+    ///
+    /// @param element the value
+    /// @return the text, or `null` when there is none
+    private static @Nullable String saidInValue(@Nullable com.google.gson.JsonElement element) {
+        if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+            return null;
+        }
+        String value = element.getAsString();
+        return value.isBlank() ? null : value;
+    }
 
     /// Reads model ids out of what a listing endpoint answered.
     ///

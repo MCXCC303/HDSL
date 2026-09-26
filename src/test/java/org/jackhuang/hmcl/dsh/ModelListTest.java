@@ -23,6 +23,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Tests for reading what a vendor says it serves.
@@ -135,6 +136,33 @@ class ModelListTest {
         assertFalse(new DshAccount.Answer(404, false).listsModels());
         assertFalse(new DshAccount.Answer(500, false).listsModels());
         assertFalse(new DshAccount.Answer(-1, false).listsModels());
+    }
+
+    @Test
+    void whatAVendorSaidAboutARefusalIsReadBack() {
+        // Taken from a real refusal: SiliconFlow answers this to a request with no key, with a wrong
+        // one, and with a key issued for its other region — so the status says only that the token was
+        // not accepted, and what the vendor was willing to say is the rest of the answer.
+        assertEquals("Token is invalid.", DshAccount.saidIn(
+                "{\"code\":30014,\"data\":null,\"message\":\"Token is invalid.\"}"));
+
+        // The other spellings services use.
+        assertEquals("invalid api key", DshAccount.saidIn("{\"error\":{\"message\":\"invalid api key\"}}"));
+        assertEquals("quota exceeded", DshAccount.saidIn("{\"error\":\"quota exceeded\"}"));
+
+        // A reason is one line under a row, so a long one is cut and a multi-line one flattened.
+        assertEquals("b".repeat(120) + "...",
+                DshAccount.saidIn("{\"message\":\"" + "b".repeat(200) + "\"}"));
+        assertEquals("first second", DshAccount.saidIn("{\"message\":\"first\\n  second\"}"));
+
+        // Pages and errors with nothing to quote say nothing.
+        assertNull(DshAccount.saidIn("Not Found"));
+        assertNull(DshAccount.saidIn("<html><body>nope</body></html>"));
+        assertNull(DshAccount.saidIn("{\"error\":\"\"}"));
+        assertNull(DshAccount.saidIn("{\"error\":{\"code\":12}}"));
+        assertNull(DshAccount.saidIn("{\"message\":42}"));
+        assertNull(DshAccount.saidIn(""));
+        assertNull(DshAccount.saidIn(null));
     }
 
     @Test
