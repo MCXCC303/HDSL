@@ -50,14 +50,18 @@ import java.util.Set;
 /// Written into the profile's own layer there is nothing above it: the document the editor writes is
 /// the document that is composed, and its guard passes by construction.
 ///
-/// The route therefore **stays** in that file, which is the point rather than a side effect: the
-/// harness's models page can see it and edit it. Two things follow, and both are deliberate:
+/// The route lives in that file **for as long as the launch does**, and no longer. It has to be there
+/// while the harness runs — that is what the models page draws and edits — and it has to go when the
+/// launch ends, because its key travels in a variable only that launch set: a route left behind is a
+/// supplier the harness offers with nothing behind it, and the next launch, with an account or with
+/// none, would inherit it. So a launch writes its own route (refreshed from the vendor every time)
+/// and the end of that launch takes it back, byte for byte. Two things keep that safe:
 ///
-/// - the key travels in a variable named after the route ([#environmentVariable]), so a route left
-///   behind by an account that was renamed or deleted names a variable nothing sets. It fails
-///   loudly, and it cannot pick up the key of whichever account is launched next;
-/// - a launch refreshes **its own** route — the models are the vendor's answer of the moment — and
-///   leaves every other route, and every other byte of the file, alone.
+/// - the key travels in a variable named after the route ([#environmentVariable]), so a route from a
+///   home whose launcher was killed names a variable nothing sets. It fails loudly, and it cannot
+///   pick up the key of whichever account is launched next;
+/// - every launch first takes back what it can recognise as its own — the ledger's routes — except
+///   the one it is about to write.
 ///
 /// The key itself is still never written anywhere: the route names an environment variable, and the
 /// value travels in the child's environment, which leaves no trace and is gone with the process.
@@ -213,26 +217,26 @@ public final class DshAccountRoute {
             this.served = models;
         }
 
-        /// Renders the route's own block, as it goes under `config.providers`.
+        /// Renders the route's own settings, as they go under `config.providers.<route>`.
         ///
-        /// The indentation is relative: the route's key is level with its siblings and everything
-        /// below it is one level in. Where the block lands is [DshProfilePatch]'s business, because
-        /// the file's own indentation is.
+        /// **Without the route's own key.** Where that key goes and how far it is indented is
+        /// [DshProfilePatch]'s business, because the file's indentation is; a block that carried a key
+        /// of its own would arrive as a route named after itself — `providers.MCXCC-sf1.MCXCC-sf1` —
+        /// which describes no models and is refused with "resolves no models".
         ///
         /// Kept apart from writing so a test can read exactly what a launch would put in the file:
         /// the file itself is the instance's, which is not a test's to touch.
         ///
-        /// @return the YAML for one provider route
+        /// @return the YAML for one provider's settings
         /// @throws DshException when there is no model to write, which is a launch that cannot be
         ///                       handed a supplier at all
         String render() throws DshException {
             String model = fallbackModel;
             StringBuilder yaml = new StringBuilder();
-            yaml.append(YamlScalar.of(route)).append(":\n");
-            yaml.append("  apiKeyEnv: ").append(environmentVariable()).append("\n");
-            yaml.append("  api: ").append(api).append("\n");
+            yaml.append("apiKeyEnv: ").append(environmentVariable()).append("\n");
+            yaml.append("api: ").append(api).append("\n");
             if (endpoint != null && !endpoint.isBlank()) {
-                yaml.append("  baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
+                yaml.append("baseURL: ").append(YamlScalar.of(endpoint.trim())).append("\n");
             }
             if (deepSeek) {
                 // Provider-level, not per model. `dsh-llm-deepseek` states a `defaultContextWindow`
@@ -241,10 +245,10 @@ public final class DshAccountRoute {
                 // catalogue, then this pair — its own fallbacks being 262_144 and 32_768. So this
                 // is what makes the same model hold the same context and answer in the same length
                 // through either route.
-                yaml.append("  defaultContextWindow: ").append(DEEPSEEK_CONTEXT_WINDOW).append("\n");
-                yaml.append("  defaultMaxTokens: ").append(DEEPSEEK_MAX_TOKENS).append("\n");
+                yaml.append("defaultContextWindow: ").append(DEEPSEEK_CONTEXT_WINDOW).append("\n");
+                yaml.append("defaultMaxTokens: ").append(DEEPSEEK_MAX_TOKENS).append("\n");
             }
-            yaml.append("  models:\n");
+            yaml.append("models:\n");
             // Which models this route serves, **asked of the vendor every launch and never remembered**.
             //
             // Both halves of that matter. A route the launcher writes is not in the harness's catalogue,
@@ -275,8 +279,8 @@ public final class DshAccountRoute {
                         + " and that this machine can reach it, or name a model on the account.");
             }
             for (String one : models) {
-                yaml.append("    - id: ").append(YamlScalar.of(one)).append("\n");
-                yaml.append("      name: ").append(YamlScalar.of(one)).append("\n");
+                yaml.append("  - id: ").append(YamlScalar.of(one)).append("\n");
+                yaml.append("    name: ").append(YamlScalar.of(one)).append("\n");
                 if (IMAGE_MODELS.contains(one)) {
                     // A capability the harness cannot fill in for itself, because this route is one it
                     // has never heard of: `input` otherwise falls back to `["text"]`, and the harness's
@@ -285,9 +289,9 @@ public final class DshAccountRoute {
                     // `inputModalities: ["text", "image"]`, so the model reached through a supplier of
                     // the person's own is written the same way — the same model should not answer with
                     // and without eyes depending on which account it was launched with.
-                    yaml.append("      input:\n");
-                    yaml.append("        - text\n");
-                    yaml.append("        - image\n");
+                    yaml.append("    input:\n");
+                    yaml.append("      - text\n");
+                    yaml.append("      - image\n");
                 }
                 if (deepSeek) {
                     // The harness's DeepSeek adapter offers these four levels for every model it
@@ -296,11 +300,11 @@ public final class DshAccountRoute {
                     // model picker offers no effort control — only the provider's default. off
                     // carries no wire value because not thinking is the parameter's absence rather
                     // than a value to send; the other three are DeepSeek's own spellings.
-                    yaml.append("      reasoningEfforts:\n");
-                    yaml.append("        off: null\n");
-                    yaml.append("        low: low\n");
-                    yaml.append("        high: high\n");
-                    yaml.append("        max: max\n");
+                    yaml.append("    reasoningEfforts:\n");
+                    yaml.append("      off: null\n");
+                    yaml.append("      low: low\n");
+                    yaml.append("      high: high\n");
+                    yaml.append("      max: max\n");
                 }
             }
             return yaml.toString();
@@ -345,6 +349,21 @@ public final class DshAccountRoute {
     public static boolean apply(Path home, String profile, Prepared route) throws DshException {
         return DshProfilePatch.putProvider(DshPluginPatch.patchFile(home, profile), ENTRY,
                 route.route(), route.render()).changed();
+    }
+
+    /// Takes an account's route back out of the profile's own patch layer.
+    ///
+    /// What the launch wrote, the end of that launch takes away — see
+    /// [DshProfilePatch#removeProvider] for why a route cannot outlive its launch.
+    ///
+    /// @param home    the instance's `DSH_HOME`
+    /// @param profile the profile the instance booted
+    /// @param route   the route's name
+    /// @return whether the file had to be written
+    /// @throws DshException when the file cannot be read or written
+    public static boolean remove(Path home, String profile, String route) throws DshException {
+        return DshProfilePatch.removeProvider(DshPluginPatch.patchFile(home, profile), ENTRY, route)
+                .changed();
     }
 
     /// Reports whether this route is the one the harness's own DeepSeek adapter describes.

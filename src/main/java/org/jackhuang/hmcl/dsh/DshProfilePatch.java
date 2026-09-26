@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -246,6 +247,84 @@ public final class DshProfilePatch {
         lines.subList(existing, routeEnd).clear();
         lines.addAll(existing, routeLines(route, block, routeIndent, step(lines, item, body)));
         return changed(lines, text);
+    }
+
+    /// Takes one provider route back out of an entry, leaving everything else where it is.
+    ///
+    /// A route the launcher wrote belongs to the launch that wrote it: its key travels in a variable
+    /// that launch set, and nothing sets it afterwards. So the route goes when the launch ends —
+    /// otherwise the harness keeps offering a supplier with no key behind it, and a launch that wants
+    /// no supplier inherits the last one's. That is the contract the home's own settings have always
+    /// had; this is it for the profile patch.
+    ///
+    /// Nothing else in the file is touched, and a route that is not there leaves the file alone.
+    ///
+    /// @param patch the profile's patch layer
+    /// @param entry the loader entry that holds the supplier routes
+    /// @param route the route's name
+    /// @return what the pass produced
+    /// @throws DshException when the file cannot be read or written
+    public static Edit removeProvider(Path patch, String entry, String route) throws DshException {
+        String text = read(patch);
+        Edit edit = removeProvider(text, entry, route);
+        if (edit.changed()) {
+            write(patch, edit.text());
+            LOG.info("Took the account route " + route + " back out of " + patch);
+        }
+        return edit;
+    }
+
+    /// Returns the patch without one provider route, and whether anything changed.
+    ///
+    /// @param text  the patch
+    /// @param entry the loader entry that holds the supplier routes
+    /// @param route the route's name
+    /// @return what the pass produced
+    public static Edit removeProvider(String text, String entry, String route) {
+        List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
+        int[] block = routeBlock(lines, entry, route);
+        if (block == null) {
+            return new Edit(text, false, List.of());
+        }
+        lines.subList(block[0], block[1]).clear();
+        return changed(lines, text);
+    }
+
+    /// Returns where one route's block sits: its first line, and the line after its last.
+    ///
+    /// The route's key line is part of the block, and so is everything indented under it, up to the
+    /// next sibling. Blank lines between the two are left to the file: taking them out would move the
+    /// spacing the person chose for the routes around it.
+    ///
+    /// @param lines the file's lines
+    /// @param entry the loader entry that holds the supplier routes
+    /// @param route the route's name
+    /// @return the two line numbers, or `null` when the file has no such route
+    private static int @Nullable [] routeBlock(List<String> lines, String entry, String route) {
+        int item = lastEntryItem(lines, entry);
+        if (item < 0) {
+            return null;
+        }
+        int end = itemEnd(lines, item);
+        int body = childIndent(lines, item, end, indentOf(lines.get(item)));
+        int config = keyAtIndent(lines, item, end, "config", body);
+        if (config < 0) {
+            return null;
+        }
+        int configIndent = indentOf(lines.get(config));
+        int configEnd = blockEnd(lines, config + 1, end, configIndent);
+        int providers = keyDeeperThan(lines, config + 1, configEnd, "providers", configIndent);
+        if (providers < 0) {
+            return null;
+        }
+        int providersIndent = indentOf(lines.get(providers));
+        int providersEnd = blockEnd(lines, providers + 1, end, providersIndent);
+        int at = routeKey(lines, providers + 1, providersEnd, route, providersIndent);
+        if (at < 0) {
+            return null;
+        }
+        return new int[]{at, beforeBlanks(lines,
+                blockEnd(lines, at + 1, providersEnd, indentOf(lines.get(at))))};
     }
 
     /// Returns what a rewritten line list produced, and whether it differs from the text.

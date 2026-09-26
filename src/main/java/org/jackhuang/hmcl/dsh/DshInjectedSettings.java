@@ -94,30 +94,34 @@ public final class DshInjectedSettings {
 
     /// What was in a home's settings before a launch, kept until that launch is over.
     ///
-    /// @param instance     the instance the launch was for
-    /// @param route        the supplier route the launch built
-    /// @param account      the account's key, or `null`
-    /// @param defaultModel the `agent-default-model` block as it was, or `null` when there was none
-    /// @param provider     the route's block under `providers` as it was, or `null` when there was none
-    /// @param writtenAt    when the launch started, for a person reading the file
+    /// @param instance      the instance the launch was for
+    /// @param route         the supplier route the launch built
+    /// @param account       the account's key, or `null`
+    /// @param defaultModel  the `agent-default-model` block as it was, or `null` when there was none
+    /// @param provider      the route's block under `providers` as it was, or `null` when there was none
+    /// @param patchProfile  the profile whose patch layer the route was written into, or `null` for a
+    ///                      note from a version that wrote no profile patch
+    /// @param writtenAt     when the launch started, for a person reading the file
     public record Stash(String instance, String route, @Nullable String account,
                         @Nullable String defaultModel, @Nullable String provider,
-                        String writtenAt) {
+                        @Nullable String patchProfile, String writtenAt) {
     }
 
     /// Records what a launch is about to disturb, before it disturbs it.
     ///
-    /// @param instance the instance being launched
-    /// @param route    the supplier route this launch builds
-    /// @param account  the account's key, or `null`
+    /// @param instance     the instance being launched
+    /// @param route        the supplier route this launch builds
+    /// @param account      the account's key, or `null`
+    /// @param patchProfile the profile whose patch layer this launch writes the route into
     /// @throws DshException when the note cannot be written
-    public static void capture(DshInstance instance, String route, @Nullable String account)
-            throws DshException {
+    public static void capture(DshInstance instance, String route, @Nullable String account,
+                               String patchProfile) throws DshException {
         Path settings = settingsOf(instance);
         String text = read(settings);
         Stash stash = new Stash(instance.id(), route, account,
                 sectionBlock(text, DEFAULT_MODEL),
                 routeBlock(text, PROVIDERS, PROVIDERS_KEY, route),
+                patchProfile,
                 Instant.now().toString());
         write(noteOf(instance), GSON.toJson(stash));
 
@@ -144,13 +148,28 @@ public final class DshInjectedSettings {
     /// very launch is about to build, which is a pointer that will be good again in a moment. A model
     /// the person chose for a supplier of their own is not in either set and is never touched.
     ///
+    /// The **profile patch** is cleaned first and by the ledger alone, because a route there is only
+    /// ever written by the launcher under a name the ledger holds: a supplier the person made
+    /// themselves is never in it, whatever they called it. This is also what takes back a route an
+    /// earlier launch left behind — a home whose harness was killed, or one that ran a version whose
+    /// routes stayed in the file.
+    ///
     /// @param instance      the instance about to be launched
+    /// @param patchProfile  the profile whose patch layer this launch boots
     /// @param accountRoutes the routes the launcher's accounts are named after
     /// @param injecting     the route this launch will build, or `null` when it builds none
-    /// @return whether the settings were changed
-    /// @throws DshException when the settings cannot be read or written
-    public static boolean clean(DshInstance instance, java.util.Collection<String> accountRoutes,
-                                @Nullable String injecting) throws DshException {
+    /// @return whether anything was changed
+    /// @throws DshException when a file cannot be read or written
+    public static boolean clean(DshInstance instance, String patchProfile,
+                                java.util.Collection<String> accountRoutes, @Nullable String injecting)
+            throws DshException {
+        boolean changed = false;
+        for (String route : routesOf(instance)) {
+            if (!route.equals(injecting)) {
+                changed |= takeRouteBack(instance, patchProfile, route);
+            }
+        }
+
         java.util.LinkedHashSet<String> ours = new java.util.LinkedHashSet<>(routesOf(instance));
         ours.addAll(accountRoutes);
         if (injecting != null) {
@@ -159,13 +178,10 @@ public final class DshInjectedSettings {
             ours.add(injecting);
         }
         ours.removeIf(route -> route == null || route.isBlank());
-        if (ours.isEmpty()) {
-            return false;
-        }
         Path settings = settingsOf(instance);
         String text = read(settings);
-        if (text.isEmpty()) {
-            return false;
+        if (ours.isEmpty() || text.isEmpty()) {
+            return changed;
         }
         String updated = text;
         for (String route : ours) {
@@ -176,11 +192,23 @@ public final class DshInjectedSettings {
         if (named != null && ours.contains(named) && !named.equals(injecting)) {
             updated = withSectionBlock(updated, DEFAULT_MODEL, null);
         }
-        if (updated.equals(text)) {
-            return false;
+        if (!updated.equals(text)) {
+            write(settings, updated);
+            changed = true;
         }
-        write(settings, updated);
-        return true;
+        return changed;
+    }
+
+    /// Takes one of this launcher's routes back out of a profile's own patch layer.
+    ///
+    /// @param instance the instance
+    /// @param profile  the profile whose patch layer it is
+    /// @param route    the route
+    /// @return whether the file was changed
+    /// @throws DshException when the file cannot be read or written
+    private static boolean takeRouteBack(DshInstance instance, String profile, String route)
+            throws DshException {
+        return DshAccountRoute.remove(instance.homeDirectory(), profile, route);
     }
 
     /// Returns the routes this home has had built for it.
@@ -262,11 +290,19 @@ public final class DshInjectedSettings {
             return false;
         }
 
+        // The route goes first, and whatever the home's own settings look like. It belongs to the
+        // launch that wrote it — its key travelled in a variable that launch set — so a launch is
+        // over, so it goes. This cannot be skipped by an empty `settings.yaml`: the harness *imports*
+        // that file into the profile patch when it boots (see `publish`), so by the time a launch
+        // ends there is usually no settings file left to read.
+        boolean changed = stash.patchProfile() != null
+                && takeRouteBack(instance, stash.patchProfile(), stash.route());
+
         Path settings = settingsOf(instance);
         String text = read(settings);
         if (text.isEmpty()) {
             delete(note);
-            return false;
+            return changed;
         }
         String updated = text;
 
@@ -287,9 +323,10 @@ public final class DshInjectedSettings {
 
         if (!updated.equals(text)) {
             write(settings, updated);
+            changed = true;
         }
         delete(note);
-        return !updated.equals(text);
+        return changed;
     }
 
     /// Returns where a home's note lives: beside the file it describes.
@@ -314,6 +351,7 @@ public final class DshInjectedSettings {
                     .getAsJsonObject();
             return new Stash(string(json, "instance"), string(json, "route"), nullableString(json, "account"),
                     nullableString(json, "defaultModel"), nullableString(json, "provider"),
+                    nullableString(json, "patchProfile"),
                     string(json, "writtenAt"));
         } catch (IOException | RuntimeException e) {
             LOG.warning("Could not read " + note, e);

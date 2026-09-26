@@ -82,9 +82,9 @@ class DshAccountRouteTest {
     @Test
     void aDeepSeekRouteSaysTheCapacityTheAdaptersOwnRouteHas() {
         String yaml = routeFor("deepseek");
-        assertTrue(yaml.startsWith("DeepSeek:\n"), yaml);
-        assertTrue(yaml.contains("  defaultContextWindow: 1000000\n"), yaml);
-        assertTrue(yaml.contains("  defaultMaxTokens: 256000\n"), yaml);
+        assertTrue(yaml.startsWith("apiKeyEnv: "), yaml);
+        assertTrue(yaml.contains("defaultContextWindow: 1000000\n"), yaml);
+        assertTrue(yaml.contains("defaultMaxTokens: 256000\n"), yaml);
     }
 
     @Test
@@ -107,8 +107,8 @@ class DshAccountRouteTest {
         try {
             String yaml = routeFor("opencode");
 
-            assertTrue(yaml.contains("  baseURL: \"https://api.opencode.ai/v1\"\n"), yaml);
-            assertTrue(yaml.contains("  api: openai-completions\n"), yaml);
+            assertTrue(yaml.contains("baseURL: \"https://api.opencode.ai/v1\"\n"), yaml);
+            assertTrue(yaml.contains("api: openai-completions\n"), yaml);
         } finally {
             addedVendors.remove(added);
         }
@@ -142,8 +142,8 @@ class DshAccountRouteTest {
 
         String yaml = prepared.render();
 
-        assertTrue(yaml.contains("    - id: ling-3.0-flash-fin-free\n"), yaml);
-        assertTrue(yaml.contains("    - id: mimo-v2.5-free\n"), yaml);
+        assertTrue(yaml.contains("  - id: ling-3.0-flash-fin-free\n"), yaml);
+        assertTrue(yaml.contains("  - id: mimo-v2.5-free\n"), yaml);
         assertFalse(yaml.contains("- id: default\n"), yaml);
         assertFalse(yaml.contains("- id: a-model\n"),
                 "an answer from the supplier is the list, not the name the account kept: " + yaml);
@@ -214,6 +214,45 @@ class DshAccountRouteTest {
     }
 
     @Test
+    void theRendererdBlockDoesNotCarryTheRoutesOwnKey() {
+        // What shipped first put the key in the block *and* the patch writer added one, so the
+        // harness was handed `providers.MCXCC-sf1.MCXCC-sf1` — a route whose settings are a route,
+        // with no models where models are looked for, refused at boot with "resolves no models".
+        for (String vendor : List.of("deepseek", "openrouter")) {
+            String yaml = routeFor(vendor);
+
+            assertFalse(yaml.contains(accountOn(vendor).displayName() + ":"),
+                    "the block is the route's settings, not the route: " + yaml);
+            assertTrue(yaml.startsWith("apiKeyEnv: "), yaml);
+        }
+    }
+
+    @Test
+    void theRouteIsWrittenAsOneKeyWithItsSettingsUnderIt() throws Exception {
+        // The shape the harness reads, at the indentation the file uses — the assertion the first
+        // version was missing, because it only looked for substrings that a doubled key also has.
+        Path file = patch("""
+                - id: llm-pi-ai
+                  name: "@deepseek-ai/dsh-llm-pi-ai"
+                  config:
+                    providers:
+                """);
+        DshAccountRoute.Prepared route = DshAccountRoute.prepare(accountOn("openrouter")).orElseThrow();
+        route.resolveModels(List.of("a-model"));
+
+        DshAccountRoute.apply(home, "web", route);
+
+        String expected = "      " + route.route() + ":\n"
+                + "        apiKeyEnv: " + route.environmentVariable() + "\n"
+                + "        api: openai-completions\n";
+        String text = Files.readString(file);
+        assertTrue(text.contains(expected), "expected under the entry's own providers:\n" + expected
+                + "\nbut the file reads:\n" + text);
+        assertEquals(1, text.lines().filter(line -> line.trim().equals(route.route() + ":")).count(),
+                "the key appears once: " + text);
+    }
+
+    @Test
     void aRouteReplacesOnlyItsOwnBlock() throws Exception {
         DshAccountRoute.Prepared route = DshAccountRoute.prepare(accountOn("deepseek")).orElseThrow();
         Path file = patch("""
@@ -256,6 +295,30 @@ class DshAccountRouteTest {
         assertFalse(DshAccountRoute.apply(home, "web", route),
                 "the next launch says the same thing and must not touch the person's file");
         assertEquals(written, Files.readString(file));
+    }
+
+    @Test
+    void theRouteGoesBackOutWhenTheLaunchEnds() throws Exception {
+        String original = """
+                - id: llm-pi-ai
+                  name: "@deepseek-ai/dsh-llm-pi-ai"
+                  config:
+                    providers:
+                      Mine:
+                        apiKeyEnv: MY_KEY
+                """;
+        Path file = patch(original);
+        DshAccountRoute.Prepared route = DshAccountRoute.prepare(accountOn("openrouter")).orElseThrow();
+        route.resolveModels(List.of("a-model"));
+        DshAccountRoute.apply(home, "web", route);
+        assertTrue(Files.readString(file).contains(route.route()), "written by the launch");
+
+        assertTrue(DshAccountRoute.remove(home, "web", route.route()));
+
+        assertEquals(original, Files.readString(file),
+                "the file is what it was before the launch, byte for byte");
+        assertFalse(DshAccountRoute.remove(home, "web", route.route()),
+                "and a route that is not there changes nothing");
     }
 
     @Test

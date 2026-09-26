@@ -290,6 +290,12 @@ public final class DshLauncher {
         // same one on every launch of this instance.
         int port = surface.isWeb() ? DshPorts.resolve(instance) : 0;
 
+        // What the instance runs with, as the user typed it. Its launcher flags go before the
+        // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported. Read
+        // first because which profile is booted decides which profile every file below belongs to.
+        DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
+        String profile = typed.profile() != null ? typed.profile() : instance.profile();
+
         // Anything a launch that was killed before it could tidy up left behind, put back first: the
         // note beside the harness's own settings says the last launch never got to its own cleanup,
         // so it is dealt with here — **before** this launch decides what to inject, and whatever kind
@@ -311,7 +317,7 @@ public final class DshLauncher {
             // Then the launcher's own work from launches that are long over, taken away without
             // asking: a route left behind is a supplier the harness offers with nothing behind it,
             // and a launch that wants no supplier must not inherit one.
-            DshInjectedSettings.clean(instance, accountRoutes, injecting);
+            DshInjectedSettings.clean(instance, profile, accountRoutes, injecting);
         } catch (DshException e) {
             LOG.warning("Could not put back what the last launch of " + instance.id()
                     + " left in its settings", e);
@@ -330,7 +336,7 @@ public final class DshLauncher {
         // What this launch is about to disturb, noted before it does. Written here because it lives
         // exactly as long as the launch does.
         if (account != null && account.carriesAKey()) {
-            DshInjectedSettings.capture(instance, account.displayName(), account.key());
+            DshInjectedSettings.capture(instance, account.displayName(), account.key(), profile);
             // Then the profile object, so the route is one the harness's own models page can see and
             // edit while it runs. The note written just above is what takes it away again — which is
             // why this comes second and not before.
@@ -343,17 +349,11 @@ public final class DshLauncher {
             }
         }
 
-        // What the instance runs with, as the user typed it. Its launcher flags go before the
-        // profile and its app flags after; `--port` and `DSH_HOME` are refused and reported. Read
-        // here rather than below because which profile is booted decides which profile the account's
-        // route belongs in.
-        DshLaunchArguments.Parsed typed = DshLaunchArguments.parseArguments(instance.extraArguments());
-        String profile = typed.profile() != null ? typed.profile() : instance.profile();
-
         // The account's supplier, as a route in the profile's **own** patch layer — the file the
         // harness's own configuration editor writes. Not a `--patch` overlay: an overlay is applied
         // over that file and replaces the entry's whole config, which is what made adding a supplier
-        // impossible and hid the person's own suppliers. See DshAccountRoute.
+        // impossible and hid the person's own suppliers. It stays there for this launch only; the
+        // note captured above is what takes it back out. See DshAccountRoute.
         //
         // A caller that described the route already — so it could say so while the supplier is asked
         // — wrote its own copy, and is not asked a second time.
