@@ -393,6 +393,12 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 state == LaunchState.STOPPED ? SVG.ROCKET_LAUNCH : SVG.CANCEL,
                 actionLabel(state), this::testLaunch, popup));
+        // Right below the launch entry, because it is what a person reaches for next: the instance
+        // is up and the page it serves is where the work happens. Offered whether it is running or
+        // not, the same as the instance list's menu — see [InstanceBrowser].
+        entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
+                SVG.PUBLIC, i18n("dsh.instance.open_browser"),
+                () -> InstanceBrowser.open(instance), popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(
                 SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
         entries.add(new org.jackhuang.hmcl.ui.construct.IconedMenuItem(

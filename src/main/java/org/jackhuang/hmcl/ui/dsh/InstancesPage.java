@@ -41,8 +41,6 @@ import javafx.util.Duration;
 import org.jackhuang.hmcl.dsh.DshException;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshInstanceManager;
-import org.jackhuang.hmcl.dsh.DshPorts;
-import org.jackhuang.hmcl.dsh.DshProcess;
 import org.jackhuang.hmcl.dsh.DshProcessManager;
 import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
@@ -393,37 +391,6 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// Shows the per-instance menu.
     ///
-    /// @param instance the instance
-    /// @param anchor   the button the popup is anchored to
-    /// Opens an instance's browser interface.
-    ///
-    /// The address is the instance's own, not something to be looked up: its port is settled when
-    /// it is created and never changes, so "open the interface" means the same address whether the
-    /// instance is running or not. A running one is asked for the address it actually bound, which
-    /// carries the trust token — but only while that is the instance's own port: an instance the
-    /// harness moved elsewhere, which a patch layer restating the `webserver` row can do, is still
-    /// opened at the port it is recorded at. A stopped one is opened at the plain address, where
-    /// the browser says the site cannot be reached, which is the truthful answer to asking for a
-    /// page nobody is serving yet.
-    ///
-    /// The item is not hidden while an instance is stopped: an address that is not answering is a
-    /// different answer from a menu entry that is not there, and the second one leaves the person
-    /// wondering whether they misremembered.
-    ///
-    /// @param instance the instance
-    private void openInBrowser(DshInstance instance) {
-        if (instance.portOrDefault() <= 0) {
-            Controllers.dialog(i18n("dsh.instance.port.auto.none"),
-                    i18n("message.error"), MessageType.ERROR);
-            return;
-        }
-        java.util.Optional<DshProcess> running = DshProcessManager.find(instance.id());
-        FXUtils.openLink(DshPorts.openAddress(instance,
-                running.flatMap(DshProcess::webUrl).orElse(null)).toString());
-    }
-
-    /// Shows the per-instance menu.
-    ///
     /// The components are the instance page's own — the `PopupMenu` and `IconedMenuItem` its sidebar
     /// menus are built from — because two menus in one launcher should not be two styles. A row
     /// closes the popup by itself, which is `IconedMenuItem`'s own contract, so nothing here keeps a
@@ -441,7 +408,7 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
                 new IconedMenuItem(SVG.SETTINGS_FILL, i18n("dsh.instance.manage"),
                         () -> Controllers.navigate(new InstancePage(instance)), popup),
                 new IconedMenuItem(SVG.PUBLIC, i18n("dsh.instance.open_browser"),
-                        () -> openInBrowser(instance), popup),
+                        () -> InstanceBrowser.open(instance), popup),
                 new IconedMenuItem(SVG.FOLDER_OPEN, i18n("dsh.instance.open_home"),
                         () -> showInstanceDirectory(instance), popup),
                 // What is gone cannot be got back, so it is fenced off from what can.
