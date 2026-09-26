@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -94,6 +95,23 @@ class DshLaunchArgumentsTest {
         assertTrue(parsed.refusals().stream().anyMatch(r -> r.contains("DSH_HOME")));
         assertEquals(List.of("--no-open"), parsed.appArguments(),
                 "the refusal does not take the rest of the line with it");
+
+        // Why it was refused is a sentence like every other the interface shows, read from the
+        // bundles rather than written into the code: it used to be Chinese, which is what every
+        // language but that one then read.
+        assertEquals(List.of(org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.launch.refused.home",
+                        "DSH_HOME=/tmp/evil")),
+                parsed.refusals());
+    }
+
+    @Test
+    void aReservedPortIsRefusedInTheReadersLanguage() {
+        DshLaunchArguments.Parsed parsed = parse("--port 1234");
+
+        assertEquals(List.of(org.jackhuang.hmcl.util.i18n.I18n.i18n("dsh.launch.refused.port", "--port")),
+                parsed.refusals());
+        assertNotEquals("dsh.launch.refused.port", parsed.refusals().get(0),
+                "a key no bundle holds comes back as itself, which is not a sentence");
     }
 
     @Test
