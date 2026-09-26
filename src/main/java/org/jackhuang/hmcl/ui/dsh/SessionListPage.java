@@ -44,10 +44,13 @@ import org.jackhuang.hmcl.ui.ListPageBase;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.ToolbarListPageSkin;
 import org.jackhuang.hmcl.ui.construct.AdvancedListBox;
+import org.jackhuang.hmcl.ui.construct.IconedMenuItem;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
+import org.jackhuang.hmcl.ui.construct.MenuSeparator;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.construct.PopupMenu;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -451,49 +454,26 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
         /// @param session the session
         /// @param anchor  the button the popup is anchored to
         private void showRowMenu(DshSession session, Node anchor) {
-            AdvancedListBox menu = new AdvancedListBox();
-
-            LineButton single = new LineButton();
-            single.setTitle(i18n("dsh.session.pack.export.session"));
-            single.setLeading(SVG.ARCHIVE, 16);
-            menu.add(single);
-
-            LineButton project = new LineButton();
-            project.setTitle(i18n("dsh.session.pack.export.project"));
-            project.setLeading(SVG.ARCHIVE, 16);
-            menu.add(project);
-
-            LineButton reveal = new LineButton();
-            reveal.setTitle(i18n("dsh.session.reveal"));
-            reveal.setLeading(SVG.FOLDER_OPEN, 16);
-            menu.add(reveal);
-
-            LineButton delete = new LineButton();
-            delete.setTitle(i18n("dsh.session.delete"));
-            delete.setLeading(SVG.DELETE, 16);
-            menu.add(delete);
-
+            PopupMenu menu = new PopupMenu();
             JFXPopup popup = new JFXPopup(menu);
-            single.setOnAction(event -> {
-                popup.hide();
-                SessionPackActions.export(page.instance, List.of(session));
-            });
-            project.setOnAction(event -> {
-                popup.hide();
-                // A subagent's conversation lives in its own session directory and
-                // is reached through its parent, so the unit worth moving is the
-                // project the sessions were recorded in — which is exactly the
-                // directory they share, and exactly this page's list.
-                SessionPackActions.export(page.instance, new ArrayList<>(page.getItems()));
-            });
-            reveal.setOnAction(event -> {
-                popup.hide();
-                page.reveal(session);
-            });
-            delete.setOnAction(event -> {
-                popup.hide();
-                page.deleteSelected(List.of(session));
-            });
+
+            menu.getContent().setAll(
+                    new IconedMenuItem(SVG.ARCHIVE, i18n("dsh.session.pack.export.session"),
+                            () -> SessionPackActions.export(page.instance, List.of(session)), popup),
+                    // A subagent's conversation lives in its own session directory and is reached
+                    // through its parent, so the unit worth moving is the project the sessions were
+                    // recorded in — which is exactly the directory they share, and exactly this
+                    // page's list.
+                    new IconedMenuItem(SVG.ARCHIVE, i18n("dsh.session.pack.export.project"),
+                            () -> SessionPackActions.export(page.instance,
+                                    new ArrayList<>(page.getItems())), popup),
+                    new IconedMenuItem(SVG.FOLDER_OPEN, i18n("dsh.session.reveal"),
+                            () -> page.reveal(session), popup),
+                    // What is gone cannot be got back, so it is fenced off from what can.
+                    new MenuSeparator(),
+                    new IconedMenuItem(SVG.DELETE, i18n("dsh.session.delete"),
+                            () -> page.deleteSelected(List.of(session)), popup));
+
             popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.RIGHT,
                     -anchor.getBoundsInLocal().getWidth(), 0);
         }
