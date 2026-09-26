@@ -18,11 +18,12 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
-import java.util.Locale;
 
 /// The directory layout HMCL-DSH owns on disk.
 ///
@@ -60,6 +61,16 @@ public final class DshPaths {
     /// Cached copies of remote catalogues such as the quick-install presets.
     public static final Path CATALOG = ROOT.resolve("catalog");
 
+    /// Where the launcher writes its own log, one file per run.
+    ///
+    /// The launcher's log is a file rather than only a stream because the thing it is for is
+    /// reading after the fact: the switch that turns the debug lines on says "in the launcher's
+    /// log", and a person who turns it on to diagnose something wants to find the file
+    /// afterwards. The name and the layout are [#org.jackhuang.hmcl.util.logging.Logger]'s, which
+    /// is the transplanted HMCL logger and writes `2026-09-26T23-34-07.log` here, compressed to
+    /// `.xz` when the run ends.
+    public static final Path LOGS = ROOT.resolve("logs");
+
     /// Returns the npm prefix directory for a DeepSeek Harness version.
     ///
     /// The directory is returned whether or not it exists.
@@ -77,7 +88,7 @@ public final class DshPaths {
     /// @return the home directory
     /// @throws DshException when the version is not usable as a path segment
     public static Path versionHomeDirectory(String version) throws DshException {
-        return HOMES.resolve(requireSafeSegment(version, "version"));
+        return HOMES.resolve(segment(version, "version"));
     }
 
     /// The directory holding an instance's own copy of DeepSeek Harness.
@@ -103,7 +114,7 @@ public final class DshPaths {
     /// @return the runtime directory
     /// @throws DshException when the version cannot be used as a directory name
     public static Path runtimeDirectory(String version) throws DshException {
-        return RUNTIMES.resolve(requireSafeSegment(version, "runtime version"));
+        return RUNTIMES.resolve(segment(version, "runtime version"));
     }
 
     /// Returns the launcher instance directory for an instance id.
@@ -114,7 +125,7 @@ public final class DshPaths {
     /// @return the instance directory
     /// @throws DshException when the identifier cannot be used as a directory name
     public static Path instanceDirectory(String instanceId) throws DshException {
-        return INSTANCES.resolve(requireSafeSegment(instanceId, "instance id"));
+        return INSTANCES.resolve(segment(instanceId, "instance id"));
     }
 
     /// Validates a string for use as a single path segment.
@@ -125,7 +136,7 @@ public final class DshPaths {
     /// @throws DshException when the value is empty or contains path separators
     /// Reports whether a value can be used as one segment of a path.
     ///
-    /// The same rule [requireSafeSegment] enforces, asked in advance so that a
+    /// The same rule [#segment(String, String)] enforces, asked in advance so that a
     /// page can refuse a name before it is used to make a directory.
     ///
     /// @param value the value to test
@@ -137,53 +148,43 @@ public final class DshPaths {
 
     /// Reports whether a trimmed string is a usable single path segment.
     ///
-    /// Windows adds three ways a segment can stop being one: a drive-separated
-    /// colon (`C:` inside `C:foo`), the reserved device names (`CON`, `PRN`,
-    /// `COM1`, `LPT2`, …, with or without an extension) and the trailing dot
-    /// or space that its own programs strip off a name. All three are refused
-    /// on every platform, not only on Windows: a name one platform accepts and
-    /// the other cannot even write is not a name a launcher directory should
-    /// carry from one to the other.
+    /// The rule is the one the transplanted HMCL has always used for the names
+    /// it makes directories from, [FileUtils#isNameValid(OperatingSystem, String)],
+    /// and it covers everything a hand-written list here used to: the reserved
+    /// device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…`COM9`, `LPT1`…`LPT9`,
+    /// and the superscript spellings, with or without an extension), the
+    /// trailing dot or space Windows strips off a name, the drive-separated
+    /// colon, the separators, the control characters and the code points that
+    /// are not characters.
+    ///
+    /// Windows' answer is the one asked for, on every platform, and that is
+    /// deliberate: the three systems this launcher runs on share one repository
+    /// and one set of instance folders, and a name one of them accepts and
+    /// another cannot even write is a folder that stops working the moment it
+    /// is copied to the other. Separators are refused by that rule on Windows
+    /// and are named here as well, because they are what would turn one segment
+    /// into two — the one failure the caller can never recover from.
     ///
     /// @param trimmed the value, already trimmed
     /// @return whether it is usable
     private static boolean isSafeSegment(String trimmed) {
-        if (trimmed.isEmpty()
-                || trimmed.equals(".")
-                || trimmed.equals("..")
-                || trimmed.contains("/")
-                || trimmed.contains("\\")
-                || trimmed.indexOf('\0') >= 0
-                || trimmed.indexOf(':') >= 0) {
+        if (trimmed.isEmpty() || trimmed.contains("/") || trimmed.contains("\\")) {
             return false;
         }
-        char last = trimmed.charAt(trimmed.length() - 1);
-        if (last == '.' || last == ' ') {
-            return false;
-        }
-        String stem = trimmed.split("[.]", 2)[0];
-        return !isReservedDeviceName(stem);
+        return FileUtils.isNameValid(OperatingSystem.WINDOWS, trimmed);
     }
 
-    /// Reports whether a name is one Windows reserves for a device.
+    /// Returns a value as a path segment, refusing one that cannot be a directory name.
     ///
-    /// `CON`, `PRN`, `AUX` and `NUL` are reserved outright; `COM` and `LPT`
-    /// reserve the single digits one to nine behind them. Only the stem is
-    /// tested — the caller has already split an extension off — because
-    /// `CON.txt` is as reserved as `CON`.
+    /// Public because a caller that has a folder of its own — the folder the
+    /// user is looking at, which is where a new instance goes — has to apply the
+    /// same rule this class applies to the folders it owns.
     ///
-    /// @param stem the name without its extension, in any case
-    /// @return whether Windows would treat it as a device
-    private static boolean isReservedDeviceName(String stem) {
-        return switch (stem.toUpperCase(Locale.ROOT)) {
-            case "CON", "PRN", "AUX", "NUL" -> true;
-            default -> stem.length() == 4
-                    && (stem.regionMatches(true, 0, "COM", 0, 3) || stem.regionMatches(true, 0, "LPT", 0, 3))
-                    && stem.charAt(3) >= '1' && stem.charAt(3) <= '9';
-        };
-    }
-
-    private static String requireSafeSegment(String value, String what) throws DshException {
+    /// @param value the candidate segment
+    /// @param what  a human-readable name for the value, used in the error message
+    /// @return the trimmed segment
+    /// @throws DshException when the value cannot be used as a directory name
+    public static String segment(@Nullable String value, String what) throws DshException {
         String trimmed = value == null ? "" : value.trim();
         if (!isSafeSegment(trimmed)) {
             throw new DshException("Invalid " + what + ": " + value);

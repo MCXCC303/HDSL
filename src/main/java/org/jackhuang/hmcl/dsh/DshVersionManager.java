@@ -20,7 +20,6 @@ package org.jackhuang.hmcl.dsh;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -411,7 +410,7 @@ public final class DshVersionManager {
         try {
             Path staging = stagingDirectory(instance);
             if (Files.exists(staging)) {
-                FileUtils.deleteDirectory(staging);
+                DshFiles.deleteTree(staging);
                 LOG.info("Removed the partial install for " + instance.id());
             }
         } catch (IOException | DshException e) {
@@ -612,7 +611,7 @@ public final class DshVersionManager {
 
         try {
             if (Files.exists(staging)) {
-                FileUtils.deleteDirectory(staging);
+                DshFiles.deleteTree(staging);
             }
             Files.createDirectories(staging);
         } catch (IOException e) {
@@ -668,7 +667,7 @@ public final class DshVersionManager {
 
         try {
             if (Files.exists(target)) {
-                FileUtils.deleteDirectory(target);
+                DshFiles.deleteTree(target);
             }
             Files.createDirectories(target.getParent());
             Files.move(staging, target);
@@ -887,15 +886,13 @@ public final class DshVersionManager {
 
     /// Deletes a directory, ignoring failures.
     ///
+    /// The trees here are a package manager's: thousands of files, some of them
+    /// read-only and some of them junctions. Removed with [DshFiles], which is
+    /// what makes that work on Windows; see it for what was measured.
+    ///
     /// @param directory the directory to remove
     private static void deleteQuietly(Path directory) {
-        try {
-            if (Files.exists(directory)) {
-                FileUtils.deleteDirectory(directory);
-            }
-        } catch (IOException e) {
-            LOG.warning("Failed to delete " + directory, e);
-        }
+        DshFiles.deleteTreeQuietly(directory);
     }
 
     /// Compares two version strings that may carry pre-release suffixes.

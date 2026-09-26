@@ -48,6 +48,7 @@ import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
 import org.jackhuang.hmcl.setting.GameDirectory;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
@@ -66,8 +67,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
+import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Lists the DeepSeek Harness instances managed by HMCL-DSH.
 ///
@@ -487,18 +492,33 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// Removes an instance after confirmation.
     ///
+    /// Off the interface thread, for the reason [InstancePage#removeInstance] states: the
+    /// removal stops a running instance first and then removes its tree with retries, and both
+    /// of those wait. A list that cannot repaint while a child process drains is a list Windows
+    /// reports as not responding, which is what removing an instance used to do.
+    ///
     /// @param instance the instance to remove
     private void removeInstance(DshInstance instance) {
         Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
                 i18n("dsh.instance.remove"),
-                () -> {
+                () -> CompletableFuture.runAsync(() -> {
                     try {
                         DshInstanceManager.delete(instance.id());
-                        Controllers.showToast(i18n("dsh.instance.removed", instance.id()));
                     } catch (DshException e) {
-                        Controllers.dialog(e.getMessage(), i18n("dsh.instance.remove_failed"), MessageType.ERROR);
+                        throw new CompletionException(e);
                     }
-                },
+                }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+                    if (throwable != null) {
+                        Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+                                ? throwable.getCause()
+                                : throwable;
+                        LOG.warning("Failed to remove instance " + instance.id(), cause);
+                        Controllers.dialog(cause.getMessage(), i18n("dsh.instance.remove_failed"),
+                                MessageType.ERROR);
+                    } else {
+                        Controllers.showToast(i18n("dsh.instance.removed", instance.id()));
+                    }
+                })),
                 null);
     }
 }

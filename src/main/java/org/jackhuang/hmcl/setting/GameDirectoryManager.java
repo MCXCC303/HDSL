@@ -147,6 +147,28 @@ public final class GameDirectoryManager {
         DshInstanceManager.addChangeListener(GameDirectoryManager::refreshRepositories);
     }
 
+    /// Returns the folders the launcher keeps instances in, the one being shown first.
+    ///
+    /// The answer the instance manager works from. Which folders exist is a
+    /// question only the settings can answer, so it is asked here — the domain
+    /// layer holds no settings, and the folder an instance belongs to is not a
+    /// detail it can work out for itself.
+    ///
+    /// The folder being **shown** comes first, and that ordering is
+    /// load-bearing: it is where a new instance is made. A person who added a
+    /// folder did so to keep their instances there, and the moment they mean it
+    /// is the moment they install one.
+    ///
+    /// @return the folders, the shown one first
+    public static List<Path> instanceFolders() {
+        List<Path> all = new ArrayList<>();
+        all.add(selected().directory());
+        for (GameDirectory directory : getGameDirectories()) {
+            all.add(directory.directory());
+        }
+        return List.copyOf(all);
+    }
+
     /// Returns the folders the launcher looks for instances in.
     ///
     /// The returned list is observable, so a list showing the folders follows

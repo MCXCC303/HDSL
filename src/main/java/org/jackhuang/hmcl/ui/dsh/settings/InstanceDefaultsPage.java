@@ -266,6 +266,11 @@ public final class InstanceDefaultsPage extends ScrollPane {
 
     /// Builds the switch for the launcher's own debug lines.
     ///
+    /// The switch is only worth anything beside the log it writes to, so the row that opens
+    /// that folder is built here rather than somewhere else: what somebody does after turning
+    /// the debug lines on is go and read them, and a file whose location is not on any page is
+    /// a file they have to be told about.
+    ///
     /// @return the assembled component list
     private ComponentList buildDebugList() {
         LineToggleButton debug = new LineToggleButton();
@@ -275,9 +280,33 @@ public final class InstanceDefaultsPage extends ScrollPane {
         debug.selectedProperty().addListener((observable, was, value) ->
                 org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(Boolean.TRUE.equals(value)));
 
+        org.jackhuang.hmcl.ui.construct.LineButton folder = new org.jackhuang.hmcl.ui.construct.LineButton();
+        folder.setTitle(i18n("settings.launcher.launcher_log.reveal"));
+        folder.setSubtitle(org.jackhuang.hmcl.dsh.DshPaths.LOGS.toString());
+        folder.setLeading(org.jackhuang.hmcl.ui.SVG.FOLDER_OPEN, 16);
+        // Revealed rather than opened: the file explorer selects the folder this way, and the
+        // folder is made first so that the first run — which has not written one yet — gives a
+        // window with the place in it rather than an error about a path that is not there.
+        folder.setOnAction(event -> FXUtils.showFileInExplorer(logFolder()));
+
         ComponentList list = new ComponentList();
         list.getContent().add(debug);
+        list.getContent().add(folder);
         return list;
+    }
+
+    /// Returns the folder the launcher writes its log in, making it when it is not there yet.
+    ///
+    /// @return the log folder
+    private static java.nio.file.Path logFolder() {
+        java.nio.file.Path logs = org.jackhuang.hmcl.dsh.DshPaths.LOGS;
+        try {
+            java.nio.file.Files.createDirectories(logs);
+        } catch (java.io.IOException e) {
+            org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                    "Could not create the log folder " + logs, e);
+        }
+        return logs;
     }
 
     /// Builds the editor for the variables every instance runs with.

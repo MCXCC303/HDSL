@@ -74,7 +74,12 @@ public final class DshLaunchArguments {
     private static final Set<String> MANAGED_FLAGS = Set.of("--port");
 
     /// The prefix that marks an environment assignment rather than a flag.
-    private static final String ENVIRONMENT_PREFIX = "DSH_HOME=";
+    ///
+    /// Spelled from the name itself, so this class and [DshEnvironment] — which refuses the same
+    /// variable when it arrives through an environment box — cannot drift apart about what the
+    /// launcher states for itself. One name, two doors; a second copy of the literal is a second
+    /// answer waiting to happen.
+    private static final String ENVIRONMENT_PREFIX = DshEnvironment.HOMEDIRECTORY_VARIABLE + "=";
 
     /// What a typed line came to.
     ///
@@ -195,10 +200,26 @@ public final class DshLaunchArguments {
 
     /// Splits a line into arguments, honouring quotes.
     ///
-    /// A path with a space in it has to be typeable, so single and double quotes group, and a
-    /// backslash escapes the next character outside single quotes. This is the shell's own rule,
-    /// minus the parts a settings field has no use for (no expansion, no substitution): what is
-    /// typed is what is passed.
+    /// A path with a space in it has to be typeable, so single and double quotes group. This is the
+    /// shell's own rule, minus the parts a settings field has no use for (no expansion, no
+    /// substitution): what is typed is what is passed.
+    ///
+    /// **A backslash escapes only what a shell lets it escape inside the quoting it is in**, and
+    /// that is a Windows-facing rule rather than a cosmetic one. Written as "a backslash always
+    /// escapes the next character", a Windows path typed in the quoting everybody reaches for first
+    /// lost every separator:
+    ///
+    /// ```text
+    /// --patch "C:\Users\me\my patches\a.yml"   →   C:Usersmemy patchesa.yml
+    /// ```
+    ///
+    /// measured end to end, in the argument list a real child process printed. Nothing reported it:
+    /// the argument was neither refused nor empty, so the launch failed later inside the harness,
+    /// which is the expensive place to find out. The rule kept here is the one that makes the line
+    /// above mean what it looks like: outside quotes a backslash escapes the next character (so a
+    /// space can be escaped), inside single quotes it is literal, and inside double quotes it
+    /// escapes only `"` and `\` — which is what a POSIX shell does with them, and what makes
+    /// `'C:\Users\me\a.yml'` and `"C:\Users\me\a.yml"` both arrive intact.
     ///
     /// The field somebody types into stores what they typed as the arguments it names, so this is
     /// also the way in for the interface.
@@ -223,8 +244,22 @@ public final class DshLaunchArguments {
                 started = true;
                 continue;
             }
-            if (c == '\\' && quote != '\'') {
-                escaped = true;
+            if (c == '\\') {
+                // What the backslash escapes depends on the quoting it is in — see the class note.
+                // `next` is looked at rather than consumed: whether it is escaped is decided here,
+                // and the character itself is taken by the branch above on the next turn.
+                char next = i + 1 < text.length() ? text.charAt(i + 1) : 0;
+                boolean escapes = switch (quote) {
+                    case '\'' -> false;
+                    case '"' -> next == '"' || next == '\\';
+                    default -> true;
+                };
+                if (escapes) {
+                    escaped = true;
+                    started = true;
+                    continue;
+                }
+                current.append(c);
                 started = true;
                 continue;
             }

@@ -69,6 +69,39 @@ class DshInstanceTerminalTest {
         assertTrue("'it'\\''s'".equals(DshInstanceTerminal.quote("it's")), DshInstanceTerminal.quote("it's"));
     }
 
+    /// A session on an instance that lives in a folder somebody added opens **there**.
+    ///
+    /// The defect this pins: the session's `cd` named `DshPaths.instanceDirectory(id)` — the folder
+    /// the launcher owns under that name — rather than the instance's own directory. For an
+    /// instance in the folder the launcher owns the two are the same string, which is why the test
+    /// above never caught it; for one in an added folder the shell opened somewhere that was
+    /// either missing or another instance's. Measured against a real install, the `codex` instance
+    /// lives in `D:\HDSHL\1\codex` and its terminal opened in `%APPDATA%\.hdsl\instances\codex`.
+    ///
+    /// The instance is built the way the manager builds one read out of an added folder: the
+    /// directory is recorded on it, and it is that record every operation resolves through.
+    @Test
+    void aSessionOnAnInstanceInAnAddedFolderOpensThere() throws Exception {
+        Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
+        Path added = Files.createDirectories(home.resolve("added-folder").resolve("moved"));
+        DshInstance moved = new DshInstance("moved", "0.1.6-alpha.2", "web",
+                home.resolve("work").toString(), "system", DshHomeMode.ISOLATED, null,
+                List.of(), Map.of(), null, null, null, 0, 0L)
+                .withDirectory(added);
+
+        String script = DshInstanceTerminal.scriptText(moved, null, runtime(bin));
+
+        assertTrue(script.contains(WINDOWS
+                ? "cd /d \"" + added + "\""
+                : "cd '" + added + "'"), script);
+        assertFalse(script.contains(DshPaths.instanceDirectory("moved").toString()),
+                "the session stands in the instance's own folder, not the launcher's folder of "
+                        + "the same name:\n" + script);
+        // And the shim it hands the person is the one that runs this instance's harness.
+        String shim = DshInstanceTerminal.shimText(moved, runtime(bin));
+        assertTrue(shim.contains(moved.dshEntryPoint().toString()), shim);
+    }
+
     @Test
     void theScriptStandsWhereTheInstanceStands() throws Exception {
         Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
@@ -95,7 +128,7 @@ class DshInstanceTerminalTest {
         assertEquals(shim, path.get(0), pathLine);
         assertEquals(bin.toString(), path.get(1), pathLine);
         // A session with no account carries no key.
-        assertFalse(script.contains(DshAccountRoute.KEY_ENVIRONMENT_VARIABLE), script);
+        assertFalse(script.contains(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE), script);
     }
 
     @Test
@@ -104,14 +137,8 @@ class DshInstanceTerminalTest {
         DshAccount account = new DshAccount("deepseek", "sk-test", null, null);
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), account, runtime(bin));
 
-        // Under the name the account's own route reads, which is what makes the session's harness
-        // able to use that supplier: one variable per route, so no other route can pick it up.
-        //
-        // Written in this platform's own spelling: the branch this test landed on teaches the
-        // terminal to open a Windows shell as well, where a variable is set rather than exported,
-        // so the name is the upstream one and the syntax is the platform's.
-        assertTrue(script.contains(assignment(
-                DshAccountRoute.environmentVariable(account.displayName()), "sk-test")), script);
+        assertTrue(script.contains(assignment(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, "sk-test")),
+                script);
     }
 
     @Test

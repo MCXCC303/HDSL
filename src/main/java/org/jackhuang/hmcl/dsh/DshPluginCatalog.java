@@ -69,7 +69,7 @@ public final class DshPluginCatalog {
     /// the machine's `npm` is already configured to use.
     public static final String NPM_CATALOG_PACKAGE = "dsh-plugin-catalog";
 
-    /// The address actually read, which the `hdsl.pluginCatalog` property may
+    /// The address actually read first, which the `hdsl.pluginCatalog` property may
     /// point at a mirror of the catalogue. The marketplace's own deployment reads
     /// `DSHM_REGISTRY_URL` for the same reason: one host serving one JSON document
     /// is a single point of failure, and a mirror of it should be usable without
@@ -94,6 +94,198 @@ public final class DshPluginCatalog {
             LOG.warning("Could not read the catalogue address from the settings", e);
         }
         return CATALOG_URL;
+    }
+
+    /// Returns every place the catalogue is read from, in the order they are tried.
+    ///
+    /// One catalogue is one document on one host, and a host is a single point of
+    /// failure: a mirror is what a network that cannot reach the community host
+    /// needs, and a second community catalogue is what somebody who wants more
+    /// plugins than one list holds needs. So what is configured is a *list*, and
+    /// every entry in it that answers contributes its entries — see [#fetch].
+    ///
+    /// An entry is an address (`https://…/plugins.json`) or the name of an npm
+    /// package that publishes the same document (`dsh-plugin-catalog`), which is
+    /// the classification [#isPackageSource] makes.
+    ///
+    /// The npm package that publishes the community catalogue is not added here.
+    /// It is [#fallbackSource], read when nothing above answered: it is the one
+    /// network path this launcher can be sure of — it goes through whichever
+    /// registry this machine's npm is configured for — and reading it *as well*
+    /// as a source that answered would be reading the same document twice.
+    ///
+    /// @return the sources, in the order they are read
+    public static List<String> sources() {
+        String property = System.getProperty("hdsl.pluginCatalog");
+        if (property != null && !property.isBlank()) {
+            // A developer asking one run to read somewhere else means somewhere
+            // else, not somewhere else as well.
+            return List.of(property.trim());
+        }
+
+        List<String> configured = new ArrayList<>();
+        try {
+            org.jackhuang.hmcl.setting.LauncherSettings settings =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings();
+            for (String source : settings.pluginCatalogSourcesProperty()) {
+                if (source != null && !source.isBlank()) {
+                    configured.add(source.trim());
+                }
+            }
+            if (configured.isEmpty()) {
+                // The single address this launcher had before sources were a list.
+                // Kept working rather than migrated: it is one string, and a
+                // settings file that carries it is a settings file somebody is
+                // using.
+                String legacy = settings.pluginCatalogUrlProperty().get();
+                if (legacy != null && !legacy.isBlank()) {
+                    configured.add(legacy.trim());
+                }
+            }
+        } catch (RuntimeException e) {
+            LOG.warning("Could not read the catalogue sources from the settings", e);
+        }
+        if (configured.isEmpty()) {
+            configured.add(CATALOG_URL);
+        }
+        return List.copyOf(configured.stream().distinct().toList());
+    }
+
+    /// Returns the source read when every configured one has failed.
+    ///
+    /// The community catalogue is published as an npm package as well as on the
+    /// community host, and the host is GitHub Pages: a network that cannot reach
+    /// GitHub can still reach an npm mirror, which is the network this launcher is
+    /// most likely to run on, since it installs everything else through npm. The
+    /// package carries the same `plugins.json`, so it is the catalogue rather than
+    /// a copy of it.
+    ///
+    /// @return the source to fall back on
+    public static String fallbackSource() {
+        return NPM_CATALOG_PACKAGE;
+    }
+
+    /// Reports whether a source names an npm package rather than an address.
+    ///
+    /// @param source the source
+    /// @return whether it is a package for the registry to resolve
+    public static boolean isPackageSource(String source) {
+        String trimmed = source == null ? "" : source.trim().toLowerCase(Locale.ROOT);
+        return !trimmed.startsWith("http://") && !trimmed.startsWith("https://")
+                && !trimmed.startsWith("file:");
+    }
+
+    /// Reports whether a source can be read at all.
+    ///
+    /// A source is an address or a package name, and anything else is neither:
+    /// refusing it here names the entry the user typed rather than failing later
+    /// with a message about a URL that was never one.
+    ///
+    /// @param source the source
+    /// @return whether it is usable
+    public static boolean isUsableSource(@Nullable String source) {
+        if (source == null || source.isBlank()) {
+            return false;
+        }
+        String trimmed = source.trim();
+        if (isPackageSource(trimmed)) {
+            return NPM_NAME.matcher(trimmed).matches();
+        }
+        try {
+            java.net.URI uri = java.net.URI.create(trimmed);
+            return uri.getScheme() != null && uri.getHost() != null;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    /// Returns the sources the user arranged, without the ones the launcher adds.
+    ///
+    /// What the settings hold, which is what an editor shows: the built-in pair is
+    /// added when this is empty, and a list that showed them would be a list whose
+    /// entries cannot all be removed.
+    ///
+    /// @return the configured sources, empty when the launcher's own pair is used
+    public static List<String> configuredSources() {
+        try {
+            return List.copyOf(org.jackhuang.hmcl.setting.SettingsManager.settings()
+                    .pluginCatalogSourcesProperty());
+        } catch (RuntimeException e) {
+            LOG.warning("Could not read the catalogue sources from the settings", e);
+            return List.of();
+        }
+    }
+
+    /// Adds a source, unless it is already one.
+    ///
+    /// @param source an address or an npm package name
+    /// @throws DshException when it is neither
+    public static void addSource(String source) throws DshException {
+        String trimmed = source == null ? "" : source.trim();
+        if (!isUsableSource(trimmed)) {
+            throw new DshException("\"" + source + "\" is neither a catalogue address nor a package name"
+                    + " (an address looks like https://host/plugins.json, a package like "
+                    + NPM_CATALOG_PACKAGE + ")");
+        }
+        List<String> updated = new ArrayList<>(configuredSources());
+        if (updated.stream().anyMatch(existing -> existing.equalsIgnoreCase(trimmed))) {
+            throw new DshException(trimmed + " is already a catalogue source");
+        }
+        updated.add(trimmed);
+        setConfiguredSources(updated);
+    }
+
+    /// Removes a source.
+    ///
+    /// Removing the last one goes back to the pair the ecosystem publishes rather
+    /// than leaving the launcher with none: a launcher with no source is a
+    /// launcher whose plugin page shows nothing and cannot say why, and "stop
+    /// using my list" is what removing the last entry means.
+    ///
+    /// @param source the source to remove
+    /// @throws DshException when it is not a source
+    public static void removeSource(String source) throws DshException {
+        String trimmed = source == null ? "" : source.trim();
+        List<String> updated = new ArrayList<>(configuredSources());
+        if (!updated.removeIf(existing -> existing.equalsIgnoreCase(trimmed))) {
+            throw new DshException(trimmed + " is not a catalogue source");
+        }
+        if (updated.isEmpty()) {
+            resetSources();
+            return;
+        }
+        setConfiguredSources(updated);
+    }
+
+    /// Puts the catalogue sources back to the pair the ecosystem publishes.
+    public static void resetSources() {
+        setConfiguredSources(List.of());
+        try {
+            org.jackhuang.hmcl.setting.LauncherSettings settings =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings();
+            settings.pluginCatalogUrlProperty().set("");
+            org.jackhuang.hmcl.setting.SettingsManager.save();
+        } catch (RuntimeException e) {
+            LOG.warning("Could not put the catalogue address back", e);
+        }
+    }
+
+    /// Writes the configured sources down.
+    ///
+    /// @param sources the sources
+    private static void setConfiguredSources(List<String> sources) {
+        try {
+            org.jackhuang.hmcl.setting.LauncherSettings settings =
+                    org.jackhuang.hmcl.setting.SettingsManager.settings();
+            settings.pluginCatalogSourcesProperty().setAll(sources);
+            // The single address this launcher had before sources were a list is
+            // cleared as soon as a list is written: leaving it set would make the
+            // first source the one the list no longer names.
+            settings.pluginCatalogUrlProperty().set("");
+            org.jackhuang.hmcl.setting.SettingsManager.save();
+        } catch (RuntimeException e) {
+            LOG.warning("Could not write the catalogue sources", e);
+        }
     }
 
     /// The hosts a catalogue URL may name for a prebuilt release archive.
@@ -201,7 +393,19 @@ public final class DshPluginCatalog {
     /// @param updated    the date the catalogue was generated, or `null`
     /// @param plugins    the plugins, in the order the catalogue lists them
     /// @param categories the categories, in alphabetical order
-    public record Catalog(@Nullable String updated, List<Plugin> plugins, List<String> categories) {
+    /// @param unreadable the sources that could not be read, empty when every one answered
+    public record Catalog(@Nullable String updated, List<Plugin> plugins, List<String> categories,
+                          List<String> unreadable) {
+
+        /// Creates a catalogue that came from one source that answered.
+        ///
+        /// @param updated    the date the catalogue was generated, or `null`
+        /// @param plugins    the plugins
+        /// @param categories the categories
+        public Catalog(@Nullable String updated, List<Plugin> plugins, List<String> categories) {
+            this(updated, plugins, categories, List.of());
+        }
+
         /// Returns the plugins whose category is one of the given ones.
         ///
         /// The page asks with the empty string for every category, which is what
@@ -214,6 +418,19 @@ public final class DshPluginCatalog {
                 return plugins;
             }
             return plugins.stream().filter(plugin -> category.equals(plugin.category())).toList();
+        }
+
+        /// Reports whether something the user asked to read did not answer.
+        ///
+        /// A catalogue built from several places is built from the ones that
+        /// answered: a source that is down — one host serving one JSON document
+        /// is a single point of failure, which is why more than one can be
+        /// configured — must not take the sources that are up with it. What it
+        /// must do is say so, which is what this is for.
+        ///
+        /// @return whether any source failed
+        public boolean isPartial() {
+            return !unreadable.isEmpty();
         }
     }
 
@@ -241,52 +458,164 @@ public final class DshPluginCatalog {
         return java.util.Optional.empty();
     }
 
-    /// Reads the catalogue.
+    /// Reads the catalogue from every source that answers.
     ///
     /// @return the catalogue
-    /// @throws DshException when it cannot be read or does not parse
+    /// @throws DshException when no source could be read and no copy was kept
     public static Catalog fetch() throws DshException {
-        String url = catalogUrl();
-        Path cached = cachedFile(url);
-        String body;
-        try {
-            body = NetworkUtils.doGet(URI.create(url));
-            keepCopy(cached, body);
-        } catch (IOException | RuntimeException direct) {
-            // The community host is GitHub Pages. Where that is unreachable the catalogue is
-            // still published as an npm package, and npm is how this launcher reaches everything
-            // else — so the second source is tried before giving up, and before falling back to a
-            // stale copy.
-            LOG.info("The plugin catalogue at " + url + " could not be read (" + direct.getMessage()
-                    + "); trying the npm package " + NPM_CATALOG_PACKAGE);
+        return fetch(sources());
+    }
+
+    /// Reads the catalogue from the given sources, in the given order.
+    ///
+    /// Every source that answers contributes its entries, and one that does not
+    /// is reported in [Catalog#unreadable] rather than failing the read: a
+    /// catalogue made of several places is worth having precisely when one of
+    /// them is down. Each source's own copy is kept as it arrives, so an
+    /// unreachable source can still be shown from the last time it answered —
+    /// which is what makes the *third* read of a mutli-source catalogue as good
+    /// as the first on a network that has gone away.
+    ///
+    /// The order is the tie-break: two sources listing the same plugin are one
+    /// plugin, and the one that comes first is the one kept. The list the user
+    /// arranged is therefore the order of authority, and putting a mirror first
+    /// is how somebody says "prefer this one".
+    ///
+    /// @param sources the sources to read
+    /// @return the catalogue
+    /// @throws DshException when no source could be read and no copy was kept
+    public static Catalog fetch(List<String> sources) throws DshException {
+        List<Catalog> answered = new ArrayList<>();
+        List<String> unreadable = new ArrayList<>();
+        List<String> reasons = new ArrayList<>();
+
+        for (String source : sources) {
+            Path cached = cachedFile(source);
             try {
-                body = fetchFromNpm();
+                String body = readSource(source);
                 keepCopy(cached, body);
-                LOG.info("Read the plugin catalogue from the npm package " + NPM_CATALOG_PACKAGE);
-            } catch (IOException | RuntimeException viaNpm) {
-                // The addresses are in the message for the same reason they are in the Node
-                // index's: a network that reaches one host may not reach another, and which host
-                // failed is the one thing that says so. But the last copy is worth more than
-                // nothing: a launcher that cannot reach the catalogue can still show what it
-                // showed yesterday.
+                answered.add(parse(body));
+                continue;
+            } catch (IOException | RuntimeException direct) {
                 String kept = readCached(cached);
-                if (kept == null) {
-                    throw new DshException("Failed to read the plugin catalogue from " + url
-                            + " (" + direct.getMessage() + ") or from the npm package "
-                            + NPM_CATALOG_PACKAGE + " (" + viaNpm.getMessage() + ")",
-                            viaNpm);
+                if (kept != null) {
+                    // Worth more than nothing, and worth saying: a launcher that
+                    // cannot reach a catalogue can still show what it showed
+                    // yesterday, and the person can see that is what happened.
+                    LOG.info("The plugin catalogue at " + source + " could not be read ("
+                            + direct.getMessage() + "); using the copy kept at " + cached);
+                    try {
+                        answered.add(parse(kept));
+                        unreadable.add(source);
+                        continue;
+                    } catch (RuntimeException stale) {
+                        // The copy is not a catalogue any more. Fall through to
+                        // the failure it stands for.
+                    }
                 }
-                LOG.info("The plugin catalogue could not be fetched; using the copy kept at " + cached);
-                body = kept;
+                LOG.info("The plugin catalogue at " + source + " could not be read: "
+                        + direct.getMessage());
+                unreadable.add(source);
+                reasons.add(source + " (" + direct.getMessage() + ")");
             }
         }
-        try {
-            Catalog catalog = parse(body);
-            lastCatalog = catalog;
-            return catalog;
-        } catch (RuntimeException e) {
-            throw new DshException("The plugin catalogue had an unexpected shape", e);
+
+        if (answered.isEmpty()) {
+            // Nothing answered, so the rescue is tried: the same document, through
+            // a registry rather than a host. It is read *only* here — reading it
+            // beside a source that answered would be reading the same catalogue
+            // twice, and every source costs a couple of megabytes.
+            String rescue = fallbackSource();
+            if (sources.stream().noneMatch(rescue::equalsIgnoreCase)) {
+                Path cached = cachedFile(rescue);
+                try {
+                    String body = readSource(rescue);
+                    keepCopy(cached, body);
+                    LOG.info("The plugin catalogue was read from the npm package " + rescue);
+                    Catalog catalog = merge(List.of(parse(body)), unreadable);
+                    lastCatalog = catalog;
+                    return catalog;
+                } catch (IOException | RuntimeException viaNpm) {
+                    String kept = readCached(cached);
+                    if (kept != null) {
+                        try {
+                            Catalog catalog = merge(List.of(parse(kept)), unreadable);
+                            lastCatalog = catalog;
+                            return catalog;
+                        } catch (RuntimeException stale) {
+                            // The copy is not a catalogue any more.
+                        }
+                    }
+                    reasons.add(rescue + " (" + viaNpm.getMessage() + ")");
+                }
+            }
+            throw new DshException("Failed to read the plugin catalogue from "
+                    + String.join(", ", reasons.isEmpty() ? sources : reasons));
         }
+
+        Catalog catalog = merge(answered, unreadable);
+        lastCatalog = catalog;
+        return catalog;
+    }
+
+    /// Reads one source's document.
+    ///
+    /// @param source an address or an npm package name
+    /// @return the catalogue document
+    /// @throws IOException when it cannot be read
+    private static String readSource(String source) throws IOException {
+        if (isPackageSource(source)) {
+            return fetchFromNpm(source);
+        }
+        return NetworkUtils.doGet(URI.create(source.trim()));
+    }
+
+    /// Combines what the sources answered into one catalogue.
+    ///
+    /// A plugin is the same plugin across sources when it names the same npm
+    /// package, and repository-only entries are the same when they name the same
+    /// repository. The first occurrence wins, so the order of the sources decides
+    /// which description, version and download count are shown for a plugin that
+    /// two of them list — which is what makes the order the user arranged mean
+    /// something.
+    ///
+    /// @param parts      the catalogues that answered, in source order
+    /// @param unreadable the sources that did not
+    /// @return the merged catalogue
+    static Catalog merge(List<Catalog> parts, List<String> unreadable) {
+        List<Plugin> plugins = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        Map<String, String> categories = new TreeMap<>();
+        String updated = null;
+
+        for (Catalog part : parts) {
+            if (updated == null) {
+                updated = part.updated();
+            }
+            for (Plugin plugin : part.plugins()) {
+                if (seen.add(identityOf(plugin))) {
+                    plugins.add(plugin);
+                }
+            }
+            for (String category : part.categories()) {
+                categories.putIfAbsent(category.toLowerCase(Locale.ROOT), category);
+            }
+        }
+
+        return new Catalog(updated, List.copyOf(plugins),
+                List.copyOf(categories.values()), List.copyOf(unreadable));
+    }
+
+    /// Returns the name two entries share when they are the same plugin.
+    ///
+    /// @param plugin the entry
+    /// @return the identity
+    private static String identityOf(Plugin plugin) {
+        String npm = plugin.npm();
+        if (npm != null && !npm.isBlank()) {
+            return "npm:" + npm.trim().toLowerCase(Locale.ROOT);
+        }
+        return "repo:" + repoOf(plugin.url()).toLowerCase(Locale.ROOT);
     }
 
     /// Keeps a copy of the catalogue so a later fetch has something to fall back on.
@@ -302,24 +631,26 @@ public final class DshPluginCatalog {
         }
     }
 
-    /// Reads the catalogue out of the npm package that publishes it.
+    /// Reads the catalogue out of an npm package that publishes one.
     ///
     /// Two requests: the package's metadata names the archive, and the archive holds the same
     /// `plugins.json` the community host serves. Both go to the registry the machine's own `npm`
     /// is configured to use, which is why this works on a network where the community host does
     /// not.
     ///
+    /// @param packageName the package to read, which is [NPM_CATALOG_PACKAGE] unless a source named
+    ///                    another one
     /// @return the catalogue
     /// @throws IOException when either request fails or the archive holds no catalogue
-    private static String fetchFromNpm() throws IOException {
+    private static String fetchFromNpm(String packageName) throws IOException {
         String registry = npmRegistry();
-        String metadataUrl = registry + "/" + NPM_CATALOG_PACKAGE + "/latest";
+        String metadataUrl = registry + "/" + packageName + "/latest";
         String metadata = NetworkUtils.doGet(URI.create(metadataUrl));
         JsonObject object = JsonParser.parseString(metadata).getAsJsonObject();
         JsonElement tarball = object.getAsJsonObject("dist") == null
                 ? null : object.getAsJsonObject("dist").get("tarball");
         if (tarball == null || !tarball.isJsonPrimitive()) {
-            throw new IOException("the registry's answer for " + NPM_CATALOG_PACKAGE
+            throw new IOException("the registry's answer for " + packageName
                     + " names no archive");
         }
 

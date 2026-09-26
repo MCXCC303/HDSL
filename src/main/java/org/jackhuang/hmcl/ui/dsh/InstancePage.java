@@ -482,19 +482,13 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     }
 
     /// Copies this instance's configuration into a new one.
-    ///
-    /// The copy is filled from a pack the launcher writes and reads back — version, profile, plugin
-    /// list, patch layer, local plugin files, plugin settings, skills — and the work runs behind a
-    /// progress dialog, because installing a harness and resolving its plugins takes minutes rather
-    /// than a click. That dialog is also what asks about install scripts, and the copy it made is
-    /// kept for the answer: see [DshInstanceManager#duplicate]. Saying that it finished is the
-    /// dialog's own toast, the same one every other installation ends with.
     private void duplicateInstance() {
-        String newId = DshInstanceManager.nextId(instance.id());
-        PluginInstalls.runCreating(i18n("dsh.instance.duplicating", instance.id()),
-                () -> DshInstanceManager.find(newId),
-                report -> DshInstanceManager.duplicate(instance.id(), newId, report::accept),
-                null);
+        try {
+            DshInstanceManager.duplicate(instance.id(), DshInstanceManager.nextId(instance.id()));
+            Controllers.showToast(i18n("dsh.instance.duplicated"));
+        } catch (DshException e) {
+            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+        }
     }
 
     /// Starts or stops this instance from its own page.
@@ -519,17 +513,35 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     }
 
     /// Deletes this instance after confirmation, leaving the page afterwards.
+    ///
+    /// The removal runs off the interface thread, because of what it waits for rather than
+    /// because of how long it usually takes: an instance that is running is stopped first and
+    /// the stop waits for the child to drain — up to the harness's own bounded shutdown — and
+    /// the instance's tree is then removed with retries, because a handle that is closing takes
+    /// a moment to close. Done here, on the interface thread, that is a window that stops
+    /// repainting for as long as it takes the child to die: Windows paints it white and offers
+    /// to end it, and what the person reported is a launcher that has crashed. Nothing about the
+    /// removal needs the interface to stand still, so it does not.
     private void removeInstance() {
         Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
                 i18n("dsh.instance.remove"),
-                () -> {
+                () -> CompletableFuture.runAsync(() -> {
                     try {
                         DshInstanceManager.delete(instance.id());
-                        Controllers.navigate(Controllers.getInstancesPage());
                     } catch (DshException e) {
-                        Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+                        throw new CompletionException(e);
                     }
-                },
+                }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+                    if (throwable != null) {
+                        Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+                                ? throwable.getCause()
+                                : throwable;
+                        LOG.warning("Failed to remove instance " + instance.id(), cause);
+                        Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
+                    } else {
+                        Controllers.navigate(Controllers.getInstancesPage());
+                    }
+                })),
                 null);
     }
 

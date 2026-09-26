@@ -249,8 +249,7 @@ public final class DshInstanceTerminal {
             // The same variable and the same place in the order as a launch: the key is what
             // makes the harness answer at all, and a terminal without it reproduces every
             // failure except the one being looked for.
-            environment.put(DshAccountRoute.environmentVariable(account.displayName()),
-                    account.apiKey().trim());
+            environment.put(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, account.apiKey().trim());
         }
         String inherited = environment.getOrDefault("PATH", System.getenv("PATH"));
         environment.put("PATH", runtime.binDirectory()
@@ -270,7 +269,14 @@ public final class DshInstanceTerminal {
         // The instance directory itself, not its workspace: this shell is for looking
         // at the instance — its home, its dsh, its manifest — rather than for the work a
         // session started there would be scoped to.
-        Path where = DshPaths.instanceDirectory(instance.id());
+        //
+        // And **its** directory, not the one the launcher owns under that name: an instance read
+        // out of a folder somebody added lives in that folder, and answering with
+        // `DshPaths.instanceDirectory(id)` opened the session in a directory that either does not
+        // exist or belongs to a different instance that happens to share the name. Measured against
+        // a real install: the `codex` instance lives in `D:\HDSHL\1\codex`, and the terminal opened
+        // in `%APPDATA%\.hdsl\instances\codex`, which was not there.
+        Path where = instance.instanceDirectory();
         Path bin = directory().resolve(instance.id()).resolve(BIN);
         Map<String, String> environment = environment(instance, account, runtime);
 
@@ -322,8 +328,9 @@ public final class DshInstanceTerminal {
                                           DshNodeRuntime runtime) throws DshException {
         // The instance directory itself, not its workspace: this shell is for looking
         // at the instance — its home, its dsh, its manifest — rather than for the work a
-        // session started there would be scoped to.
-        Path where = DshPaths.instanceDirectory(instance.id());
+        // session started there would be scoped to. The instance's own, for the reason
+        // [DshInstanceTerminal#windowsScriptText] states.
+        Path where = instance.instanceDirectory();
         Path bin = directory().resolve(instance.id()).resolve(BIN);
         Map<String, String> environment = environment(instance, account, runtime);
 

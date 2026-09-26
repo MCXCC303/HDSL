@@ -185,16 +185,19 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
             return;
         }
 
-        // A folder that holds no instances looks the same as one that was added
-        // wrongly, and the common mistake is a launcher's own directory, which
-        // holds the instances one level further down. Saying so here is cheaper
-        // than leaving someone to work out why the list is empty.
-        if (GameDirectoryManager.countInstances(added) == 0) {
-            Path nested = chosen.toAbsolutePath().normalize().resolve("instances");
+        // A folder that holds no instances is not a mistake. Adding one is also how
+        // a person says where their next instance belongs, so an empty folder is
+        // the state a folder added for that purpose *starts* in, and refusing it
+        // would be refusing the thing that was asked for.
+        //
+        // The mistake worth naming is the one that looks the same and is not: a
+        // folder holding the launcher's own data, whose instances are one level
+        // further down. That one is worth a question, because it is usually the
+        // wrong folder chosen by accident and nothing else here would say so.
+        Path nested = chosen.toAbsolutePath().normalize().resolve("instances");
+        if (GameDirectoryManager.countInstances(added) == 0 && Files.isDirectory(nested)) {
             Controllers.dialog(
-                    Files.isDirectory(nested)
-                            ? i18n("dsh.directory.empty.with_instances", nested.toString())
-                            : i18n("dsh.directory.empty"),
+                    i18n("dsh.directory.empty.with_instances", nested.toString()),
                     i18n("dsh.directory.add"), MessageType.WARNING, () -> {
                         // The navigator listens for this and takes the page away,
                         // which is how the original returns to the list.

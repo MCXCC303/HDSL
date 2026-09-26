@@ -463,6 +463,14 @@ public final class SettingsManager {
         @SerializedName("pluginCatalogUrl")
         private @Nullable String pluginCatalogUrl;
 
+        /// Every place the plugin catalogue is read from, in the order they are tried.
+        ///
+        /// Absent for a launcher that has never been asked, which reads the two the
+        /// ecosystem publishes — the community address and the npm package that
+        /// carries the same document.
+        @SerializedName("pluginCatalogSources")
+        private @Nullable java.util.List<String> pluginCatalogSources;
+
         /// Where the modpack market's index is read from, or absent for the published one.
         @SerializedName("packMarketUrl")
         private @Nullable String packMarketUrl;
@@ -565,6 +573,8 @@ public final class SettingsManager {
             snapshot.postExitCommand = settings.postExitCommandProperty().get();
             snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
             snapshot.pluginCatalogUrl = settings.pluginCatalogUrlProperty().get();
+            snapshot.pluginCatalogSources = new java.util.ArrayList<>(
+                    settings.pluginCatalogSourcesProperty());
             snapshot.packMarketUrl = settings.packMarketUrlProperty().get();
             snapshot.dependencyPolicy = settings.dependencyPolicy().name();
             snapshot.cacheDirectory = settings.cacheDirectoryProperty().get();
@@ -784,6 +794,9 @@ public final class SettingsManager {
             }
             if (pluginCatalogUrl != null) {
                 settings.pluginCatalogUrlProperty().set(pluginCatalogUrl);
+            }
+            if (pluginCatalogSources != null) {
+                settings.pluginCatalogSourcesProperty().setAll(pluginCatalogSources);
             }
             if (cacheDirectory != null) {
                 settings.cacheDirectoryProperty().set(cacheDirectory);

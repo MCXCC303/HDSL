@@ -62,10 +62,15 @@ public final class DshCustomCommands {
 
         LOG.info("Running the " + phase + " command of " + instance.id() + ": " + command);
         Map<String, String> environment = new LinkedHashMap<>();
-        environment.put("DSH_HOME", instance.homeDirectory().toString());
+        // The same three values the launch states, and the same refusal of a `DSH_HOME` typed into
+        // an environment box — read through [DshEnvironment#of], which is where that refusal lives.
+        // A command written to prepare or back up "the instance's home" has to operate on the
+        // instance's own home, and measured before this, it operated on whatever a variable named
+        // `DSH_HOME` said.
         environment.put("DSH_INSTANCE", instance.id());
         environment.put("DSH_VERSION", instance.version());
         environment.putAll(DshEnvironment.of(instance));
+        environment.put(DshEnvironment.HOMEDIRECTORY_VARIABLE, instance.homeDirectory().toString());
 
         try {
             // A command is a shell line, not a program and its arguments: that is what a

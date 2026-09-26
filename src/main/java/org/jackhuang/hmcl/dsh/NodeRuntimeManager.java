@@ -23,7 +23,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import kala.compress.archivers.ArchiveEntry;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
-import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jackhuang.hmcl.util.platform.Architecture;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
@@ -471,9 +470,13 @@ public final class NodeRuntimeManager {
             throw new DshException("Node.js " + version + " is not installed");
         }
         try {
-            FileUtils.deleteDirectory(runtime.directory());
+            // A Node distribution holds npm's own tree and, once pnpm has been
+            // provisioned into it, a second package manager's: read-only entries
+            // and junctions among them. See [DshFiles].
+            DshFiles.deleteTree(runtime.directory());
         } catch (IOException e) {
-            throw new DshException("Failed to remove " + runtime.directory(), e);
+            throw new DshException("Failed to remove " + runtime.directory()
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
         }
         LOG.info("Removed Node.js " + version);
     }
@@ -637,16 +640,12 @@ public final class NodeRuntimeManager {
 
     /// Deletes a path, ignoring failures and absence.
     ///
+    /// Both shapes are handled by [DshFiles#deleteTree], which removes a file as
+    /// readily as a directory and is what makes a Node distribution — npm's own
+    /// tree, with its read-only entries and its junctions — removable on Windows.
+    ///
     /// @param path the path to remove
     private static void deleteQuietly(Path path) {
-        try {
-            if (Files.isDirectory(path)) {
-                FileUtils.deleteDirectory(path);
-            } else {
-                Files.deleteIfExists(path);
-            }
-        } catch (IOException e) {
-            LOG.warning("Failed to delete " + path, e);
-        }
+        DshFiles.deleteTreeQuietly(path);
     }
 }

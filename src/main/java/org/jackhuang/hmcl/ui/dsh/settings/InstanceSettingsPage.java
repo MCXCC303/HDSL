@@ -456,6 +456,12 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// is kept away from another's). Everything else, including which profile to boot and whether
     /// to open a browser, is theirs to decide — see [DshLaunchArguments] for the split.
     ///
+    /// A value with a space in it is typed in quotes, and **either quoting carries a Windows path**:
+    /// `--patch "C:\Users\me\a.yml"` and `--patch 'C:\Users\me\a.yml'` both arrive as written. The
+    /// exception is a UNC path, whose two leading separators are one escaped separator inside double
+    /// quotes, so `\\server\share` has to be written in single quotes. This is the one thing about
+    /// the row a person cannot work out by trying it.
+    ///
     /// @return the row
     private LineInheritableTextField buildLaunchArgumentsRow() {
         LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.launch_args"));

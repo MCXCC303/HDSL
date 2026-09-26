@@ -357,10 +357,18 @@ public final class DshCrashDialog extends Stage {
 
     /// Returns the instance's own directory, which is what the original shows as the game folder.
     ///
+    /// The instance's own answer, not the folder the launcher owns: an instance read out of a
+    /// folder somebody added lives in that folder, and this row is where a person looks to find
+    /// the files of the instance that just fell over. Answered from the launcher's own layout it
+    /// named `<user home>/instances/<id>` for every instance alive — measured against a real
+    /// install, a crash report for an instance living in `D:\HDSHL\1\codex` said its folder was
+    /// `C:\Users\…\AppData\Roaming\.hdsl\instances\codex`, which is not merely a wrong path but
+    /// one that does not exist, and it is exported to a file and pasted into bug reports.
+    ///
     /// @return the path, or a note that it could not be resolved
     private String instanceDirectory() {
         try {
-            return org.jackhuang.hmcl.dsh.DshPaths.instanceDirectory(instance.id()).toString();
+            return instance.instanceDirectory().toString();
         } catch (org.jackhuang.hmcl.dsh.DshException | RuntimeException e) {
             return "-";
         }

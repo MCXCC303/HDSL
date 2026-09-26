@@ -18,7 +18,6 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jackhuang.hmcl.util.gson.JsonUtils;
-import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -29,15 +28,22 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Creates, enumerates, edits and removes [DshInstance]s.
 ///
-/// Each instance is stored as `instances/<id>/instance.json`. The instance id
-/// doubles as the directory name, which is what makes an isolated `DSH_HOME`
-/// trivially private: it lives at `instances/<id>/home`.
+/// An instance is stored as `<folder>/<id>/instance.json`, one directory per
+/// instance, named after it. The folder is one of the launcher's own: the one it
+/// created and the ones the user added, of which the one being shown is where a
+/// new instance goes. The instance's id doubles as its directory name, which is
+/// what makes an isolated `DSH_HOME` trivially private — it lives at
+/// `<folder>/<id>/home`.
+///
+/// The folder an instance is in is part of the instance, not a detail of how it
+/// was listed: its copy of DeepSeek Harness, its local plugin files and its
+/// isolated home are all inside `<folder>/<id>`, so [#find] searches every folder
+/// the launcher knows and the directory it read is recorded on what it returns.
 @NotNullByDefault
 public final class DshInstanceManager {
     private DshInstanceManager() {
@@ -45,6 +51,87 @@ public final class DshInstanceManager {
 
     /// The manifest file inside an instance directory.
     public static final String MANIFEST_NAME = "instance.json";
+
+    /// The folders the launcher looks for instances in, the one it is showing first.
+    ///
+    /// Which folders exist is a question only the settings can answer, and the
+    /// settings live a layer above this package — so the default answer is asked
+    /// of them, every time. It is asked lazily rather than installed once,
+    /// because the launcher has three ways in and only one of them starts an
+    /// interface: a command-line run that adds a folder and then makes an
+    /// instance in it is two processes, and the second one never touches the
+    /// interface. Answering from the settings is what makes the folder the user
+    /// chose mean the same thing in all three.
+    ///
+    /// The one thing that keeps this from being a circular dependency is that
+    /// the settings' own instance listing reads folders directly rather than
+    /// through here.
+    private static volatile java.util.function.Supplier<List<Path>> folders =
+            DshInstanceManager::foldersFromTheSettings;
+
+    /// Asks the settings which folders the launcher keeps instances in.
+    ///
+    /// A launcher whose settings cannot be read — a build with none, a test that
+    /// has not set any up — still has the folder it owns, which is where its
+    /// instances were before folders could be added at all.
+    ///
+    /// @return the folders, the one being shown first
+    private static List<Path> foldersFromTheSettings() {
+        try {
+            return org.jackhuang.hmcl.setting.GameDirectoryManager.instanceFolders();
+        } catch (RuntimeException | Error e) {
+            LOG.warning("Could not read the instance folders from the settings; "
+                    + "using the folder the launcher owns", e);
+            return List.of(DshPaths.INSTANCES);
+        }
+    }
+
+    /// Points the manager at the folders the launcher knows about.
+    ///
+    /// The settings are the answer by default; this is for a caller that wants a
+    /// different one, and for a test, which has no settings to point at and
+    /// folders of its own to use instead.
+    ///
+    /// @param supplier the folders, the one being shown first
+    /// @return the supplier that was in place, so a caller passing through can
+    ///         put it back
+    public static java.util.function.Supplier<List<Path>> setFolders(
+            java.util.function.Supplier<List<Path>> supplier) {
+        java.util.function.Supplier<List<Path>> previous = folders;
+        folders = supplier;
+        return previous;
+    }
+
+    /// Returns the folders the launcher looks for instances in, the current one first.
+    ///
+    /// @return the folders, absolute and without duplicates
+    public static List<Path> folders() {
+        List<Path> resolved = new ArrayList<>();
+        for (Path folder : folders.get()) {
+            if (folder == null) {
+                continue;
+            }
+            Path normalized = folder.toAbsolutePath().normalize();
+            if (!resolved.contains(normalized)) {
+                resolved.add(normalized);
+            }
+        }
+        if (resolved.isEmpty()) {
+            resolved.add(DshPaths.INSTANCES.toAbsolutePath().normalize());
+        }
+        return List.copyOf(resolved);
+    }
+
+    /// Returns the folder a new instance is made in.
+    ///
+    /// The one the interface is showing: adding a folder is how a person says
+    /// where their instances belong, and installing one is the moment they mean
+    /// it. Nothing is written anywhere else until they choose another folder.
+    ///
+    /// @return the folder
+    public static Path currentFolder() {
+        return folders().get(0);
+    }
 
     /// Listeners notified after an instance is created, changed or removed.
     ///
@@ -107,33 +194,43 @@ public final class DshInstanceManager {
 
     public static List<DshInstance> list() {
         List<DshInstance> instances = new ArrayList<>();
-        Path root = DshPaths.INSTANCES;
-        if (!Files.isDirectory(root)) {
-            return instances;
-        }
-
-        try (Stream<Path> entries = Files.list(root)) {
-            for (Path directory : entries.filter(Files::isDirectory).toList()) {
-                DshInstance instance = read(directory);
-                if (instance != null) {
+        java.util.Set<Path> seen = new java.util.HashSet<>();
+        for (Path root : folders()) {
+            for (DshInstance instance : listIn(root)) {
+                Path directory;
+                try {
+                    directory = instance.instanceDirectory();
+                } catch (DshException e) {
+                    continue;
+                }
+                if (seen.add(directory)) {
                     instances.add(instance);
                 }
             }
-        } catch (IOException e) {
-            LOG.warning("Failed to enumerate instances in " + root, e);
         }
-
         instances.sort(Comparator.comparingLong(DshInstance::createdAt).reversed());
         return instances;
     }
 
     /// Finds an instance by id.
     ///
+    /// Looked for in every folder the launcher knows about: an id names one
+    /// instance, and a person who sees it in the list has to be able to open,
+    /// launch or remove it without knowing which folder it came from. The folder
+    /// being shown is searched first, so the common case reads one directory.
+    ///
     /// @param id the instance id
     /// @return the instance, or `null` when it does not exist or is unreadable
     public static @Nullable DshInstance find(String id) {
         try {
-            return read(DshPaths.instanceDirectory(id));
+            String segment = DshPaths.segment(id, "instance id");
+            for (Path root : folders()) {
+                DshInstance instance = read(root.resolve(segment));
+                if (instance != null) {
+                    return instance;
+                }
+            }
+            return null;
         } catch (DshException e) {
             return null;
         }
@@ -190,7 +287,46 @@ public final class DshInstanceManager {
                                      @Nullable Path customHome,
                                      List<String> arguments,
                                      Map<String, String> environment) throws DshException {
+        return create(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                arguments, environment, currentFolder());
+    }
+
+    /// Creates and persists a new instance in a folder of the caller's choosing.
+    ///
+    /// The folder is where the instance's own directory is made: it holds the
+    /// copy of DeepSeek Harness the instance runs, the plugin files it was given
+    /// and, for an isolated home, its profile and sessions. A person who added a
+    /// folder did so to keep instances there, so this is what "install an
+    /// instance" has to be given — the folder they are looking at — rather than
+    /// the one the launcher owns.
+    ///
+    /// @param id            the instance id, which must be unique and a safe path segment
+    /// @param version       the installed version to pin
+    /// @param profile       the profile to boot
+    /// @param workspace     the directory sessions are scoped to
+    /// @param nodeRuntime   the Node runtime selection, or `null` for the system runtime
+    /// @param homeMode      how the `DSH_HOME` is resolved
+    /// @param customHome    the custom home, required when `homeMode` is [DshHomeMode#CUSTOM]
+    /// @param arguments     extra command-line arguments
+    /// @param environment   extra environment variables
+    /// @param folder        the folder to make the instance in
+    /// @return the created instance
+    /// @throws DshException when the id is taken, the version is not installed,
+    ///                       or the instance cannot be written
+    public static DshInstance create(String id,
+                                     String version,
+                                     String profile,
+                                     Path workspace,
+                                     @Nullable String nodeRuntime,
+                                     DshHomeMode homeMode,
+                                     @Nullable Path customHome,
+                                     List<String> arguments,
+                                     Map<String, String> environment,
+                                     Path folder) throws DshException {
         if (find(id) != null) {
+            // An id names one instance. Two folders holding the same name would
+            // make every lookup a coin toss, so the second one is refused here,
+            // where the person can still be told which name is taken.
             throw new DshException("An instance named \"" + id + "\" already exists");
         }
         if (homeMode == DshHomeMode.CUSTOM && customHome == null) {
@@ -203,15 +339,18 @@ public final class DshInstanceManager {
         // surface that serves nothing needs none.
         int port = DshSurface.ofProfile(profile).isWeb() ? DshPorts.reserve(id) : 0;
 
+        Path directory = folder.toAbsolutePath().normalize()
+                .resolve(DshPaths.segment(id, "instance id"));
+
         DshInstance instance = new DshInstance(id, version, profile,
                 workspace.toAbsolutePath().normalize().toString(),
                 nodeRuntime,
                 homeMode,
                 customHome == null ? null : customHome.toAbsolutePath().normalize().toString(),
                 List.copyOf(arguments), Map.copyOf(environment),
-                DshInstanceIcon.DEFAULT.id(), null, DshPortMode.AUTO, port, System.currentTimeMillis());
+                DshInstanceIcon.DEFAULT.id(), null, DshPortMode.AUTO, port,
+                System.currentTimeMillis(), directory.toString());
 
-        Path directory = instance.instanceDirectory();
         try {
             Files.createDirectories(directory);
             if (homeMode == DshHomeMode.ISOLATED) {
@@ -222,7 +361,8 @@ public final class DshInstanceManager {
         }
 
         write(instance);
-        LOG.info("Created instance " + id + " (dsh " + version + ", home " + instance.homeMode() + ")");
+        LOG.info("Created instance " + id + " in " + directory
+                + " (dsh " + version + ", home " + instance.homeMode() + ")");
         fireChanged();
         return instance;
     }
@@ -244,6 +384,21 @@ public final class DshInstanceManager {
     /// A shared or custom home is never deleted: other instances, or the user's
     /// own `dsh` installation, may still depend on it.
     ///
+    /// An instance that is running is stopped first, and the removal waits for
+    /// it to exit. Windows will not remove a file that another process is
+    /// executing or has open, and an instance that is up is holding its own copy
+    /// of DeepSeek Harness and its own home open — so removing one that is
+    /// running either fails halfway, leaving a folder that can neither be
+    /// started nor removed, or succeeds against a live server whose files are
+    /// disappearing underneath it. Removing an instance is an instruction about
+    /// the instance, and an instance that is running is still that instance.
+    ///
+    /// What is left when the removal still fails is named: "could not remove the
+    /// instance" and "could not remove
+    /// `…/instances/e2e1/dsh/node_modules/x/native.node` because another process
+    /// has it open" are different answers to the person reading them, and only
+    /// the second one says what to do next.
+    ///
     /// @param id the instance id
     /// @throws DshException when the instance does not exist or cannot be removed
     public static void delete(String id) throws DshException {
@@ -252,13 +407,24 @@ public final class DshInstanceManager {
             throw new DshException("Instance " + id + " does not exist");
         }
         Path directory = instance.instanceDirectory();
-        if (instance.homeMode() != DshHomeMode.ISOLATED && !directory.startsWith(DshPaths.INSTANCES)) {
-            throw new DshException("Refusing to delete " + directory + " because it is outside the instance directory");
+        // What is deleted is `<a folder the launcher lists>/<id>` and nothing
+        // else, by construction rather than by a check here: [#read] stamps the
+        // folder it read an instance from onto what it returns, and [#create]
+        // refuses to make one anywhere but in a folder of the launcher's. A
+        // manifest that names some other directory — hand-edited, or copied from
+        // another machine — therefore cannot turn "remove this instance" into a
+        // deletion somewhere the user never pointed the launcher at.
+
+        if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
+            LOG.info("Stopping instance " + id + " before removing it");
+            DshProcessManager.stop(id);
         }
+
         try {
-            FileUtils.deleteDirectory(directory);
+            DshFiles.deleteTree(directory);
         } catch (IOException e) {
-            throw new DshException("Failed to remove " + directory, e);
+            throw new DshException("Failed to remove " + directory
+                    + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
         }
         LOG.info("Removed instance " + id);
         fireChanged();
@@ -300,8 +466,13 @@ public final class DshInstanceManager {
         }
 
         DshInstance renamed = existing.withId(normalized);
-        Path oldDirectory = DshPaths.instanceDirectory(id);
-        Path newDirectory = DshPaths.instanceDirectory(normalized);
+        // The instance's own directory, wherever it is: an instance in a folder
+        // the user added moves inside that folder, and one in the folder the
+        // launcher owns never leaves it.
+        Path oldDirectory = existing.instanceDirectory();
+        Path newDirectory = oldDirectory.resolveSibling(
+                DshPaths.segment(normalized, "instance id"));
+        renamed = renamed.withDirectory(newDirectory);
 
         boolean moved = false;
         if (Files.isDirectory(oldDirectory)) {
@@ -338,39 +509,18 @@ public final class DshInstanceManager {
         return renamed;
     }
 
-    /// Copies an instance into a new one, its configuration and all.
+    /// Copies an instance's configuration into a new one.
     ///
-    /// A copy is the original's **configuration**: the harness version it pins, its profile, the
-    /// plugin list in its own order, the profile's patch layer, the plugins it installed from files,
-    /// the settings its plugins keep, and its skill packs. What it is not is the original's
-    /// **state**: session history and keys stay behind, because a copy of somebody's past is not what
-    /// "copy this instance" asks for, and a key duplicated into a second home is a key nobody meant
-    /// to make. The instance's own launcher settings — its install-script policy, the commands that
-    /// run around it, which account it uses — come along, because those are what "this instance"
-    /// means to the launcher rather than to the harness.
+    /// Only the configuration is copied. A copy gets its own isolated home
+    /// rather than a duplicate of the original's, because the home holds the
+    /// sessions and credentials — duplicating those silently is not what
+    /// "copy this instance" should mean.
     ///
-    /// Both halves of that are already written down elsewhere: a pack *is* that description of an
-    /// instance, and installing one *is* that rebuild — version, profile, patch, local plugin files,
-    /// settings sections, skills, and nothing that looks like a key. So a duplicate writes a pack to
-    /// a temporary file and installs it, rather than copying directories: copying would have to
-    /// answer the same questions again — which of `node_modules`, `dsh/`, `sessions/` and
-    /// `.credentials.yaml` may travel — and it would leave the copy's `file:` plugin paths pointing
-    /// into the original's plugin directory.
-    ///
-    /// **Resumable on purpose.** pnpm refuses to run a package's install script until it is told to,
-    /// and it says so as a failure. The copy is kept in that case — the question is written into its
-    /// own profile, so the answer has somewhere to go — and the work runs again from the copy it
-    /// already made. Every other failure takes the half-made copy with it: an instance that appears
-    /// in the list and cannot start is worse than one that never appeared.
-    ///
-    /// @param id     the instance to copy
-    /// @param newId  the new instance's id
-    /// @param report receives progress lines, or `null`
+    /// @param id    the instance to copy
+    /// @param newId the new instance's id
     /// @return the copy
-    /// @throws DshException when either id is unusable, or the copy cannot be made
-    public static DshInstance duplicate(String id, String newId,
-                                        @Nullable java.util.function.Consumer<String> report)
-            throws DshException {
+    /// @throws DshException when either id is unusable
+    public static DshInstance duplicate(String id, String newId) throws DshException {
         DshInstance source = find(id);
         if (source == null) {
             throw new DshException("Instance " + id + " does not exist");
@@ -379,92 +529,22 @@ public final class DshInstanceManager {
         if (normalized.isEmpty()) {
             throw new DshException("An instance needs a name");
         }
-
-        DshInstance copy = find(normalized);
-        if (copy == null) {
-            // The copy carries the original's icon, and only its icon: a copy that
-            // is indistinguishable from what it was copied from is a copy nobody can
-            // find in the list. The port is deliberately not copied — two instances
-            // may not be given the same one — and the write is what makes the icon
-            // survive, because a copy built by `withIcon` alone is never persisted.
-            copy = create(normalized, source.version(), source.profile(),
-                    source.workspacePath(), source.nodeRuntime(), DshHomeMode.ISOLATED, null,
-                    source.extraArguments(), source.environment())
-                    .withIcon(source.iconOrDefault());
-            update(copy);
-        } else if (DshVersionManager.isInstalled(copy)) {
-            // An id taken by an instance that is already whole is somebody else's. One that is
-            // half-made is this call's own earlier attempt, kept because pnpm asked about an install
-            // script: the answer goes into that instance's profile, so the work continues there
-            // instead of starting over.
+        if (exists(normalized)) {
             throw new DshException("Instance " + normalized + " already exists");
         }
 
-        Path pack = null;
-        try {
-            pack = temporaryPack();
-            DshModpacks.export(source, pack, report);
-            DshModpacks.install(pack, normalized, source.workspacePath(), report);
-            copyOwnLauncherSettings(source, copy);
-            DshInstance filled = find(normalized);
-            return filled == null ? copy : filled;
-        } catch (DshException | RuntimeException failed) {
-            if (failed instanceof DshPluginInstaller.DshBuildScriptApprovalRequired) {
-                // The one failure that must keep what it made: the question pnpm raised is written
-                // into the copy's profile, and removing the copy would take the question with it.
-                throw failed;
-            }
-            LOG.warning("Could not copy " + id + " to " + normalized + "; removing the copy", failed);
-            DshVersionManager.discardPartial(copy);
-            try {
-                delete(normalized);
-            } catch (DshException | RuntimeException cleanupFailure) {
-                LOG.warning("Could not remove the half-made copy " + normalized, cleanupFailure);
-            }
-            throw failed;
-        } finally {
-            deleteQuietly(pack);
-        }
-    }
-
-    /// Creates the temporary pack a duplicate describes itself into.
-    ///
-    /// It goes through the system's temporary directory rather than the launcher's own, because it is
-    /// not a thing the launcher keeps: it is written, read back, and deleted in the same call, and a
-    /// copy that is interrupted leaves a file the system already knows how to sweep.
-    ///
-    /// @return the file, which does not exist yet
-    /// @throws DshException when the system cannot make one
-    private static Path temporaryPack() throws DshException {
-        try {
-            return Files.createTempFile("hdsl-duplicate-", DshModpacks.FILE_EXTENSION);
-        } catch (IOException e) {
-            throw new DshException("Could not create a file for the copy", e);
-        }
-    }
-
-    /// Copies an instance's own launcher settings to another instance.
-    ///
-    /// The file holds what somebody chose *for this instance*: its install-script policy, the
-    /// commands that run around it, which account it uses, and how loudly it logs. None of that is a
-    /// secret — the account is named, not keyed — and all of it is what a copy should inherit, which
-    /// is why it is carried beside the pack rather than inside it.
-    ///
-    /// @param source the instance copied from
-    /// @param copy   the instance being filled
-    /// @throws DshException when the file exists but cannot be copied
-    private static void copyOwnLauncherSettings(DshInstance source, DshInstance copy)
-            throws DshException {
-        Path from = source.instanceDirectory().resolve("settings.json");
-        if (!Files.isRegularFile(from)) {
-            return;
-        }
-        Path to = copy.instanceDirectory().resolve("settings.json");
-        try {
-            Files.copy(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new DshException("Failed to copy " + from + " to " + to, e);
-        }
+        // The copy carries the original's icon, and only its icon: a copy that
+        // is indistinguishable from what it was copied from is a copy nobody can
+        // find in the list. The port is deliberately not copied — two instances
+        // may not be given the same one — and the write is what makes the icon
+        // survive, because a copy built by `withIcon` alone is never persisted.
+        DshInstance copy = create(normalized, source.version(), source.profile(),
+                source.workspacePath(), source.nodeRuntime(), DshHomeMode.ISOLATED, null,
+                source.extraArguments(), source.environment(),
+                source.instanceDirectory().getParent())
+                .withIcon(source.iconOrDefault());
+        update(copy);
+        return copy;
     }
 
     /// Returns the next free id derived from a base name.
@@ -488,19 +568,20 @@ public final class DshInstanceManager {
     ///
     /// @param path the path to delete
     private static void deleteQuietly(Path path) {
-        if (path == null || !Files.exists(path)) {
-            return;
-        }
-        try (var paths = Files.walk(path)) {
-            for (Path entry : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(entry);
-            }
-        } catch (IOException e) {
-            LOG.warning("Failed to delete " + path, e);
+        if (path != null) {
+            DshFiles.deleteTreeQuietly(path);
         }
     }
 
     /// Reads the manifest inside an instance directory.
+    ///
+    /// The directory that was read is stamped onto the instance, and it wins
+    /// over whatever the manifest records: the manifest is a file, and it can be
+    /// copied to another folder, carried to another machine, or written by hand
+    /// — while the folder the manifest was found in is a fact about right now.
+    /// An instance read out of a folder the user added is in that folder, and
+    /// every later operation on it — installing, launching, renaming, removing —
+    /// has to name that folder rather than the one the launcher owns.
     ///
     /// @param directory the candidate instance directory
     /// @return the instance, or `null` when there is no readable manifest
@@ -514,7 +595,7 @@ public final class DshInstanceManager {
             if (instance == null || instance.id() == null || instance.version() == null) {
                 return null;
             }
-            return instance;
+            return instance.withDirectory(directory);
         } catch (Exception e) {
             LOG.warning("Failed to read instance manifest " + manifest, e);
             return null;

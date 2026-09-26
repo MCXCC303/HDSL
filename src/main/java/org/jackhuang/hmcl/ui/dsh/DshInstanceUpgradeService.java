@@ -104,14 +104,16 @@ public final class DshInstanceUpgradeService {
 
     /// Returns a copy of an instance recording a different version.
     ///
+    /// The copy is built from the instance itself, so the folder it lives in
+    /// comes with it: an instance in a folder the user added is upgraded where
+    /// it is, and rebuilt field by field it would have moved to the folder the
+    /// launcher owns.
+    ///
     /// @param instance the instance
     /// @param version  the version to record
     /// @return the copy
     private static DshInstance withVersion(DshInstance instance, String version) {
-        return new DshInstance(instance.id(), version, instance.profile(), instance.workspace(),
-                instance.nodeRuntime(), instance.homeMode(), instance.customHome(),
-                instance.extraArguments(), instance.environment(), instance.icon(), instance.iconFile(),
-                instance.portMode(), instance.port(), instance.createdAt());
+        return instance.withVersion(version);
     }
 
     /// Lists the plugins the instance's profile holds, as installable specs.

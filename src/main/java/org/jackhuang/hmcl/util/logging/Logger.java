@@ -177,6 +177,17 @@ public final class Logger {
             return;
         }
 
+        // The raw file may already be gone: something outside this class removed it, or removed
+        // the directory it was in. That is not a failure to report — the run is over, and there is
+        // nothing left to compress — and trying anyway wrote a stack trace at the end of a run
+        // that had nothing wrong with it. Measured: the test suite deletes its own temporary home
+        // while the JVM is still up, and every such run ended with
+        // `NoSuchFileException: …/2026-09-27T00-30-00.log.xz` on standard error.
+        if (!Files.isRegularFile(logFile)) {
+            logWriter.close();
+            return;
+        }
+
         boolean failed = false;
         Path xzFile = logFile.resolveSibling(logFile.getFileName() + ".xz");
         try (XZOutputStream output = new XZOutputStream(Files.newOutputStream(xzFile), new LZMA2Options())) {

@@ -55,7 +55,17 @@ public record DshInstance(
         @SerializedName("iconFile") @Nullable String iconFile,
         @SerializedName("portMode") @Nullable DshPortMode portMode,
         @SerializedName("port") int port,
-        @SerializedName("createdAt") long createdAt) {
+        @SerializedName("createdAt") long createdAt,
+        // The folder this instance's own directory is in, recorded so that an
+        // instance read out of a folder the user added is managed where it
+        // actually is. It is written down because an instance's own directory
+        // holds its copy of DeepSeek Harness, its local plugin files and — for
+        // an isolated home — its profile, credentials and sessions, so every
+        // operation on an instance resolves through here: installing it,
+        // launching it, renaming it and removing it all have to name the folder
+        // that holds it. Absent means the folder the launcher owns, which is
+        // what every instance written before this member existed was in.
+        @SerializedName("directory") @Nullable String directory) {
 
     /// Normalises the members a settings file may leave out.
     ///
@@ -69,6 +79,35 @@ public record DshInstance(
     public DshInstance {
         environment = java.util.Map.copyOf(
                 environment == null ? java.util.Map.of() : environment);
+    }
+
+    /// Creates an instance whose directory is the one the launcher owns.
+    ///
+    /// The shape every caller that does not know where an instance lives uses —
+    /// and the one the tests build instances with. [#DshInstanceManager] names
+    /// the directory for everything it reads or writes.
+    ///
+    /// @param id             the instance id
+    /// @param version        the pinned version
+    /// @param profile        the profile to boot
+    /// @param workspace      the session working directory
+    /// @param nodeRuntime    the Node runtime selection
+    /// @param homeMode       how the `DSH_HOME` is resolved
+    /// @param customHome     the custom home, or `null`
+    /// @param extraArguments the extra command-line arguments
+    /// @param environment    the extra environment variables
+    /// @param icon           the icon id
+    /// @param iconFile       the custom icon file, or `null`
+    /// @param portMode       the port policy
+    /// @param port           the remembered or fixed port
+    /// @param createdAt      when the instance was made
+    public DshInstance(String id, String version, String profile, String workspace,
+                       @Nullable String nodeRuntime, DshHomeMode homeMode, @Nullable String customHome,
+                       List<String> extraArguments, Map<String, String> environment,
+                       @Nullable String icon, @Nullable String iconFile,
+                       @Nullable DshPortMode portMode, int port, long createdAt) {
+        this(id, version, profile, workspace, nodeRuntime, homeMode, customHome, extraArguments,
+                environment, icon, iconFile, portMode, port, createdAt, null);
     }
 
     /// The profile booted when this instance is launched.
@@ -99,7 +138,7 @@ public record DshInstance(
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
                 extraArguments, environment,
                 DshInstanceIcon.DEFAULT.id(), file.toAbsolutePath().normalize().toString(),
-                portMode, port, createdAt);
+                portMode, port, createdAt, directory);
     }
 
     /// Returns a copy that uses a built-in icon.
@@ -107,7 +146,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withNoIconFile() {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, null, portMode, port, createdAt);
+                extraArguments, environment, icon, null, portMode, port, createdAt, directory);
     }
 
     /// Returns a copy under a different id.
@@ -116,7 +155,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withId(String newId) {
         return new DshInstance(newId, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt, directory);
     }
 
     /// Returns a copy with a different icon.
@@ -125,7 +164,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withIcon(DshInstanceIcon newIcon) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, newIcon.id(), iconFile, portMode, port, createdAt);
+                extraArguments, environment, newIcon.id(), iconFile, portMode, port, createdAt, directory);
     }
 
     /// Returns the port policy, defaulting to automatic.
@@ -162,7 +201,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withPort(int newPort) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, iconFile, portMode, newPort, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, newPort, createdAt, directory);
     }
 
     /// Returns a copy with a different port policy.
@@ -172,7 +211,7 @@ public record DshInstance(
     /// @return the copy
     public DshInstance withPortPolicy(DshPortMode newMode, int newPort) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, iconFile, newMode, newPort, createdAt);
+                extraArguments, environment, icon, iconFile, newMode, newPort, createdAt, directory);
     }
 
     /// Returns the Node runtime this instance runs on.
@@ -224,7 +263,7 @@ public record DshInstance(
         }
         return switch (homeMode) {
             case GLOBAL -> throw new AssertionError("handled above");
-            case ISOLATED -> DshPaths.instanceDirectory(id).resolve("home").toAbsolutePath().normalize();
+            case ISOLATED -> instanceDirectory().resolve("home");
             case VERSION_SHARED -> DshPaths.versionHomeDirectory(version).toAbsolutePath().normalize();
             case CUSTOM -> {
                 Path home = customHomePath();
@@ -239,10 +278,32 @@ public record DshInstance(
     /// Returns this instance's directory, which holds `instance.json` and the
     /// isolated home when [#homeMode] is [DshHomeMode#ISOLATED].
     ///
+    /// The recorded directory wins, because an instance read out of a folder the
+    /// user added lives there and only there: its copy of DeepSeek Harness, the
+    /// plugin files it installed from a file and its profile are all inside it.
+    /// Answering with the folder the launcher owns would install a second copy
+    /// somewhere else and then report the instance as broken, and removing the
+    /// instance would either fail or remove a different one that happens to
+    /// share its name.
+    ///
     /// @return the instance directory
     /// @throws DshException when the id cannot be used as a directory name
     public Path instanceDirectory() throws DshException {
+        String recorded = directory;
+        if (recorded != null && !recorded.isBlank()) {
+            return Path.of(recorded).toAbsolutePath().normalize();
+        }
         return DshPaths.instanceDirectory(id);
+    }
+
+    /// Returns a copy living in a different directory.
+    ///
+    /// @param newDirectory the directory, or `null` for the one the launcher owns
+    /// @return the copy
+    public DshInstance withDirectory(@Nullable Path newDirectory) {
+        return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt,
+                newDirectory == null ? null : newDirectory.toAbsolutePath().normalize().toString());
     }
 
     /// Returns the directory holding this instance's own DeepSeek Harness.
@@ -250,7 +311,7 @@ public record DshInstance(
     /// @return the directory
     /// @throws DshException when the identifier is not usable as a path segment
     public Path dshDirectory() throws DshException {
-        return DshPaths.instanceVersionDirectory(id);
+        return instanceDirectory().resolve("dsh");
     }
 
     /// Returns the entry script of this instance's own DeepSeek Harness.
@@ -276,7 +337,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withProfile(String newProfile) {
         return new DshInstance(id, version, newProfile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt, directory);
     }
 
     /// Creates a new instance pinned to a different version.
@@ -285,7 +346,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withVersion(String newVersion) {
         return new DshInstance(id, newVersion, profile, workspace, nodeRuntime, homeMode, customHome,
-                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt, directory);
     }
 
     /// Creates a new instance pinned to a different Node runtime.
@@ -294,7 +355,7 @@ public record DshInstance(
     /// @return the updated instance
     public DshInstance withNodeRuntime(@Nullable String runtime) {
         return new DshInstance(id, version, profile, workspace, runtime, homeMode, customHome,
-                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt, directory);
     }
 
     /// Creates a new instance with a different home policy.
@@ -317,13 +378,13 @@ public record DshInstance(
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
                 extraArguments,
                 environment == null ? null : java.util.Map.copyOf(environment),
-                icon, iconFile, portMode, port, createdAt);
+                icon, iconFile, portMode, port, createdAt, directory);
     }
 
     public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, mode,
                 home == null ? null : home.toAbsolutePath().normalize().toString(),
-                extraArguments, environment, icon, iconFile, portMode, port, createdAt);
+                extraArguments, environment, icon, iconFile, portMode, port, createdAt, directory);
     }
 
     /// Creates a new instance with different launch arguments and environment.
@@ -334,6 +395,6 @@ public record DshInstance(
     public DshInstance withLaunchOptions(@Unmodifiable List<String> arguments,
                                          @Unmodifiable Map<String, String> environment) {
         return new DshInstance(id, version, profile, workspace, nodeRuntime, homeMode, customHome,
-                arguments, environment, icon, iconFile, portMode, port, createdAt);
+                arguments, environment, icon, iconFile, portMode, port, createdAt, directory);
     }
 }

@@ -214,11 +214,18 @@ public final class DshProcess {
     /// @throws DshException when it cannot be started
     public static DshProcess startPrepared(DshInstance instance, DshLauncher.LaunchPlan plan)
             throws DshException {
-        // An instance may answer for itself about debug lines, so the switch is applied here
-        // rather than once at startup: what is written while this instance runs is what its
-        // own answer says.
-        org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
-                org.jackhuang.hmcl.setting.SettingsManager.settings().debugLogFor(instance.id()));
+        // The launcher's own debug switch is **not** touched here, and it used to be: this ran
+        // `setDebugEnabled(settings().debugLogFor(instance.id()))`, which reads the instance's own
+        // answer first — so launching one instance that had debug logging switched on turned it on
+        // for the whole launcher, and nothing ever turned it back off. `debugLogFor` is still what
+        // an instance's own page shows and stores; what it cannot be is a per-instance setting,
+        // because the logger it governs is a launcher-wide object with one file and one flag. The
+        // switch that matters for a launch is applied once, at startup, from the launcher's own
+        // setting ([org.jackhuang.hmcl.Launcher#startLogging]).
+        //
+        // What an instance's own debug lines are, then, is its child process's output — and that
+        // is not lost: it goes to the instance's log window and into the crash report either way.
+        //
         // Whatever was asked to happen before this instance starts happens first, and a
         // failure stops the launch: it was asked for, and starting anyway would ignore it.
         DshCustomCommands.run(instance,
@@ -228,10 +235,14 @@ public final class DshProcess {
         try {
             return new DshProcess(plan);
         } catch (DshException | RuntimeException e) {
-            // The note the plan wrote is the only thing a failed launch leaves behind, and putting
-            // back what it disturbed — the account's route in the profile patch, and the two shapes
-            // in the home's own settings — is the whole of this cleanup. A launch that never got as
-            // far as a process has no state listener to do it, so it is done here.
+            // The plan wrote an account overlay, and the only thing that removes one is the state
+            // listener of a process that got as far as being registered. A launch that fails here —
+            // the process cannot be started, the workspace is gone — would leave the file behind for
+            // good: a few hundred bytes in the launcher's directory that nothing will ever look at
+            // again. Removing it is the same cleanup the listener would have done.
+            DshAccountOverlay.remove(plan.accountOverlay());
+            // The note the launch wrote goes with it, and putting back what the launch disturbed is
+            // part of the same cleanup.
             try {
                 DshInjectedSettings.settle(plan.instance());
             } catch (DshException settleFailure) {
