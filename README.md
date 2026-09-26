@@ -8,7 +8,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/MCXCC303/HDSL/build.yml?branch=master&label=CI&logo=github&style=flat-square)](https://github.com/MCXCC303/HDSL/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Linux-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
 [![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk&logoColor=ffffff)](https://openjdk.org/projects/jdk/21)
 
 </div>
@@ -60,7 +60,7 @@ HDSL v0.2.0 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特�
 
 | 项目 | 要求 |
 |---|---|
-| 操作系统 | **Linux**（x86_64 / aarch64） |
+| 操作系统 | **Linux / macOS**（x86_64 / aarch64） |
 | 运行时 | **Java 21**（构建与运行） |
 | DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
 
@@ -71,19 +71,17 @@ HDSL v0.2.0 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特�
 ./gradlew run        # 直接启动
 ```
 
-## 数据目录
+打包为 `.deb` 与自解压脚本（Linux）：
 
-HDSL 的默认应用数据位于 `~/.local/share/hdsl`：
-
+```bash
+./gradlew makeDeb
 ```
-~/.local/share/hdsl/
-├── instances/           每个实例一份运行环境与配置
-│   └── <实例>/
-│       ├── dsh/         该实例自己的 DeepSeek Harness
-│       ├── home/        隔离的 DSH_HOME
-│       └── instance.json
-├── homes/               选择「同一版本共用」时使用的共享 DSH_HOME
-└── launcher-settings.json
+
+打包为 `.app`、`.dmg` 与 `.zip`（macOS）：
+
+```bash
+./gradlew makeExecutable
+./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png build/libs
 ```
 
 ## 参与贡献
@@ -107,4 +105,7 @@ HDSL 是 HMCL 的衍生作品，目前功能正在快速完善，欢迎通过该
 界面层的说法与实现来自 HMCL 及其贡献者；DeepSeek Harness 领域层为 HDSL 原创。
 
 ## 致谢
+Bemly (Bemly_, For MacOS Transplanting)
+
 DeepSeek V4.1 Flash
+

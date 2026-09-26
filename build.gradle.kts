@@ -84,17 +84,23 @@ repositories {
 }
 
 // --------------------------------------------------------------- JavaFX ------
-// HMCL-DSH targets Linux only. JavaFX must match the JDK that runs Gradle:
+// HMCL-DSH targets Linux and macOS. JavaFX must match the JDK that runs Gradle:
 // the 21.x line supports JDK 17–22, the 25 line is required from JDK 23 on.
 // This mirrors HMCL's own JavaFXPlatform.CLASSIC/MODERN split without carrying
 // its buildSrc plugin.
 val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run {
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
-    require(os.contains("linux")) { "HMCL-DSH supports Linux only (detected os.name=$os)" }
-    when (arch) {
-        "aarch64", "arm64" -> "linux-aarch64"
-        "x86_64", "amd64" -> "linux"
+    val isMac = os.contains("mac") || os.contains("darwin") || os.contains("osx")
+    require(os.contains("linux") || isMac) { "HMCL-DSH supports Linux and macOS only (detected os.name=$os)" }
+    when {
+        isMac && (arch == "aarch64" || arch == "arm64") -> "mac-aarch64"
+        isMac -> when (arch) {
+            "x86_64", "amd64" -> "mac"
+            else -> error("Unsupported macOS architecture: $arch")
+        }
+        arch == "aarch64" || arch == "arm64" -> "linux-aarch64"
+        arch == "x86_64" || arch == "amd64" -> "linux"
         else -> error("Unsupported Linux architecture: $arch")
     }
 }

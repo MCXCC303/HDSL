@@ -1,6 +1,6 @@
 name: Release
 
-# A tag is the release: pushing one builds the Linux packages and publishes them.
+# A tag is the release: pushing one builds the Linux and macOS packages and publishes them.
 on:
   push:
     tags:
@@ -66,17 +66,18 @@ jobs:
 
     - name: Write the release note
       run: |
-        echo "HMCL-DSH ${VERSION} — DeepSeek Harness launcher for Linux." >> RELEASE_NOTE
+        echo "HMCL-DSH ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
         echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> RELEASE_NOTE
+        echo "macOS users take the .dmg or .zip; the standalone .sh below is the Linux build." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
         echo "| File | For | SHA-256 |" >> RELEASE_NOTE
         echo "| --- | --- | --- |" >> RELEASE_NOTE
         # The Arch package is listed like the others. It is not the tar.zst under another name:
         # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
         # and the portable tar.zst is for unpacking anywhere.
-        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb"; do
-          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
+        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
+          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.dmg) echo "macOS (mount)";; *.zip) echo "macOS (unpack)";; *.sh) echo "self-executing";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
         done
         cat RELEASE_NOTE
 
@@ -104,4 +105,64 @@ jobs:
           --notes-file RELEASE_NOTE
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      continue-on-error: false
+
+  # The macOS bundle embeds the host's JavaFX platform, so it is built where
+  # it runs rather than beside the Linux packages — once per Mac arch, with
+  # macos-latest covering Apple Silicon and macos-26-intel covering Intel.
+  # Each uploads into the release the Linux job created, which is what the
+  # `needs` is for; the file names carry the arch, so the two uploads never
+  # meet.
+  release-mac:
+
+    needs: release
+
+    strategy:
+      matrix:
+        os: [macos-latest, macos-26-intel]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '21'
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-cleanup: never
+
+    - name: Take the version from the tag
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        [ -n "${VERSION}" ] || { echo "error: tag ${GITHUB_REF_NAME} has no version" >&2; exit 1; }
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "Releasing ${VERSION}"
+
+    - name: Build with Gradle
+      run: ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
+      env:
+        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+
+    - name: Build the macOS packages
+      run: |
+        ./packaging/mac-packages.sh \
+          "${{ env.VERSION }}" \
+          "build/libs/hdsl-${{ env.VERSION }}.sh" \
+          "src/main/resources/assets/img/icon@8x.png" \
+          build/libs
+
+    - name: Upload the macOS packages
+      run: |
+        gh release upload "${GITHUB_REF_NAME}" \
+          build/libs/HDSL-${{ env.VERSION }}-*.dmg \
+          build/libs/HDSL-${{ env.VERSION }}-*.dmg.sha256 \
+          build/libs/HDSL-${{ env.VERSION }}-*.zip \
+          build/libs/HDSL-${{ env.VERSION }}-*.zip.sha256 \
+          --clobber
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

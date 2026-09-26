@@ -52,7 +52,7 @@ The original work has been modified as follows:
     to HMCL's servers, documentation, community links and branding have been
     removed or replaced.
 
-6.  Platform.  Only Linux is supported.  Windows- and macOS-specific code
+6.  Platform.  Only Linux and macOS are supported.  Windows-specific code
     paths are not maintained.
 
 The full source code of this modified version is available from the project

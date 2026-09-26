@@ -9,7 +9,13 @@ on:
 jobs:
   build:
 
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # macos-latest is Apple Silicon and macos-26-intel is Intel: the two
+        # Macs the launcher supports, beside Linux.
+        os: [ubuntu-latest, macos-latest, macos-26-intel]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
@@ -23,20 +29,29 @@ jobs:
       with:
         cache-cleanup: never
     # The launcher is a JavaFX application, and a few of its tests touch the
-    # toolkit; a headless server needs a display for them.
-    - name: Build with Gradle
+    # toolkit; a headless Linux server needs a display for them, while macOS
+    # builds run as they are.
+    - name: Build with Gradle (Linux)
+      if: runner.os == 'Linux'
       run: xvfb-run --auto-servernum ./gradlew build --no-daemon --parallel
+      env:
+        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+    - name: Build with Gradle (macOS)
+      if: runner.os == 'macOS'
+      run: ./gradlew build --no-daemon --parallel
       env:
         JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
     - name: Get short SHA
       run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
+    # The .sh embeds the host's JavaFX platform, so one per OS is kept.
     - name: Upload SH
       uses: actions/upload-artifact@v4
       with:
-        name: HDSL-${{ env.SHORT_SHA }}-sh
+        name: HDSL-${{ env.SHORT_SHA }}-sh-${{ matrix.os }}
         path: build/libs/hdsl-*.sh
         archive: false
     - name: Upload DEB
+      if: runner.os == 'Linux'
       uses: actions/upload-artifact@v4
       with:
         name: HDSL-${{ env.SHORT_SHA }}-deb

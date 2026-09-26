@@ -25,6 +25,7 @@ import kala.compress.archivers.ArchiveEntry;
 import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jackhuang.hmcl.util.platform.Architecture;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.tree.ArchiveFileTree;
 import org.jackhuang.hmcl.util.tree.TarFileTree;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -67,15 +68,59 @@ public final class NodeRuntimeManager {
     /// The download base for a specific release.
     /// Returns the platform tag used in Node distribution file names.
     ///
-    /// @return `linux-x64` or `linux-arm64`
-    /// @throws DshException when the current architecture has no Node build
+    /// @return `linux-x64`, `linux-arm64`, `darwin-x64` or `darwin-arm64`
+    /// @throws DshException when the current system has no Node build
     public static String platformTag() throws DshException {
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
+            return switch (Architecture.SYSTEM_ARCH) {
+                case X86_64 -> "darwin-x64";
+                case ARM64 -> "darwin-arm64";
+                default -> throw new DshException(
+                        "Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on macOS");
+            };
+        }
         return switch (Architecture.SYSTEM_ARCH) {
             case X86_64 -> "linux-x64";
             case ARM64 -> "linux-arm64";
             default -> throw new DshException(
                     "Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on Linux");
         };
+    }
+
+    /// Returns the entry the release index lists for a platform tag.
+    ///
+    /// The archives are named `darwin-x64` and `darwin-arm64`, while the index
+    /// calls the same builds `osx-x64-tar` and `osx-arm64-tar` — which is what
+    /// a new platform has to know before it can filter the release list.
+    ///
+    /// @param platform the tag from [NodeRuntimeManager#platformTag]
+    /// @return the name to look for in the index `files` array
+    static String indexTag(String platform) {
+        return switch (platform) {
+            case "darwin-x64" -> "osx-x64-tar";
+            case "darwin-arm64" -> "osx-arm64-tar";
+            default -> platform;
+        };
+    }
+
+    /// Returns the archive extension Node publishes for this system.
+    ///
+    /// Linux builds ship as `.tar.xz`, macOS builds as `.tar.gz`; the mirror
+    /// keeps the same layout, so the extension is a property of the system
+    /// rather than of the source.
+    ///
+    /// @return `.tar.xz` on Linux, `.tar.gz` on macOS
+    static String archiveExtension() {
+        return OperatingSystem.CURRENT_OS == OperatingSystem.MACOS ? ".tar.gz" : ".tar.xz";
+    }
+
+    /// Returns the archive file name for a version and platform tag.
+    ///
+    /// @param version  the version without its leading `v`
+    /// @param platform the tag from [NodeRuntimeManager#platformTag]
+    /// @return e.g. `node-v22.19.0-darwin-arm64.tar.gz`
+    static String archiveFileName(String version, String platform) {
+        return "node-v" + version + "-" + platform + archiveExtension();
     }
 
     /// Lists the Node runtimes installed under [DshPaths#RUNTIMES].
@@ -121,6 +166,7 @@ public final class NodeRuntimeManager {
     /// @throws DshException when the index cannot be read
     public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
         String platform = platformTag();
+        String indexFile = indexTag(platform); 
 
         // The chosen source first, then the other one. A source is a host, and a host can be
         // unreachable for reasons that have nothing to do with the source being wrong — a route, a
@@ -167,7 +213,7 @@ public final class NodeRuntimeManager {
             if (version == null || !version.startsWith("v")) {
                 continue;
             }
-            if (!hasPlatform(object, platform)) {
+            if (!hasPlatform(object, indexFile)) {
                 continue;
             }
             String lts = null;
@@ -205,7 +251,8 @@ public final class NodeRuntimeManager {
         String platform = platformTag();
         Path target = DshPaths.runtimeDirectory(normalized);
         Path staging = target.resolveSibling(target.getFileName() + ".installing");
-        Path archive = DshPaths.RUNTIMES.resolve("node-v" + normalized + "-" + platform + ".tar.xz");
+        String fileName = archiveFileName(normalized, platform);
+        Path archive = DshPaths.RUNTIMES.resolve(fileName);
 
         try {
             Files.createDirectories(DshPaths.RUNTIMES);
@@ -215,7 +262,6 @@ public final class NodeRuntimeManager {
             throw new DshException("Failed to prepare " + staging, e);
         }
 
-        String fileName = "node-v" + normalized + "-" + platform + ".tar.xz";
         String url = source.archiveUrl(normalized, fileName);
 
         try {
@@ -223,7 +269,7 @@ public final class NodeRuntimeManager {
             download(url, archive, onStage);
 
             stage(onStage, "Unpacking " + fileName);
-            extractTarXz(archive, staging);
+            extractArchive(archive, staging);
         } catch (IOException e) {
             deleteQuietly(staging);
             deleteQuietly(archive);
@@ -461,6 +507,26 @@ public final class NodeRuntimeManager {
         }
     }
 
+    /// Unpacks a Node distribution archive into a directory, preserving symlinks.
+    ///
+    /// Linux builds ship as `.tar.xz`, macOS builds as `.tar.gz`; both carry
+    /// the same top-level layout, including the symlinks that make `bin/npm`
+    /// and `bin/npx` work.
+    ///
+    /// @param archive the `.tar.xz` or `.tar.gz` file
+    /// @param target  the directory to unpack into
+    /// @throws IOException when decompression or extraction fails
+    private static void extractArchive(Path archive, Path target) throws IOException {
+        String name = archive.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (name.endsWith(".tar.gz") || name.endsWith(".tgz")) {
+            try (TarFileTree tree = TarFileTree.open(archive)) {
+                extract(tree, tree.getRoot(), target);
+            }
+            return;
+        }
+        extractTarXz(archive, target);
+    }
+
     /// Unpacks a `.tar.xz` archive into a directory, preserving symlinks.
     ///
     /// Recreating symlinks matters: the Node distribution reaches `npm` and
@@ -537,11 +603,11 @@ public final class NodeRuntimeManager {
         return element != null && element.isJsonPrimitive() ? element.getAsString() : "";
     }
 
-    /// Reports whether a release publishes a build for a platform tag.
+    /// Reports whether a release publishes a build for a platform.
     ///
     /// @param object   the release object
-    /// @param platform the platform tag
-    /// @return whether the `files` array contains the tag
+    /// @param platform the index entry, e.g. `linux-x64` or `osx-arm64-tar`
+    /// @return whether the `files` array contains the entry
     private static boolean hasPlatform(JsonObject object, String platform) {
         JsonElement files = object.get("files");
         if (files == null || !files.isJsonArray()) {
