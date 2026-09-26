@@ -481,14 +481,20 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 }));
     }
 
-    /// Copies this instance's configuration into a new one.
+    /// Copies this instance into a new one.
+    ///
+    /// The copy is filled from a pack the launcher writes and reads back — version, profile, plugin
+    /// list, patch layer, local plugin files, plugin settings, skills — and the work runs behind a
+    /// progress dialog, because installing a harness and resolving its plugins takes minutes rather
+    /// than a click. That dialog is also what asks about install scripts, and the copy it made is
+    /// kept for the answer: see [DshInstanceManager#duplicate]. Saying that it finished is the
+    /// dialog's own toast, the same one every other installation ends with.
     private void duplicateInstance() {
-        try {
-            DshInstanceManager.duplicate(instance.id(), DshInstanceManager.nextId(instance.id()));
-            Controllers.showToast(i18n("dsh.instance.duplicated"));
-        } catch (DshException e) {
-            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-        }
+        String newId = DshInstanceManager.nextId(instance.id());
+        PluginInstalls.runCreating(i18n("dsh.instance.duplicating", instance.id()),
+                () -> DshInstanceManager.find(newId),
+                report -> DshInstanceManager.duplicate(instance.id(), newId, report::accept),
+                null);
     }
 
     /// Starts or stops this instance from its own page.
@@ -522,27 +528,23 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     /// repainting for as long as it takes the child to die: Windows paints it white and offers
     /// to end it, and what the person reported is a launcher that has crashed. Nothing about the
     /// removal needs the interface to stand still, so it does not.
+    ///
+    /// The question outlives the answer for the same reason it is asked at all: the seconds this
+    /// takes are seconds in which the instance is still on the screen, and a dialog that has already
+    /// closed makes pressing again the obvious thing to do.
     private void removeInstance() {
-        Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
+        String id = instance.id();
+        Controllers.confirmAsync(i18n("dsh.instance.remove.confirm", id),
                 i18n("dsh.instance.remove"),
+                i18n("dsh.instance.removing", id),
                 () -> CompletableFuture.runAsync(() -> {
                     try {
-                        DshInstanceManager.delete(instance.id());
+                        DshInstanceManager.delete(id);
                     } catch (DshException e) {
                         throw new CompletionException(e);
                     }
-                }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-                    if (throwable != null) {
-                        Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-                                ? throwable.getCause()
-                                : throwable;
-                        LOG.warning("Failed to remove instance " + instance.id(), cause);
-                        Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
-                    } else {
-                        Controllers.navigate(Controllers.getInstancesPage());
-                    }
-                })),
-                null);
+                }, Schedulers.io()),
+                i18n("dsh.instance.remove_failed"));
     }
 
     /// Rebuilds the plugin list from the profile manifest on disk.

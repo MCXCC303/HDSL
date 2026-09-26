@@ -497,28 +497,24 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
     /// of those wait. A list that cannot repaint while a child process drains is a list Windows
     /// reports as not responding, which is what removing an instance used to do.
     ///
+    /// The question stays open until the removal has finished, for the second half of the same
+    /// reason: the retries mean this can take seconds, the row it is about is still on the list
+    /// throughout, and a dialog that has already closed turns those seconds into an invitation to
+    /// answer the same question again.
+    ///
     /// @param instance the instance to remove
     private void removeInstance(DshInstance instance) {
-        Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
+        String id = instance.id();
+        Controllers.confirmAsync(i18n("dsh.instance.remove.confirm", id),
                 i18n("dsh.instance.remove"),
+                i18n("dsh.instance.removing", id),
                 () -> CompletableFuture.runAsync(() -> {
                     try {
-                        DshInstanceManager.delete(instance.id());
+                        DshInstanceManager.delete(id);
                     } catch (DshException e) {
                         throw new CompletionException(e);
                     }
-                }, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-                    if (throwable != null) {
-                        Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-                                ? throwable.getCause()
-                                : throwable;
-                        LOG.warning("Failed to remove instance " + instance.id(), cause);
-                        Controllers.dialog(cause.getMessage(), i18n("dsh.instance.remove_failed"),
-                                MessageType.ERROR);
-                    } else {
-                        Controllers.showToast(i18n("dsh.instance.removed", instance.id()));
-                    }
-                })),
-                null);
+                }, Schedulers.io()),
+                i18n("dsh.instance.remove_failed"));
     }
 }

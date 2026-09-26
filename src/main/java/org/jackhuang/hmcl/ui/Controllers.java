@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.ui;
 
+import javafx.event.ActionEvent;
 import javafx.scene.Node;
 import javafx.scene.layout.Region;
 import javafx.stage.DirectoryChooser;
@@ -24,6 +25,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.ui.animation.ContainerAnimations;
 import org.jackhuang.hmcl.ui.animation.Motion;
+import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.InputDialogPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -31,13 +33,18 @@ import com.jfoenix.validation.base.ValidatorBase;
 import org.jackhuang.hmcl.ui.decorator.Decorator;
 import org.jackhuang.hmcl.util.FutureCallback;
 import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.function.Supplier;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Owns the application stage, the window decorator and the dialog helpers the
 /// ported component library calls into.
@@ -184,6 +191,81 @@ public final class Controllers {
     public static void confirm(String text, @Nullable String title, MessageType type,
                                Runnable yes, @Nullable Runnable no) {
         dialog(new MessageDialogPane.Builder(text, title, type).yesOrNo(yes, no).build());
+    }
+
+    /// Asks a yes/no question whose answer takes time, and stays until it has been answered.
+    ///
+    /// The dialog a question is asked in used to close the moment the button was pressed, which is
+    /// the moment least likely to be the end of it: removing an instance stops a running child and
+    /// then takes its tree away with retries, which is seconds rather than milliseconds, and nothing
+    /// on the screen says so. What a person sees is a dialog that vanished and a list that still
+    /// shows the row, so they press it again — and a question that closes before its answer arrives
+    /// is a question that gets answered twice, on a row whose second answer is about something that
+    /// may already have happened.
+    ///
+    /// This one keeps the dialog open, replaces its buttons with a spinner and does not close it
+    /// until the work has finished. The press is taken on the interface thread and the work is not,
+    /// because the whole point of it is that it waits: the spinner has to be on the screen before
+    /// anything blocks, and one frame of it after is one frame too late.
+    ///
+    /// A failure leaves the dialog where it is and says why beside it, so the person can try again or
+    /// decline — which is the only honest thing to do with a question whose answer did not happen.
+    ///
+    /// @param text   the question
+    /// @param title  the dialog title, or `null`
+    /// @param wait   what the dialog is waiting for, shown in place of the buttons
+    /// @param work   the work to run when confirmed, off the interface thread
+    /// @param failed the title of the dialog that reports a failure, or `null` to say nothing
+    public static void confirmAsync(String text, @Nullable String title, String wait,
+                                    Supplier<? extends CompletionStage<?>> work,
+                                    @Nullable String failed) {
+        MessageDialogPane pane = new MessageDialogPane.Builder(text, title, MessageType.QUESTION)
+                .yesOrNo(null, null)
+                .build();
+        pane.getActions().getChildren().get(0).addEventHandler(ActionEvent.ACTION, event -> {
+            pane.setWorking(true, wait);
+            CompletableFuture<?> running;
+            try {
+                running = work.get().toCompletableFuture();
+            } catch (RuntimeException thrown) {
+                reportFailure(pane, failed, thrown);
+                return;
+            }
+            running.handle((ignored, throwable) -> throwable)
+                    .thenAcceptAsync(thrown -> {
+                        if (thrown == null) {
+                            pane.fireEvent(new DialogCloseEvent());
+                        } else {
+                            reportFailure(pane, failed, thrown);
+                        }
+                    }, Schedulers.defaultScheduler());
+        });
+        dialog(pane);
+    }
+
+    /// Says why a question could not be answered, and lets it be asked again.
+    ///
+    /// The reason is dug out of the wrapping rather than taken from its outside, because the work
+    /// runs in a task: what a person needs is the sentence the layer that failed wrote, not the name
+    /// of the layer that was carrying it.
+    ///
+    /// @param pane   the question's dialog
+    /// @param title  the failure dialog's title, or `null` to say nothing
+    /// @param thrown what went wrong, or `null`
+    private static void reportFailure(MessageDialogPane pane, @Nullable String title, @Nullable Throwable thrown) {
+        if (title == null) {
+            return;
+        }
+        pane.setWorking(false, null);
+        String reason = thrown == null ? "" : thrown.toString();
+        for (Throwable cause = thrown; cause != null; cause = cause.getCause()) {
+            if (cause.getMessage() != null && !cause.getMessage().isBlank()) {
+                reason = cause.getMessage();
+                break;
+            }
+        }
+        LOG.warning("A question was answered and the work failed: " + reason, thrown);
+        dialog(reason, title, MessageType.ERROR);
     }
 
     /// Navigates the content area to a page with the standard transition.

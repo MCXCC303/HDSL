@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.construct;
 
 import com.jfoenix.controls.JFXButton;
 import javafx.event.ActionEvent;
+import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.Label;
@@ -65,7 +66,24 @@ public final class MessageDialogPane extends HBox {
 
     private final HBox actions;
 
+    private final Label titleLabel;
+
+    /// What the action row held before the dialog began waiting, so it can be put back.
+    private final java.util.List<Node> originalActions = new java.util.ArrayList<>();
+
+    /// The spinner shown in place of the buttons while the dialog waits.
+    private final SpinnerPane workingSpinner = new SpinnerPane();
+
     private @Nullable ButtonBase cancelButton;
+
+    /// Whether the dialog is waiting for work its buttons asked for.
+    ///
+    /// A button that starts work used to close the dialog as soon as it was pressed, which is exactly
+    /// when the work is most likely to be pressed again: the window is still there, the row is still
+    /// there, and nothing has visibly happened yet. While this is set no button closes the dialog,
+    /// so the dialog outlives the work that was asked for and the row it belongs to cannot be
+    /// answered twice.
+    private boolean working;
 
     public MessageDialogPane(@NotNull String text, @Nullable String title, @NotNull MessageType type) {
         this.setSpacing(16);
@@ -83,7 +101,8 @@ public final class MessageDialogPane extends HBox {
         {
             StackPane titlePane = new StackPane();
             titlePane.getStyleClass().addAll("jfx-layout-heading", "title");
-            titlePane.getChildren().setAll(new Label(title != null ? title : type.getDisplayName()));
+            titleLabel = new Label(title != null ? title : type.getDisplayName());
+            titlePane.getChildren().setAll(titleLabel);
 
             StackPane content = new StackPane();
             content.getStyleClass().add("jfx-layout-body");
@@ -108,16 +127,79 @@ public final class MessageDialogPane extends HBox {
 
         this.getChildren().setAll(graphic, vbox);
 
+        workingSpinner.getStyleClass().add("small-spinner-pane");
+
         onEscPressed(this, () -> {
-            if (cancelButton != null) {
+            if (cancelButton != null && !working) {
                 cancelButton.fire();
             }
         });
     }
 
     public void addButton(Node btn) {
-        btn.addEventHandler(ActionEvent.ACTION, e -> fireEvent(new DialogCloseEvent()));
+        btn.addEventHandler(ActionEvent.ACTION, e -> {
+            if (!working) {
+                fireEvent(new DialogCloseEvent());
+            }
+        });
         actions.getChildren().add(btn);
+    }
+
+    /// Returns the row the dialog's buttons are in.
+    ///
+    /// Handed out so that a caller asking a question whose answer takes time can watch for the
+    /// answer itself: the buttons a builder makes close the dialog, and a question that must outlive
+    /// its own answer needs the press rather than the close.
+    ///
+    /// @return the action row, whose children are the buttons in the order they were added
+    public HBox getActions() {
+        return actions;
+    }
+
+    /// Returns whether the dialog is waiting for work.
+    ///
+    /// @return whether the dialog is holding itself open
+    public boolean isWorking() {
+        return working;
+    }
+
+    /// Puts the dialog into, or out of, the state of waiting for work.
+    ///
+    /// The button row is replaced while the work runs by what it is waiting for and a spinner, and
+    /// nothing else about the dialog changes. That is what makes the press safe to repeat and the
+    /// dialog safe to leave: what is not on the screen is not something a person can press twice,
+    /// while the window itself stays where it is until there is an answer — which is the point,
+    /// because the answer is what the row behind it is waiting for.
+    ///
+    /// Both buttons come back together when the work ends without having done what it was asked for:
+    /// a question that can never be answered again is worse than one that was answered twice.
+    ///
+    /// @param working whether the dialog is waiting for work
+    /// @param reason  what it is waiting for, shown in place of the buttons, or `null` to keep it
+    public void setWorking(boolean working, @Nullable String reason) {
+        this.working = working;
+        if (working) {
+            replaceActions();
+            Label waiting = new Label(reason != null ? reason : i18n("message.working"));
+            waiting.setPadding(new Insets(0, 5, 0, 0));
+            actions.getChildren().setAll(waiting, workingSpinner);
+        } else {
+            actions.getChildren().setAll(originalActions);
+        }
+    }
+
+    /// Sets the dialog's heading.
+    ///
+    /// @param text the heading
+    public void setTitleText(String text) {
+        titleLabel.setText(text);
+    }
+
+    /// Remembers what the action row holds, once.
+    private void replaceActions() {
+        if (originalActions.isEmpty()) {
+            originalActions.addAll(actions.getChildren());
+        }
     }
 
     public void setCancelButton(@Nullable ButtonBase btn) {
