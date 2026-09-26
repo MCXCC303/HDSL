@@ -31,10 +31,11 @@ import java.util.regex.Pattern;
 
 /// Sets the model the harness starts with, by editing two keys of its settings file.
 ///
-/// An account given to an instance through `--patch` adds a route; it does not make the harness
-/// *use* it. That is recorded in one place, the `agent-default-model` section, and an overlay
-/// cannot put it there: layers merge with the user's settings on top, so a section supplied by
-/// `--patch` is the one that loses. The key has to be set where the user's own answer is.
+/// A route in the profile's patch layer says what the harness is offered; it does not make the
+/// harness *use* it. Which supplier and model to start on is recorded in one place, the
+/// `agent-default-model` section, and a patch cannot put it there: the harness keeps that answer in
+/// its own settings, which are applied over every layer of the composition. It has to be set where
+/// the person's own answer lives.
 ///
 /// **Only a line is ever rewritten.** The harness reads this file, and while it runs it also writes
 /// it — under a cross-process lock, with a leaf-level diff that keeps comments and formatting. So

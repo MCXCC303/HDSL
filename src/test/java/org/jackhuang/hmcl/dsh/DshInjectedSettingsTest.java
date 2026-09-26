@@ -97,6 +97,15 @@ class DshInjectedSettingsTest {
         return home.resolve(".hdsl-injected.json");
     }
 
+    private Path patch() {
+        return DshPluginPatch.patchFile(home, "web");
+    }
+
+    private void writePatch(String text) throws IOException {
+        Files.createDirectories(patch().getParent());
+        Files.writeString(patch(), text);
+    }
+
     // ---- The line surgery, on its own -----------------------------------------------------------
 
     @Test
@@ -156,7 +165,7 @@ class DshInjectedSettingsTest {
     @Test
     void aLaunchPutsBackTheRouteTheHarnessAdoptedAndTheModelItNamed() throws Exception {
         write(THEIRS);
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         assertTrue(Files.isRegularFile(note()));
 
         // The launch runs; the harness adopts the route and starts on it.
@@ -172,7 +181,7 @@ class DshInjectedSettingsTest {
     @Test
     void aDefaultModelThePersonMovedIsLeftAlone() throws Exception {
         write(THEIRS);
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
 
         // While the harness was up the person pointed it at something of their own.
         write(AFTER_A_LAUNCH.replace("provider: MCXCC", "provider: deepseek"));
@@ -190,7 +199,7 @@ class DshInjectedSettingsTest {
         write(THEIRS);
         // A launch with a key, killed before it could tidy up: the note stays, the settings keep
         // what the harness wrote.
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         write(AFTER_A_LAUNCH);
 
         // The next launch has no account at all — which is the whole point: it still cleans up, so a
@@ -214,7 +223,7 @@ class DshInjectedSettingsTest {
     void aHomeWithNoSettingsIsNoTrouble() throws Exception {
         // Nothing to capture and nothing to put back, but a note either way — a launch notes what it
         // disturbs, and a home with no file is one where it disturbs nothing.
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         assertTrue(Files.isRegularFile(note()));
         assertFalse(DshInjectedSettings.settle(instance()));
         assertFalse(Files.exists(note()));
@@ -225,7 +234,7 @@ class DshInjectedSettingsTest {
         // A route of the same name already existed before this launch, so whatever is in it now is
         // not this launcher's to remove: an edit made since would be lost.
         write(AFTER_A_LAUNCH);
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         write(AFTER_A_LAUNCH.replace("DeepSeek-V4.1-Flash", "renamed by the person"));
 
         DshInjectedSettings.settle(instance());
@@ -237,7 +246,7 @@ class DshInjectedSettingsTest {
     @Test
     void aLaunchRemembersTheRouteItBuiltLongAfterTheLaunchIsOver() throws Exception {
         write(THEIRS);
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         assertTrue(Files.readString(home.resolve(".hdsl-injected-routes.json")).contains("MCXCC"));
 
         // The launch ends and its note is honoured; the ledger is what is left.
@@ -255,7 +264,7 @@ class DshInjectedSettingsTest {
         write(AFTER_A_LAUNCH);
         Files.writeString(home.resolve(".hdsl-injected-routes.json"), "{\"routes\":[\"MCXCC\"]}");
 
-        assertTrue(DshInjectedSettings.clean(instance(), List.of(), null));
+        assertTrue(DshInjectedSettings.clean(instance(), "web", List.of(), null));
         String after = read();
         assertFalse(after.contains("MCXCC"), after);
         assertTrue(after.contains("deepseek-v4-pro"), after);
@@ -265,7 +274,7 @@ class DshInjectedSettingsTest {
     @Test
     void aDefaultModelThatNamesARouteThisLaunchWillNotBuildIsTakenAway() throws Exception {
         write(AFTER_A_LAUNCH);
-        assertTrue(DshInjectedSettings.clean(instance(), List.of("MCXCC"), null));
+        assertTrue(DshInjectedSettings.clean(instance(), "web", List.of("MCXCC"), null));
         String after = read();
         // The pointer named a supplier this launch makes none of, so it goes with it.
         assertFalse(after.contains("agent-default-model"), after);
@@ -277,7 +286,7 @@ class DshInjectedSettingsTest {
         write(AFTER_A_LAUNCH);
         // The route this launch is about to build is the one the pointer names: it will be good again
         // in a moment, so it stays.
-        assertTrue(DshInjectedSettings.clean(instance(), List.of("MCXCC"), "MCXCC"));
+        assertTrue(DshInjectedSettings.clean(instance(), "web", List.of("MCXCC"), "MCXCC"));
         String after = read();
         assertTrue(after.contains("agent-default-model"), after);
         assertTrue(after.contains("provider: MCXCC"), after);
@@ -288,8 +297,84 @@ class DshInjectedSettingsTest {
     @Test
     void aSupplierOfThePersonsOwnIsNeverTouched() throws Exception {
         write(THEIRS);
-        assertFalse(DshInjectedSettings.clean(instance(), List.of("MCXCC"), null));
+        assertFalse(DshInjectedSettings.clean(instance(), "web", List.of("MCXCC"), null));
         assertEquals(THEIRS, read());
+    }
+
+    // ---- The same contract for the route in the profile's own patch layer -----------------------
+
+    /// A patch with the launcher's route for an account, and a supplier of the person's own.
+    private static final String PATCH_WITH_A_ROUTE = """
+            # mine
+            - id: llm-pi-ai
+              name: "@deepseek-ai/dsh-llm-pi-ai"
+              config:
+                providers:
+                  Mine:
+                    apiKeyEnv: MY_KEY
+                    models:
+                      - id: mine
+                  MCXCC:
+                    apiKeyEnv: HDSL_LAUNCH_API_KEY_MCXCC_00000000
+                    models:
+                      - id: deepseek-flash
+            - id: locale
+              config:
+                language: en
+            """;
+
+    @Test
+    void theRouteInThePatchGoesWhenTheLaunchEnds() throws Exception {
+        write(THEIRS);
+        writePatch(PATCH_WITH_A_ROUTE);
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
+
+        assertTrue(DshInjectedSettings.settle(instance()));
+
+        String after = Files.readString(patch());
+        assertFalse(after.contains("MCXCC"), "the account's route is the launch's: " + after);
+        assertTrue(after.contains("Mine:"), "the person's own supplier stays: " + after);
+        assertTrue(after.contains("- id: locale"), "and so does everything after it: " + after);
+        assertFalse(Files.exists(note()), "the note is spent");
+    }
+
+    @Test
+    void aRouteTheLedgerKnowsIsTakenOutOfThePatchAtTheNextLaunch() throws Exception {
+        // The case the person sees: an instance launched with an account, then launched offline. The
+        // route cannot outlive its launch — nothing sets its key variable afterwards — so a launch
+        // that wants no supplier must not be offered one.
+        writePatch(PATCH_WITH_A_ROUTE);
+        Files.writeString(home.resolve(".hdsl-injected-routes.json"), "{\"routes\":[\"MCXCC\"]}");
+
+        assertTrue(DshInjectedSettings.clean(instance(), "web", List.of(), null));
+
+        String after = Files.readString(patch());
+        assertFalse(after.contains("MCXCC"), after);
+        assertTrue(after.contains("Mine:"), after);
+    }
+
+    @Test
+    void theRouteThisLaunchWillBuildIsLeftForItToRefresh() throws Exception {
+        writePatch(PATCH_WITH_A_ROUTE);
+
+        assertFalse(DshInjectedSettings.clean(instance(), "web", List.of("MCXCC"), "MCXCC"),
+                "nothing to change: the route this launch builds is the one that is there");
+        assertTrue(Files.readString(patch()).contains("MCXCC"));
+    }
+
+    @Test
+    void aNoteFromBeforeThereWerePatchRoutesStillSettles() throws Exception {
+        // What a home carries over from the version whose routes travelled as `--patch` overlays:
+        // the note has no profile in it, so there is no patch route to take back — and reading it
+        // must not fail.
+        write(THEIRS);
+        Files.writeString(note(), """
+                {"instance":"test","route":"MCXCC","account":"deepseek|MCXCC","writtenAt":"2026-01-01T00:00:00Z"}
+                """);
+
+        DshInjectedSettings.settle(instance());
+
+        assertFalse(Files.exists(note()), "the note is spent");
     }
 
     // ---- What makes a route show up on the harness's own models page ----------------------------
@@ -316,7 +401,7 @@ class DshInjectedSettingsTest {
         // The whole arrangement: note first, then the profile, then the launch. The note is what
         // remembers the file without it, so the cleanup needs no second mechanism.
         write(THEIRS);
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         DshInjectedSettings.publish(instance(), "MCXCC", "HDSL_LAUNCH_API_KEY");
         assertTrue(read().contains("MCXCC"));
 
@@ -341,14 +426,14 @@ class DshInjectedSettingsTest {
         write(THEIRS);
         DshInjectedSettings.publish(instance(), "MCXCC", "HDSL_LAUNCH_API_KEY");
         // No note: the launcher was killed before it wrote one, or this is a home from before notes.
-        assertTrue(DshInjectedSettings.clean(instance(), List.of(), "MCXCC"));
+        assertTrue(DshInjectedSettings.clean(instance(), "web", List.of(), "MCXCC"));
         assertEquals(THEIRS, read());
     }
 
     @Test
     void theNoteNamesTheLaunchItBelongsTo() throws Exception {
         write(THEIRS);
-        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC");
+        DshInjectedSettings.capture(instance(), "MCXCC", "deepseek|MCXCC", "web");
         String json = Files.readString(note());
         assertTrue(json.contains("\"route\": \"MCXCC\""), json);
         assertTrue(json.contains("\"account\": \"deepseek|MCXCC\""), json);

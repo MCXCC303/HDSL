@@ -23,9 +23,10 @@ group = "org.jackhuang.hmcl"
 
 // The version a build with no tag to stand on carries. A release takes its version from the
 // tag, `-PreleaseVersion=1.2.3`; a build whose own commit is tagged takes the tag's version; a
-// build past a tag carries that tag's version plus the commit it came from, `0.2.0+g1a613c5`,
-// so a package built here is never mistaken for one a tag published. Only a repository with no
-// tags at all falls back to this.
+// build past a tag carries that tag's version, how many commits past it stands, and the commit
+// it came from, `0.2.0+r42+g1a613c5`, so a package built here is never mistaken for one a tag
+// published and two builds of one commit are one version. Only a repository with no tags at all
+// falls back to this.
 val untaggedVersion = "0.1.0"
 
 // Runs git in the repository and returns its trimmed output, or null when git is
@@ -44,16 +45,27 @@ fun git(vararg arguments: String): String? = try {
 }
 
 // A release is the build that was handed the tag's version. A build of a commit that is
-// itself tagged is that tag's version too. Everything else is a git build, and names the
-// nearest tag it stands on — read from git, not from a constant — so a build seven commits
-// past `v0.2.0` says `0.2.0+...` and not the version this file happened to be written at.
+// itself tagged is that tag's version too. Everything else is a git build, and names how far
+// past the nearest tag it stands — read from git, not from a constant — so a build forty-two
+// commits past `v0.2.0` says `0.2.0+r42+g…` and not the version this file happened to be
+// written at.
 val releaseVersion = (findProperty("releaseVersion") as String?)?.takeIf { it.isNotBlank() }
 val taggedVersion = releaseVersion
     ?: git("describe", "--tags", "--exact-match", "HEAD")?.removePrefix("v")
 version = taggedVersion ?: run {
     val sha = git("rev-parse", "--short=7", "HEAD")
-    val base = git("describe", "--tags", "--abbrev=0", "HEAD")?.removePrefix("v") ?: untaggedVersion
-    if (sha != null) "$base+g$sha" else "$base-dev"
+    val tag = git("describe", "--tags", "--abbrev=0", "HEAD")
+    val base = tag?.removePrefix("v") ?: untaggedVersion
+    // How many commits this build stands past that tag. It is what tells two test builds apart
+    // when the tag alone does not: the count only grows as the branch does, so a later build
+    // always sorts after an earlier one. A repository with no tag at all counts every commit,
+    // which keeps the same promise.
+    val commits = git("rev-list", "--count", tag?.let { "$it..HEAD" } ?: "HEAD")
+    when {
+        sha != null && commits != null -> "$base+r$commits+g$sha"
+        sha != null -> "$base+g$sha"
+        else -> "$base-dev"
+    }
 }
 
 application {

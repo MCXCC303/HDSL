@@ -95,7 +95,7 @@ class DshInstanceTerminalTest {
         assertEquals(shim, path.get(0), pathLine);
         assertEquals(bin.toString(), path.get(1), pathLine);
         // A session with no account carries no key.
-        assertFalse(script.contains(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE), script);
+        assertFalse(script.contains(DshAccountRoute.KEY_ENVIRONMENT_VARIABLE), script);
     }
 
     @Test
@@ -104,8 +104,14 @@ class DshInstanceTerminalTest {
         DshAccount account = new DshAccount("deepseek", "sk-test", null, null);
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), account, runtime(bin));
 
-        assertTrue(script.contains(assignment(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, "sk-test")),
-                script);
+        // Under the name the account's own route reads, which is what makes the session's harness
+        // able to use that supplier: one variable per route, so no other route can pick it up.
+        //
+        // Written in this platform's own spelling: the branch this test landed on teaches the
+        // terminal to open a Windows shell as well, where a variable is set rather than exported,
+        // so the name is the upstream one and the syntax is the platform's.
+        assertTrue(script.contains(assignment(
+                DshAccountRoute.environmentVariable(account.displayName()), "sk-test")), script);
     }
 
     @Test

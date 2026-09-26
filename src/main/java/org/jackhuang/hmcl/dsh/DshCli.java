@@ -941,9 +941,9 @@ public final class DshCli {
             // launch goes wrong the first question is which of those decided the flags. Reading it
             // off the process table afterwards is not always possible — the child exits, or the
             // tooling cannot see another process's arguments.
-            // Built once and handed on. Building it is what writes the account's overlay, so building
-            // a second one — which is what printing and then launching used to do — leaves the first
-            // one behind for good.
+            // Built once and handed on. Building it is what asks the supplier for its models, so a
+            // second build — which is what printing and then launching used to do — costs a second
+            // round trip to the vendor.
             DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
             out.println("command: " + plan.commandLine());
 
