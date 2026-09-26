@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -201,7 +202,11 @@ public record DshAccount(
     /// Returns the endpoint to talk to.
     ///
     /// The account's own address wins, so an account can point at a gateway the launcher has never
-    /// heard of; otherwise the vendor's published one.
+    /// heard of; otherwise the address is the vendor's. **The vendor's** includes the suppliers
+    /// somebody added by address, which are not among the ones the launcher ships and so have to be
+    /// looked for where they are kept. Without that second place an account made on a supplier
+    /// somebody added reaches a launch with no address at all: the route is written without a
+    /// `baseURL`, the harness refuses it, and the key it carries cannot even be checked.
     ///
     /// @return the address, or `null` when neither is known
     public @Nullable String endpoint() {
@@ -209,7 +214,15 @@ public record DshAccount(
             return baseUrl.trim();
         }
         DshVendor vendor = vendor();
-        return vendor == null ? null : vendor.baseUrl();
+        if (vendor != null && vendor.hasBaseUrl()) {
+            return vendor.baseUrl();
+        }
+        for (DshVendor added : SettingsManager.settings().getCustomVendors()) {
+            if (added.hasBaseUrl() && added.id().equalsIgnoreCase(vendorId)) {
+                return added.baseUrl();
+            }
+        }
+        return null;
     }
 
     /// Returns what the interface shows for this account.

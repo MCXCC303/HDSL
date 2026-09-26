@@ -74,4 +74,24 @@ class DshAccountOverlayTest {
         assertFalse(yaml.contains("defaultContextWindow"), yaml);
         assertFalse(yaml.contains("defaultMaxTokens"), yaml);
     }
+
+    @Test
+    void aSupplierThePersonAddedArrivesWithItsAddress() {
+        // What the harness reads, and the half of the defect that was visible from outside: a route
+        // written without a `baseURL` is refused with "needs a baseURL; the installed catalog does
+        // not describe this route", because a route the launcher invents is not one the harness can
+        // look an address up for.
+        DshVendor added = DshVendor.discovered("opencode", "OpenCode", "https://api.opencode.ai/v1");
+        java.util.List<DshVendor> addedVendors =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().getCustomVendors();
+        addedVendors.add(added);
+        try {
+            String yaml = overlayFor("opencode");
+
+            assertTrue(yaml.contains("        baseURL: \"https://api.opencode.ai/v1\"\n"), yaml);
+            assertTrue(yaml.contains("        api: openai-completions\n"), yaml);
+        } finally {
+            addedVendors.remove(added);
+        }
+    }
 }

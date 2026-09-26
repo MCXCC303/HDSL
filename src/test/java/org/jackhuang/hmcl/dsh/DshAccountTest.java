@@ -52,6 +52,29 @@ class DshAccountTest {
     }
 
     @Test
+    void aSupplierThePersonAddedPublishesItsEndpointToo() {
+        // The defect this pins: a supplier added by address is not one the launcher ships, so its
+        // account found no vendor — and reached a launch with no address at all, which is the route
+        // the harness refuses with "needs a baseURL".
+        DshVendor added = DshVendor.discovered("opencode", "OpenCode", "https://api.opencode.ai/v1");
+        java.util.List<DshVendor> addedVendors =
+                org.jackhuang.hmcl.setting.SettingsManager.settings().getCustomVendors();
+        addedVendors.add(added);
+        try {
+            DshAccount account = new DshAccount("opencode", "k", null, null);
+
+            assertNull(account.vendor(), "a supplier somebody added is not one the launcher ships");
+            assertEquals("https://api.opencode.ai/v1", account.endpoint());
+
+            // And the account's own address still wins over the supplier's.
+            assertEquals("https://proxy.example/v1",
+                    new DshAccount("opencode", "k", "https://proxy.example/v1", null).endpoint());
+        } finally {
+            addedVendors.remove(added);
+        }
+    }
+
+    @Test
     void aNameFallsBackToTheVendors() {
         assertEquals("DeepSeek", new DshAccount("deepseek", "k", null, null).displayName());
         assertEquals("work", new DshAccount("deepseek", "k", null, "work").displayName());
