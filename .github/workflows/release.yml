@@ -51,46 +51,8 @@ jobs:
     - name: Build with Gradle
       # PowerShell runs nothing from the working directory without its path,
       # which is what the backslash is for; the runner's own desktop session
-      # is what the JavaFX tests run under. `tee` keeps the whole build log
-      # beside the tree, so the report step can quote the failure the log
-      # holds rather than point at it; Git Bash is the one shell both
-      # platforms' report steps can read it from.
-      shell: bash
-      run: >
-        set -o pipefail;
-        ./gradlew.bat clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel 2>&1 | tee build-log.txt
-    - name: Report failing tests
-      # The report Gradle points at lives on the runner — re-print the
-      # failures here, where they can actually be read.
-      if: failure()
-      shell: bash
-      run: |
-        if [ -f build-log.txt ]; then
-          sed -n '/What went wrong/,/^\* Try/p' build-log.txt | head -40
-          echo
-          grep -E 'error: |e: file:' build-log.txt | head -40 || true
-          echo
-        fi
-        shopt -s nullglob
-        files=(build/test-results/test/*.xml)
-        [ ${#files[@]} -gt 0 ] || { echo "no test results were written"; exit 0; }
-        for f in "${files[@]}"; do
-          awk '
-            /<testcase/ { tc = $0 }
-            /<failure|<error/ { print "FAILED " tc; print; c = 25; next }
-            c > 0 { print; c-- }
-          ' "$f"
-        done | sed 's/^[[:space:]]*//' | head -400
-        echo "the complete report is in this run's test-report-windows-release artifact"
-    - name: Upload test report
-      if: failure()
-      uses: actions/upload-artifact@v6
-      with:
-        name: test-report-windows-release
-        path: |
-          build/test-results/test
-          build/reports/tests/test
-
+      # is what the JavaFX tests run under.
+      run: .\gradlew.bat clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
     # The plain jar travels beside the executable, the way HMCL publishes its
     # own: the executable is the one most people run, the jar is the one that
     # runs wherever an executable cannot.
@@ -103,7 +65,7 @@ jobs:
         ls -l dist
 
     - name: Upload the Windows artifacts
-      uses: actions/upload-artifact@v6
+      uses: actions/upload-artifact@v7
       with:
         name: windows-dist
         path: dist/*
@@ -151,42 +113,7 @@ jobs:
         echo "Releasing ${VERSION}"
 
     - name: Build with Gradle
-      # `tee` keeps the whole build log beside the tree, so the report step
-      # can quote the failure the log holds rather than point at it.
-      run: >
-        set -o pipefail;
-        xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel 2>&1 | tee build-log.txt
-    - name: Report failing tests
-      # The report Gradle points at lives on the runner — re-print the
-      # failures here, where they can actually be read.
-      if: failure()
-      run: |
-        if [ -f build-log.txt ]; then
-          sed -n '/What went wrong/,/^\* Try/p' build-log.txt | head -40
-          echo
-          grep -E 'error: |e: file:' build-log.txt | head -40 || true
-          echo
-        fi
-        shopt -s nullglob
-        files=(build/test-results/test/*.xml)
-        [ ${#files[@]} -gt 0 ] || { echo "no test results were written"; exit 0; }
-        for f in "${files[@]}"; do
-          awk '
-            /<testcase/ { tc = $0 }
-            /<failure|<error/ { print "FAILED " tc; print; c = 25; next }
-            c > 0 { print; c-- }
-          ' "$f"
-        done | sed 's/^[[:space:]]*//' | head -400
-        echo "the complete report is in this run's test-report-linux-release artifact"
-    - name: Upload test report
-      if: failure()
-      uses: actions/upload-artifact@v6
-      with:
-        name: test-report-linux-release
-        path: |
-          build/test-results/test
-          build/reports/tests/test
-
+      run: xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
     # appimagetool is an AppImage itself; the released one is used rather than a
     # distribution package so the packages are built by the same tool everywhere.
     - name: Fetch appimagetool
