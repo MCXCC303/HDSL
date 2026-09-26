@@ -166,6 +166,7 @@ public final class NodeRuntimeManager {
     /// @throws DshException when the index cannot be read
     public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
         String platform = platformTag();
+        String indexFile = indexTag(platform); 
 
         // The chosen source first, then the other one. A source is a host, and a host can be
         // unreachable for reasons that have nothing to do with the source being wrong — a route, a
