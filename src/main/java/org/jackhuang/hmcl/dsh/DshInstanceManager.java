@@ -338,18 +338,39 @@ public final class DshInstanceManager {
         return renamed;
     }
 
-    /// Copies an instance's configuration into a new one.
+    /// Copies an instance into a new one, its configuration and all.
     ///
-    /// Only the configuration is copied. A copy gets its own isolated home
-    /// rather than a duplicate of the original's, because the home holds the
-    /// sessions and credentials — duplicating those silently is not what
-    /// "copy this instance" should mean.
+    /// A copy is the original's **configuration**: the harness version it pins, its profile, the
+    /// plugin list in its own order, the profile's patch layer, the plugins it installed from files,
+    /// the settings its plugins keep, and its skill packs. What it is not is the original's
+    /// **state**: session history and keys stay behind, because a copy of somebody's past is not what
+    /// "copy this instance" asks for, and a key duplicated into a second home is a key nobody meant
+    /// to make. The instance's own launcher settings — its install-script policy, the commands that
+    /// run around it, which account it uses — come along, because those are what "this instance"
+    /// means to the launcher rather than to the harness.
     ///
-    /// @param id    the instance to copy
-    /// @param newId the new instance's id
+    /// Both halves of that are already written down elsewhere: a pack *is* that description of an
+    /// instance, and installing one *is* that rebuild — version, profile, patch, local plugin files,
+    /// settings sections, skills, and nothing that looks like a key. So a duplicate writes a pack to
+    /// a temporary file and installs it, rather than copying directories: copying would have to
+    /// answer the same questions again — which of `node_modules`, `dsh/`, `sessions/` and
+    /// `.credentials.yaml` may travel — and it would leave the copy's `file:` plugin paths pointing
+    /// into the original's plugin directory.
+    ///
+    /// **Resumable on purpose.** pnpm refuses to run a package's install script until it is told to,
+    /// and it says so as a failure. The copy is kept in that case — the question is written into its
+    /// own profile, so the answer has somewhere to go — and the work runs again from the copy it
+    /// already made. Every other failure takes the half-made copy with it: an instance that appears
+    /// in the list and cannot start is worse than one that never appeared.
+    ///
+    /// @param id     the instance to copy
+    /// @param newId  the new instance's id
+    /// @param report receives progress lines, or `null`
     /// @return the copy
-    /// @throws DshException when either id is unusable
-    public static DshInstance duplicate(String id, String newId) throws DshException {
+    /// @throws DshException when either id is unusable, or the copy cannot be made
+    public static DshInstance duplicate(String id, String newId,
+                                        @Nullable java.util.function.Consumer<String> report)
+            throws DshException {
         DshInstance source = find(id);
         if (source == null) {
             throw new DshException("Instance " + id + " does not exist");
@@ -358,21 +379,92 @@ public final class DshInstanceManager {
         if (normalized.isEmpty()) {
             throw new DshException("An instance needs a name");
         }
-        if (exists(normalized)) {
+
+        DshInstance copy = find(normalized);
+        if (copy == null) {
+            // The copy carries the original's icon, and only its icon: a copy that
+            // is indistinguishable from what it was copied from is a copy nobody can
+            // find in the list. The port is deliberately not copied — two instances
+            // may not be given the same one — and the write is what makes the icon
+            // survive, because a copy built by `withIcon` alone is never persisted.
+            copy = create(normalized, source.version(), source.profile(),
+                    source.workspacePath(), source.nodeRuntime(), DshHomeMode.ISOLATED, null,
+                    source.extraArguments(), source.environment())
+                    .withIcon(source.iconOrDefault());
+            update(copy);
+        } else if (DshVersionManager.isInstalled(copy)) {
+            // An id taken by an instance that is already whole is somebody else's. One that is
+            // half-made is this call's own earlier attempt, kept because pnpm asked about an install
+            // script: the answer goes into that instance's profile, so the work continues there
+            // instead of starting over.
             throw new DshException("Instance " + normalized + " already exists");
         }
 
-        // The copy carries the original's icon, and only its icon: a copy that
-        // is indistinguishable from what it was copied from is a copy nobody can
-        // find in the list. The port is deliberately not copied — two instances
-        // may not be given the same one — and the write is what makes the icon
-        // survive, because a copy built by `withIcon` alone is never persisted.
-        DshInstance copy = create(normalized, source.version(), source.profile(),
-                source.workspacePath(), source.nodeRuntime(), DshHomeMode.ISOLATED, null,
-                source.extraArguments(), source.environment())
-                .withIcon(source.iconOrDefault());
-        update(copy);
-        return copy;
+        Path pack = null;
+        try {
+            pack = temporaryPack();
+            DshModpacks.export(source, pack, report);
+            DshModpacks.install(pack, normalized, source.workspacePath(), report);
+            copyOwnLauncherSettings(source, copy);
+            DshInstance filled = find(normalized);
+            return filled == null ? copy : filled;
+        } catch (DshException | RuntimeException failed) {
+            if (failed instanceof DshPluginInstaller.DshBuildScriptApprovalRequired) {
+                // The one failure that must keep what it made: the question pnpm raised is written
+                // into the copy's profile, and removing the copy would take the question with it.
+                throw failed;
+            }
+            LOG.warning("Could not copy " + id + " to " + normalized + "; removing the copy", failed);
+            DshVersionManager.discardPartial(copy);
+            try {
+                delete(normalized);
+            } catch (DshException | RuntimeException cleanupFailure) {
+                LOG.warning("Could not remove the half-made copy " + normalized, cleanupFailure);
+            }
+            throw failed;
+        } finally {
+            deleteQuietly(pack);
+        }
+    }
+
+    /// Creates the temporary pack a duplicate describes itself into.
+    ///
+    /// It goes through the system's temporary directory rather than the launcher's own, because it is
+    /// not a thing the launcher keeps: it is written, read back, and deleted in the same call, and a
+    /// copy that is interrupted leaves a file the system already knows how to sweep.
+    ///
+    /// @return the file, which does not exist yet
+    /// @throws DshException when the system cannot make one
+    private static Path temporaryPack() throws DshException {
+        try {
+            return Files.createTempFile("hdsl-duplicate-", DshModpacks.FILE_EXTENSION);
+        } catch (IOException e) {
+            throw new DshException("Could not create a file for the copy", e);
+        }
+    }
+
+    /// Copies an instance's own launcher settings to another instance.
+    ///
+    /// The file holds what somebody chose *for this instance*: its install-script policy, the
+    /// commands that run around it, which account it uses, and how loudly it logs. None of that is a
+    /// secret — the account is named, not keyed — and all of it is what a copy should inherit, which
+    /// is why it is carried beside the pack rather than inside it.
+    ///
+    /// @param source the instance copied from
+    /// @param copy   the instance being filled
+    /// @throws DshException when the file exists but cannot be copied
+    private static void copyOwnLauncherSettings(DshInstance source, DshInstance copy)
+            throws DshException {
+        Path from = source.instanceDirectory().resolve("settings.json");
+        if (!Files.isRegularFile(from)) {
+            return;
+        }
+        Path to = copy.instanceDirectory().resolve("settings.json");
+        try {
+            Files.copy(from, to, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new DshException("Failed to copy " + from + " to " + to, e);
+        }
     }
 
     /// Returns the next free id derived from a base name.

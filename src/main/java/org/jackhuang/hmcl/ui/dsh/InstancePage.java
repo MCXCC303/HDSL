@@ -482,13 +482,19 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     }
 
     /// Copies this instance's configuration into a new one.
+    ///
+    /// The copy is filled from a pack the launcher writes and reads back — version, profile, plugin
+    /// list, patch layer, local plugin files, plugin settings, skills — and the work runs behind a
+    /// progress dialog, because installing a harness and resolving its plugins takes minutes rather
+    /// than a click. That dialog is also what asks about install scripts, and the copy it made is
+    /// kept for the answer: see [DshInstanceManager#duplicate]. Saying that it finished is the
+    /// dialog's own toast, the same one every other installation ends with.
     private void duplicateInstance() {
-        try {
-            DshInstanceManager.duplicate(instance.id(), DshInstanceManager.nextId(instance.id()));
-            Controllers.showToast(i18n("dsh.instance.duplicated"));
-        } catch (DshException e) {
-            Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-        }
+        String newId = DshInstanceManager.nextId(instance.id());
+        PluginInstalls.runCreating(i18n("dsh.instance.duplicating", instance.id()),
+                () -> DshInstanceManager.find(newId),
+                report -> DshInstanceManager.duplicate(instance.id(), newId, report::accept),
+                null);
     }
 
     /// Starts or stops this instance from its own page.
