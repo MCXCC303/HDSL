@@ -55,6 +55,11 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// it changes a running installation and deleting it stops the instance from
 /// starting. Packing one is `pnpm pack`, which the caller can do; taking the file
 /// keeps this simple and the instance self-contained.
+///
+/// Keeping the file inside the instance is what makes the recorded path stable, but
+/// not immovable: the instance's own directory is named after the instance, so a
+/// renamed instance carries its plugin files to a new path and the records have to
+/// follow — see [DshLocalPluginPaths].
 @NotNullByDefault
 public final class DshLocalPlugins {
     /// Where an instance's local plugin files are kept.

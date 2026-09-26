@@ -272,16 +272,12 @@ public final class DshInstanceManager {
         return find(id) != null;
     }
 
-    /// Reads the manifest inside an instance directory.
-    ///
-    /// @param directory the candidate instance directory
-    /// @return the instance, or `null` when there is no readable manifest
     /// Renames an instance.
     ///
-    /// The instance's own directory — the runtime it holds, and an isolated
-    /// home if it has one — is named after the instance and moves with it. A
-    /// home the instance shares, or one the user chose, lives elsewhere and is
-    /// left alone.
+    /// The instance's own directory — the runtime it holds, the plugin files it keeps, and
+    /// an isolated home if it has one — is named after the instance and moves with it. A
+    /// home the instance shares, or one the user chose, lives elsewhere and is left alone —
+    /// but it still records the instance's own files, so what it recorded moves too.
     ///
     /// @param id    the current id
     /// @param newId the new id
@@ -320,6 +316,11 @@ public final class DshInstanceManager {
 
         try {
             write(renamed);
+            // A plugin installed from a file the instance holds is recorded by that file's
+            // path, and every later operation on the profile resolves the path again — so a
+            // rename that left those records alone would stop the instance installing or
+            // removing any plugin at all. They move with the files they name.
+            DshLocalPluginPaths.relocate(renamed, oldDirectory, newDirectory);
         } catch (DshException e) {
             // Put the directory back rather than leaving the home orphaned under
             // a name no instance answers to.
@@ -407,6 +408,10 @@ public final class DshInstanceManager {
         }
     }
 
+    /// Reads the manifest inside an instance directory.
+    ///
+    /// @param directory the candidate instance directory
+    /// @return the instance, or `null` when there is no readable manifest
     private static @Nullable DshInstance read(Path directory) {
         Path manifest = directory.resolve(MANIFEST_NAME);
         if (!Files.isRegularFile(manifest)) {
