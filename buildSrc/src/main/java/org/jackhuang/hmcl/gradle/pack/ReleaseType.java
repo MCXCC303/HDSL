@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * Adapted from HMCL's packaging logic, which is licensed under the GNU General
  * Public License version 3. See the NOTICE file for the full statement.

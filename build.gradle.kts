@@ -1,4 +1,4 @@
-// HMCL-DSH — a DeepSeek Harness launcher built on HMCL's JavaFX UI kit.
+// HDSL — a DeepSeek Harness launcher built on HMCL's JavaFX UI kit.
 //
 // The presentation layer (window chrome, component library, animations, theme
 // engine, image pipeline, async task engine, i18n) is transplanted from HMCL
