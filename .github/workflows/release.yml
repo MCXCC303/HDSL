@@ -54,8 +54,10 @@ jobs:
       # is what the JavaFX tests run under.
       run: .\gradlew.bat clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
     # The plain jar travels beside the executable, the way HMCL publishes its
-    # own: the executable is the one most people run, the jar is the one that
-    # runs wherever an executable cannot.
+    # own: both are built here, on a Windows runner, so both carry the Windows
+    # JavaFX. The jar is for the people who would rather run `java -jar` (or
+    # whose machine will not start a downloaded .exe) — it is not a
+    # cross-platform download; Linux and macOS have artifacts of their own.
     - name: Sum the jar
       shell: bash
       run: |
@@ -156,7 +158,7 @@ jobs:
         # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
         # and the portable tar.zst is for unpacking anywhere.
         for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "hdsl-${VERSION}.exe" "hdsl-${VERSION}.jar" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
-          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.dmg) echo "macOS (mount)";; *.zip) echo "macOS (unpack)";; *.sh) echo "self-executing";; *.exe) echo "Windows (double-click)";; *.jar) echo "any platform (\`java -jar\`)";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
+          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.dmg) echo "macOS (mount)";; *.zip) echo "macOS (unpack)";; *.sh) echo "self-executing";; *.exe) echo "Windows (double-click)";; *.jar) echo "Windows (\`java -jar\`)";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
         done
         cat RELEASE_NOTE
 
