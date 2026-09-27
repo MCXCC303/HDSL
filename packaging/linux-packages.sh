@@ -24,7 +24,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
 
 name="hdsl-${version}"
-desktop_id="hmcl-dsh"
+desktop_id="hdsl"
 launcher_class="org.jackhuang.hmcl.Main"
 
 for file in "${sh_artifact}" "${icon}"; do
@@ -125,6 +125,11 @@ arch_version="$(arch_version_of "${version}")"
 #   first packaging of this one.
 # - `size` is the installed size in bytes, which pacman shows. A wrong one is reported rather than
 #   fatal, but there is no reason to write a wrong one.
+#
+# `replaces` and `conflicts` name the package this one had before the software was called HDSL, so a
+# machine that installed it is upgraded into this one rather than left with both, each owning its own
+# command.
+previous_name="hmcl-dsh"
 installed_size="$(du -sb "${arch_stage}" | cut -f1)"
 cat > "${arch_stage}/.PKGINFO" <<EOF
 pkgname = ${desktop_id}
@@ -138,6 +143,8 @@ size = ${installed_size}
 arch = x86_64
 license = GPL-3.0-or-later
 depend = java-runtime>=21
+replaces = ${previous_name}
+conflict = ${previous_name}
 EOF
 
 # The licence files are already in the tree, so the members are the paths plus `.PKGINFO`, and

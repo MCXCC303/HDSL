@@ -14,11 +14,11 @@ package org.jackhuang.hmcl.gradle.pack;
 /// instead of duplicating channel-specific branching.
 public enum ReleaseType {
     /// The stable channel.
-    STABLE("stable", "hmcl-dsh", "HDSL", 100),
+    STABLE("stable", "hdsl", "HDSL", 100),
     /// The beta channel.
-    DEVELOPMENT("beta", "hmcl-dsh-beta", "HDSL (Beta)", 200),
+    DEVELOPMENT("beta", "hdsl-beta", "HDSL (Beta)", 200),
     /// The nightly channel.
-    NIGHTLY("nightly", "hmcl-dsh-nightly", "HDSL (Nightly)", 300);
+    NIGHTLY("nightly", "hdsl-nightly", "HDSL (Nightly)", 300);
 
     private final String name;
     private final String packageName;
@@ -44,6 +44,20 @@ public enum ReleaseType {
     /// @return the package name
     public String getPackageName() {
         return packageName;
+    }
+
+    /// The package name this channel had while the software was called HMCL-DSH.
+    ///
+    /// It is only ever written into a new package's `Replaces` and `Breaks`, so that a machine
+    /// that installed one of those is upgraded to this channel instead of keeping both, each
+    /// owning its own command.
+    private static final String PREVIOUS_NAME = "hmcl-dsh";
+
+    /// Returns the package name this channel replaces.
+    ///
+    /// @return the previous package name, channel suffix included
+    public String getReplacedPackageName() {
+        return "stable".equals(name) ? PREVIOUS_NAME : PREVIOUS_NAME + "-" + name;
     }
 
     /// Returns the human-readable name used in the desktop entry.
