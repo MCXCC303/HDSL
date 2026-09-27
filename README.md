@@ -65,7 +65,7 @@ HDSL v0.2.0 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特�
 ## 构建
 
 ```bash
-./gradlew build      # 编译并运行测试；在 Linux 上同时产出 .sh/.deb/.exe
+./gradlew build      # 编译并运行测试
 ./gradlew run        # 直接启动
 ```
 
