@@ -51,9 +51,18 @@ val releaseVersion = (findProperty("releaseVersion") as String?)?.takeIf { it.is
 val taggedVersion = releaseVersion
     ?: git("describe", "--tags", "--exact-match", "HEAD")?.removePrefix("v")
 version = taggedVersion ?: run {
-    val sha = git("rev-parse", "--short=7", "HEAD")
-    val base = git("describe", "--tags", "--abbrev=0", "HEAD")?.removePrefix("v") ?: untaggedVersion
-    if (sha != null) "$base+g$sha" else "$base-dev"
+    val tag = git("describe", "--tags", "--abbrev=0", "HEAD")
+    val base = tag?.removePrefix("v") ?: untaggedVersion
+    // How many commits this build stands past that tag. It is what tells two test builds apart
+    // when the tag alone does not: the count only grows as the branch does, so a later build
+    // always sorts after an earlier one. A repository with no tag at all counts every commit,
+    // which keeps the same promise.
+    val commits = git("rev-list", "--count", tag?.let { "$it..HEAD" } ?: "HEAD")
+    when {
+        sha != null && commits != null -> "$base+r$commits+g$sha"
+        sha != null -> "$base+g$sha"
+        else -> "$base-dev"
+    }
 }
 
 application {
