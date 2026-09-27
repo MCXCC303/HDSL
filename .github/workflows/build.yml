@@ -65,6 +65,8 @@ jobs:
     # longest a wedged toolkit can cost is the startup bound the tests carry.
     - name: Build with Gradle (Linux)
       run: xvfb-run --auto-servernum ./gradlew build --no-daemon --parallel
+      env:
+        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
       if: runner.os == 'Linux'
       timeout-minutes: 30
     - name: Build with Gradle (macOS)
