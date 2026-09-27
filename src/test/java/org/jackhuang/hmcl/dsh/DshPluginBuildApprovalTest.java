@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.dsh;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,6 +58,10 @@ class DshPluginBuildApprovalTest {
             allowBuilds:
               node-pty: set this to true or false
             """;
+
+    /// The workspace the instance runs in, which JUnit makes and removes.
+    @TempDir
+    Path workspaceDirectory;
 
     /// Removes the instance the tests made.
     @AfterEach
@@ -128,6 +133,11 @@ class DshPluginBuildApprovalTest {
     /// successfully is a run that succeeded and changed nothing — which is exactly the run that used
     /// to end the question.
     ///
+    /// The workspace is JUnit's temporary directory rather than one made here, because a directory
+    /// made here is one nothing removes: running this suite used to leave one behind in `%TEMP%` per
+    /// test, and an instance that is deleted by [#removeInstance] does not delete the directory it ran
+    /// in.
+    ///
     /// @param workspace the profile's `pnpm-workspace.yaml`
     /// @param policy    the instance's build-script policy
     /// @return the instance
@@ -135,9 +145,8 @@ class DshPluginBuildApprovalTest {
         Assumptions.assumeTrue(
                 DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
                 "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
-        Path source = Files.createTempDirectory("build-approval-home");
         DshInstance instance = DshInstanceManager.create(ID, "0.1.6-alpha.2", DshInstance.DEFAULT_PROFILE,
-                source, DshHomeMode.ISOLATED, null, List.of(), Map.of());
+                workspaceDirectory, DshHomeMode.ISOLATED, null, List.of(), Map.of());
         DshInstanceSettings.setBuildScriptPolicy(instance, policy);
 
         Path script = instance.dshEntryPoint();
