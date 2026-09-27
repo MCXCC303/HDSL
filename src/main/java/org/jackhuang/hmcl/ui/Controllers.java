@@ -236,13 +236,24 @@ public final class Controllers {
     /// says why beside it, because a question whose answer did not happen is one that has to be
     /// asked again.
     ///
+    /// Both of those touch the dialog, so both happen on the interface thread. The work finishes
+    /// wherever it was running — for a removal, on a worker thread some forty seconds later — and a
+    /// dialog is closed on the interface thread or not at all: [DialogUtils#close] checks the thread
+    /// and throws into this stage when it is not the interface one, and nobody reads the result of a
+    /// stage like this one. What that looks like from the outside is a question that keeps its
+    /// spinner after its work has finished, with nothing logged beside it — which is what the removal
+    /// confirmation did.
+    ///
+    /// Not private, because that thread is the whole of what this method promises and it is measured
+    /// by [org.jackhuang.hmcl.ui.ConfirmationWorkThreadTest].
+    ///
     /// @param pane   the question
     /// @param wait   what it is waiting for, shown in place of the buttons
     /// @param work   the work to run when confirmed
     /// @param failed the title of the dialog that reports a failure, or `null` to say nothing
-    private static void answerQuestion(MessageDialogPane pane, String wait,
-                                       Supplier<? extends CompletionStage<?>> work,
-                                       @Nullable String failed) {
+    static void answerQuestion(MessageDialogPane pane, String wait,
+                               Supplier<? extends CompletionStage<?>> work,
+                               @Nullable String failed) {
         pane.setWorking(true, wait);
         CompletableFuture<?> running;
         try {
@@ -258,7 +269,15 @@ public final class Controllers {
                     } else {
                         reportFailure(pane, failed, thrown);
                     }
-                }, Schedulers.defaultScheduler());
+                }, Schedulers.javafx())
+                // The toolkit turns a dialog touched from the wrong thread into an exception in this
+                // stage, and a stage nobody reads swallows it: the question then sits there for as
+                // long as the launcher is open, saying it is still waiting for work that has already
+                // finished. Read here, so that the next such mistake is one line in the log.
+                .exceptionally(thrown -> {
+                    LOG.error("Could not finish the dialog of a question whose work had ended", thrown);
+                    return null;
+                });
     }
 
     /// Says why a question could not be answered, and lets it be asked again.
