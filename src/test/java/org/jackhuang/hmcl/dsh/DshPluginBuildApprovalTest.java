@@ -219,6 +219,78 @@ class DshPluginBuildApprovalTest {
                 "a scope's own @ is not the one a version begins with");
     }
 
+    @Test
+    void aPluginInstalledFromAFileIsAskedAboutAgainWhenItsFileIsInstalledAgain(@TempDir Path directory)
+            throws Exception {
+        // The reported defect, reached the way the interface reaches it: the plugin list's "add" button
+        // copies the file the user picked into the instance and installs it by *that path*, and the
+        // profile records the path — while pnpm keys the refusal by the package's name and the file it
+        // came from (`build-script-probe@file:../../../plugins/….tgz`). The two are not the same string,
+        // and the path names no package: the first installation asked, because pnpm writes the
+        // undecided package into the profile itself, and every installation after it was silent. A
+        // plugin that cannot load, refused once, could never be allowed.
+        DshInstance instance = makeInstance(REFUSED_FROM_A_FILE, "manual");
+
+        DshPluginInstaller.DshBuildScriptApprovalRequired asked = assertThrows(
+                DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshLocalPlugins.install(instance, packedPlugin(directory, "build-script-probe", "1.0.0"), null),
+                "the same plugin arriving again is a new decision about running its code");
+
+        assertEquals(List.of("build-script-probe@file:../../../pkg/build-script-probe-1.0.0.tgz"),
+                asked.packages(), "the answer names the key the profile holds, not the path it was given");
+    }
+
+    @Test
+    void aPathThatHoldsNoPackageIsNotAskedAbout(@TempDir Path directory) throws Exception {
+        DshInstance instance = makeInstance(REFUSED, "manual");
+        Path nothing = directory.resolve("not-a-package.tgz");
+        Files.writeString(nothing, "not a package");
+
+        DshPluginInstaller.installSpecs(instance, List.of(nothing.toString()), null);
+
+        assertTrue(Files.readString(profileFile(instance)).contains("node-pty: false"),
+                "a spec no package can be named from matches nothing rather than matching everything");
+    }
+
+    /// Builds a gzipped tar holding a `package/package.json`, the way `npm pack` writes one.
+    ///
+    /// @param directory where to write it
+    /// @param name      the package's name, which is what the test is about
+    /// @param version   the package's version
+    /// @return the archive
+    private static Path packedPlugin(Path directory, String name, String version) throws Exception {
+        String manifest = "{\"name\":\"" + name + "\",\"version\":\"" + version + "\"}";
+        Path file = directory.resolve(name + "-" + version + ".tgz");
+        try (java.util.zip.GZIPOutputStream gzip =
+                     new java.util.zip.GZIPOutputStream(Files.newOutputStream(file))) {
+            gzip.write(tarEntry("package/package.json",
+                    manifest.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            gzip.write(new byte[1024]);
+        }
+        return file;
+    }
+
+    /// Builds one tar entry: a header block and the body, padded to a block.
+    ///
+    /// The checksum field is left blank because the launcher's reader does not check it — it is
+    /// looking for a name, a size and the entry's kind, which are the fields written here.
+    ///
+    /// @param name the entry's name
+    /// @param body the entry's bytes
+    /// @return the header and body
+    private static byte[] tarEntry(String name, byte[] body) {
+        byte[] block = new byte[512];
+        byte[] nameBytes = name.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        System.arraycopy(nameBytes, 0, block, 0, Math.min(nameBytes.length, 100));
+        byte[] size = Long.toOctalString(body.length).getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(size, 0, block, 124, size.length);
+        block[156] = '0';
+        byte[] entry = new byte[512 + ((body.length + 511) / 512) * 512];
+        System.arraycopy(block, 0, entry, 0, 512);
+        System.arraycopy(body, 0, entry, 512, body.length);
+        return entry;
+    }
+
     /// Creates an instance with a stub harness and a profile holding the given workspace file.
     ///
     /// The stub is what makes this test possible without a package manager: the installer runs

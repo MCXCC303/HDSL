@@ -430,8 +430,9 @@ public final class DshPluginInstaller {
     /// `dsh-better-sidebar@0.21.1` — and an `allowBuilds` key is pnpm's id for the package, which is
     /// `node-pty` for one from the registry and `build-script-probe@file:../../x.tgz` for one from a
     /// file. Both carry the name before the `@` that introduces the version or the location, so the
-    /// name is what they are matched by: a spec that names no package — a path, a tarball — matches
-    /// nothing rather than matching everything.
+    /// name is what they are matched by. A spec that carries no name — a path, a tarball — has its
+    /// name read out of the file it points at, and one nothing can be named from matches nothing
+    /// rather than matching everything.
     ///
     /// @param instance the instance
     /// @param packages the package specs this run is about
@@ -440,10 +441,48 @@ public final class DshPluginInstaller {
         if (packages.isEmpty()) {
             return List.of();
         }
-        List<String> names = packages.stream().map(DshPluginInstaller::packageNameOf).toList();
+        Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
+        List<String> names = packages.stream()
+                .map(spec -> nameOf(spec, profileDirectory))
+                .filter(java.util.Objects::nonNull)
+                .toList();
         return DshBuildScripts.refused(instance).stream()
                 .filter(key -> names.contains(packageNameOf(key)))
                 .toList();
+    }
+
+    /// Returns the name of the package a spec is about.
+    ///
+    /// A spec that carries a version or a location names its package before the `@`; one that is only
+    /// a location names nothing at all — and a location is exactly what the interface passes for a
+    /// plugin the user has as a file: [DshLocalPlugins] copies the file into the instance and installs
+    /// it by the path inside it, which is what the profile then records. The name is in the file, and
+    /// reading it there is what makes the two sides comparable, because it is the same name pnpm read
+    /// when it wrote its key.
+    ///
+    /// Measured, and the defect this exists for: with the path taken as the name, installing the same
+    /// file into the same instance again asked nothing at all. The first installation asked, because
+    /// pnpm writes the undecided package into the profile itself; every one after it was silent, so a
+    /// plugin that cannot load, refused once, could never be allowed.
+    ///
+    /// @param spec             the specification, which may be a name, a name and a version, or a location
+    /// @param profileDirectory the profile's directory, which a relative location is resolved against
+    /// @return the name, or `null` when no package can be named from it
+    private static @Nullable String nameOf(String spec, Path profileDirectory) {
+        Path file = DshPluginBundle.fileOf(spec, profileDirectory);
+        // `fileOf` also answers with a path that is not there — the name of a package from the
+        // registry comes back as a relative path under the profile — so what is a file is decided by
+        // the file system rather than by the shape of the specification.
+        if (file != null && Files.isRegularFile(file)) {
+            try {
+                return DshLocalPlugins.inspect(file).name();
+            } catch (DshException e) {
+                LOG.warning("Could not read the package at " + file
+                        + ", so whether its install scripts were refused cannot be told", e);
+                return null;
+            }
+        }
+        return packageNameOf(spec.trim());
     }
 
     /// Returns the package name in a spec or an `allowBuilds` key.
