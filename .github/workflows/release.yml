@@ -80,33 +80,16 @@ jobs:
         # The two Gradle writes go beside them, so one directory holds the whole release.
         cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
 
-    - name: Write the release note
-      run: |
-        echo "HDSL ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> RELEASE_NOTE
-        echo "" >> RELEASE_NOTE
-        if [ -n "${PRERELEASE}" ]; then
-          echo "This is a **pre-release**: it is not the latest release, and nothing asking for the" >> RELEASE_NOTE
-          echo "latest version will be offered it." >> RELEASE_NOTE
-          echo "" >> RELEASE_NOTE
-        fi
-        echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> RELEASE_NOTE
-        echo "macOS users take the .dmg or .zip; the standalone .sh below is the Linux build." >> RELEASE_NOTE
-        echo "" >> RELEASE_NOTE
-        echo "| File | For | SHA-256 |" >> RELEASE_NOTE
-        echo "| --- | --- | --- |" >> RELEASE_NOTE
-        # The Arch package is listed like the others. It is not the tar.zst under another name:
-        # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
-        # and the portable tar.zst is for unpacking anywhere.
-        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "${ARCH_PKG}" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
-          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.dmg) echo "macOS (mount)";; *.zip) echo "macOS (unpack)";; *.sh) echo "self-executing";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
-        done
-        cat RELEASE_NOTE
+    # The note a release goes public with is written by the `release-note` job below, once every
+    # asset — and every `.sha256` beside it — is in the release. Nothing is written here because
+    # nothing here can see the whole release: Gradle's two artifacts are summed a step after this
+    # point, and the macOS packages arrive from a job that runs beside this one.
 
     - name: Sum the Gradle artifacts
       run: |
         # The two files Gradle wrote are the ones the packaging script does not build, so their sums
-        # are written here, one per artifact as everywhere else: the release note reads every checksum
-        # from `dist/`, and the `.sh` row said `pending` for a file that was in the directory.
+        # are written here, one per artifact as everywhere else, and uploaded with the release: the
+        # note is written later, from the release's own `.sha256` assets.
         for artifact in "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh"; do
           ( cd dist && sha256sum "${artifact}" > "${artifact}.sha256" )
         done
@@ -130,7 +113,7 @@ jobs:
           --target "${{ github.sha }}" \
           ${PRERELEASE} \
           --title "HDSL ${VERSION}" \
-          --notes-file RELEASE_NOTE
+          --notes "The packages are being uploaded; the table with every checksum is written once they are all in place."
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -197,5 +180,77 @@ jobs:
           dist/HDSL-${{ env.VERSION }}-*.zip \
           dist/HDSL-${{ env.VERSION }}-*.zip.sha256 \
           --clobber
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # The note a release goes public with cannot be written while the release is being built: Gradle's
+  # two artifacts are summed one step after the Linux job would write it, and the macOS packages are
+  # built and uploaded by a job of their own that runs beside that one. So it is written here, once
+  # every asset — and every `.sha256` beside it — is in the release, and put in place with
+  # `gh release edit`.
+  #
+  # A row with no checksum to read is an artifact the runner did not build, which is the only thing
+  # `pending` means here; `needs` and `always()` are what make that true for a Mac that failed without
+  # costing the Linux packages their table.
+  release-note:
+
+    needs: [release, release-mac]
+    if: always() && needs.release.result == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Take the version from the tag
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        [ -n "${VERSION}" ] || { echo "error: tag ${GITHUB_REF_NAME} has no version" >&2; exit 1; }
+        case "${VERSION}" in
+          *-*) PRERELEASE=--prerelease ;;
+          *)   PRERELEASE= ;;
+        esac
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "PRERELEASE=${PRERELEASE}" >> $GITHUB_ENV
+        echo "Noting ${VERSION}${PRERELEASE:+ (pre-release)}"
+
+    - name: Read the checksums the release carries
+      run: |
+        mkdir -p sums
+        gh release download "${GITHUB_REF_NAME}" --dir sums --pattern '*.sha256' --clobber
+        ls -l sums
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Write the release note
+      run: |
+        # The Arch package's name is read from the release rather than rebuilt from the tag: it carries
+        # the version pacman is given, and for a pre-release that differs from the tag's.
+        arch_pkg="$(gh release view "${GITHUB_REF_NAME}" --json assets \
+          --jq '.assets[].name | select(endswith(".pkg.tar.zst"))' | head -1)"
+        note=RELEASE_NOTE
+        echo "HDSL ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> "${note}"
+        echo "" >> "${note}"
+        if [ -n "${PRERELEASE}" ]; then
+          echo "This is a **pre-release**: it is not the latest release, and nothing asking for the" >> "${note}"
+          echo "latest version will be offered it." >> "${note}"
+          echo "" >> "${note}"
+        fi
+        echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> "${note}"
+        echo "macOS users take the .dmg or .zip; the standalone .sh below is the Linux build." >> "${note}"
+        echo "" >> "${note}"
+        echo "| File | For | SHA-256 |" >> "${note}"
+        echo "| --- | --- | --- |" >> "${note}"
+        # The Arch package is listed like the others. It is not the tar.zst under another name:
+        # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
+        # and the portable tar.zst is for unpacking anywhere.
+        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "${arch_pkg}" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
+          [ -n "${file}" ] || continue
+          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.dmg) echo "macOS (mount)";; *.zip) echo "macOS (unpack)";; *.sh) echo "self-executing";; esac) | \`$(cut -d' ' -f1 < "sums/${file}.sha256" 2>/dev/null || echo pending)\` |" >> "${note}"
+        done
+        cat "${note}"
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Replace the note the release went public with
+      run: gh release edit "${GITHUB_REF_NAME}" --notes-file RELEASE_NOTE
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
