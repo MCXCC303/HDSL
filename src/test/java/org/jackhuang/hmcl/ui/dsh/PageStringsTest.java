@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -243,6 +245,75 @@ class PageStringsTest {
             List<String> missing = own.stream().filter(key -> !strings.containsKey(key)).toList();
             assertTrue(missing.isEmpty(),
                     bundle + " is one of the two bundles this launcher maintains, and has no string for " + missing);
+        }
+    }
+
+    /// Verifies that every string the code asks for by name is in the bundles it is asked of.
+    ///
+    /// The checks above start from the bundles, so they can only see keys somebody put there: a key
+    /// the code asks for and **both** bundles lack is a key neither list has ever held, and it
+    /// reaches the interface as the key itself. Four of those were live at once — the home-mode
+    /// label of an instance that follows the launcher, and the three rows of the plugin-catalogue
+    /// setting — and every frame that drew one said so in the launcher's log:
+    /// `No string for dsh.instance.home.global in any bundle`. Nobody reads that log to find a
+    /// missing label, so this reads the question from the code instead, which is the side that
+    /// cannot be forgotten.
+    @Test
+    void everyStringTheCodeAsksForIsInEveryBundle() throws IOException {
+        List<String> asked = keysTheCodeAsksFor();
+        assertTrue(asked.size() > 100,
+                "only " + asked.size() + " keys were read out of the sources, so this is not reading them");
+
+        for (String bundle : BUNDLES) {
+            Properties strings = load(bundle);
+            List<String> missing = asked.stream().filter(key -> !strings.containsKey(key)).toList();
+            assertTrue(missing.isEmpty(),
+                    bundle + " has no string for " + missing + ", which the code asks for by name");
+        }
+    }
+
+    /// Every key this launcher's own code asks a bundle for by name.
+    ///
+    /// Only the keys this launcher added are read — the prefix says which those are — because the
+    /// transplanted interface asks for the original's several thousand strings, and those are the
+    /// original's bundles' business rather than a list to keep here.
+    ///
+    /// @return the keys, in order
+    private static List<String> keysTheCodeAsksFor() throws IOException {
+        java.util.regex.Pattern asked = java.util.regex.Pattern.compile("i18n\\(\"([^\"]+)\"");
+        java.util.Set<String> keys = new java.util.TreeSet<>();
+        for (Path file : sources()) {
+            String source = Files.readString(file, StandardCharsets.UTF_8);
+            java.util.regex.Matcher matcher = asked.matcher(source);
+            while (matcher.find()) {
+                String key = matcher.group(1);
+                if (!key.startsWith(OWN_PREFIX) || key.endsWith(".")) {
+                    continue;
+                }
+                // A literal a caller adds to at run time is a prefix rather than a key. `i18n("dsh
+                // .instance.home." + mode)` names no string; the four strings it can make are named
+                // where they belong, in the bundles.
+                int after = matcher.end();
+                while (after < source.length() && Character.isWhitespace(source.charAt(after))) {
+                    after++;
+                }
+                if (after < source.length() && source.charAt(after) == '+') {
+                    continue;
+                }
+                keys.add(key);
+            }
+        }
+        return List.copyOf(keys);
+    }
+
+    /// The sources this launcher is built from.
+    ///
+    /// @return the Java files
+    private static List<Path> sources() throws IOException {
+        Path root = Path.of("src/main/java");
+        assertTrue(Files.isDirectory(root), "no sources at " + root.toAbsolutePath());
+        try (java.util.stream.Stream<Path> walk = Files.walk(root)) {
+            return walk.filter(path -> path.toString().endsWith(".java")).toList();
         }
     }
 
