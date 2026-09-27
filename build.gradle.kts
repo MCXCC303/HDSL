@@ -51,6 +51,7 @@ val releaseVersion = (findProperty("releaseVersion") as String?)?.takeIf { it.is
 val taggedVersion = releaseVersion
     ?: git("describe", "--tags", "--exact-match", "HEAD")?.removePrefix("v")
 version = taggedVersion ?: run {
+    val sha = git("rev-parse", "--short=7", "HEAD")
     val tag = git("describe", "--tags", "--abbrev=0", "HEAD")
     val base = tag?.removePrefix("v") ?: untaggedVersion
     // How many commits this build stands past that tag. It is what tells two test builds apart
