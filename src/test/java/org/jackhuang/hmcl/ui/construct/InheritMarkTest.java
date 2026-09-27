@@ -18,9 +18,10 @@
 package org.jackhuang.hmcl.ui.construct;
 
 import javafx.application.Platform;
+import org.jackhuang.hmcl.ui.FxToolkit;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -39,19 +40,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// These rows are JavaFX controls, so the toolkit has to be running to build one. It is started
 /// once here and the work is done on its thread, which is what the controls expect.
 class InheritMarkTest {
-    static {
-        CountDownLatch started = new CountDownLatch(1);
-        try {
-            Platform.startup(started::countDown);
-        } catch (IllegalStateException alreadyRunning) {
-            started.countDown();
-        }
-        try {
-            assertTrue(started.await(30, TimeUnit.SECONDS), "the JavaFX toolkit did not start");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while starting the JavaFX toolkit", e);
-        }
+    /// Starts the toolkit for this class, or skips the class where it cannot run.
+    @BeforeAll
+    static void startToolkit() {
+        FxToolkit.requireRunning();
     }
 
     @Test

@@ -152,6 +152,13 @@ tasks.test {
         events("passed", "failed", "skipped")
         showStandardStreams = true
     }
+    // A bound on every test, so a machine that cannot run one fails in minutes instead of holding the
+    // runner. The toolkit tests are bounded apart from this, in `FxToolkit`: a class initialiser that
+    // never returns is a place no JUnit bound reaches. The name matters —
+    // `junit.jupiter.execution.timeout.default` is the key JUnit reads, and `…method.default` is not a
+    // key at all, which is a bound nobody reads.
+    systemProperty("junit.jupiter.execution.timeout.default", "120s")
+    systemProperty("junit.jupiter.execution.timeout.threaddump.enabled", "true")
     // The launcher keeps its state in one per-user home, and a test that writes
     // settings must not write into the one the user is running. Tests get a home
     // of their own inside the build tree, which is also what makes them able to

@@ -17,6 +17,10 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # A stuck test must cost minutes, not the runner's six-hour default: the
+    # toolkit tests are bounded in the suite and this is the bound on the step.
+    timeout-minutes: 45
+
     steps:
     - uses: actions/checkout@v4
     - name: Set up JDK 21
@@ -36,11 +40,13 @@ jobs:
       run: xvfb-run --auto-servernum ./gradlew build --no-daemon --parallel
       env:
         JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      timeout-minutes: 30
     - name: Build with Gradle (macOS)
       if: runner.os == 'macOS'
       run: ./gradlew build --no-daemon --parallel
       env:
         JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      timeout-minutes: 30
     - name: Get short SHA
       run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
     # The .sh embeds the host's JavaFX platform, so one per OS is kept.
