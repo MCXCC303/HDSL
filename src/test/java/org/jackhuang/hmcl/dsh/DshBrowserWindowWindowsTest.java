@@ -29,20 +29,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /// Verifies that one launch opens one browser window, and says which side opens it.
 ///
 /// The reported defect: launching an instance opened the interface twice. It had two askers — the
-/// launcher opens the instance's address once the harness reports ready, and the harness opens a tab
-/// of its own unless it is told not to — and each of them only knew what it was doing. The flag is
-/// what settles it, and the flag can only be passed to a version whose own help lists it: one a
-/// version does not know is a launch that does not start.
+/// launcher opens the instance's address once the harness reports ready, and a harness that knows
+/// `--no-open` opens a tab of its own unless it is told not to — and each of them only knew what it
+/// was doing. The flag is what settles it, and the flag can only be passed to a version whose own
+/// help lists it: one a version does not know is a launch that does not start.
 ///
-/// So the flag and the plan's answer are one decision, and the two answers a real version can give to
-/// `--help` are what this asks about. Nothing here can be checked without a real child, because a
-/// real child is what the launcher's question is asked of.
+/// The second defect, reported after the first was fixed: an instance on 0.0.1-rc.5 opened no window
+/// at all. That version's help lists no `--no-open`, so the flag was left out — and the reasoning that
+/// the harness would then open a tab of its own was wrong, because a version that cannot be told about
+/// the browser is one that never opens one. Those instances had nobody to open it. Both defects are
+/// one decision, and the decision is what the tests below pin.
+///
+/// So the flag and the plan's answer are one decision, and the answers a real version can give to
+/// `--help` are what this asks about. Nothing here can be checked without a real child, because a real
+/// child is what the launcher's question is asked of.
 class DshBrowserWindowWindowsTest {
     /// The browser surface, which is the one that can be opened twice.
     private static final String WEB = "@deepseek-ai/dsh-web-app";
@@ -124,15 +131,18 @@ class DshBrowserWindowWindowsTest {
     }
 
     @Test
-    void aVersionThatWasNeverToldOpensItsOwnAndTheLauncherDoesNot() throws Exception {
+    void aVersionWithNoSuchFlagIsStillOpenedFor() throws Exception {
+        // The reported defect: 0.0.1-rc.5 started, served the interface, and opened no browser. Its
+        // help has no `--no-open` and no browser option at all, so the flag cannot be passed — and the
+        // launcher used to conclude from that alone that the harness would open the tab itself.
         DshInstance instance = makeInstance("web-untold", WEB, null, false);
 
         DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
 
         assertFalse(plan.command().contains("--no-open"),
                 "a flag the version does not list is a launch that does not start: " + plan.command());
-        assertFalse(plan.launcherOpensTheBrowser(),
-                "the harness opens the interface itself, so the launcher opening as well is two windows");
+        assertTrue(plan.launcherOpensTheBrowser(),
+                "a version that knows no --no-open opens no browser of its own, so nobody would open one");
     }
 
     @Test
@@ -155,5 +165,20 @@ class DshBrowserWindowWindowsTest {
 
         assertFalse(plan.launcherOpensTheBrowser(),
                 "an app that serves no address has no window for the launcher to open");
+    }
+
+    @Test
+    void whoOpensTheInterfaceIsDecidedByWhatTheVersionSaid() {
+        // The decision on its own, without a child to ask: every combination of what the surface wants
+        // and what the version answered. The probe's own answers are exercised above.
+        for (DshLauncher.NoOpen support : DshLauncher.NoOpen.values()) {
+            boolean expected = support != DshLauncher.NoOpen.UNKNOWN;
+            assertEquals(expected, DshLauncher.launcherOpensTheInterface(true, true, support),
+                    "a browser surface that asked for the interface, with help saying " + support);
+            assertFalse(DshLauncher.launcherOpensTheInterface(false, true, support),
+                    "a surface that serves no address is never opened, whatever the help says");
+            assertFalse(DshLauncher.launcherOpensTheInterface(true, false, support),
+                    "a surface that did not ask for the interface is not the launcher's to open");
+        }
     }
 }

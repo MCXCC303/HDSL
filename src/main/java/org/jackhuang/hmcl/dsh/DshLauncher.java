@@ -157,13 +157,36 @@ public final class DshLauncher {
     /// and the wrong answer costs a second window on every launch.
     private static final java.time.Duration PROBE_TIMEOUT = java.time.Duration.ofSeconds(20);
 
-    /// The help that has been read, keyed by version **and profile**, and whether it mentions
+    /// The help that has been read, keyed by version **and profile**, and what it said about
     /// `--no-open`.
     ///
     /// Keyed by both because the answer belongs to both: what is read is
     /// `dsh --profile <name> --help`, and two profiles of one release accept different flags. Cached
     /// by version alone, the first profile to be launched would answer for every other one.
-    private static final Map<String, Boolean> NO_OPEN_SUPPORT = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final Map<String, NoOpen> NO_OPEN_SUPPORT = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// What a version's own help said about `--no-open`.
+    ///
+    /// Three answers rather than two, because "this release does not know the flag" and "this release
+    /// did not answer" call for opposite things. A release whose help *was read* and does not list the
+    /// flag is one whose interface has no browser to open and no way to be told about one — every
+    /// 0.0.1-rc.x and 0.1.5-rc.x answers its help this way, and the same releases serve the interface
+    /// and leave the browser alone — so the launcher has to open it. A release that did not answer is
+    /// one that was probably busy **starting**: a help request a server ignores is a server booting,
+    /// and the tab it opens for itself is the reason the launcher must not add a second one.
+    enum NoOpen {
+        /// The help lists `--no-open`, so the flag may be passed and the launcher must open the
+        /// interface itself.
+        ACCEPTED,
+
+        /// The help was read and does not list `--no-open`: the flag must not be passed, and the
+        /// interface does not open a browser of its own either.
+        ABSENT,
+
+        /// The help could not be read, so nothing is known: the flag is left out and the interface is
+        /// left to open its own tab.
+        UNKNOWN
+    }
 
     /// Returns the key the help of a version and profile is remembered under.
     ///
@@ -174,7 +197,7 @@ public final class DshLauncher {
         return version + "/" + profile;
     }
 
-    /// Reports whether a version's interface accepts `--no-open`.
+    /// Reads what a version's interface says about `--no-open`.
     ///
     /// Asked of the version itself rather than decided from its number: what a
     /// release accepts is what its own help says, and a list of version numbers that
@@ -188,16 +211,16 @@ public final class DshLauncher {
     /// for this ("`dsh --profile web -h` prints the web app's help, not this one's").
     ///
     /// @param instance the instance
-    /// @return whether the flag may be passed
-    private static boolean acceptsNoOpen(DshInstance instance) {
+    /// @return what the help said
+    private static NoOpen noOpenSupport(DshInstance instance) {
         String version = instance.version();
         String key = capabilityKey(version, instance.profile());
-        Boolean cached = NO_OPEN_SUPPORT.get(key);
+        NoOpen cached = NO_OPEN_SUPPORT.get(key);
         if (cached != null) {
             return cached;
         }
 
-        boolean accepted = false;
+        NoOpen answer = NoOpen.UNKNOWN;
         Process probe = null;
         try {
             DshNodeRuntime runtime = resolveRuntime(instance);
@@ -221,20 +244,20 @@ public final class DshLauncher {
                     // Left out rather than waited for — and remembered, like every other answer:
                     // returning here would ask the same question again on the next launch.
                     LOG.info("DeepSeek Harness " + version + " did not answer --help within "
-                            + PROBE_TIMEOUT.toSeconds() + "s; leaving the flag out");
-                    NO_OPEN_SUPPORT.put(key, false);
-                    return false;
+                            + PROBE_TIMEOUT.toSeconds() + "s; it is more likely to be starting than to be"
+                            + " answering, so the launcher leaves the browser to it");
+                    NO_OPEN_SUPPORT.put(key, NoOpen.UNKNOWN);
+                    return NoOpen.UNKNOWN;
                 }
                 output = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
             }
-            accepted = helpMentionsNoOpen(output);
+            answer = helpMentionsNoOpen(output) ? NoOpen.ACCEPTED : NoOpen.ABSENT;
         } catch (DshException | IOException | InterruptedException | RuntimeException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
             // Not knowing is not permission: a flag a version does not accept stops it from
-            // starting at all, and the cost of leaving it out is a browser tab the harness opens
-            // for itself.
+            // starting at all.
             LOG.warning("Could not read the help of DeepSeek Harness " + version, e);
         } finally {
             if (probe != null && probe.isAlive()) {
@@ -242,8 +265,8 @@ public final class DshLauncher {
             }
         }
 
-        NO_OPEN_SUPPORT.put(key, accepted);
-        return accepted;
+        NO_OPEN_SUPPORT.put(key, answer);
+        return answer;
     }
 
     /// Reports whether a version's help mentions `--no-open`.
@@ -252,6 +275,38 @@ public final class DshLauncher {
     /// @return whether the flag is listed
     static boolean helpMentionsNoOpen(String help) {
         return help != null && help.contains("--no-open");
+    }
+
+    /// Decides who opens the interface, which is the whole of the two-window question.
+    ///
+    /// A version that was told `--no-open` stays off the browser, so somebody has to open it, and that
+    /// is what the launcher is for: a person watching a launch should see the interface without having
+    /// to find the address.
+    ///
+    /// A version whose help does **not** list `--no-open` cannot be told anything, and it does not
+    /// open a tab of its own either. Its help lists no browser option at all — measured against
+    /// 0.0.1-rc.5, whose `--profile web --help` lists `--host`, `--port`, `--trusted-host` and `-h`
+    /// and nothing else — and the release it belongs to serves the interface and leaves the browser
+    /// alone, which is what an instance on it was reported doing: started, serving, and no browser
+    /// anywhere. So the launcher opens it for those too. Assuming the opposite is what left them with
+    /// no browser at all.
+    ///
+    /// Only a version that could not be asked is left to open its own tab, because the usual reason
+    /// for that is that it is busy **starting** — the five-second probe that timed out on
+    /// 0.1.5-alpha.2 is the case the second window was reported from: the flag was left out, and the
+    /// harness, already booting, opened a tab while the launcher opened another.
+    ///
+    /// @param web         whether the surface serves an address at all
+    /// @param surfaceAsks whether the surface wants the launcher to open the interface
+    /// @param support     what the version's own help said about `--no-open`
+    /// @return whether the launcher opens the interface
+    static boolean launcherOpensTheInterface(boolean web, boolean surfaceAsks, NoOpen support) {
+        if (!web || !surfaceAsks) {
+            // Nothing to open: an app that serves no address has no window, and a surface that did
+            // not ask for one is not the launcher's to open.
+            return false;
+        }
+        return support != NoOpen.UNKNOWN;
     }
 
     /// Builds the launch plan for an instance.
@@ -430,15 +485,18 @@ public final class DshLauncher {
         command.add(typed.profile() != null ? typed.profile() : instance.profile());
 
         List<String> surfaceArguments = new ArrayList<>(surface.arguments(port));
-        // Whether to leave the browser alone is the user's to decide once they have said anything
-        // at all about how the instance starts: a line that mentions `--no-open` gets it and one
-        // that does not gets nothing, so the harness opens the tab itself and the launcher does not
-        // add a second one. With no line typed the launcher asks the version whether it knows the
-        // flag, because passing one an old release rejects is what stops a launch outright.
-        boolean noOpen = surfaceArguments.remove("--no-open")
-                && (typed.appArguments().isEmpty()
-                        ? acceptsNoOpen(instance)
-                        : typed.asksNoOpen());
+        // The browser is the surface's own business, and whether this launch leaves it to the harness
+        // is what these three lines decide: the surface asks for the launcher to open it, and what the
+        // version's own help said decides whether the harness can be told to stay off.
+        //
+        // The typed line does not enter into it. It used to: a line that mentioned `--no-open` had the
+        // flag passed and one that did not had nothing passed, on the reasoning that the harness would
+        // then open the tab itself. That reasoning is what left old versions with no browser at all —
+        // see below — so the question is asked of the version, which is the only thing that knows, and
+        // the user's own arguments are appended afterwards exactly as they typed them.
+        boolean wantsToOpen = surfaceArguments.remove("--no-open");
+        NoOpen support = noOpenSupport(instance);
+        boolean noOpen = wantsToOpen && support == NoOpen.ACCEPTED;
         if (noOpen) {
             surfaceArguments.add("--no-open");
         }
@@ -447,22 +505,16 @@ public final class DshLauncher {
         // user put it, which is why it is not filtered out here.
         command.addAll(typed.appArguments());
 
-        // Who opens the interface, decided by what the child was told.
-        //
-        // The two cases are one instruction each and they are not symmetric. Told `--no-open`, the
-        // harness stays off the browser and somebody has to open it — the launcher, which is what
-        // this is for: a person watching a launch should see the interface without having to find
-        // the address. Not told it, because the version would not answer and a flag it does not
-        // know stops the launch outright, the harness opens its own tab: opening a second one from
-        // here is two windows for one instance, and the person clicking Launch is the one who pays
-        // for it.
-        //
-        // The user's own line wins either way: a `--no-open` they typed themselves is theirs, and
-        // having asked the harness to leave the browser alone they still expect to be taken to it.
-        boolean launcherOpens = noOpen || (typed.asksNoOpen() && typed.appArguments().isEmpty());
-        if (surface.isWeb() && !launcherOpens) {
-            LOG.info("DeepSeek Harness " + instance.version() + " was not told --no-open, so it opens"
-                    + " the interface itself; the launcher will not open a second one");
+        boolean launcherOpens = launcherOpensTheInterface(surface.isWeb(), wantsToOpen, support);
+        if (surface.isWeb()) {
+            LOG.info("DeepSeek Harness " + instance.version() + " "
+                    + switch (support) {
+                        case ACCEPTED -> "was told --no-open, so the launcher opens the interface";
+                        case ABSENT -> "has no --no-open and opens no browser of its own,"
+                                + " so the launcher opens the interface";
+                        case UNKNOWN -> "could not be asked about --no-open, so the launcher leaves the"
+                                + " browser to it";
+                    });
         }
 
         Map<String, String> environment = new LinkedHashMap<>();
