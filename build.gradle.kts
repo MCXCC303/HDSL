@@ -168,12 +168,24 @@ tasks.test {
     // of their own inside the build tree, which is also what makes them able to
     // assert on what was persisted.
     systemProperty("hdsl.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
-    // A JavaFX toolkit that failed to start leaves a test blocked forever on
-    // the interface thread rather than failed — a build without the native GTK
-    // libraries hangs here instead of reporting. A bound on every method turns
-    // that hang into a failure the suite can name. No test is legitimately
-    // slow: the longest waits for a child to exit and does so in seconds.
-    systemProperty("junit.jupiter.execution.timeout.method.default", "120s")
+    // A bound on every test and every lifecycle method, so a test that has been
+    // left waiting on something wedged fails, with the stack it is waiting on,
+    // rather than holding the build. The name is JUnit's own —
+    // `junit.jupiter.execution.timeout.default`, as `org.junit.jupiter.engine.
+    // Constants` spells it. The key that used to stand here,
+    // `junit.jupiter.execution.timeout.method.default`, is not one JUnit reads,
+    // and a setting nobody reads is ignored in silence: a runner whose toolkit
+    // never came up held a build for seventy-six minutes with nothing in the
+    // log to say why. `TestBoundsTest` pins both halves of that.
+    //
+    // No test is legitimately slow. The longest one starts a child and has it
+    // say it is ready in about twenty seconds, on every runner measured:
+    // 21.2 s on windows-latest, 20.7 s on macos-latest, 20.4 s on ubuntu-latest.
+    systemProperty("junit.jupiter.execution.timeout.default", "120s")
+    // And the stacks of everything running when a bound is reached, which is the
+    // part that names a cause: a wedged toolkit is a thread parked in native
+    // startup, and without this the log says only that a test timed out.
+    systemProperty("junit.jupiter.execution.timeout.threaddump.enabled", "true")
 }
 
 // --------------------------------------------------------------- resources ---

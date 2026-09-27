@@ -21,6 +21,7 @@ import javafx.application.Platform;
 import javafx.event.EventHandler;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CompletableFuture;
@@ -54,19 +55,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// on the real toolkit, because both are facts about JavaFX rather than about this code.
 class ConfirmationWorkThreadTest {
 
-    static {
-        CountDownLatch started = new CountDownLatch(1);
-        try {
-            Platform.startup(started::countDown);
-        } catch (IllegalStateException alreadyRunning) {
-            started.countDown();
-        }
-        try {
-            assertTrue(started.await(30, TimeUnit.SECONDS), "the JavaFX toolkit did not start");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while starting the JavaFX toolkit", e);
-        }
+    /// Starts the toolkit for this class, or skips the class where it cannot run.
+    @BeforeAll
+    static void startToolkit() {
+        FxToolkit.requireRunning();
     }
 
     /// Runs work on the interface thread and waits for it.

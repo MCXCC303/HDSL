@@ -8,8 +8,10 @@ import javafx.scene.control.TreeCell;
 import org.jackhuang.hmcl.dsh.DshHomeMode;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshPaths;
+import org.jackhuang.hmcl.ui.FxToolkit;
 import org.jackhuang.hmcl.ui.construct.NoneMultipleSelectionModel;
 import org.jackhuang.hmcl.util.SettingsMap;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -17,7 +19,6 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -33,19 +34,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /// three lines in the page, and nothing else in the suite would notice them changing back.
 class ModpackFilesStyleTest {
 
-    static {
-        CountDownLatch started = new CountDownLatch(1);
-        try {
-            Platform.startup(started::countDown);
-        } catch (IllegalStateException alreadyRunning) {
-            started.countDown();
-        }
-        try {
-            assertTrue(started.await(30, TimeUnit.SECONDS), "the JavaFX toolkit did not start");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while starting the JavaFX toolkit", e);
-        }
+    /// Starts the toolkit for this class, or skips the class where it cannot run.
+    @BeforeAll
+    static void startToolkit() {
+        FxToolkit.requireRunning();
     }
 
     private static void onFxThread(Runnable work) throws Exception {

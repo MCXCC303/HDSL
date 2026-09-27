@@ -5,9 +5,10 @@ import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.layout.StackPane;
+import org.jackhuang.hmcl.ui.FxToolkit;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 
@@ -25,19 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 /// marks themselves are pinned here.
 class CheckBoxMarksTest {
 
-    static {
-        CountDownLatch started = new CountDownLatch(1);
-        try {
-            Platform.startup(started::countDown);
-        } catch (IllegalStateException alreadyRunning) {
-            started.countDown();
-        }
-        try {
-            assertTrue(started.await(30, TimeUnit.SECONDS), "the JavaFX toolkit did not start");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while starting the JavaFX toolkit", e);
-        }
+    /// Starts the toolkit for this class, or skips the class where it cannot run.
+    @BeforeAll
+    static void startToolkit() {
+        FxToolkit.requireRunning();
     }
 
     private static void onFxThread(Runnable work) throws Exception {
