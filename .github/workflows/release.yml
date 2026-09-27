@@ -114,6 +114,8 @@ jobs:
 
     - name: Build with Gradle
       run: xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
+      env:
+        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
     # appimagetool is an AppImage itself; the released one is used rather than a
     # distribution package so the packages are built by the same tool everywhere.
     - name: Fetch appimagetool
