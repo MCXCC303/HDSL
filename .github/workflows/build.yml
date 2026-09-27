@@ -45,6 +45,13 @@ jobs:
       uses: actions/setup-node@v5
       with:
         node-version: '22'
+    - name: Set up pnpm
+      # `dsh plugin` forwards to pnpm, so the launcher refuses to install a plugin
+      # on a machine without it — and the tests that cover installing one, and
+      # approving the install scripts it asks about, are skipped there. The
+      # launcher provisions a pnpm of its own for the instances a user makes; a
+      # runner has none, so it is put on PATH here.
+      run: npm install --global pnpm
     - name: Install test dependencies (Linux)
       # JavaFX needs GTK even under xvfb; without it the toolkit wedges and the
       # tests hang rather than fail. The t64 name is the one newer Ubuntu uses.
