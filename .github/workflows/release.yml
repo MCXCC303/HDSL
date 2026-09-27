@@ -102,9 +102,14 @@ jobs:
         done
         cat RELEASE_NOTE
 
-    - name: Sum the deb
+    - name: Sum the Gradle artifacts
       run: |
-        ( cd dist && sha256sum "hdsl-${VERSION}.deb" > "hdsl-${VERSION}.deb.sha256" )
+        # The two files Gradle wrote are the ones the packaging script does not build, so their sums
+        # are written here, one per artifact as everywhere else: the release note reads every checksum
+        # from `dist/`, and the `.sh` row said `pending` for a file that was in the directory.
+        for artifact in "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh"; do
+          ( cd dist && sha256sum "${artifact}" > "${artifact}.sha256" )
+        done
 
     - name: Create the release
       run: |
@@ -121,6 +126,7 @@ jobs:
           dist/hdsl-${VERSION}.deb \
           dist/hdsl-${VERSION}.deb.sha256 \
           dist/hdsl-${VERSION}.sh \
+          dist/hdsl-${VERSION}.sh.sha256 \
           --target "${{ github.sha }}" \
           ${PRERELEASE} \
           --title "HMCL-DSH ${VERSION}" \
