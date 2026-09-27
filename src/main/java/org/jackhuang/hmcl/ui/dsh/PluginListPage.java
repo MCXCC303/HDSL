@@ -303,8 +303,9 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                         this::installFromRepository),
                 // The original's mod list also carries 下载, which leads to the list
                 // of what can be installed rather than to a file dialog; this is
-                // that, pointing at the download page's plugin tab.
-                ToolbarListPageSkin.createToolbarButton2(i18n("mods.download"), SVG.DOWNLOAD,
+                // that, pointing at the download page's plugin tab. What the button
+                // says is what it downloads — a plugin, not a mod.
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.download"), SVG.DOWNLOAD,
                         this::openMarket),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
                         this::revealProfile));

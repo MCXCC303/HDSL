@@ -210,6 +210,10 @@ class PageStringsTest {
             "dsh.plugin.source.repository.empty",
             "dsh.plugin.source.reference",
             "dsh.plugin.source.reference_unusable",
+            // The download buttons on the two lists: each says what it downloads, rather than
+            // borrowing the original's word for a mod.
+            "dsh.instance.plugins.download",
+            "dsh.instance.skills.download",
             // The batch toolbar on the plugin list.
             "button.remove",
             "button.remove.confirm",
