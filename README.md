@@ -8,7 +8,6 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/MCXCC303/HDSL/build.yml?branch=master&label=CI&logo=github&style=flat-square)](https://github.com/MCXCC303/HDSL/actions/workflows/build.yml)
 [![License](https://img.shields.io/badge/License-GPLv3-blue?style=flat-square)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey?style=flat-square&logo=linux&logoColor=ffffff)](https://www.kernel.org)
 [![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk&logoColor=ffffff)](https://openjdk.org/projects/jdk/21)
 
 </div>
@@ -20,7 +19,7 @@
 
 ## 简介
 
-HDSL 是一款 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的启动器与版本管理器，使用 [HMCL](https://github.com/HMCL-dev/HMCL) 的 JavaFX 外观层构建。
+HDSL 是一款跨平台的 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（`dsh`）的启动器与版本管理器，使用 [HMCL](https://github.com/HMCL-dev/HMCL) 的 JavaFX 外观层构建。
 
 DeepSeek Harness 通过 npm 发布、以 `dsh web` 启动。HDSL 把这些步骤收进一个图形界面：下载并安装任意已发布的 `dsh` 版本、为每个实例保留独立的运行环境与 `DSH_HOME`、管理插件、查看会话与运行日志，并在同一个窗口里启动和停止它们。
 
@@ -60,11 +59,8 @@ HDSL v0.2.0 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特�
 
 | 项目 | 要求 |
 |---|---|
-| 操作系统 | **Linux / macOS**（x86_64 / aarch64）或 **Windows**（x86_64；ARM64 通过 x64 模拟运行） |
 | 运行时 | **Java 21**（构建与运行） |
 | DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
-
-在 Windows 上，HDSL 以单个 `.exe` 发布（构建工具会自动打包），也可以直接用 `java -jar` 运行 `.jar`。Node.js 亦可在启动器内按版本下载托管——Windows 上下载的是官方 `.zip` 发行版，`npm`、`pnpm` 以 `.cmd` 垫片的形式被调用，与命令行中的使用完全一致。
 
 ## 构建
 
@@ -80,8 +76,6 @@ gradlew.bat build
 gradlew.bat run
 ```
 
-`build` 会在 `build/libs` 下生成 `hdsl-<版本>.sh`、`hdsl-<版本>.deb` 与 `hdsl-<版本>.exe`（含 `.exe.sha256`）；`.exe` 由 [launch4j](https://launch4j.sourceforge.net/) 打包，内嵌 HDSL 图标，并要求 Java 21 或更高版本的运行时。
-
 打包为 `.deb` 与自解压脚本（Linux）：
 
 ```bash
@@ -93,21 +87,6 @@ gradlew.bat run
 ```bash
 ./gradlew makeExecutable
 ./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png dist
-```
-
-## 数据目录
-
-HDSL 的默认应用数据位于 `~/.local/share/hdsl`（Linux）、`~/Library/Application Support/hdsl`（macOS）或 `%APPDATA%\.hdsl`（Windows）：
-
-```
-~/.local/share/hdsl/            %APPDATA%\.hdsl\
-├── instances/           每个实例一份运行环境与配置
-│   └── <实例>/
-│       ├── dsh/         该实例自己的 DeepSeek Harness
-│       ├── home/        隔离的 DSH_HOME
-│       └── instance.json
-├── homes/               选择「同一版本共用」时使用的共享 DSH_HOME
-└── launcher-settings.json
 ```
 
 ## 参与贡献
@@ -132,6 +111,8 @@ HDSL 是 HMCL 的衍生作品，目前功能正在快速完善，欢迎通过该
 
 ## 致谢
 Bemly (Bemly_, For MacOS Transplanting)
+
+afjvdg（afjvdg, For Windows Transplanting）
 
 DeepSeek V4.1 Flash
 
