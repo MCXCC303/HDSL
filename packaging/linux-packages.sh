@@ -101,6 +101,22 @@ for file in LICENSE NOTICE; do
         && chmod 0644 "${arch_stage}/usr/share/licenses/${desktop_id}/${file}"
 done
 
+# The version pacman is given, which is not always the version this build was handed.
+#
+# pacman compares with vercmp, where a semver pre-release sorts the wrong way round:
+# `vercmp 0.2.1-SNAPSHOT.1-1 0.2.1-1` answers 1, so a machine that installed the snapshot would
+# never be offered the release that follows it. Arch's own spelling for a pre-release is the alpha
+# suffix, which sorts below the release it precedes: `0.2.1snapshot1` and `0.2.1rc1` both answer -1.
+# Only the alpha half is spelled this way; the tag, the file names everywhere else and the version
+# the launcher reports about itself all keep the tag's own spelling.
+arch_version_of() {
+    case "$1" in
+    *-*) printf '%s%s\n' "${1%%-*}" "$(printf '%s' "${1#*-}" | tr '[:upper:]' '[:lower:]' | tr -d '._-')" ;;
+    *) printf '%s\n' "$1" ;;
+    esac
+}
+arch_version="$(arch_version_of "${version}")"
+
 # `.PKGINFO` is the whole of what pacman reads first, and two of its fields have a shape it
 # enforces rather than merely reads:
 #
@@ -113,7 +129,7 @@ installed_size="$(du -sb "${arch_stage}" | cut -f1)"
 cat > "${arch_stage}/.PKGINFO" <<EOF
 pkgname = ${desktop_id}
 pkgbase = ${desktop_id}
-pkgver = ${version}-1
+pkgver = ${arch_version}-1
 pkgdesc = DeepSeek Harness launcher
 url = https://github.com/
 builddate = $(date +%s)
@@ -126,7 +142,7 @@ EOF
 
 # The licence files are already in the tree, so the members are the paths plus `.PKGINFO`, and
 # `.PKGINFO` comes first because that is the order pacman's own packages use.
-arch_pkg="${out_dir}/${desktop_id}-${version}-1-x86_64.pkg.tar.zst"
+arch_pkg="${out_dir}/${desktop_id}-${arch_version}-1-x86_64.pkg.tar.zst"
 tar --zstd -cf "${arch_pkg}" -C "${arch_stage}" .PKGINFO usr
 echo "arch package: ${arch_pkg}"
 tar --zstd -tf "${arch_pkg}" > /dev/null
@@ -181,7 +197,7 @@ fi
 # The `.deb` is written by Gradle rather than by this script, so it is summed here too: one loop that
 # knows every artifact is easier to keep honest than two that each know some of them.
 for artifact in "${out_dir}/${name}-linux-x64.tar.zst" \
-                "${out_dir}/${desktop_id}-${version}-1-x86_64.pkg.tar.zst" \
+                "${out_dir}/${desktop_id}-${arch_version}-1-x86_64.pkg.tar.zst" \
                 "${out_dir}/${name}.deb" \
                 "${out_dir}/HDSL-${version}-x86_64.AppImage"; do
     # Skipped when the artifact is not there, and any stale sum is removed with it: a checksum file
