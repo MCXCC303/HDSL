@@ -216,6 +216,45 @@ public final class DshInstanceManager {
         return instances;
     }
 
+    /// Returns the other instances that use the same `DSH_HOME` as this one.
+    ///
+    /// A home is where the profiles, the plugins, the credentials and the sessions live, so two
+    /// instances using one home are one installation seen twice: installing a plugin into either of
+    /// them shows up in both, and so does everything else. That is what
+    /// [DshHomeMode#VERSION_SHARED] asks for — one home per version, deliberately — and it is why the
+    /// mode carries a warning; what is easy to miss is that it is decided by the *version* alone, so
+    /// two instances in two different folders that happen to be pinned to the same version share one
+    /// home without either of them saying anything about the other.
+    ///
+    /// Counted rather than guessed: the answer is the same directory, resolved per instance, so a
+    /// custom home two instances happen to point at is found the same way a version-shared one is.
+    ///
+    /// @param instance the instance to compare against
+    /// @return the others, in list order, never including the instance itself
+    public static List<DshInstance> othersSharingHome(DshInstance instance) {
+        Path home;
+        try {
+            home = instance.homeDirectory();
+        } catch (DshException e) {
+            return List.of();
+        }
+        List<DshInstance> others = new ArrayList<>();
+        for (DshInstance other : list()) {
+            if (other.id().equals(instance.id())) {
+                continue;
+            }
+            try {
+                if (other.homeDirectory().equals(home)) {
+                    others.add(other);
+                }
+            } catch (DshException e) {
+                // An instance whose own home cannot be resolved shares nothing.
+                LOG.warning("Could not resolve the home of " + other.id(), e);
+            }
+        }
+        return List.copyOf(others);
+    }
+
     /// Says, once per run, that one name is held by two folders.
     ///
     /// A name is meant to be one instance — [#create] refuses a second one — but a folder can be
