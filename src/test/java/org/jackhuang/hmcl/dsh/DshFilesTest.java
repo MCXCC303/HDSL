@@ -52,11 +52,28 @@ class DshFilesTest {
         return instance;
     }
 
+    /// Marks an entry read-only the way a package manager does on Windows.
+    ///
+    /// The DOS attribute is a Windows filesystem feature. Elsewhere the JDK has no such view at all
+    /// and `Files#setAttribute` throws `UnsupportedOperationException: View 'dos' not available`
+    /// instead of quietly doing nothing — which is how three tests of this class failed on the macOS
+    /// runners. What is asked here is the *file store*, not the operating system's name: the same
+    /// rule the rest of this suite follows, and it skips exactly where the attribute is not there
+    /// while still running where it is.
+    ///
+    /// @param path the entry to mark
+    private static void markReadOnly(Path path) throws IOException {
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+                Files.getFileStore(path).supportsFileAttributeView("dos"),
+                "this file store has no DOS attribute view to mark an entry read-only with");
+        Files.setAttribute(path, "dos:readonly", true);
+    }
+
     @Test
     void aTreeWithAReadOnlyFileIsRemoved(@TempDir Path root) throws Exception {
         Path instance = instanceTree(root);
         Path readOnly = instance.resolve("dsh/node_modules/pkg/file0.js");
-        Files.setAttribute(readOnly, "dos:readonly", true);
+        markReadOnly(readOnly);
 
         DshFiles.deleteTree(instance);
 
@@ -67,7 +84,7 @@ class DshFilesTest {
     @Test
     void aTreeWithAReadOnlyDirectoryIsRemoved(@TempDir Path root) throws Exception {
         Path instance = instanceTree(root);
-        Files.setAttribute(instance.resolve("dsh/node_modules/pkg"), "dos:readonly", true);
+        markReadOnly(instance.resolve("dsh/node_modules/pkg"));
 
         DshFiles.deleteTree(instance);
 
@@ -143,14 +160,29 @@ class DshFilesTest {
         DshInstance instance = DshInstanceManager.create("dsh-files-test", "1.0.0",
                 DshInstance.DEFAULT_PROFILE, root, DshHomeMode.ISOLATED, null,
                 List.of(), java.util.Map.of());
-        Path directory = instance.instanceDirectory();
-        Files.createDirectories(directory.resolve("dsh/node_modules/pkg"));
-        Files.writeString(directory.resolve("dsh/node_modules/pkg/index.js"), "// x");
-        Files.setAttribute(directory.resolve("dsh/node_modules/pkg/index.js"), "dos:readonly", true);
+        try {
+            Path directory = instance.instanceDirectory();
+            Files.createDirectories(directory.resolve("dsh/node_modules/pkg"));
+            Files.writeString(directory.resolve("dsh/node_modules/pkg/index.js"), "// x");
+            markReadOnly(directory.resolve("dsh/node_modules/pkg/index.js"));
 
-        DshInstanceManager.delete(instance.id());
+            DshInstanceManager.delete(instance.id());
 
-        assertFalse(Files.exists(directory), "the instance has to be gone, home and all");
-        assertFalse(DshInstanceManager.exists(instance.id()));
+            assertFalse(Files.exists(directory), "the instance has to be gone, home and all");
+            assertFalse(DshInstanceManager.exists(instance.id()));
+        } finally {
+            // This instance lives in the folder the whole suite shares, so leaving it behind changes
+            // what every test after this one sees there. That is not hypothetical: on the macOS
+            // runners the `dos` attribute above failed, the instance stayed, and the next test to look
+            // at that folder — [org.jackhuang.hmcl.setting.DshInstancesWiringTest], which waits for an
+            // empty folder to select nothing — failed fifteen seconds later for a reason of its own.
+            if (DshInstanceManager.exists(instance.id())) {
+                try {
+                    DshInstanceManager.delete(instance.id());
+                } catch (DshException ignored) {
+                    // The test's own cleanup: a failure here would hide the real one.
+                }
+            }
+        }
     }
 }

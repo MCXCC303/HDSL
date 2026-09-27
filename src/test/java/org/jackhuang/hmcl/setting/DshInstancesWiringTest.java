@@ -145,7 +145,14 @@ class DshInstancesWiringTest {
             done.countDown();
         }
         if (!done.await(15, TimeUnit.SECONDS)) {
-            throw new AssertionError("Timed out waiting for the selection to become " + id);
+            // What it is, rather than only that it is not what was asked for: a bare timeout on this
+            // one sent somebody looking for a threading bug when the answer was that the folder still
+            // held an instance another test had failed to remove.
+            DshInstance now = GameDirectoryManager.getSelectedInstance();
+            throw new AssertionError("Timed out waiting for the selection to become " + id
+                    + "; it is " + (now == null ? "nothing" : now.id())
+                    + ", and the folder holds " + GameDirectoryManager.getSelectedRepository()
+                    .getInstances().stream().map(DshInstance::id).toList());
         }
     }
 
