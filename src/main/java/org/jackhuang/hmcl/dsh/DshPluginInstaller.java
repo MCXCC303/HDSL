@@ -279,31 +279,13 @@ public final class DshPluginInstaller {
             DshCommand.Result result = DshCommand.run(command, instance.workspacePath(), environment,
                     line -> report(onLine, line));
             int exitCode = result.exitCode();
-            if (exitCode != 0
-                    && explainIgnoredBuilds(result.output(), home, instance.profile()) != null
-                    && !retried) {
-                List<String> waiting = DshBuildScripts.unanswered(instance);
-                DshBuildScriptPolicy policy = DshBuildScriptPolicy.of(instance);
-                if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.AUTO) {
-                    // This instance's plugins may build themselves, so the question
-                    // is already answered: say so and run the same command again.
-                    report(onLine, "Allowing install scripts for " + String.join(", ", waiting));
-                    DshBuildScripts.answer(instance, waiting, true);
+            if (exitCode != 0 && explainIgnoredBuilds(result.output(), home, instance.profile()) != null) {
+                if (!retried && answerWaitingBuilds(instance, onLine)) {
                     retried = true;
                     continue;
                 }
-                if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.NEVER) {
-                    // The answer is no, so the packages are installed and their
-                    // scripts are not run: installing is not the same decision as
-                    // running what comes with it.
-                    report(onLine, "Not running install scripts for " + String.join(", ", waiting));
-                    DshBuildScripts.answer(instance, waiting, false);
-                    retried = true;
-                    continue;
-                }
-                if (!waiting.isEmpty()) {
-                    // Somebody has to decide, and only the interface can ask.
-                    throw new DshBuildScriptApprovalRequired(waiting);
+                if (retried) {
+                    throw new DshException(explainIgnoredBuilds(result.output(), home, instance.profile()));
                 }
             }
             if (exitCode != 0) {
@@ -313,6 +295,18 @@ public final class DshPluginInstaller {
                 }
                 throw new DshException("`dsh plugin " + String.join(" ", args)
                         + "` exited with code " + exitCode + ":\n" + tail(result.output()));
+            }
+            // A run that succeeded can still have left a package's build undecided, and that is the
+            // usual case rather than an odd one: pnpm writes the package into the profile's
+            // `allowBuilds` with a placeholder and returns success, and only `strictDepBuilds` makes
+            // it fail instead. Measured against pnpm 11.24's own code, which is
+            // `if (opts.strictDepBuilds) throw new IgnoredBuildsError(ignoredBuilds)` after it has
+            // already written the placeholder. Deciding by the exit code alone therefore meant the
+            // question was never asked, whatever the setting said — so what decides here is what the
+            // profile says is waiting.
+            if (!retried && answerWaitingBuilds(instance, onLine)) {
+                retried = true;
+                continue;
             }
         } catch (IOException e) {
             throw new DshException("Failed to run `dsh plugin " + String.join(" ", args) + "`", e);
@@ -346,6 +340,51 @@ public final class DshPluginInstaller {
         /// @return the package names
         public List<String> packages() {
             return packages;
+        }
+    }
+
+    /// Answers the build scripts a profile is waiting to be told about.
+    ///
+    /// What is waiting is read from the profile rather than guessed from how the package manager
+    /// exited, because the two disagree: pnpm 11 writes the package into the profile's `allowBuilds`
+    /// with a placeholder and returns success, and only fails when `strictDepBuilds` is set — which it
+    /// leaves off by default. A launcher that waited for the failure therefore never asked, whatever
+    /// the setting said, and the package stayed unbuilt.
+    ///
+    /// The three policies are the setting's own three answers, and only the middle one is not an
+    /// answer: under [DshBuildScriptPolicy#MANUAL] the question goes to the interface, which is the
+    /// only thing that can ask a person.
+    ///
+    /// @param instance the instance whose profile is waiting
+    /// @param onLine   receives what was decided, or `null`
+    /// @return whether an answer was written, which makes the command worth running again
+    /// @throws DshException                     when the profile cannot be read or written
+    /// @throws DshBuildScriptApprovalRequired   when only the interface can answer
+    private static boolean answerWaitingBuilds(DshInstance instance, @Nullable Consumer<String> onLine)
+            throws DshException {
+        List<String> waiting = DshBuildScripts.unanswered(instance);
+        if (waiting.isEmpty()) {
+            return false;
+        }
+        switch (DshBuildScriptPolicy.of(instance)) {
+            case AUTO -> {
+                // This instance's plugins may build themselves, so the question is already answered:
+                // say so, and run the same command again so that the scripts actually run.
+                report(onLine, "Allowing install scripts for " + String.join(", ", waiting));
+                DshBuildScripts.answer(instance, waiting, true);
+                return true;
+            }
+            case NEVER -> {
+                // The answer is no, so the packages are installed and their scripts are not run:
+                // installing is not the same decision as running what comes with it.
+                report(onLine, "Not running install scripts for " + String.join(", ", waiting));
+                DshBuildScripts.answer(instance, waiting, false);
+                return true;
+            }
+            default -> {
+                // Somebody has to decide, and only the interface can ask.
+                throw new DshBuildScriptApprovalRequired(waiting);
+            }
         }
     }
 
