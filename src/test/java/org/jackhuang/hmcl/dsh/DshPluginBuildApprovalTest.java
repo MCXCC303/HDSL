@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.dsh;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -85,6 +86,20 @@ class DshPluginBuildApprovalTest {
     /// The workspace the instance runs in, which JUnit makes and removes.
     @TempDir
     Path workspaceDirectory;
+
+    /// Every test starts its own installation.
+    ///
+    /// What an installation has already been told lives in the installer, one set per process, and only
+    /// the interface starting a new installation clears it. A test that asserts a question is asked
+    /// therefore cannot rely on which test ran before it — and must not, because whether one did depends
+    /// on the machine: the sibling test that clears the set is skipped wherever Node or pnpm is missing,
+    /// which is how one run of this class failed on macOS while Linux and Windows passed.
+    /// 
+    /// This could prevent CI from being failed after other platforms' tests were edited.
+    @BeforeEach
+    void newInstallation() {
+        DshPluginInstaller.beginInstallation();
+    }
 
     /// Removes the instances the tests made.
     @AfterEach
