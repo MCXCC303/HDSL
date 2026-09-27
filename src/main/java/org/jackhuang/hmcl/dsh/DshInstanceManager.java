@@ -194,7 +194,7 @@ public final class DshInstanceManager {
 
     public static List<DshInstance> list() {
         List<DshInstance> instances = new ArrayList<>();
-        java.util.Set<Path> seen = new java.util.HashSet<>();
+        java.util.Map<String, Path> taken = new java.util.HashMap<>();
         for (Path root : folders()) {
             for (DshInstance instance : listIn(root)) {
                 Path directory;
@@ -203,8 +203,12 @@ public final class DshInstanceManager {
                 } catch (DshException e) {
                     continue;
                 }
-                if (seen.add(directory)) {
+                Path previous = taken.get(instance.id());
+                if (previous == null) {
+                    taken.put(instance.id(), directory);
                     instances.add(instance);
+                } else if (!previous.equals(directory)) {
+                    warnAboutASharedName(instance.id(), previous, directory);
                 }
             }
         }
@@ -212,25 +216,66 @@ public final class DshInstanceManager {
         return instances;
     }
 
+    /// Says, once per run, that one name is held by two folders.
+    ///
+    /// A name is meant to be one instance — [#create] refuses a second one — but a folder can be
+    /// copied, a backup can be unpacked beside the original, and a folder the user adds can hold a
+    /// copy of an instance the launcher already knows. What that leaves is two folders answering to
+    /// one name, and every lookup and every removal then acts on whichever folder comes first: the
+    /// list would show the same instance twice while managing one of them.
+    ///
+    /// So the first folder wins — [#folders] puts the folder being shown first — and the copies it
+    /// shadows are named in the log rather than in the list, because what a person needs is one row
+    /// per name and one line saying which folder was left out and what to do about it.
+    ///
+    /// @param id      the name both folders answer to
+    /// @param used    the folder the launcher uses
+    /// @param ignored the folder it leaves alone
+    private static void warnAboutASharedName(String id, Path used, Path ignored) {
+        if (!REPORTED_SHARED_NAMES.add(id)) {
+            return;
+        }
+        LOG.warning("Instance \"" + id + "\" is in two folders: " + used
+                + " is used, because the folder being shown comes first, and " + ignored
+                + " is left alone. Rename or remove one of them: one name is one instance.");
+    }
+
+    /// The names whose two folders have already been reported, so a lookup that happens on every
+    /// frame says it once rather than every time.
+    private static final java.util.Set<String> REPORTED_SHARED_NAMES =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     /// Finds an instance by id.
     ///
     /// Looked for in every folder the launcher knows about: an id names one
     /// instance, and a person who sees it in the list has to be able to open,
     /// launch or remove it without knowing which folder it came from. The folder
-    /// being shown is searched first, so the common case reads one directory.
+    /// being shown is searched first, so the common case reads one directory —
+    /// and it is also the folder that wins when the name is held twice, which is
+    /// the order [#list] keeps a row for.
     ///
     /// @param id the instance id
     /// @return the instance, or `null` when it does not exist or is unreadable
     public static @Nullable DshInstance find(String id) {
         try {
             String segment = DshPaths.segment(id, "instance id");
+            DshInstance found = null;
+            Path foundIn = null;
             for (Path root : folders()) {
                 DshInstance instance = read(root.resolve(segment));
-                if (instance != null) {
-                    return instance;
+                if (instance == null) {
+                    continue;
+                }
+                if (found == null) {
+                    found = instance;
+                    foundIn = instance.instanceDirectory();
+                } else {
+                    // The rest of the folders are still looked in, so that a name held twice is said
+                    // out loud rather than being a coin toss nobody can see.
+                    warnAboutASharedName(id, foundIn, instance.instanceDirectory());
                 }
             }
-            return null;
+            return found;
         } catch (DshException e) {
             return null;
         }

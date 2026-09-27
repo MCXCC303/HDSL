@@ -136,6 +136,52 @@ class DshInstanceFoldersTest {
     }
 
     @Test
+    void aNameTwoFoldersBothHoldIsOneRowAndTheShownFolderWins() throws Exception {
+        // Making a second one is refused above, so what is left is the way a second one really
+        // arrives: a folder copied, a backup unpacked beside the original, a folder added that holds
+        // a copy of an instance the launcher already knows. The name is then held twice, and both
+        // rows would answer to it while every lookup and every removal acted on whichever folder came
+        // first — the row a person removed would not be the row they clicked.
+        create("held-twice", other);
+        Path copy = shown.resolve("held-twice");
+        copyFolder(other.resolve("held-twice"), copy);
+
+        List<DshInstance> listed = DshInstanceManager.list().stream()
+                .filter(instance -> "held-twice".equals(instance.id()))
+                .toList();
+        assertEquals(1, listed.size(), "one name is one row, however many folders hold the name");
+        assertEquals(copy, listed.get(0).instanceDirectory(),
+                "the folder being shown comes first, so the row is about its copy");
+        assertEquals(copy, DshInstanceManager.find("held-twice").instanceDirectory(),
+                "and every lookup agrees with the row, rather than being a coin toss");
+
+        DshInstanceManager.delete("held-twice");
+
+        assertFalse(Files.exists(copy), "removing the instance removes the one the row was about");
+        assertTrue(Files.isDirectory(other.resolve("held-twice")),
+                "the folder it shadows is left where it is; the log names it, the launcher does not"
+                        + " delete something nobody pointed at");
+    }
+
+    /// Copies a folder, which is how a second instance with one name arrives.
+    ///
+    /// @param from the folder to copy
+    /// @param to   where to put the copy
+    private static void copyFolder(Path from, Path to) throws Exception {
+        try (java.util.stream.Stream<Path> walk = Files.walk(from)) {
+            for (Path path : walk.toList()) {
+                Path target = to.resolve(from.relativize(path).toString());
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(target);
+                } else {
+                    Files.createDirectories(target.getParent());
+                    Files.copy(path, target);
+                }
+            }
+        }
+    }
+
+    @Test
     void renamingMovesItInsideItsOwnFolder() throws Exception {
         create("renamed-in-other", other);
 
