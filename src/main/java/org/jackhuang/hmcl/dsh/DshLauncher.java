@@ -129,8 +129,7 @@ public final class DshLauncher {
         String selection = instance.nodeRuntimeOrDefault();
         if (DshNodeRuntime.SYSTEM.equalsIgnoreCase(selection)) {
             DshNodeRuntime runtime = DshNodeRuntime.detect()
-                    .orElseThrow(() -> new DshException("Node.js was not found on PATH; "
-                            + DshNodeRuntime.requirement()));
+                    .orElseThrow(DshLauncher::noSystemRuntime);
             if (!runtime.isNodeSupported()) {
                 throw new DshException("The system Node.js " + runtime.nodeVersion()
                         + " is outside the supported range (" + DshNodeRuntime.requirement()
@@ -145,6 +144,25 @@ public final class DshLauncher {
                     + " is not installed; install it on the Node page or switch this instance to the system runtime");
         }
         return DshNodeRuntime.fromManaged(managed);
+    }
+
+    /// Why no system runtime can be used, said as which of the two things actually happened.
+    ///
+    /// There are two ways to arrive here, and the message used to name one of them for both: there
+    /// is nothing named `node` on `PATH`, or there is one and it does not answer `--version`.
+    /// "Not found on PATH" is what a person is told in either case, and for the second it sends them
+    /// to check a `PATH` that is correct — measured, on a CI runner, where the launcher said exactly
+    /// that about a node it had read the version of a moment before.
+    ///
+    /// @return the exception to throw
+    private static DshException noSystemRuntime() {
+        Path node = DshNodeRuntime.which("node").orElse(null);
+        if (node == null) {
+            return new DshException("Node.js was not found on PATH; " + DshNodeRuntime.requirement());
+        }
+        return new DshException("The Node.js at " + node + " did not report its version, so whether it is "
+                + "supported cannot be told (" + DshNodeRuntime.requirement() + "). "
+                + "Running `" + node + " --version` says what is wrong with it.");
     }
 
     /// How long a version is given to answer a help request.

@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
 /// Describes the JavaScript toolchain the launcher found on this machine.
 ///
 /// DeepSeek Harness needs Node `^22.19.0 || >=24.0.0`. `pnpm` is only needed
@@ -231,22 +233,40 @@ public record DshNodeRuntime(
 
     /// Asks an executable for its version.
     ///
+    /// Asked twice before giving up, because a probe that fails once is not a runtime that is
+    /// missing: each probe starts a fresh process, and a machine under load fails to start one now
+    /// and then. Measured on a CI runner: one `node --version` of the five in one second failed
+    /// while the four around it answered, and what the launcher said about it was "Node.js was not
+    /// found on PATH" — in a test that had read that same version a hundred milliseconds earlier.
+    /// One failed probe deciding that a machine has no Node.js is the wrong conclusion to draw from
+    /// it, and it is drawn every time a person launches an instance.
+    ///
+    /// The reason the last probe failed is logged rather than kept: it is the only thing that says
+    /// whether this was a load problem or a `node` that is genuinely broken.
+    ///
     /// @param executable the program to run with `--version`
-    /// @return the trimmed first output line, or `null` when the probe failed
-    private static @Nullable String versionOf(Path executable) {
-        try {
-            DshCommand.Result result = DshCommand.run(List.of(executable.toString(), "--version"));
-            if (!result.isSuccess() || result.output().isEmpty()) {
+    /// @return the trimmed first output line, or `null` when no probe answered
+    static @Nullable String versionOf(Path executable) {
+        String failure = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                DshCommand.Result result = DshCommand.run(List.of(executable.toString(), "--version"));
+                if (result.isSuccess() && !result.output().isEmpty()) {
+                    String first = result.output().get(0).trim();
+                    return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
+                }
+                failure = "`" + executable + " --version` exited " + result.exitCode();
+            } catch (IOException e) {
+                failure = "`" + executable + " --version` could not be started: " + e;
+            } catch (InterruptedException e) {
+                // An interrupted probe is not one that answers on a second try.
+                Thread.currentThread().interrupt();
                 return null;
             }
-            String first = result.output().get(0).trim();
-            return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
         }
+
+        LOG.warning("Could not read the version of " + executable + ": " + failure);
+        return null;
     }
 
     /// Resolves an executable on `PATH`.
