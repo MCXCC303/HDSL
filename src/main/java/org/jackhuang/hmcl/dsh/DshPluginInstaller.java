@@ -47,7 +47,42 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// `dsh`.
 @NotNullByDefault
 public final class DshPluginInstaller {
+
+    /// The refusals an installation in progress has already asked about.
+    ///
+    /// A package the profile refused before is asked about once per installation the person starts, and
+    /// this is what makes that "once" true. An answer is written into the profile pnpm reads — and
+    /// writing `false` there leaves the profile in exactly the state the question is asked in: refused,
+    /// and being installed again. So without this, every re-run of the same installation asked again,
+    /// and the installation would not take no for an answer; the only way past it was to press yes.
+    ///
+    /// The installing interface is what keeps this honest: it records what it answered, and it starts a
+    /// new installation when a person starts one. The installer cannot make that distinction itself,
+    /// because a question it has just been told the answer to and a new question about the same package
+    /// are the same command run against the same profile.
+    private static final java.util.Set<String> ANSWERED_ABOUT = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
     private DshPluginInstaller() {
+    }
+
+    /// Starts a new installation, so what an earlier one was told is asked about again.
+    ///
+    /// Called once per installation a person starts — not once per command, because installing several
+    /// packages is several commands and each of them has to keep the answers the ones before it were
+    /// given, and not when a question is answered, because answering is what carries the same
+    /// installation on.
+    public static void beginInstallation() {
+        ANSWERED_ABOUT.clear();
+    }
+
+    /// Records the refusals an answer has just been written for.
+    ///
+    /// The keys are pnpm's own, as the profile holds them — what
+    /// [DshBuildScriptApprovalRequired#packages] carries.
+    ///
+    /// @param keys the `allowBuilds` keys the answer was written for
+    public static void answeredAbout(List<String> keys) {
+        ANSWERED_ABOUT.addAll(keys);
     }
 
     /// Installs every given preset into an instance's profile.
@@ -383,6 +418,12 @@ public final class DshPluginInstaller {
     /// with the next one, and answering it differently is how somebody changes their mind. Under the
     /// other two settings nobody is asked anything, and those answers stay as they are.
     ///
+    /// Asked **once per installation** and not once per command: what an answer was given for is
+    /// recorded for as long as that installation runs ([#beginInstallation], [#answeredAbout]),
+    /// because writing `false` leaves the profile refused *and* being installed, which is this
+    /// question's own condition — without that, answering no would ask again for ever, and an
+    /// installation would not take no for an answer.
+    ///
     /// @param instance the instance whose profile is waiting
     /// @param packages the package specs this run is installing, which a remembered refusal is
     ///                 matched against by name; empty when the run installs nothing
@@ -394,7 +435,9 @@ public final class DshPluginInstaller {
                                                @Nullable Consumer<String> onLine) throws DshException {
         List<String> waiting = DshBuildScripts.unanswered(instance);
         if (waiting.isEmpty()) {
-            List<String> refused = refusedAmong(instance, packages);
+            List<String> refused = refusedAmong(instance, packages).stream()
+                    .filter(key -> !ANSWERED_ABOUT.contains(key))
+                    .toList();
             if (refused.isEmpty() || DshBuildScriptPolicy.of(instance) != DshBuildScriptPolicy.MANUAL) {
                 return false;
             }

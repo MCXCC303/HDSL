@@ -49,6 +49,9 @@ class DshPluginBuildApprovalTest {
     /// The name of the instance the tests work in.
     private static final String ID = "build-approval-test";
 
+    /// A second instance, for the tests that need one refusal not to reach another instance.
+    private static final String OTHER_ID = "build-approval-other-test";
+
     /// The package left waiting, as a real profile would leave it.
     private static final String WAITING = """
             packages:
@@ -83,15 +86,17 @@ class DshPluginBuildApprovalTest {
     @TempDir
     Path workspaceDirectory;
 
-    /// Removes the instance the tests made.
+    /// Removes the instances the tests made.
     @AfterEach
     void removeInstance() {
-        try {
-            if (DshInstanceManager.find(ID) != null) {
-                DshInstanceManager.delete(ID);
+        for (String id : List.of(ID, OTHER_ID)) {
+            try {
+                if (DshInstanceManager.find(id) != null) {
+                    DshInstanceManager.delete(id);
+                }
+            } catch (Exception ignored) {
+                // The test's own cleanup: a failure here would hide the real one.
             }
-        } catch (Exception ignored) {
-            // The test's own cleanup: a failure here would hide the real one.
         }
     }
 
@@ -291,6 +296,82 @@ class DshPluginBuildApprovalTest {
         return entry;
     }
 
+    @Test
+    void answeringNoEndsTheAskingForThatInstallation(@TempDir Path directory) throws Exception {
+        // The reported defect, third round: answering **no** brought the question straight back, after
+        // the progress dialog had run again — an installation that would not take no for an answer. The
+        // answer is written where pnpm reads it, which leaves the profile refused *and* being installed
+        // again, which is the state the question is asked in: so every re-run of the same installation
+        // asked again, and the only way past it was to press yes.
+        DshInstance instance = makeInstance(REFUSED_FROM_A_FILE, "manual");
+        DshPluginInstaller.beginInstallation();
+        Path packed = packedPlugin(directory, "build-script-probe", "1.0.0");
+
+        DshPluginInstaller.DshBuildScriptApprovalRequired asked = assertThrows(
+                DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshLocalPlugins.install(instance, packed, null));
+
+        // What the interface does with the answer: write it, record it, and carry on with the *same*
+        // installation — which is the step that used to ask again.
+        DshBuildScripts.answer(instance, asked.packages(), false);
+        DshPluginInstaller.answeredAbout(asked.packages());
+
+        DshLocalPlugins.install(instance, packed, null);
+
+        assertTrue(Files.readString(profileFile(instance)).contains("false"),
+                "the answer that was given stands: nothing is decided on the person's behalf");
+    }
+
+    @Test
+    void theNextInstallationIsAskedAboutAgain(@TempDir Path directory) throws Exception {
+        // The other half of "once per installation": the decision is not final for good, which is what
+        // the whole re-asking exists for. A new installation the person starts is a new decision.
+        DshInstance instance = makeInstance(REFUSED_FROM_A_FILE, "manual");
+        Path packed = packedPlugin(directory, "build-script-probe", "1.0.0");
+        DshPluginInstaller.beginInstallation();
+        DshPluginInstaller.DshBuildScriptApprovalRequired asked = assertThrows(
+                DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshLocalPlugins.install(instance, packed, null));
+        DshBuildScripts.answer(instance, asked.packages(), false);
+        DshPluginInstaller.answeredAbout(asked.packages());
+        DshLocalPlugins.install(instance, packed, null);
+
+        DshPluginInstaller.beginInstallation();
+
+        assertThrows(DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshLocalPlugins.install(instance, packed, null),
+                "installing the same plugin again later is a decision about running its code, asked once more");
+    }
+
+    @Test
+    void anotherPackageIsNotAskedAboutARefusalOfADifferentOne(@TempDir Path directory) throws Exception {
+        // The question has to stay about the package in hand: a profile that refused one plugin must
+        // not be asked about it while a different plugin is being installed.
+        DshInstance instance = makeInstance(REFUSED_FROM_A_FILE, "manual");
+        DshPluginInstaller.beginInstallation();
+
+        DshLocalPlugins.install(instance, packedPlugin(directory, "dsh-quiet", "2.0.0"), null);
+
+        assertTrue(Files.readString(profileFile(instance)).contains("build-script-probe@file:") ,
+                "the refused entry is left exactly as it was");
+        assertThrows(DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshLocalPlugins.install(instance, packedPlugin(directory, "build-script-probe", "1.0.0"), null),
+                "and the package that was refused does ask, in the same installation");
+    }
+
+    @Test
+    void anotherInstanceIsNotAskedAboutARefusalOfTheSamePackage(@TempDir Path directory) throws Exception {
+        // A refusal is one instance's answer: another instance has its own profile, and its own answer.
+        DshInstance refusing = makeInstance(OTHER_ID, REFUSED_FROM_A_FILE, "manual", workspaceDirectory.resolve("refusing"));
+        DshInstance other = makeInstance("packages:\n  - .\n", "manual");
+        DshPluginInstaller.beginInstallation();
+
+        DshLocalPlugins.install(other, packedPlugin(directory, "build-script-probe", "1.0.0"), null);
+
+        assertTrue(Files.readString(profileFile(refusing)).contains("false"),
+                "the instance that refused is untouched by an installation into another one");
+    }
+
     /// Creates an instance with a stub harness and a profile holding the given workspace file.
     ///
     /// The stub is what makes this test possible without a package manager: the installer runs
@@ -307,6 +388,18 @@ class DshPluginBuildApprovalTest {
     /// @param policy    the instance's build-script policy
     /// @return the instance
     private DshInstance makeInstance(String workspace, String policy) throws Exception {
+        return makeInstance(ID, workspace, policy, workspaceDirectory);
+    }
+
+    /// Creates an instance under its own name, for the tests that need two at once.
+    ///
+    /// @param id        the instance's name
+    /// @param workspace the profile's `pnpm-workspace.yaml`
+    /// @param policy    the instance's build-script policy
+    /// @param directory the workspace the instance runs in
+    /// @return the instance
+    private DshInstance makeInstance(String id, String workspace, String policy, Path directory)
+            throws Exception {
         Assumptions.assumeTrue(
                 DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
                 "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
@@ -317,8 +410,9 @@ class DshPluginBuildApprovalTest {
         // installs pnpm on the runners so that they are reached there too.
         Assumptions.assumeTrue(DshNodeRuntime.which("pnpm").isPresent(),
                 "pnpm is not on PATH; the installer refuses to install plugins without it");
-        DshInstance instance = DshInstanceManager.create(ID, "0.1.6-alpha.2", DshInstance.DEFAULT_PROFILE,
-                workspaceDirectory, DshHomeMode.ISOLATED, null, List.of(), Map.of());
+        Files.createDirectories(directory);
+        DshInstance instance = DshInstanceManager.create(id, "0.1.6-alpha.2", DshInstance.DEFAULT_PROFILE,
+                directory, DshHomeMode.ISOLATED, null, List.of(), Map.of());
         DshInstanceSettings.setBuildScriptPolicy(instance, policy);
 
         Path script = instance.dshEntryPoint();

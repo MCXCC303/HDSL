@@ -39,6 +39,12 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 ///
 /// Every path that installs plugins goes through here rather than through the progress
 /// dialog directly, because the asking is the same whatever is being installed.
+///
+/// This is also where "once per installation" is kept true. A package the profile refused
+/// before is asked about again when it is installed again, and an answer of *no* leaves the
+/// profile in the state that asks — refused, and being installed — so the asking has to be
+/// bounded by the installation rather than by the run of the command: a new installation
+/// starts the asking afresh, and everything this one has been told stays told.
 @NotNullByDefault
 public final class PluginInstalls {
     private PluginInstalls() {
@@ -54,6 +60,7 @@ public final class PluginInstalls {
     /// @param work     the installation
     /// @param onDone   run when it finishes, or `null`
     public static void run(DshInstance instance, ProgressDialog.Work work, @Nullable Runnable onDone) {
+        DshPluginInstaller.beginInstallation();
         attempt(i18n("dsh.instance.plugins.install.into", instance.id()), () -> instance, work, onDone);
     }
 
@@ -73,6 +80,7 @@ public final class PluginInstalls {
     /// @param onDone  run when it finishes, or `null`
     public static void runCreating(String title, java.util.function.Supplier<@Nullable DshInstance> subject,
                                    ProgressDialog.Work work, @Nullable Runnable onDone) {
+        DshPluginInstaller.beginInstallation();
         attempt(title, subject, work, onDone);
     }
 
@@ -143,6 +151,10 @@ public final class PluginInstalls {
             Controllers.dialog(e.getMessage(), title, MessageDialogPane.MessageType.ERROR);
             return;
         }
+        // The installation carries on from here, and what it has just been told must not be asked
+        // again by it: an answer of no leaves the profile refused and being installed, which is the
+        // question's own condition, and without this the question would come straight back.
+        DshPluginInstaller.answeredAbout(required.packages());
         LOG.info("Install scripts for " + required.packages() + (allowed ? " allowed" : " refused"));
         attempt(title, subject, work, onDone);
     }
