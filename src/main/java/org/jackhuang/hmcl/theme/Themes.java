@@ -1148,7 +1148,7 @@ public final class Themes {
 
     /// Applies native dark-mode integration to a JavaFX stage where the platform supports it.
     public static void applyNativeDarkMode(Stage stage) {
-        // HMCL-DSH targets Linux only, so no native dark-mode integration is needed.
+        // HDSL targets Linux only, so no native dark-mode integration is needed.
     }
 
     /// Prevents instantiation.

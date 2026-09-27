@@ -4,7 +4,7 @@
 // engine, image pipeline, async task engine, i18n) is transplanted from HMCL
 // and kept under its original `org.jackhuang.hmcl.*` package names, as GPLv3
 // requires the original copyright notices to stay intact. Everything that
-// launched Minecraft has been removed; the domain layer is HMCL-DSH's own.
+// launched Minecraft has been removed; the domain layer is HDSL's own.
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jackhuang.hmcl.gradle.pack.CreateDeb
@@ -66,7 +66,7 @@ version = taggedVersion ?: run {
 }
 
 application {
-    // HMCL-DSH application entry point.
+    // HDSL application entry point.
     mainClass = "org.jackhuang.hmcl.Main"
 }
 
@@ -84,7 +84,7 @@ repositories {
 }
 
 // --------------------------------------------------------------- JavaFX ------
-// HMCL-DSH targets Linux and macOS. JavaFX must match the JDK that runs Gradle:
+// HDSL targets Linux and macOS. JavaFX must match the JDK that runs Gradle:
 // the 21.x line supports JDK 17–22, the 25 line is required from JDK 23 on.
 // This mirrors HMCL's own JavaFXPlatform.CLASSIC/MODERN split without carrying
 // its buildSrc plugin.
@@ -92,7 +92,7 @@ val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run 
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
     val isMac = os.contains("mac") || os.contains("darwin") || os.contains("osx")
-    require(os.contains("linux") || isMac) { "HMCL-DSH supports Linux and macOS only (detected os.name=$os)" }
+    require(os.contains("linux") || isMac) { "HDSL supports Linux and macOS only (detected os.name=$os)" }
     when {
         isMac && (arch == "aarch64" || arch == "arm64") -> "mac-aarch64"
         isMac -> when (arch) {
@@ -160,7 +160,7 @@ tasks.test {
 }
 
 // --------------------------------------------------------------- resources ---
-// HMCL generates this list at build time. HMCL-DSH does the same, so the
+// HMCL generates this list at build time. HDSL does the same, so the
 // language picker can never drift from the .properties files actually shipped.
 val generateLanguageList by tasks.registering {
     val langDir = layout.projectDirectory.dir("src/main/resources/assets/lang")
@@ -190,7 +190,7 @@ sourceSets.main {
 
 // ------------------------------------------------------------- toolchain -----
 java {
-    // HMCL-DSH requires JDK 21+. We do not pin a toolchain so the build works
+    // HDSL requires JDK 21+. We do not pin a toolchain so the build works
     // with whichever >= 21 JDK the developer has active (Arch: `archlinux-java`).
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
@@ -258,7 +258,7 @@ tasks.named<ShadowJar>("shadowJar") {
     manifest {
         attributes(
             "Main-Class" to "org.jackhuang.hmcl.Main",
-            "Implementation-Title" to "HMCL-DSH",
+            "Implementation-Title" to "HDSL",
             "Implementation-Version" to project.version.toString(),
         )
     }

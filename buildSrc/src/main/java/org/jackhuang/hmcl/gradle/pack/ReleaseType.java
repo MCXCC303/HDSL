@@ -7,18 +7,18 @@
  */
 package org.jackhuang.hmcl.gradle.pack;
 
-/// Debian packaging metadata for one HMCL-DSH release type.
+/// Debian packaging metadata for one HDSL release type.
 ///
 /// The package name, installed command, desktop file and alternatives priority
 /// are centralised here so [CreateDeb] can stay focused on archive layout
 /// instead of duplicating channel-specific branching.
 public enum ReleaseType {
     /// The stable channel.
-    STABLE("stable", "hmcl-dsh", "HMCL-DSH", 100),
+    STABLE("stable", "hmcl-dsh", "HDSL", 100),
     /// The beta channel.
-    DEVELOPMENT("beta", "hmcl-dsh-beta", "HMCL-DSH (Beta)", 200),
+    DEVELOPMENT("beta", "hmcl-dsh-beta", "HDSL (Beta)", 200),
     /// The nightly channel.
-    NIGHTLY("nightly", "hmcl-dsh-nightly", "HMCL-DSH (Nightly)", 300);
+    NIGHTLY("nightly", "hmcl-dsh-nightly", "HDSL (Nightly)", 300);
 
     private final String name;
     private final String packageName;

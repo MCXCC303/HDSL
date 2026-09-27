@@ -47,7 +47,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The HMCL-DSH JavaFX application entry point.
+/// The HDSL JavaFX application entry point.
 ///
 /// Responsibilities are deliberately small: create the root page, hand it to
 /// the ported window decorator, apply the stylesheets and manage shutdown.
@@ -61,7 +61,7 @@ public final class Launcher extends Application {
     public void start(Stage primaryStage) {
         org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
                 SettingsManager.settings().debugLogProperty().get());
-        LOG.info("HMCL-DSH " + Metadata.VERSION);
+        LOG.info("HDSL " + Metadata.VERSION);
         LOG.info("JavaFX version: " + System.getProperty("javafx.runtime.version"));
         LOG.info("User home: " + Metadata.HMCL_USER_HOME);
 

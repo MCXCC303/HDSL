@@ -53,7 +53,7 @@ import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Manages the Node.js runtimes HMCL-DSH can pin an instance to.
+/// Manages the Node.js runtimes HDSL can pin an instance to.
 ///
 /// The page is built on HMCL's own list-page stack — [ListPageBase] with a
 /// [ToolbarListPageSkin] and cells derived from the same shape its Java

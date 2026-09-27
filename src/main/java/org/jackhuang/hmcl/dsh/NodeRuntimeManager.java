@@ -49,7 +49,7 @@ import java.util.stream.Stream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Installs and enumerates the Node.js runtimes HMCL-DSH owns.
+/// Installs and enumerates the Node.js runtimes HDSL owns.
 ///
 /// This mirrors HMCL's Java runtime management: instead of depending on
 /// whatever the distribution ships, the launcher can fetch a specific Node

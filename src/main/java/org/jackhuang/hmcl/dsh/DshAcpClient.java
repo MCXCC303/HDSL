@@ -147,7 +147,7 @@ public final class DshAcpClient implements AutoCloseable {
             LOG.info("[acp] " + line);
         });
 
-        this.readerThread = new Thread(this::awaitExit, "HMCL-DSH acp waiter");
+        this.readerThread = new Thread(this::awaitExit, "HDSL acp waiter");
         this.readerThread.setDaemon(true);
         this.readerThread.start();
     }
@@ -226,7 +226,7 @@ public final class DshAcpClient implements AutoCloseable {
     /// @throws DshException when the server rejects the handshake
     private void handshake() throws DshException {
         JsonObject clientInfo = new JsonObject();
-        clientInfo.addProperty("name", "HMCL-DSH");
+        clientInfo.addProperty("name", "HDSL");
         clientInfo.addProperty("version", org.jackhuang.hmcl.Metadata.VERSION);
 
         JsonObject params = new JsonObject();

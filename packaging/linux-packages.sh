@@ -54,7 +54,7 @@ write_desktop_entry() {
     cat > "${target}" <<EOF
 [Desktop Entry]
 Type=Application
-Name=HMCL-DSH
+Name=HDSL
 Comment=DeepSeek Harness launcher
 Exec=${launcher}
 Icon=${desktop_id}
@@ -133,7 +133,7 @@ pkgver = ${arch_version}-1
 pkgdesc = DeepSeek Harness launcher
 url = https://github.com/
 builddate = $(date +%s)
-packager = HMCL-DSH contributors
+packager = HDSL contributors
 size = ${installed_size}
 arch = x86_64
 license = GPL-3.0-or-later

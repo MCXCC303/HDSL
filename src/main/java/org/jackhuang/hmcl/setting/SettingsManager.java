@@ -41,16 +41,16 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// Persistence is deliberately explicit rather than reflective: the settings
 /// object holds JavaFX properties, which serialise poorly, so a plain
 /// serialisable snapshot is written instead. This keeps the on-disk format
-/// stable and easy to migrate as HMCL-DSH grows.
+/// stable and easy to migrate as HDSL grows.
 @NotNullByDefault
 public final class SettingsManager {
     private SettingsManager() {
     }
 
-    /// The settings file inside the per-user HMCL-DSH home.
+    /// The settings file inside the per-user HDSL home.
     private static final Path SETTINGS_PATH = Metadata.HMCL_USER_HOME.resolve("launcher-settings.json");
 
-    /// The window state file inside the per-user HMCL-DSH home.
+    /// The window state file inside the per-user HDSL home.
     private static final Path STATE_PATH = Metadata.HMCL_USER_HOME.resolve("launcher-state.json");
 
     /// The lazily created settings singleton.

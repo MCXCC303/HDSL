@@ -50,7 +50,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 ///
 /// The card reuses HMCL's installer-card styling: an icon, a name and a status
 /// line in a rippling surface. HMCL uses the same shape for Forge, Fabric and
-/// NeoForge; HMCL-DSH uses it for the plugins a new profile can start with.
+/// NeoForge; HDSL uses it for the plugins a new profile can start with.
 ///
 /// Selecting is a plain toggle rather than a sub-page, because unlike a mod
 /// loader a plugin has no version to choose at install time: `dsh plugin add`

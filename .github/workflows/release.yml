@@ -82,7 +82,7 @@ jobs:
 
     - name: Write the release note
       run: |
-        echo "HMCL-DSH ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> RELEASE_NOTE
+        echo "HDSL ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
         if [ -n "${PRERELEASE}" ]; then
           echo "This is a **pre-release**: it is not the latest release, and nothing asking for the" >> RELEASE_NOTE
@@ -129,7 +129,7 @@ jobs:
           dist/hdsl-${VERSION}.sh.sha256 \
           --target "${{ github.sha }}" \
           ${PRERELEASE} \
-          --title "HMCL-DSH ${VERSION}" \
+          --title "HDSL ${VERSION}" \
           --notes-file RELEASE_NOTE
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -69,7 +69,7 @@ import java.util.Map;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Lists the DeepSeek Harness instances managed by HMCL-DSH.
+/// Lists the DeepSeek Harness instances managed by HDSL.
 ///
 /// An instance pins one installed `dsh` version together with the profile,
 /// working directory and `DSH_HOME` it runs against. Creating one is

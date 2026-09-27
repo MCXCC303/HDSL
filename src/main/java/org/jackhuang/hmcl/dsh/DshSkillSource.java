@@ -586,7 +586,7 @@ public final class DshSkillSource {
     /// @throws DshException when the request fails or is refused
     private static byte[] getBytes(String url) throws DshException {
         java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder(URI.create(url))
-                .header("User-Agent", "HMCL-DSH")
+                .header("User-Agent", "HDSL")
                 .header("Accept", "application/vnd.github+json")
                 .timeout(java.time.Duration.ofSeconds(60))
                 .GET()

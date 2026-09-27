@@ -75,7 +75,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// install into it.
 ///
 /// This is HMCL's "quick install" page translated to DeepSeek Harness. Where
-/// HMCL offers Forge, Fabric and NeoForge, HMCL-DSH offers the plugins from
+/// HMCL offers Forge, Fabric and NeoForge, HDSL offers the plugins from
 /// [DshPresetCatalog] — the marketplace first, then the add-ons a new
 /// installation most often wants.
 @NotNullByDefault

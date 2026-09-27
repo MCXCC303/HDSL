@@ -166,7 +166,7 @@ public final class NetworkUtils {
     private static final List<Pair<String, String>> API_KEYS;
 
     static {
-        // HMCL-DSH talks to no API that needs a per-domain key injection.
+        // HDSL talks to no API that needs a per-domain key injection.
         API_KEYS = List.of();
     }
 

@@ -25,7 +25,7 @@ import java.io.PrintStream;
 import java.util.List;
 import java.util.Optional;
 
-/// Prints a diagnostics report describing everything HMCL-DSH needs to run.
+/// Prints a diagnostics report describing everything HDSL needs to run.
 ///
 /// This is the launcher's `--doctor`: it lets a user (or a bug report) show the
 /// detected toolchain, the on-disk layout and registry reachability without
@@ -41,7 +41,7 @@ public final class DshDoctor {
     /// @param out the stream to print to
     /// @return the process exit code, non-zero when a hard requirement is missing
     public static int report(PrintStream out) {
-        out.println("HMCL-DSH " + Metadata.VERSION + " diagnostics");
+        out.println("HDSL " + Metadata.VERSION + " diagnostics");
         out.println("Java:      " + System.getProperty("java.vm.name") + " " + System.getProperty("java.version"));
         out.println("OS:        " + System.getProperty("os.name") + " / " + System.getProperty("os.arch"));
         out.println();

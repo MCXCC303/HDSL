@@ -77,7 +77,7 @@ public final class DshProcessManager {
     private static final Object LAUNCH_LOCK = new Object();
 
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(DshProcessManager::stopAll, "HMCL-DSH shutdown"));
+        Runtime.getRuntime().addShutdownHook(new Thread(DshProcessManager::stopAll, "HDSL shutdown"));
     }
 
     /// Launches an instance, or returns the one already running for it.

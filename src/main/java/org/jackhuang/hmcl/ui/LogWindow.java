@@ -405,7 +405,7 @@ public final class LogWindow extends Stage {
                 JFXButton terminateButton = new JFXButton(i18n("logwindow.terminate_game"));
                 terminateButton.setOnAction(e -> getSkinnable().onTerminateGame());
 
-                // HMCL-DSH launches Node processes, so the JVM jstack dump action
+                // HDSL launches Node processes, so the JVM jstack dump action
                 // has no meaning here and is not offered.
 
                 JFXButton clearButton = new JFXButton(i18n("button.clear"));

@@ -48,7 +48,7 @@ import java.util.Objects;
 /// Holds the appearance-related launcher settings consumed by the transplanted
 /// theme engine.
 ///
-/// This is the HMCL-DSH counterpart of HMCL's much larger `LauncherSettings`.
+/// This is the HDSL counterpart of HMCL's much larger `LauncherSettings`.
 /// Only the fields the ported `theme` and window-chrome code actually reads are
 /// kept; everything that described Java runtimes, memory limits, game
 /// directories or download sources is gone.

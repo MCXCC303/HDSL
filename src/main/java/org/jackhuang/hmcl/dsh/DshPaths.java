@@ -23,7 +23,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
-/// The directory layout HMCL-DSH owns on disk.
+/// The directory layout HDSL owns on disk.
 ///
 /// Two distinct kinds of state live here and must not be confused:
 ///
@@ -39,7 +39,7 @@ public final class DshPaths {
     private DshPaths() {
     }
 
-    /// The root of all HMCL-DSH user data.
+    /// The root of all HDSL user data.
     public static final Path ROOT = Metadata.HMCL_USER_HOME;
 
     /// One directory per installed DeepSeek Harness version, each an npm prefix.

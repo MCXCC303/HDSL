@@ -32,7 +32,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
-/// Creates a Debian package for the current HMCL-DSH channel.
+/// Creates a Debian package for the current HDSL channel.
 ///
 /// ## Package layout
 ///
@@ -289,7 +289,7 @@ public abstract class CreateDeb extends DefaultTask {
                 Installed-Size: %d
                 Depends: default-jre-headless | java21-runtime-headless | java21-runtime
                 Description: DeepSeek Harness launcher
-                 HMCL-DSH installs, isolates and launches DeepSeek Harness versions
+                 HDSL installs, isolates and launches DeepSeek Harness versions
                  and profiles. It keeps the look of Hello Minecraft! Launcher.
                 Homepage: %s
                 """.formatted(currentType().getPackageName(), getVersion().get(), Math.max(installedSize, 1),

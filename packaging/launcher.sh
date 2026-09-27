@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# HMCL-DSH self-executing launcher.
+# HDSL self-executing launcher.
 #
 # This script is prepended to the application jar, so `"$0"` is the executable
 # itself. A zip reader finds the central directory at the end of the file, so
 # the jar stays loadable with this preamble in front of it.
 #
-# HMCL-DSH targets Linux and macOS, so unlike HMCL's launcher this one has no
+# HDSL targets Linux and macOS, so unlike HMCL's launcher this one has no
 # BSD or Windows branches: it looks for a JDK 21+ and runs the jar.
 
 set -e
@@ -33,10 +33,10 @@ JAVA_EXE="$(find_java || true)"
 
 if [ -z "$JAVA_EXE" ]; then
     if [ -z "${LANG##zh_*}" ]; then
-        echo "HMCL-DSH 需要 Java ${_HMCLDSH_REQUIRED_JAVA} 或更高版本，但没有找到 java。" >&2
+        echo "HDSL 需要 Java ${_HMCLDSH_REQUIRED_JAVA} 或更高版本，但没有找到 java。" >&2
         echo "请安装 JRE ${_HMCLDSH_REQUIRED_JAVA}+，或设置 JAVA_HOME。" >&2
     else
-        echo "HMCL-DSH needs Java ${_HMCLDSH_REQUIRED_JAVA} or newer, but no java was found." >&2
+        echo "HDSL needs Java ${_HMCLDSH_REQUIRED_JAVA} or newer, but no java was found." >&2
         echo "Install a JRE ${_HMCLDSH_REQUIRED_JAVA}+, or set JAVA_HOME." >&2
     fi
     exit 1
@@ -52,9 +52,9 @@ case "$JAVA_MAJOR" in
     *)
         if [ "$JAVA_MAJOR" -lt "$_HMCLDSH_REQUIRED_JAVA" ]; then
             if [ -z "${LANG##zh_*}" ]; then
-                echo "HMCL-DSH 需要 Java ${_HMCLDSH_REQUIRED_JAVA} 或更高版本，当前是 Java ${JAVA_MAJOR}。" >&2
+                echo "HDSL 需要 Java ${_HMCLDSH_REQUIRED_JAVA} 或更高版本，当前是 Java ${JAVA_MAJOR}。" >&2
             else
-                echo "HMCL-DSH needs Java ${_HMCLDSH_REQUIRED_JAVA}+, found Java ${JAVA_MAJOR}." >&2
+                echo "HDSL needs Java ${_HMCLDSH_REQUIRED_JAVA}+, found Java ${JAVA_MAJOR}." >&2
             fi
             exit 1
         fi

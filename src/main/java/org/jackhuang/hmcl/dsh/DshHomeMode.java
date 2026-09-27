@@ -56,6 +56,6 @@ public enum DshHomeMode {
     /// The user names the home directory, typically to adopt an existing
     /// `~/.dsh` installation.
     ///
-    /// HMCL-DSH never moves or deletes anything in a custom home.
+    /// HDSL never moves or deletes anything in a custom home.
     CUSTOM
 }

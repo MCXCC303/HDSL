@@ -45,7 +45,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// Installs, enumerates and removes DeepSeek Harness versions.
 ///
 /// Every version lives in its own npm prefix under [DshPaths#VERSIONS]. The
-/// manager never touches the user's global npm installation, so HMCL-DSH and a
+/// manager never touches the user's global npm installation, so HDSL and a
 /// hand-installed `dsh` cannot interfere with each other.
 ///
 /// Discovery uses `npm view`, which upstream's own tooling relies on as well:

@@ -1203,7 +1203,7 @@ public final class DshCli {
     /// @param out the stream to print to
     private static void printUsage(PrintStream out) {
         out.println("""
-                HMCL-DSH command line
+                HDSL command line
 
                 usage: hdsl <command> [options]
 

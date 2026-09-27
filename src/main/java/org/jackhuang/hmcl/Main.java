@@ -38,7 +38,7 @@ public final class Main {
     private Main() {
     }
 
-    /// Starts HMCL-DSH.
+    /// Starts HDSL.
     ///
     /// @param args command-line arguments
     public static void main(String[] args) {
