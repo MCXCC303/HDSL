@@ -214,6 +214,71 @@ public final class DshPorts {
             return;
         }
         DshInstanceManager.update(instance.withPort(port));
+        if (DshInstanceSettings.autoPort(instance) <= 0) {
+            DshInstanceSettings.setAutoPort(instance, port);
+        }
+    }
+
+    /// Returns the port the launcher gave an instance, which is what its automatic policy means.
+    ///
+    /// An instance made before this was written down has it nowhere else, and while its policy is
+    /// automatic the port in its record **is** the one the launcher gave it — that is what makes this
+    /// work for the instances that already exist, without a migration step.
+    ///
+    /// @param instance the instance
+    /// @return the port, or `0` when the launcher never gave this instance one
+    public static int autoPort(DshInstance instance) {
+        int recorded = DshInstanceSettings.autoPort(instance);
+        if (recorded > 0) {
+            return recorded;
+        }
+        return instance.portModeOrDefault() == DshPortMode.AUTO ? instance.portOrDefault() : 0;
+    }
+
+    /// Writes down the port the launcher gave an instance, before a named one takes over.
+    ///
+    /// Called when the policy is about to become a named port: the instance's record is going to hold
+    /// the number the person typed, and a number that was never written down somewhere else is a
+    /// number there is no going back to.
+    ///
+    /// @param instance the instance
+    /// @throws DshException when the choice cannot be written
+    public static void keepAutoPort(DshInstance instance) throws DshException {
+        if (DshInstanceSettings.autoPort(instance) > 0
+                || instance.portModeOrDefault() != DshPortMode.AUTO) {
+            return;
+        }
+        int port = instance.portOrDefault();
+        if (port > 0) {
+            DshInstanceSettings.setAutoPort(instance, port);
+        }
+    }
+
+    /// Returns an instance under a different port policy, keeping the port the launcher gave it.
+    ///
+    /// **A named port is a detour, not a replacement.** An instance's browser state is keyed to the
+    /// origin it was first reached at, so the launcher's own port is written down before a named one
+    /// takes over and given back when the person stops naming one. Only an instance that lost it
+    /// before the launcher wrote such things down — one an earlier version switched to a named port —
+    /// is given a new one, which is the most that can be done for it.
+    ///
+    /// @param instance the instance
+    /// @param mode     the policy to record
+    /// @return the instance to store
+    /// @throws DshException when a port has to be reserved and none can be found
+    public static DshInstance withMode(DshInstance instance, DshPortMode mode) throws DshException {
+        if (mode == DshPortMode.FIXED) {
+            keepAutoPort(instance);
+            // The field starts at the number the instance already has, so naming a port is an edit of
+            // a real one rather than a blank to fill in.
+            return instance.withPortPolicy(mode, instance.portOrDefault());
+        }
+        int automatic = autoPort(instance);
+        if (automatic <= 0) {
+            automatic = reserve(instance.id());
+            DshInstanceSettings.setAutoPort(instance, automatic);
+        }
+        return instance.withPortPolicy(mode, automatic);
     }
 
     /// Reports whether a port can be bound on the loopback interface.
@@ -236,15 +301,18 @@ public final class DshPorts {
     ///
     /// @param exceptInstanceId the instance to leave out, or `null`
     /// @return the ports in use on paper
-    private static Set<Integer> claimedPorts(@Nullable String exceptInstanceId) {
+    static Set<Integer> claimedPorts(@Nullable String exceptInstanceId) {
         Set<Integer> claimed = new HashSet<>();
         for (DshInstance instance : List.copyOf(DshInstanceManager.list())) {
             if (instance.id().equals(exceptInstanceId)) {
                 continue;
             }
-            int port = instance.portOrDefault();
-            if (port > 0) {
-                claimed.add(port);
+            // Both numbers, when there are two: the one in effect, and the launcher's own — which a
+            // named port has merely put aside, and which this instance is entitled to come back to.
+            for (int port : new int[]{instance.portOrDefault(), autoPort(instance)}) {
+                if (port > 0) {
+                    claimed.add(port);
+                }
             }
         }
         return claimed;

@@ -6,8 +6,9 @@
 # the jar stays loadable with this preamble in front of it.
 #
 # This is the Linux artifact; the Windows one is the executable the build wraps
-# the same jar into. Unlike HMCL's launcher this one has no macOS or BSD
-# branches: it looks for a JDK 21+ and runs the jar.
+# the same jar into, and the macOS one is the `.dmg` built by
+# `packaging/mac-packages.sh`. Unlike HMCL's launcher this one has no BSD
+# branch: it looks for a JDK 21+ and runs the jar.
 
 set -e
 
@@ -62,4 +63,17 @@ case "$JAVA_MAJOR" in
         ;;
 esac
 
-exec "$JAVA_EXE" -jar "$0" "$@"
+# On macOS a stub-launched JVM takes the generic Java dock tile: the JavaFX
+# stage icons arrive too late to replace it reliably. Naming the application
+# and its icon up front is what keeps the tile, so both are passed here rather
+# than anywhere a window exists yet. The icon comes from HDSL_DOCK_ICON, which
+# the .app stub points at the bundled icon; a plain .sh run simply has none.
+DOCK_ARGS=()
+if [ "$(uname -s)" = "Darwin" ]; then
+    DOCK_ARGS+=("-Xdock:name=HDSL")
+    if [ -n "${HDSL_DOCK_ICON:-}" ] && [ -f "${HDSL_DOCK_ICON}" ]; then
+        DOCK_ARGS+=("-Xdock:icon=${HDSL_DOCK_ICON}")
+    fi
+fi
+
+exec "$JAVA_EXE" "${DOCK_ARGS[@]}" -jar "$0" "$@"

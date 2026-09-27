@@ -72,9 +72,17 @@ public final class NodeRuntimeManager {
     /// The download base for a specific release.
     /// Returns the platform tag used in Node distribution file names.
     ///
-    /// @return `linux-x64`, `linux-arm64`, `win-x64` or `win-arm64`
-    /// @throws DshException when the current architecture has no Node build
+    /// @return `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `darwin-x64` or `darwin-arm64`
+    /// @throws DshException when the current system has no Node build
     public static String platformTag() throws DshException {
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
+            return switch (Architecture.SYSTEM_ARCH) {
+                case X86_64 -> "darwin-x64";
+                case ARM64 -> "darwin-arm64";
+                default -> throw new DshException(
+                        "Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on macOS");
+            };
+        }
         return switch (Architecture.SYSTEM_ARCH) {
             case X86_64 -> OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
                     ? "win-x64" : "linux-x64";
@@ -86,29 +94,50 @@ public final class NodeRuntimeManager {
         };
     }
 
-    /// Returns the tag a release's `files` array carries for the archive this
-    /// platform downloads.
+    /// Returns the entry the release index lists for a platform tag.
     ///
-    /// The index lists the Linux builds bare (`linux-x64`) and the Windows ones
-    /// per packaging (`win-x64-zip`, `win-x64-7z`), so the tag the index answers
-    /// with is not always the tag the file name uses.
+    /// Three platforms spell one build three ways, and only the file name uses the tag
+    /// [#platformTag] answers with: the index lists the Linux builds bare (`linux-x64`),
+    /// the Windows ones per packaging (`win-x64-zip`, `win-x64-7z`) and the macOS ones as
+    /// `osx-x64-tar` and `osx-arm64-tar` while the archives themselves are named
+    /// `darwin-x64` and `darwin-arm64`. Filtering the release list therefore has to ask
+    /// with the index's spelling rather than with the archive's.
     ///
-    /// @return the file tag the release index carries
-    /// @throws DshException when the platform has no Node build
-    public static String indexFileTag() throws DshException {
-        return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
-                ? platformTag() + "-zip"
-                : platformTag();
+    /// @param platform the tag from [NodeRuntimeManager#platformTag]
+    /// @return the name to look for in the index `files` array
+    static String indexTag(String platform) {
+        return switch (platform) {
+            case "darwin-x64" -> "osx-x64-tar";
+            case "darwin-arm64" -> "osx-arm64-tar";
+            case "win-x64" -> "win-x64-zip";
+            case "win-arm64" -> "win-arm64-zip";
+            default -> platform;
+        };
     }
 
-    /// Returns the extension of the archive this platform downloads.
+    /// Returns the archive extension Node publishes for this system, dot included.
     ///
-    /// Node publishes Windows as `.zip` and Linux as `.tar.xz`; the extraction
-    /// below follows the same choice.
+    /// Linux builds ship as `.tar.xz`, macOS builds as `.tar.gz` and Windows builds as
+    /// `.zip` — the one platform whose distribution is not a tarball at all. The mirror
+    /// keeps the same layout, so the extension is a property of the system rather than of
+    /// the source, and [#extractArchive] follows the same choice.
     ///
-    /// @return `zip` or `tar.xz`
-    public static String archiveExtension() {
-        return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? "zip" : "tar.xz";
+    /// @return `.tar.xz`, `.tar.gz` or `.zip`
+    static String archiveExtension() {
+        return switch (OperatingSystem.CURRENT_OS) {
+            case MACOS -> ".tar.gz";
+            case WINDOWS -> ".zip";
+            default -> ".tar.xz";
+        };
+    }
+
+    /// Returns the archive file name for a version and platform tag.
+    ///
+    /// @param version  the version without its leading `v`
+    /// @param platform the tag from [NodeRuntimeManager#platformTag]
+    /// @return e.g. `node-v22.19.0-darwin-arm64.tar.gz`
+    static String archiveFileName(String version, String platform) {
+        return "node-v" + version + "-" + platform + archiveExtension();
     }
 
     /// Lists the Node runtimes installed under [DshPaths#RUNTIMES].
@@ -153,7 +182,8 @@ public final class NodeRuntimeManager {
     /// @return the available releases, newest first
     /// @throws DshException when the index cannot be read
     public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
-        String platform = indexFileTag();
+        String platform = platformTag();
+        String indexFile = indexTag(platform);
 
         // The chosen source first, then the other one. A source is a host, and a host can be
         // unreachable for reasons that have nothing to do with the source being wrong — a route, a
@@ -200,7 +230,7 @@ public final class NodeRuntimeManager {
             if (version == null || !version.startsWith("v")) {
                 continue;
             }
-            if (!hasPlatform(object, platform)) {
+            if (!hasPlatform(object, indexFile)) {
                 continue;
             }
             String lts = null;
@@ -238,7 +268,7 @@ public final class NodeRuntimeManager {
         String platform = platformTag();
         Path target = DshPaths.runtimeDirectory(normalized);
         Path staging = target.resolveSibling(target.getFileName() + ".installing");
-        String fileName = "node-v" + normalized + "-" + platform + "." + archiveExtension();
+        String fileName = archiveFileName(normalized, platform);
         Path archive = DshPaths.RUNTIMES.resolve(fileName);
 
         try {
@@ -256,11 +286,7 @@ public final class NodeRuntimeManager {
             download(url, archive, onStage);
 
             stage(onStage, "Unpacking " + fileName);
-            if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-                extractZip(archive, staging);
-            } else {
-                extractTarXz(archive, staging);
-            }
+            extractArchive(archive, staging);
         } catch (IOException e) {
             deleteQuietly(staging);
             deleteQuietly(archive);
@@ -520,6 +546,30 @@ public final class NodeRuntimeManager {
         }
     }
 
+    /// Unpacks a Node distribution archive into a directory, preserving symlinks.
+    ///
+    /// Linux builds ship as `.tar.xz`, macOS builds as `.tar.gz` and Windows builds as
+    /// `.zip`. The tarballs carry the same top-level layout, symlinks that make `bin/npm`
+    /// and `bin/npx` work included; the zip does not, and is unpacked by [#extractZip].
+    ///
+    /// @param archive the `.tar.xz`, `.tar.gz` or `.zip` file
+    /// @param target  the directory to unpack into
+    /// @throws IOException when decompression or extraction fails
+    private static void extractArchive(Path archive, Path target) throws IOException {
+        String name = archive.getFileName().toString().toLowerCase(Locale.ROOT);
+        if (name.endsWith(".zip")) {
+            extractZip(archive, target);
+            return;
+        }
+        if (name.endsWith(".tar.gz") || name.endsWith(".tgz")) {
+            try (TarFileTree tree = TarFileTree.open(archive)) {
+                extract(tree, tree.getRoot(), target);
+            }
+            return;
+        }
+        extractTarXz(archive, target);
+    }
+
     /// Unpacks a `.tar.xz` archive into a directory, preserving symlinks.
     ///
     /// Recreating symlinks matters: the Node distribution reaches `npm` and
@@ -620,11 +670,11 @@ public final class NodeRuntimeManager {
         return element != null && element.isJsonPrimitive() ? element.getAsString() : "";
     }
 
-    /// Reports whether a release publishes a build for a platform tag.
+    /// Reports whether a release publishes a build for a platform.
     ///
     /// @param object   the release object
-    /// @param platform the platform tag as the index spells it
-    /// @return whether the `files` array contains the tag
+    /// @param platform the index entry, e.g. `linux-x64`, `win-x64-zip` or `osx-arm64-tar`
+    /// @return whether the `files` array contains the entry
     private static boolean hasPlatform(JsonObject object, String platform) {
         JsonElement files = object.get("files");
         if (files == null || !files.isJsonArray()) {

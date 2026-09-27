@@ -75,13 +75,14 @@ repositories {
 }
 
 // --------------------------------------------------------------- JavaFX ------
-// HMCL-DSH runs on Linux and Windows. JavaFX must match the JDK that runs
+// HMCL-DSH runs on Windows, Linux and macOS. JavaFX must match the JDK that runs
 // Gradle: the 21.x line supports JDK 17–22, the 25 line is required from JDK 23
 // on. This mirrors HMCL's own JavaFXPlatform.CLASSIC/MODERN split without
 // carrying its buildSrc plugin.
 val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run {
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
+    val isMac = os.contains("mac") || os.contains("darwin") || os.contains("osx")
     when {
         os.contains("windows") -> when (arch) {
             // OpenJFX publishes no win-aarch64 build; Windows on ARM runs the
@@ -90,12 +91,17 @@ val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run 
             "x86_64", "amd64", "aarch64", "arm64" -> "win"
             else -> error("Unsupported Windows architecture: $arch")
         }
+        isMac && (arch == "aarch64" || arch == "arm64") -> "mac-aarch64"
+        isMac -> when (arch) {
+            "x86_64", "amd64" -> "mac"
+            else -> error("Unsupported macOS architecture: $arch")
+        }
         os.contains("linux") -> when (arch) {
             "aarch64", "arm64" -> "linux-aarch64"
             "x86_64", "amd64" -> "linux"
             else -> error("Unsupported Linux architecture: $arch")
         }
-        else -> error("HMCL-DSH supports Linux and Windows (detected os.name=$os)")
+        else -> error("HMCL-DSH supports Windows, Linux and macOS (detected os.name=$os)")
     }
 }
 
