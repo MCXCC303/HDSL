@@ -279,35 +279,54 @@ public final class DshPluginInstaller {
             DshCommand.Result result = DshCommand.run(command, instance.workspacePath(), environment,
                     line -> report(onLine, line));
             int exitCode = result.exitCode();
-            if (exitCode != 0
-                    && explainIgnoredBuilds(result.output(), home, instance.profile()) != null
-                    && !retried) {
-                List<String> waiting = DshBuildScripts.unanswered(instance);
-                DshBuildScriptPolicy policy = DshBuildScriptPolicy.of(instance);
-                if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.AUTO) {
-                    // This instance's plugins may build themselves, so the question
-                    // is already answered: say so and run the same command again.
-                    report(onLine, "Allowing install scripts for " + String.join(", ", waiting));
-                    DshBuildScripts.answer(instance, waiting, true);
-                    retried = true;
-                    continue;
+            if (exitCode != 0 && !retried) {
+                // Two ways a plugin is waiting to be allowed to build. pnpm writes a placeholder
+                // into the profile for the packages whose build it merely ignored; for a package
+                // fetched from a repository it writes nothing and names the exact entry it needs
+                // instead, because that entry has to carry the resolved address. Recording what it
+                // named as a question puts both onto the same path — see DshBuildScripts#propose.
+                List<String> named = gitBuildKeys(result.output());
+                boolean placeholder = explainIgnoredBuilds(result.output(), home, instance.profile()) != null;
+                if (!named.isEmpty() && DshBuildScriptPolicy.of(instance) == DshBuildScriptPolicy.NEVER) {
+                    // A repository-hosted package is built **by** being installed — there is no
+                    // published build to fall back on — so refusing the build refuses the
+                    // installation. Saying so beats a retry that cannot succeed.
+                    throw new DshException(explainGitBuild(named, home, instance.profile()));
                 }
-                if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.NEVER) {
-                    // The answer is no, so the packages are installed and their
-                    // scripts are not run: installing is not the same decision as
-                    // running what comes with it.
-                    report(onLine, "Not running install scripts for " + String.join(", ", waiting));
-                    DshBuildScripts.answer(instance, waiting, false);
-                    retried = true;
-                    continue;
+                if (!named.isEmpty()) {
+                    DshBuildScripts.propose(instance, named);
                 }
-                if (!waiting.isEmpty()) {
-                    // Somebody has to decide, and only the interface can ask.
-                    throw new DshBuildScriptApprovalRequired(waiting);
+                if (!named.isEmpty() || placeholder) {
+                    List<String> waiting = DshBuildScripts.unanswered(instance);
+                    DshBuildScriptPolicy policy = DshBuildScriptPolicy.of(instance);
+                    if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.AUTO) {
+                        // This instance's plugins may build themselves, so the question
+                        // is already answered: say so and run the same command again.
+                        report(onLine, "Allowing install scripts for " + String.join(", ", waiting));
+                        DshBuildScripts.answer(instance, waiting, true);
+                        retried = true;
+                        continue;
+                    }
+                    if (!waiting.isEmpty() && policy == DshBuildScriptPolicy.NEVER) {
+                        // The answer is no, so the packages are installed and their
+                        // scripts are not run: installing is not the same decision as
+                        // running what comes with it.
+                        report(onLine, "Not running install scripts for " + String.join(", ", waiting));
+                        DshBuildScripts.answer(instance, waiting, false);
+                        retried = true;
+                        continue;
+                    }
+                    if (!waiting.isEmpty()) {
+                        // Somebody has to decide, and only the interface can ask.
+                        throw new DshBuildScriptApprovalRequired(waiting);
+                    }
                 }
             }
             if (exitCode != 0) {
                 String explanation = explainIgnoredBuilds(result.output(), home, instance.profile());
+                if (explanation == null) {
+                    explanation = explainGitBuild(gitBuildKeys(result.output()), home, instance.profile());
+                }
                 if (explanation != null) {
                     throw new DshException(explanation);
                 }
@@ -395,6 +414,83 @@ public final class DshPluginInstaller {
                 + "    pnpm approve-builds\n"
                 + "or set allowBuilds for that package to true in\n"
                 + "    " + profileDirectory.resolve("pnpm-workspace.yaml");
+    }
+
+    /// Reads the entries pnpm named for a package it will not build.
+    ///
+    /// A plugin fetched from a repository is built by its own `prepare` script, and pnpm refuses
+    /// to run one until the profile says it may. For this it does **not** write a placeholder —
+    /// the entry has to carry the address pnpm resolved the repository to — and prints the exact
+    /// block it wants instead:
+    ///
+    /// ```yaml
+    /// allowBuilds:
+    ///   dshmarket@https://codeload.github.com/owner/name/tar.gz/<sha>: true
+    /// ```
+    ///
+    /// Those entries are what this reads, so the launcher can ask about them the way it asks
+    /// about every other build script.
+    ///
+    /// @param output the captured command output
+    /// @return the entries, or an empty list when this is a different failure
+    static List<String> gitBuildKeys(List<String> output) {
+        if (!String.join("\n", output).contains("ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED")) {
+            return List.of();
+        }
+
+        List<String> keys = new ArrayList<>();
+        boolean inBlock = false;
+        for (String line : output) {
+            if (!inBlock) {
+                inBlock = line.trim().equals("allowBuilds:");
+                continue;
+            }
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                // A blank line ends the block; one before the first entry is just spacing.
+                if (!keys.isEmpty()) {
+                    break;
+                }
+                continue;
+            }
+            int colon = trimmed.lastIndexOf(": ");
+            if (colon <= 0) {
+                break;
+            }
+            String value = trimmed.substring(colon + 2).trim();
+            if (!value.equals("true") && !value.equals("false")) {
+                break;
+            }
+            keys.add(trimmed.substring(0, colon).trim());
+        }
+        return List.copyOf(keys);
+    }
+
+    /// Explains a repository-hosted plugin that will not build.
+    ///
+    /// The raw output is the same wall of package-manager lines as the other build refusal, and
+    /// the condition is worth naming: this plugin has no published build to install, so the
+    /// build is not something that can be skipped.
+    ///
+    /// @param keys    the entries pnpm named
+    /// @param home    the instance's `DSH_HOME`
+    /// @param profile the profile name
+    /// @return the explanation, or `null` when there is nothing to explain
+    private static @Nullable String explainGitBuild(List<String> keys, Path home, String profile) {
+        if (keys.isEmpty()) {
+            return null;
+        }
+        Path workspace = home.resolve("profiles").resolve(profile).resolve("pnpm-workspace.yaml");
+        StringBuilder entries = new StringBuilder("    allowBuilds:\n");
+        for (String key : keys) {
+            entries.append("      ").append(key).append(": true\n");
+        }
+        return "This plugin comes from a repository, and a repository-hosted plugin is built when it\n"
+                + "is installed — there is no published build to fall back on, so the build has to be\n"
+                + "allowed for the installation to finish.\n\n"
+                + "pnpm asked for these entries in " + workspace + ":\n"
+                + entries
+                + "\nAllow this instance's build scripts (Settings → 构建脚本) and install again.";
     }
 
     /// Returns the last few output lines, for an error message.

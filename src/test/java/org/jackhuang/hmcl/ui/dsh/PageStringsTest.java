@@ -205,6 +205,11 @@ class PageStringsTest {
             // The plugin list's own entries.
             "dsh.instance.plugins.add",
             "dsh.instance.plugins.add.filter",
+            "dsh.instance.plugins.add.url",
+            "dsh.plugin.source.repository",
+            "dsh.plugin.source.repository.empty",
+            "dsh.plugin.source.reference",
+            "dsh.plugin.source.reference_unusable",
             // The batch toolbar on the plugin list.
             "button.remove",
             "button.remove.confirm",

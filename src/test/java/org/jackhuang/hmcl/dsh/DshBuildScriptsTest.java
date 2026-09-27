@@ -115,6 +115,50 @@ class DshBuildScriptsTest {
     }
 
     @Test
+    void aQuestionPnpmNamedIsRecordedAndAnsweredLikeAnyOther() throws Exception {
+        // A repository-hosted package is named by the address it was resolved to, so the entry
+        // holds colons of its own — reading only up to the first one would lose it.
+        String key = "dshmarket@https://codeload.github.com/dsh-market/dsh-market/tar.gz/"
+                + "180c3144da8eb4229cacb843aced229ea55912fc";
+        DshInstance instance = makeInstance("""
+                allowBuilds:
+                  node-pty: true
+                """);
+
+        assertEquals(1, DshBuildScripts.propose(instance, List.of(key)));
+        assertEquals(List.of(key), DshBuildScripts.unanswered(instance),
+                "what pnpm named is the question waiting to be answered");
+        assertEquals(0, DshBuildScripts.propose(instance, List.of(key)), "asking twice records one question");
+
+        assertEquals(1, DshBuildScripts.answer(instance, List.of(key), true));
+
+        String written = Files.readString(profileFile(instance));
+        assertTrue(written.contains(key + ": true"), written);
+        assertTrue(written.contains("node-pty: true"), "an entry somebody answered stays as it was");
+        assertEquals(List.of(), DshBuildScripts.unanswered(instance));
+        assertEquals(0, DshBuildScripts.propose(instance, List.of(key)),
+                "an answered entry is not asked about again");
+    }
+
+    @Test
+    void aQuestionIsRecordedWhereTheFileHasNoSectionYet() throws Exception {
+        String key = "thing@https://codeload.github.com/owner/name/tar.gz/abcdef";
+        DshInstance instance = makeInstance("""
+                packages:
+                  - .
+
+                nodeLinker: hoisted
+                """);
+
+        assertEquals(1, DshBuildScripts.propose(instance, List.of(key)));
+
+        String written = Files.readString(profileFile(instance));
+        assertTrue(written.contains("allowBuilds:\n  " + key + ": set this to true or false"), written);
+        assertTrue(written.contains("nodeLinker: hoisted"), "the rest of the file is untouched");
+        assertEquals(List.of(key), DshBuildScripts.unanswered(instance));
+    }
+
+    @Test
     void anInstancesOwnAnswerOverridesTheLaunchers() throws Exception {
         DshInstance instance = makeInstance("""
                 allowBuilds:
