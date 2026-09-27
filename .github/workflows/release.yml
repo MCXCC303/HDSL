@@ -192,6 +192,10 @@ jobs:
   # A row with no checksum to read is an artifact the runner did not build, which is the only thing
   # `pending` means here; `needs` and `always()` are what make that true for a Mac that failed without
   # costing the Linux packages their table.
+  #
+  # Nothing is checked out here — the job reads a release, not a tree — so every `gh` call names the
+  # repository: without one, `gh` looks for `.git` to work out which repository is meant and fails
+  # with "failed to run git: not a git repository", which is what this job did first.
   release-note:
 
     needs: [release, release-mac]
@@ -215,7 +219,8 @@ jobs:
     - name: Read the checksums the release carries
       run: |
         mkdir -p sums
-        gh release download "${GITHUB_REF_NAME}" --dir sums --pattern '*.sha256' --clobber
+        gh release download "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" \
+          --dir sums --pattern '*.sha256' --clobber
         ls -l sums
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -224,7 +229,7 @@ jobs:
       run: |
         # The Arch package's name is read from the release rather than rebuilt from the tag: it carries
         # the version pacman is given, and for a pre-release that differs from the tag's.
-        arch_pkg="$(gh release view "${GITHUB_REF_NAME}" --json assets \
+        arch_pkg="$(gh release view "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" --json assets \
           --jq '.assets[].name | select(endswith(".pkg.tar.zst"))' | head -1)"
         note=RELEASE_NOTE
         echo "HDSL ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> "${note}"
@@ -251,6 +256,6 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Replace the note the release went public with
-      run: gh release edit "${GITHUB_REF_NAME}" --notes-file RELEASE_NOTE
+      run: gh release edit "${GITHUB_REF_NAME}" --repo "${{ github.repository }}" --notes-file RELEASE_NOTE
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
