@@ -303,14 +303,15 @@ public final class DshPluginInstaller {
                 throw new DshException("`dsh plugin " + String.join(" ", args)
                         + "` exited with code " + exitCode + ":\n" + tail(result.output()));
             }
-            // A run that succeeded can still have left a package's build undecided, and that is the
-            // usual case rather than an odd one: pnpm writes the package into the profile's
-            // `allowBuilds` with a placeholder and returns success, and only `strictDepBuilds` makes
-            // it fail instead. Measured against pnpm 11.24's own code, which is
-            // `if (opts.strictDepBuilds) throw new IgnoredBuildsError(ignoredBuilds)` after it has
-            // already written the placeholder. Deciding by the exit code alone therefore meant the
-            // question was never asked, whatever the setting said — so what decides here is what the
-            // profile says is waiting.
+            // A run that succeeded can still have left a package's build undecided, so what decides is
+            // the profile rather than the exit code — and both halves of that are measured against
+            // pnpm 11.24. An undecided build does fail the run by default: `strict-dep-builds` is true
+            // in pnpm's own default configuration and it exits 1 with `ERR_PNPM_IGNORED_BUILDS`. But it
+            // writes the placeholder into `allowBuilds` *before* raising that — the order in its code is
+            // `writeIgnoredBuildsToAllowBuilds(...)`, then `if (opts.strictDepBuilds) throw` — and a
+            // launcher that took the exit code as the whole answer would be wrong about the runs where
+            // that flag is off, which is what `pnpm dlx` sets for itself and what `--config.strict-dep-builds=false`
+            // asks for. Reading the profile is right about both.
             if (!retried && answerWaitingBuilds(instance, onLine)) {
                 retried = true;
                 continue;
@@ -353,10 +354,10 @@ public final class DshPluginInstaller {
     /// Answers the build scripts a profile is waiting to be told about.
     ///
     /// What is waiting is read from the profile rather than guessed from how the package manager
-    /// exited, because the two disagree: pnpm 11 writes the package into the profile's `allowBuilds`
-    /// with a placeholder and returns success, and only fails when `strictDepBuilds` is set — which it
-    /// leaves off by default. A launcher that waited for the failure therefore never asked, whatever
-    /// the setting said, and the package stayed unbuilt.
+    /// exited, because the two are not the same question. An undecided build does fail the run by
+    /// default — pnpm 11 has `strict-dep-builds: true` and exits 1 — but it writes the placeholder
+    /// before it raises that, and the flag can be off. The profile is what says whether anything is
+    /// still undecided, whichever way the run ended.
     ///
     /// The three policies are the setting's own three answers, and only the middle one is not an
     /// answer: under [DshBuildScriptPolicy#MANUAL] the question goes to the interface, which is the

@@ -45,9 +45,18 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 ///   node-pty: set this to true or false
 /// ```
 ///
-/// and refuses the installation until somebody answers. Answering is a decision about
-/// running code, so this launcher does not answer on its own: it reads what is waiting
-/// so the interface can say so, and writes an answer when a person gives one. That is
+/// and refuses the installation until somebody answers. That refusal is the usual case rather than an
+/// edge one: `strict-dep-builds` is true in pnpm 11's own defaults, so an undecided build makes it
+/// exit non-zero — after writing the placeholder, which is what this reads.
+///
+/// What it writes as the entry's key is the package's **id** rather than always its name. A package
+/// from the registry is `node-pty`; one installed from a file is
+/// `build-script-probe@file:../pkg/build-script-probe-1.0.0.tgz`, because the version a `file:`
+/// dependency resolves to is not a version. The id therefore carries a colon of its own, and the key
+/// read here is the whole of it — kept whole, and written back whole.
+///
+/// Answering is a decision about running code, so this launcher does not answer on its own: it reads
+/// what is waiting so the interface can say so, and writes an answer when a person gives one. That is
 /// what makes it a setting rather than a behaviour — one that can be on for an instance
 /// whose plugins are known and off for one whose plugins are not.
 @NotNullByDefault
@@ -60,7 +69,8 @@ public final class DshBuildScripts {
 
     /// One package waiting to be answered about.
     ///
-    /// @param name    the package
+    /// @param name    the package, as the key pnpm wrote for it: its name for a package from the
+    ///                 registry, its whole id for one installed from a file or a repository
     /// @param allowed whether it is already answered, and how
     public record Pending(String name, @Nullable Boolean allowed) {
     }
@@ -90,7 +100,7 @@ public final class DshBuildScripts {
                         // Another top-level key ends the section.
                         break;
                     }
-                    int colon = trimmed.indexOf(':');
+                    int colon = keySeparator(trimmed);
                     if (colon <= 0) {
                         continue;
                     }
@@ -152,7 +162,7 @@ public final class DshBuildScripts {
                 continue;
             }
 
-            int colon = trimmed.indexOf(':');
+            int colon = keySeparator(trimmed);
             if (colon <= 0) {
                 continue;
             }
@@ -212,6 +222,27 @@ public final class DshBuildScripts {
             return null;
         }
         return null;
+    }
+
+    /// Returns where an `allowBuilds` entry's key ends.
+    ///
+    /// The colon a space follows, which is where YAML puts a mapping's separator — not the first colon,
+    /// because the key is the package's id and an id that did not come from the registry carries one of
+    /// its own. pnpm writes a package installed from a file as
+    /// `build-script-probe@file:../pkg/build-script-probe-1.0.0.tgz: set this to true or false`, and a
+    /// reader that split at the first colon would call the package `build-script-probe@file`, write
+    /// that back as the answer, and leave the entry pnpm reads undecided: an approval that looks like
+    /// it worked, changes nothing, and quietly loses the id of the package it was about.
+    ///
+    /// @param entry the trimmed line
+    /// @return the index of the separator, or `-1` when there is none
+    private static int keySeparator(String entry) {
+        int separator = entry.indexOf(": ");
+        if (separator >= 0) {
+            return separator;
+        }
+        // A key with nothing after it: YAML reads that value as null, and the entry is still an entry.
+        return entry.endsWith(":") ? entry.length() - 1 : -1;
     }
 
     /// Writes a file by replacing it, so a half-written file is never read.
