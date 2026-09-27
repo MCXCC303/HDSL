@@ -59,6 +59,26 @@ class DshPluginBuildApprovalTest {
               node-pty: set this to true or false
             """;
 
+    /// The same profile after somebody refused, which pnpm remembers as firmly as an approval.
+    private static final String REFUSED = """
+            packages:
+              - .
+
+            nodeLinker: hoisted
+            allowBuilds:
+              node-pty: false
+            """;
+
+    /// A profile that refused a package installed from a file, which pnpm keys by the whole id.
+    private static final String REFUSED_FROM_A_FILE = """
+            packages:
+              - .
+
+            nodeLinker: hoisted
+            allowBuilds:
+              build-script-probe@file:../../../pkg/build-script-probe-1.0.0.tgz: false
+            """;
+
     /// The workspace the instance runs in, which JUnit makes and removes.
     @TempDir
     Path workspaceDirectory;
@@ -126,6 +146,79 @@ class DshPluginBuildApprovalTest {
                 """, Files.readString(profileFile(instance)), "a profile with no question is not touched");
     }
 
+    @Test
+    void aPackageSomebodyRefusedIsAskedAboutAgainWhenItIsInstalledAgain() throws Exception {
+        // The reported defect: refusing once was final. pnpm remembers the refusal in the same file it
+        // remembers an approval in, so installing the package again ran nothing, asked nothing and said
+        // nothing — the plugin was there, could not load, and there was no way back to the question.
+        DshInstance instance = makeInstance(REFUSED, "manual");
+
+        DshPluginInstaller.DshBuildScriptApprovalRequired asked = assertThrows(
+                DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshPluginInstaller.installSpecs(instance, List.of("node-pty@1.0.0"), null),
+                "installing a package the profile refused is a new decision about running its code");
+
+        assertEquals(List.of("node-pty"), asked.packages(),
+                "the question is about the package being installed, named the way the profile names it");
+        assertTrue(Files.readString(profileFile(instance)).contains("node-pty: false"),
+                "and nothing is decided on the person's behalf");
+    }
+
+    @Test
+    void aPackageInstalledFromAFileIsAskedAboutAgainByItsName() throws Exception {
+        // The key and the spec are written differently — pnpm keys a package from a file by its whole
+        // id — so the question is matched by the name, which is what both of them begin with.
+        DshInstance instance = makeInstance(REFUSED_FROM_A_FILE, "manual");
+
+        DshPluginInstaller.DshBuildScriptApprovalRequired asked = assertThrows(
+                DshPluginInstaller.DshBuildScriptApprovalRequired.class,
+                () -> DshPluginInstaller.installSpecs(instance, List.of("build-script-probe@1.0.0"), null));
+
+        assertEquals(List.of("build-script-probe@file:../../../pkg/build-script-probe-1.0.0.tgz"),
+                asked.packages(),
+                "the answer has to name the key pnpm wrote, not the name it is matched by");
+    }
+
+    @Test
+    void aPackageSomebodyRefusedThatIsNotBeingInstalledIsNotAskedAbout() throws Exception {
+        DshInstance instance = makeInstance(REFUSED, "manual");
+
+        DshPluginInstaller.installSpecs(instance, List.of("some-other-plugin"), null);
+
+        assertTrue(Files.readString(profileFile(instance)).contains("node-pty: false"),
+                "a question nobody is installing anything about is not worth asking");
+    }
+
+    @Test
+    void theAutomaticSettingDoesNotAskAgainAboutWhatWasAlreadyRefused() throws Exception {
+        DshInstance instance = makeInstance(REFUSED, "auto");
+
+        DshPluginInstaller.installSpecs(instance, List.of("node-pty"), null);
+
+        assertTrue(Files.readString(profileFile(instance)).contains("node-pty: false"),
+                "an instance-wide answer is already an answer, and this setting is not the asking one");
+    }
+
+    @Test
+    void theNeverSettingDoesNotAskAgainAboutWhatWasAlreadyRefused() throws Exception {
+        DshInstance instance = makeInstance(REFUSED, "never");
+
+        DshPluginInstaller.installSpecs(instance, List.of("node-pty"), null);
+
+        assertTrue(Files.readString(profileFile(instance)).contains("node-pty: false"));
+    }
+
+    @Test
+    void theNameOfAPackageIsWhatComesBeforeItsVersion() {
+        assertEquals("node-pty", DshPluginInstaller.packageNameOf("node-pty"));
+        assertEquals("node-pty", DshPluginInstaller.packageNameOf("node-pty@1.0.0"));
+        assertEquals("dsh-better-sidebar", DshPluginInstaller.packageNameOf("dsh-better-sidebar@0.21.1"));
+        assertEquals("build-script-probe",
+                DshPluginInstaller.packageNameOf("build-script-probe@file:../../x.tgz"));
+        assertEquals("@scope/pkg", DshPluginInstaller.packageNameOf("@scope/pkg@1.2.3"),
+                "a scope's own @ is not the one a version begins with");
+    }
+
     /// Creates an instance with a stub harness and a profile holding the given workspace file.
     ///
     /// The stub is what makes this test possible without a package manager: the installer runs
@@ -145,6 +238,13 @@ class DshPluginBuildApprovalTest {
         Assumptions.assumeTrue(
                 DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
                 "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
+        // The installer refuses to install anything without pnpm, because pnpm is what `dsh plugin`
+        // forwards to — a machine without it cannot install a plugin at all. Where that is the case
+        // these tests are skipped rather than failed: what they cover is the answering of the
+        // question, which is only reached on a machine where installing is possible. The workflow
+        // installs pnpm on the runners so that they are reached there too.
+        Assumptions.assumeTrue(DshNodeRuntime.which("pnpm").isPresent(),
+                "pnpm is not on PATH; the installer refuses to install plugins without it");
         DshInstance instance = DshInstanceManager.create(ID, "0.1.6-alpha.2", DshInstance.DEFAULT_PROFILE,
                 workspaceDirectory, DshHomeMode.ISOLATED, null, List.of(), Map.of());
         DshInstanceSettings.setBuildScriptPolicy(instance, policy);

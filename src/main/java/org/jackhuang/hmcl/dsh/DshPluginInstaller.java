@@ -90,7 +90,7 @@ public final class DshPluginInstaller {
         Path home = instance.homeDirectory();
         for (String spec : specs) {
             report(onLine, "Installing " + spec + " ...");
-            runPluginCommand(instance, runtime, home, List.of("add", spec), onLine);
+            runPluginCommand(instance, runtime, home, List.of("add", spec), List.of(spec), onLine);
             report(onLine, "Installed " + spec);
         }
     }
@@ -112,7 +112,7 @@ public final class DshPluginInstaller {
         if (!runtime.canManagePlugins()) {
             throw new DshException("pnpm was not found on PATH; installing plugins requires it");
         }
-        runPluginCommand(instance, runtime, instance.homeDirectory(), List.of("install"), onLine);
+        runPluginCommand(instance, runtime, instance.homeDirectory(), List.of("install"), List.of(), onLine);
     }
 
     /// Removes a package from an instance's profile.
@@ -155,7 +155,7 @@ public final class DshPluginInstaller {
         List<String> command = new ArrayList<>();
         command.add("remove");
         command.addAll(specs);
-        runPluginCommand(instance, runtime, instance.homeDirectory(), command, onLine);
+        runPluginCommand(instance, runtime, instance.homeDirectory(), command, List.of(), onLine);
         report(onLine, "Removed " + specs.size() + " package(s)");
     }
 
@@ -241,12 +241,15 @@ public final class DshPluginInstaller {
     /// @param runtime  the resolved Node runtime
     /// @param home     the `DSH_HOME` to operate on
     /// @param args     the pnpm arguments to forward
+    /// @param packages the package specs this run is about, which is what a remembered refusal is
+    ///                 matched against; empty for a run that installs nothing
     /// @param onLine   receives every output line, or `null`
     /// @throws DshException when the command cannot be run or exits non-zero
     private static void runPluginCommand(DshInstance instance,
                                          DshNodeRuntime runtime,
                                          Path home,
                                          List<String> args,
+                                         List<String> packages,
                                          @Nullable Consumer<String> onLine) throws DshException {
         Path script = instance.dshEntryPoint();
         if (!Files.isRegularFile(script)) {
@@ -287,7 +290,7 @@ public final class DshPluginInstaller {
                     line -> report(onLine, line));
             int exitCode = result.exitCode();
             if (exitCode != 0 && explainIgnoredBuilds(result.output(), home, instance.profile()) != null) {
-                if (!retried && answerWaitingBuilds(instance, onLine)) {
+                if (!retried && answerWaitingBuilds(instance, packages, onLine)) {
                     retried = true;
                     continue;
                 }
@@ -312,9 +315,18 @@ public final class DshPluginInstaller {
             // launcher that took the exit code as the whole answer would be wrong about the runs where
             // that flag is off, which is what `pnpm dlx` sets for itself and what `--config.strict-dep-builds=false`
             // asks for. Reading the profile is right about both.
-            if (!retried && answerWaitingBuilds(instance, onLine)) {
+            if (!retried && answerWaitingBuilds(instance, packages, onLine)) {
                 retried = true;
                 continue;
+            }
+            // What was just installed without its install scripts is said here rather than left to be
+            // discovered later: a package whose build did not run installs perfectly well and then does
+            // nothing — the plugin is listed, cannot load, and nothing anywhere says why.
+            List<String> refused = refusedAmong(instance, packages);
+            if (!refused.isEmpty()) {
+                report(onLine, "Installed without running install scripts: " + String.join(", ", refused));
+                LOG.info("Installed " + String.join(", ", refused)
+                        + " into instance " + instance.id() + " without running their install scripts");
             }
         } catch (IOException e) {
             throw new DshException("Failed to run `dsh plugin " + String.join(" ", args) + "`", e);
@@ -363,16 +375,32 @@ public final class DshPluginInstaller {
     /// answer: under [DshBuildScriptPolicy#MANUAL] the question goes to the interface, which is the
     /// only thing that can ask a person.
     ///
+    /// A package the profile has already been told **no** about is asked about again, because pnpm
+    /// remembers a refusal in the same file it remembers an approval in, and that made a refusal
+    /// final for good: installing the package again wrote the same entry, ran nothing, said nothing,
+    /// and left a plugin installed that cannot load. Refusing is an answer to *an* installation —
+    /// what it is about is running code now — so under the manual setting the question comes back
+    /// with the next one, and answering it differently is how somebody changes their mind. Under the
+    /// other two settings nobody is asked anything, and those answers stay as they are.
+    ///
     /// @param instance the instance whose profile is waiting
+    /// @param packages the package specs this run is installing, which a remembered refusal is
+    ///                 matched against by name; empty when the run installs nothing
     /// @param onLine   receives what was decided, or `null`
     /// @return whether an answer was written, which makes the command worth running again
     /// @throws DshException                     when the profile cannot be read or written
     /// @throws DshBuildScriptApprovalRequired   when only the interface can answer
-    private static boolean answerWaitingBuilds(DshInstance instance, @Nullable Consumer<String> onLine)
-            throws DshException {
+    private static boolean answerWaitingBuilds(DshInstance instance, List<String> packages,
+                                               @Nullable Consumer<String> onLine) throws DshException {
         List<String> waiting = DshBuildScripts.unanswered(instance);
         if (waiting.isEmpty()) {
-            return false;
+            List<String> refused = refusedAmong(instance, packages);
+            if (refused.isEmpty() || DshBuildScriptPolicy.of(instance) != DshBuildScriptPolicy.MANUAL) {
+                return false;
+            }
+            LOG.info("Asking again about " + String.join(", ", refused)
+                    + ": instance " + instance.id() + " refused them before, and is installing them again");
+            throw new DshBuildScriptApprovalRequired(refused);
         }
         switch (DshBuildScriptPolicy.of(instance)) {
             case AUTO -> {
@@ -394,6 +422,40 @@ public final class DshPluginInstaller {
                 throw new DshBuildScriptApprovalRequired(waiting);
             }
         }
+    }
+
+    /// Returns the refused entries a run is about, matched by package name.
+    ///
+    /// The two sides are written differently on purpose. A package spec is what the interface has —
+    /// `dsh-better-sidebar@0.21.1` — and an `allowBuilds` key is pnpm's id for the package, which is
+    /// `node-pty` for one from the registry and `build-script-probe@file:../../x.tgz` for one from a
+    /// file. Both carry the name before the `@` that introduces the version or the location, so the
+    /// name is what they are matched by: a spec that names no package — a path, a tarball — matches
+    /// nothing rather than matching everything.
+    ///
+    /// @param instance the instance
+    /// @param packages the package specs this run is about
+    /// @return the refused keys, in the order the profile lists them
+    private static List<String> refusedAmong(DshInstance instance, List<String> packages) throws DshException {
+        if (packages.isEmpty()) {
+            return List.of();
+        }
+        List<String> names = packages.stream().map(DshPluginInstaller::packageNameOf).toList();
+        return DshBuildScripts.refused(instance).stream()
+                .filter(key -> names.contains(packageNameOf(key)))
+                .toList();
+    }
+
+    /// Returns the package name in a spec or an `allowBuilds` key.
+    ///
+    /// The name ends where the version or the location begins. The `@` is looked for from the second
+    /// character, so a scope's own `@` is not taken for one: `@scope/pkg@1.2.3` is `@scope/pkg`.
+    ///
+    /// @param spec a package spec or an `allowBuilds` key
+    /// @return the package name
+    static String packageNameOf(String spec) {
+        int at = spec.indexOf('@', 1);
+        return at < 0 ? spec : spec.substring(0, at);
     }
 
     /// Turns pnpm's ignored-build-script failure into something actionable.

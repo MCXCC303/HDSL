@@ -196,6 +196,23 @@ public final class DshBuildScripts {
                 .map(Pending::name).toList();
     }
 
+    /// Returns the names of the packages the profile says install scripts are not run for.
+    ///
+    /// A refusal is remembered in the same file as an approval, so a package installed after one
+    /// carries that answer with it for good: nothing asks again, and the package stays without the
+    /// scripts that would have finished it — which is what leaves a plugin installed and unable to
+    /// load, with the launcher reporting an ordinary success. Reading these back is what lets the
+    /// installer ask about a package it is installing *again*: a refusal answers one installation,
+    /// and the next installation is another one.
+    ///
+    /// @param instance the instance
+    /// @return the names
+    /// @throws DshException when the profile cannot be read
+    public static List<String> refused(DshInstance instance) throws DshException {
+        return pending(instance).stream().filter(entry -> Boolean.FALSE.equals(entry.allowed()))
+                .map(Pending::name).toList();
+    }
+
     /// Returns the profile's package-manager settings.
     ///
     /// @param instance the instance
