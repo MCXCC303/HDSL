@@ -46,11 +46,15 @@ public final class PluginInstalls {
 
     /// Installs something, asking about install scripts if the policy says to ask.
     ///
+    /// The line the progress dialog is titled with names the instance, because which instance it is
+    /// going into is the one thing about an installation that cannot be seen from watching it: the
+    /// dialog looks the same either way, and the plugin appears wherever it went.
+    ///
     /// @param instance the instance being installed into
     /// @param work     the installation
     /// @param onDone   run when it finishes, or `null`
     public static void run(DshInstance instance, ProgressDialog.Work work, @Nullable Runnable onDone) {
-        attempt(i18n("download.install"), () -> instance, work, onDone);
+        attempt(i18n("dsh.instance.plugins.install.into", instance.id()), () -> instance, work, onDone);
     }
 
     /// Runs an installation that makes its own instance, asking about install scripts when it has to.

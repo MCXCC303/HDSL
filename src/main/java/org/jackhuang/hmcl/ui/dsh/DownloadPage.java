@@ -39,6 +39,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.dsh.DshException;
+import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshRelease;
 import org.jackhuang.hmcl.dsh.DshVersionManager;
 import org.jackhuang.hmcl.task.Schedulers;
@@ -99,6 +100,14 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
     /// The tab showing the community's plugins.
     private final TabHeader.Tab<PluginMarketPage> marketTab = new TabHeader.Tab<>("dshDownloadPlugins");
+
+    /// The instance the plugin market was last opened for.
+    ///
+    /// Held by the tab rather than by the market page, because the page is built when its tab is first
+    /// shown and the instance is named before that: 下载 on an instance's plugin list navigates here
+    /// and says which instance it came from.
+    private final java.util.concurrent.atomic.AtomicReference<DshInstance> marketInstance =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     /// The tab showing the community's modpacks.
     ///
@@ -238,7 +247,14 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
         layout.setCenter(contentPane);
 
         versionsTab.setNodeSupplier(() -> layout);
-        marketTab.setNodeSupplier(PluginMarketPage::new);
+        marketTab.setNodeSupplier(() -> {
+            PluginMarketPage page = new PluginMarketPage();
+            // The instance the market was opened for, which is the tab's only chance to hear it: the
+            // page is built the first time the tab is shown, and clicking 下载 on an instance's plugin
+            // list is what opens it.
+            page.showInstance(marketInstance.get());
+            return page;
+        });
         packTab.setNodeSupplier(PackMarketPage::new);
         skillsTab.setNodeSupplier(SkillMarketPage::new);
         tab.getTabs().setAll(versionsTab, packTab, marketTab, skillsTab);
@@ -266,6 +282,27 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
             }
         }
         return true;
+    }
+
+    /// Opens the plugin market for a particular instance.
+    ///
+    /// What 下载 on an instance's own plugin list means: install one **into this instance**. The
+    /// market's picker follows the launcher's selection instead, and opening an instance does not
+    /// select it — the radio button in the list does — so a person who had selected one instance and
+    /// was looking at another installed into the one they had selected and never saw it. Reported as:
+    /// installed into `0.1.7-rc.2-2`, appeared in `0.0.1-rc.5`.
+    ///
+    /// @param instance the instance the market is being opened for, or `null` to leave the picker to
+    ///                 the launcher's selection as before
+    /// @return whether the market was opened
+    public boolean openPluginsFor(@Nullable DshInstance instance) {
+        marketInstance.set(instance);
+        PluginMarketPage page = marketTab.getNode();
+        if (page != null) {
+            // Already built: the tab is built once and reused, so the picker has to be moved here.
+            page.showInstance(instance);
+        }
+        return openTab("plugins");
     }
 
     @Override

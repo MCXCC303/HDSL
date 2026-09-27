@@ -265,6 +265,13 @@ public final class DshPluginInstaller {
         command.add(instance.profile());
         command.addAll(args);
 
+        // Which instance this is doing it to, said out loud before it is done. An installation into the
+        // wrong instance is invisible from its result — a plugin appears somewhere, or nowhere, and
+        // the launcher's log said nothing about where the command went — so the target is written here
+        // in the same words a launch uses: the instance, its home, and the command itself.
+        LOG.info("Installing into instance " + instance.id() + " (home " + home + ", profile "
+                + instance.profile() + "): " + String.join(" ", command));
+
         // DSH_* cannot come from a .env file — upstream rejects those names there
         // — so DSH_HOME must travel in the child's environment. Getting this
         // wrong would silently operate on the user's real ~/.dsh.
