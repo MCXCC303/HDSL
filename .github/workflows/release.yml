@@ -35,8 +35,17 @@ jobs:
       run: |
         VERSION="${GITHUB_REF_NAME#v}"
         [ -n "${VERSION}" ] || { echo "error: tag ${GITHUB_REF_NAME} has no version" >&2; exit 1; }
+        # A pre-release part — anything after the first `-`, which is semver's own spelling for one —
+        # makes this a pre-release rather than a release. GitHub keeps those out of `releases/latest`,
+        # so the download page and anything reading that endpoint stay on the stable release while the
+        # snapshot's assets remain reachable by tag for whoever is testing it.
+        case "${VERSION}" in
+          *-*) PRERELEASE=--prerelease ;;
+          *)   PRERELEASE= ;;
+        esac
         echo "VERSION=${VERSION}" >> $GITHUB_ENV
-        echo "Releasing ${VERSION}"
+        echo "PRERELEASE=${PRERELEASE}" >> $GITHUB_ENV
+        echo "Releasing ${VERSION}${PRERELEASE:+ (pre-release)}"
 
     - name: Build with Gradle
       run: xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
@@ -54,13 +63,20 @@ jobs:
 
     - name: Build the Linux packages
       run: |
+        set -o pipefail
         # `dist/`, not `build/libs`: `build/` belongs to Gradle and any rebuild empties it, which is
         # how a release's artifacts came to vanish between being built and being uploaded.
+        log="$RUNNER_TEMP/linux-packages.log"
         ./packaging/linux-packages.sh \
           "${{ env.VERSION }}" \
           "build/libs/hdsl-${{ env.VERSION }}.sh" \
           "src/main/resources/assets/img/icon@8x.png" \
-          dist
+          dist | tee "${log}"
+        # The Arch package's name is read back from the script rather than rebuilt here: it is the
+        # version pacman is given, and for a pre-release that differs from the tag's.
+        arch_path="$(sed -n 's/^arch package: //p' "${log}")"
+        [ -n "${arch_path}" ] || { echo "error: the packaging script named no Arch package" >&2; exit 1; }
+        echo "ARCH_PKG=$(basename "${arch_path}")" >> $GITHUB_ENV
         # The two Gradle writes go beside them, so one directory holds the whole release.
         cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
 
@@ -68,6 +84,11 @@ jobs:
       run: |
         echo "HMCL-DSH ${VERSION} — DeepSeek Harness launcher for Linux and macOS." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
+        if [ -n "${PRERELEASE}" ]; then
+          echo "This is a **pre-release**: it is not the latest release, and nothing asking for the" >> RELEASE_NOTE
+          echo "latest version will be offered it." >> RELEASE_NOTE
+          echo "" >> RELEASE_NOTE
+        fi
         echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> RELEASE_NOTE
         echo "macOS users take the .dmg or .zip; the standalone .sh below is the Linux build." >> RELEASE_NOTE
         echo "" >> RELEASE_NOTE
@@ -76,7 +97,7 @@ jobs:
         # The Arch package is listed like the others. It is not the tar.zst under another name:
         # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
         # and the portable tar.zst is for unpacking anywhere.
-        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
+        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "${ARCH_PKG}" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
           echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${GITHUB_REF_NAME}/${file}) | $(case "${file}" in *.pkg.tar.zst) echo "Arch (\`pacman -U\`)";; *.tar.zst) echo "portable (unpack anywhere)";; *.AppImage) echo "portable (single file)";; *.deb) echo "Debian / Ubuntu";; *.dmg) echo "macOS (mount)";; *.zip) echo "macOS (unpack)";; *.sh) echo "self-executing";; esac) | \`$(cut -d' ' -f1 < "dist/${file}.sha256" 2>/dev/null || echo pending)\` |" >> RELEASE_NOTE
         done
         cat RELEASE_NOTE
@@ -93,14 +114,15 @@ jobs:
         gh release create "${GITHUB_REF_NAME}" \
           dist/hdsl-${VERSION}-linux-x64.tar.zst \
           dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256 \
-          dist/hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst \
-          dist/hmcl-dsh-${VERSION}-1-x86_64.pkg.tar.zst.sha256 \
+          "dist/${ARCH_PKG}" \
+          "dist/${ARCH_PKG}.sha256" \
           dist/HDSL-${VERSION}-x86_64.AppImage \
           dist/HDSL-${VERSION}-x86_64.AppImage.sha256 \
           dist/hdsl-${VERSION}.deb \
           dist/hdsl-${VERSION}.deb.sha256 \
           dist/hdsl-${VERSION}.sh \
           --target "${{ github.sha }}" \
+          ${PRERELEASE} \
           --title "HMCL-DSH ${VERSION}" \
           --notes-file RELEASE_NOTE
       env:
