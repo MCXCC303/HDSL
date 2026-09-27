@@ -284,6 +284,7 @@ tasks.named<Jar>("jar") {
 }
 
 tasks.named<ShadowJar>("shadowJar") {
+    archiveBaseName.set("hdsl")   // was rootProject.name = "HDSL"
     archiveClassifier.set("")
     mergeServiceFiles()
     // Dependency signatures do not survive merging, and a stale one makes the
@@ -440,5 +441,13 @@ val makeWindowsExecutable = tasks.register("makeWindowsExecutable") {
 }
 
 tasks.named("build") {
-    dependsOn(makeExecutable, makeDeb, makeWindowsExecutable)
+    dependsOn(makeExecutable, makeDeb)
+    // launch4j picks its tool set for the *host*, and only a Windows build has
+    // any use for the wrapper: the JavaFX inside the exe is the host's, so one
+    // built on Linux carries Linux natives and runs nowhere. Asking for it
+    // explicitly still works, and on linux-aarch64 — where the tool set the
+    // plugin carries cannot run at all — the default `build` no longer fails.
+    if (javafxPlatform == "win") {
+        dependsOn(makeWindowsExecutable)
+    }
 }
