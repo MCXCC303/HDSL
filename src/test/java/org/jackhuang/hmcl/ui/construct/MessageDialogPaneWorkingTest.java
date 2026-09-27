@@ -18,11 +18,13 @@
 package org.jackhuang.hmcl.ui.construct;
 
 import javafx.application.Platform;
+import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.scene.control.ButtonBase;
 import javafx.scene.control.Label;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
@@ -83,6 +85,20 @@ class MessageDialogPaneWorkingTest {
     private static Question question() {
         MessageDialogPane pane = new MessageDialogPane.Builder("Remove instance \"x\"?", "Remove instance",
                 MessageDialogPane.MessageType.QUESTION).yesOrNo(null, null).build();
+        AtomicInteger asked = new AtomicInteger();
+        pane.addEventHandler(DialogCloseEvent.CLOSE, (EventHandler<DialogCloseEvent>) event -> asked.incrementAndGet());
+        return new Question(pane, asked);
+    }
+
+    /// Makes a question whose answer the caller works out, the way [Controllers#confirmAsync] does.
+    ///
+    /// @param pressed what to run when 是 is pressed
+    /// @return the question
+    private static Question questionAnsweredByItsCaller(java.util.function.Consumer<MessageDialogPane> pressed) {
+        MessageDialogPane pane = new MessageDialogPane.Builder("Remove instance \"x\"?", "Remove instance",
+                MessageDialogPane.MessageType.QUESTION)
+                .askYesOrNo(pressed::accept, null)
+                .build();
         AtomicInteger asked = new AtomicInteger();
         pane.addEventHandler(DialogCloseEvent.CLOSE, (EventHandler<DialogCloseEvent>) event -> asked.incrementAndGet());
         return new Question(pane, asked);
@@ -152,5 +168,56 @@ class MessageDialogPaneWorkingTest {
         onFxThread(() -> yes(q.pane()).fire());
 
         assertEquals(1, q.asks().get(), "a failure leaves a question that can still be answered");
+    }
+
+    @Test
+    void aQuestionAnsweredByItsCallerDoesNotCloseWhenYesIsPressed() throws Exception {
+        // The defect as it was reported: pressing 是 on the removal confirmation closed the dialog at
+        // once. The work it had just started took twenty seconds, and the dialog was gone in one.
+        AtomicInteger answered = new AtomicInteger();
+        Question q = questionAnsweredByItsCaller(pane -> {
+            answered.incrementAndGet();
+            pane.setWorking(true, "Removing instance x…");
+        });
+
+        onFxThread(() -> yes(q.pane()).fire());
+
+        assertEquals(1, answered.get(), "the caller is handed the press");
+        assertEquals(0, q.asks().get(),
+                "a question whose answer the caller works out does not close on the press");
+        assertTrue(q.pane().isWorking(), "it waits instead, which is what the spinner is for");
+    }
+
+    @Test
+    void aQuestionAnsweredByItsCallerStillClosesWhenTheWorkIsDone() throws Exception {
+        Question q = questionAnsweredByItsCaller(pane -> pane.setWorking(true, "Removing instance x…"));
+
+        onFxThread(() -> yes(q.pane()).fire());
+        // What confirmAsync does once the work has succeeded.
+        onFxThread(() -> q.pane().fireEvent(new DialogCloseEvent()));
+
+        assertEquals(1, q.asks().get(), "the caller's own close is what ends it");
+    }
+
+    @Test
+    void theClosingHandlerAButtonIsGivenRunsBeforeAnythingAddedToItAfterwards() throws Exception {
+        // Why a caller cannot hold the dialog open from its own handler, which is why the button
+        // says so instead. Measured rather than assumed: JavaFX runs the handlers on one node's
+        // bubbling path in the order they were added, so the closing handler, added when the button
+        // was, always gets its word in first.
+        List<String> order = new java.util.ArrayList<>();
+        MessageDialogPane pane = new MessageDialogPane.Builder("q", "q", MessageDialogPane.MessageType.QUESTION)
+                .yesOrNo(null, null)
+                .build();
+        pane.addEventHandler(DialogCloseEvent.CLOSE,
+                (EventHandler<DialogCloseEvent>) event -> order.add("closing"));
+        ButtonBase button = yes(pane);
+        button.addEventHandler(ActionEvent.ACTION, event -> order.add("caller's"));
+
+        onFxThread(button::fire);
+
+        assertEquals(List.of("closing", "caller's"), order,
+                "the closing handler runs first, so a caller that sets the waiting state from its own"
+                        + " handler sets it after the dialog has already closed");
     }
 }

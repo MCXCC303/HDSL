@@ -17,7 +17,6 @@
  */
 package org.jackhuang.hmcl.ui;
 
-import javafx.event.ActionEvent;
 import javafx.scene.Node;
 import javafx.scene.layout.Region;
 import javafx.stage.DirectoryChooser;
@@ -220,27 +219,46 @@ public final class Controllers {
                                     Supplier<? extends CompletionStage<?>> work,
                                     @Nullable String failed) {
         MessageDialogPane pane = new MessageDialogPane.Builder(text, title, MessageType.QUESTION)
-                .yesOrNo(null, null)
+                .askYesOrNo(question -> answerQuestion(question, wait, work, failed), null)
                 .build();
-        pane.getActions().getChildren().get(0).addEventHandler(ActionEvent.ACTION, event -> {
-            pane.setWorking(true, wait);
-            CompletableFuture<?> running;
-            try {
-                running = work.get().toCompletableFuture();
-            } catch (RuntimeException thrown) {
-                reportFailure(pane, failed, thrown);
-                return;
-            }
-            running.handle((ignored, throwable) -> throwable)
-                    .thenAcceptAsync(thrown -> {
-                        if (thrown == null) {
-                            pane.fireEvent(new DialogCloseEvent());
-                        } else {
-                            reportFailure(pane, failed, thrown);
-                        }
-                    }, Schedulers.defaultScheduler());
-        });
         dialog(pane);
+    }
+
+    /// Starts the work a question was answered with, and holds the question open until it ends.
+    ///
+    /// The waiting state is set here rather than by the button, because the button's own closing
+    /// handler is registered first and would have closed the dialog before this ran — which is what
+    /// the removal confirmation used to do: it vanished on the press and the removal carried on
+    /// invisibly, so pressing again looked like the obvious thing to do.
+    ///
+    /// The work itself is the caller's, started by the supplier it handed over; what happens here is
+    /// only what the answer means. Success closes the question. Failure puts its buttons back and
+    /// says why beside it, because a question whose answer did not happen is one that has to be
+    /// asked again.
+    ///
+    /// @param pane   the question
+    /// @param wait   what it is waiting for, shown in place of the buttons
+    /// @param work   the work to run when confirmed
+    /// @param failed the title of the dialog that reports a failure, or `null` to say nothing
+    private static void answerQuestion(MessageDialogPane pane, String wait,
+                                       Supplier<? extends CompletionStage<?>> work,
+                                       @Nullable String failed) {
+        pane.setWorking(true, wait);
+        CompletableFuture<?> running;
+        try {
+            running = work.get().toCompletableFuture();
+        } catch (RuntimeException thrown) {
+            reportFailure(pane, failed, thrown);
+            return;
+        }
+        running.handle((ignored, throwable) -> throwable)
+                .thenAcceptAsync(thrown -> {
+                    if (thrown == null) {
+                        pane.fireEvent(new DialogCloseEvent());
+                    } else {
+                        reportFailure(pane, failed, thrown);
+                    }
+                }, Schedulers.defaultScheduler());
     }
 
     /// Says why a question could not be answered, and lets it be asked again.

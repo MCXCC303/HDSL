@@ -66,8 +66,6 @@ public final class MessageDialogPane extends HBox {
 
     private final HBox actions;
 
-    private final Label titleLabel;
-
     /// What the action row held before the dialog began waiting, so it can be put back.
     private final java.util.List<Node> originalActions = new java.util.ArrayList<>();
 
@@ -101,7 +99,7 @@ public final class MessageDialogPane extends HBox {
         {
             StackPane titlePane = new StackPane();
             titlePane.getStyleClass().addAll("jfx-layout-heading", "title");
-            titleLabel = new Label(title != null ? title : type.getDisplayName());
+            Label titleLabel = new Label(title != null ? title : type.getDisplayName());
             titlePane.getChildren().setAll(titleLabel);
 
             StackPane content = new StackPane();
@@ -136,13 +134,46 @@ public final class MessageDialogPane extends HBox {
         });
     }
 
+    /// Adds a button whose press closes the dialog.
+    ///
+    /// @param btn the button
     public void addButton(Node btn) {
-        btn.addEventHandler(ActionEvent.ACTION, e -> {
-            if (!working) {
-                fireEvent(new DialogCloseEvent());
-            }
-        });
+        addButton(btn, true);
+    }
+
+    /// Adds a button, saying whether its press closes the dialog.
+    ///
+    /// The closing handler goes on the button as soon as it is added, so it runs **before** anything
+    /// a caller attaches to the same button afterwards: whoever adds a button gets the first word on
+    /// what pressing it means. A caller whose press starts work that takes seconds therefore cannot
+    /// hold the dialog open by setting [#setWorking] from its own handler — the close has already
+    /// been fired by then, which is exactly the defect this parameter exists to prevent. Such a
+    /// caller declares the press its own business instead, and closes the dialog itself when the
+    /// work has finished.
+    ///
+    /// @param btn    the button
+    /// @param closes whether pressing it closes the dialog
+    public void addButton(Node btn, boolean closes) {
+        if (closes) {
+            btn.addEventHandler(ActionEvent.ACTION, e -> {
+                if (!working) {
+                    fireEvent(new DialogCloseEvent());
+                }
+            });
+        }
         actions.getChildren().add(btn);
+    }
+
+    /// What pressing a question's 是 does.
+    ///
+    /// The dialog is handed over rather than held by the caller, because a handler on a button is
+    /// built before the dialog that button is in exists.
+    @FunctionalInterface
+    public interface Answer {
+        /// Answers the question.
+        ///
+        /// @param dialog the dialog the button was pressed in
+        void pressed(MessageDialogPane dialog);
     }
 
     /// Returns the row the dialog's buttons are in.
@@ -186,13 +217,6 @@ public final class MessageDialogPane extends HBox {
         } else {
             actions.getChildren().setAll(originalActions);
         }
-    }
-
-    /// Sets the dialog's heading.
-    ///
-    /// @param text the heading
-    public void setTitleText(String text) {
-        titleLabel.setText(text);
     }
 
     /// Remembers what the action row holds, once.
@@ -285,6 +309,29 @@ public final class MessageDialogPane extends HBox {
                 btnYes.setOnAction(e -> yes.run());
             }
             dialog.addButton(btnYes);
+
+            addCancel(i18n("button.no"), no);
+            return this;
+        }
+
+        /// A 是 button whose answer is the caller's business.
+        ///
+        /// Pressing it does not close the dialog, so a question whose answer takes time stays on the
+        /// screen until the answer has arrived — see [MessageDialogPane#addButton(Node, boolean)] for
+        /// why a caller cannot arrange that from its own handler. The caller ends the dialog itself:
+        /// by firing a [DialogCloseEvent] when the work it started has finished, or by putting the
+        /// buttons back with [MessageDialogPane#setWorking] when it failed.
+        ///
+        /// 否 closes as usual: refusing is not work, and a question nobody can decline is worse than
+        /// one answered twice.
+        ///
+        /// @param yes what pressing 是 does, given the dialog it was pressed in
+        /// @param no  what pressing 否 does, or `null`
+        public Builder askYesOrNo(Answer yes, @Nullable Runnable no) {
+            JFXButton btnYes = new JFXButton(i18n("button.yes"));
+            btnYes.getStyleClass().add("dialog-accept");
+            btnYes.setOnAction(e -> yes.pressed(dialog));
+            dialog.addButton(btnYes, false);
 
             addCancel(i18n("button.no"), no);
             return this;
