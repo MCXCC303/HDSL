@@ -533,7 +533,7 @@ public final class DshLaunchService {
     ///
     /// @param process the running process
     private static void openLogWindow(DshProcess process) {
-        LogWindow window = new LogWindow(process.managedProcess(), process.windowLogs());
+        LogWindow window = new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id());
         window.show();
     }
 

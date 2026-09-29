@@ -336,7 +336,7 @@ public final class DshCrashDialog extends Stage {
         log.setDisable(process == null);
         log.setOnAction(event -> {
             if (process != null) {
-                new LogWindow(process.managedProcess(), process.windowLogs()).show();
+                new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id()).show();
             }
         });
         FXUtils.installFastTooltip(log, i18n("dsh.crash.view_log"));

@@ -59,6 +59,13 @@ public final class DshPaths {
     /// Cached copies of remote catalogues such as the quick-install presets.
     public static final Path CATALOG = ROOT.resolve("catalog");
 
+    /// Where the logs a person exports from the log window are written.
+    ///
+    /// **Not** the process's working directory, which is what an export relative to it amounts to:
+    /// what somebody exports is something they will look for again, and a file written into
+    /// whatever directory the launcher happened to be started in is a file they cannot find.
+    public static final Path LOGS = ROOT.resolve("logs");
+
     /// Returns the npm prefix directory for a DeepSeek Harness version.
     ///
     /// The directory is returned whether or not it exists.
