@@ -28,7 +28,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
-import org.jackhuang.hmcl.dsh.DshGitPlugins;
+import org.jackhuang.hmcl.dsh.DshPluginSources;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.DialogAware;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
@@ -43,13 +43,15 @@ import java.util.concurrent.CompletableFuture;
 import static org.jackhuang.hmcl.ui.FXUtils.onEscPressed;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Asks for the two things a plugin installed from a repository is named by.
+/// Asks for the two things a plugin installed from a source is named by.
 ///
 /// An address alone is not enough to install from a repository: the same repository holds
 /// many revisions, and a plugin somebody is trying out is as likely to be a branch as the
 /// default branch. So both are asked for, and the **revision is the one that may be left
 /// empty** — an empty revision is the repository's default branch, which is what somebody
-/// who does not care about revisions means.
+/// who does not care about revisions means. A directory on this machine is the other kind of
+/// source the address box takes, and it is installed as it stands: there is no revision to
+/// choose there, so a revision beside one is refused rather than quietly ignored.
 ///
 /// The form is the account dialog's, as it stands: a `GridPane` of two columns with the name of the
 /// field in one and the box in the other, and the buttons in a row of their own under it. A row of
@@ -96,15 +98,19 @@ public final class PluginSourceDialog extends JFXDialogLayout implements DialogA
         // the field rather than a line of prose above it — the one that is required says so when it
         // is empty, and the one that is not is never painted red for being empty.
         repository.setValidators(new RequiredValidator());
-        FXUtils.setValidateWhileTextChanged(repository, true);
-        acceptButton.disableProperty().bind(repository.activeValidatorProperty().isNotNull());
 
         // What a revision may not hold is the other half of that: a space, a '#', or a leading
         // hyphen are refused when the specification is built, and refusing them here means saying so
         // before a repository is cloned rather than after.
         reference.setValidators(new Validator(i18n("dsh.plugin.source.reference_unusable"),
-                DshGitPlugins::isUsableReference));
+                DshPluginSources::isUsableReference));
+
+        FXUtils.setValidateWhileTextChanged(repository, true);
         FXUtils.setValidateWhileTextChanged(reference, true);
+        // Either box being wrong is enough to stop the button: the account dialog binds the field it
+        // requires, and both of these are answered before the installation is asked for.
+        acceptButton.disableProperty().bind(repository.activeValidatorProperty().isNotNull()
+                .or(reference.activeValidatorProperty().isNotNull()));
 
         // A message only when there is one: a label that is merely invisible keeps its height, which
         // is the strip of nothing under a form that has nothing to say.

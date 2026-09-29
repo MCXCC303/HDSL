@@ -30,7 +30,7 @@ import javafx.scene.control.Skin;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import org.jackhuang.hmcl.dsh.DshException;
-import org.jackhuang.hmcl.dsh.DshGitPlugins;
+import org.jackhuang.hmcl.dsh.DshPluginSources;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshLocalPlugins;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
@@ -256,18 +256,21 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 DshLocalPlugins.install(instance, file, progress::accept), this::refresh);
     }
 
-    /// Installs a plugin from a Git repository.
+    /// Installs a plugin from the source a person names.
     ///
-    /// The repository is what a person has when a plugin is a fork, a branch somebody is
-    /// working on, or a package nobody ever published: there is no registry entry to name it
-    /// by, and the revision is as much a part of what is being installed as the repository is.
-    /// The two are asked for together, and the installation is the profile's usual one — a
-    /// `dsh plugin add` behind the progress dialog, with what went wrong reported there.
+    /// A repository is what somebody has when a plugin is a fork, a branch being worked on, or a
+    /// package nobody ever published: there is no registry entry to name it by, and the revision is
+    /// as much a part of what is installed as the repository is. A directory on this machine is what
+    /// somebody has while writing the plugin at all, and `file:` / `link:` are how the profile names
+    /// one. The address and the revision are asked for together, and the installation is the
+    /// profile's usual one — a `dsh plugin add` behind the progress dialog, with what went wrong
+    /// reported there.
     ///
-    /// Only the repository is checked for being there, which is the part the dialog can say;
-    /// whether the address can be written as a specification, whether the revision exists, and
-    /// whether the package builds are all settled by the work, which says which of them failed.
-    private void installFromRepository() {
+    /// Only the address is checked for being there, which is the part the dialog can say; whether it
+    /// can be written as a specification, whether the revision exists, whether the directory holds a
+    /// package, and whether the package builds are all settled by the work, which says which of them
+    /// failed.
+    private void installFromSource() {
         Controllers.dialog(new PluginSourceDialog((source, handler) -> {
             if (source.repository() == null || source.repository().isBlank()) {
                 handler.reject(i18n("dsh.plugin.source.repository.empty"));
@@ -275,7 +278,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
             }
             handler.resolve();
             PluginInstalls.run(instance, progress ->
-                    DshGitPlugins.install(instance, source.repository(), source.reference(),
+                    DshPluginSources.install(instance, source.repository(), source.reference(),
                             progress::accept), this::refresh);
         }));
     }
@@ -300,7 +303,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 // branch, or a repository nobody published has a repository and a revision
                 // rather than a registry entry, and this is how one of those gets in.
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add.url"), SVG.PUBLIC,
-                        this::installFromRepository),
+                        this::installFromSource),
                 // The original's mod list also carries 下载, which leads to the list
                 // of what can be installed rather than to a file dialog; this is
                 // that, pointing at the download page's plugin tab. What the button
