@@ -371,7 +371,7 @@ public final class DshPluginCatalog {
     /// registry keeps this working when npm is missing.
     ///
     /// @return the registry's base address, without a trailing slash
-    private static String npmRegistry() {
+    static String npmRegistry() {
         try {
             DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
             if (runtime != null && runtime.npm() != null) {

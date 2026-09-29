@@ -108,6 +108,12 @@ class PageStringsTest {
             "download.install.success",
             "download.type.all",
             "dsh.market.dsh_version",
+            // The grouped version list: the heading of each group and the mark on a version
+            // that does not fit what the page is for.
+            "dsh.market.recommend",
+            "dsh.market.group",
+            "dsh.market.group.unclaimed",
+            "dsh.market.not_fitting",
             "dsh.market.fitting",
             "dsh.market.fitting.hidden",
             "dsh.instance.port.mode.global",

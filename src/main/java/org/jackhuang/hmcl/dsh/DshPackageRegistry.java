@@ -24,6 +24,8 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -185,6 +187,85 @@ public final class DshPackageRegistry {
 
         /// The registry could not be asked.
         UNKNOWN
+    }
+
+    /// Reads the registry's own document for a package.
+    ///
+    /// One request for everything a version list needs at once: which versions exist, when each was
+    /// published, which one each dist-tag points at, and what each declares it needs. Asking `npm
+    /// view` once per version is the same data at one process per version, which for a plugin with a
+    /// hundred releases is a hundred processes on a page that is only being looked at.
+    ///
+    /// The document is kept in memory for the session and on disk for later ones: a popular plugin's
+    /// is a few hundred kilobytes, and a page opened twice should not fetch it twice. A document that
+    /// cannot be fetched falls back to the kept copy — which is what a launcher that cannot reach the
+    /// registry can still draw from — and answers `null` when there is none.
+    ///
+    /// @param packageName the package
+    /// @param refresh     whether to fetch again rather than answer from memory
+    /// @return the document, or `null` when it could not be read
+    public static @Nullable JsonObject packument(String packageName, boolean refresh) {
+        if (!refresh) {
+            JsonObject known = PACKUMENTS.get(packageName);
+            if (known != null) {
+                return known;
+            }
+        }
+
+        String address = DshPluginCatalog.npmRegistry() + "/" + packageName.replace("/", "%2f");
+        Path kept = DshPluginCatalog.cachedFile(address);
+        String body = null;
+        try {
+            body = org.jackhuang.hmcl.util.io.NetworkUtils.doGet(java.net.URI.create(address));
+            keep(kept, body);
+        } catch (IOException | RuntimeException e) {
+            LOG.info("Could not read " + address + " (" + e.getMessage() + "); using the kept copy");
+            body = read(kept);
+        }
+        if (body == null) {
+            return null;
+        }
+
+        try {
+            JsonElement parsed = JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) {
+                return null;
+            }
+            JsonObject document = parsed.getAsJsonObject();
+            PACKUMENTS.put(packageName, document);
+            return document;
+        } catch (RuntimeException e) {
+            LOG.warning("The registry's document for " + packageName + " could not be read", e);
+            return null;
+        }
+    }
+
+    /// The documents read so far, by package.
+    private static final Map<String, JsonObject> PACKUMENTS = new java.util.concurrent.ConcurrentHashMap<>();
+
+    /// Keeps a copy of a document so a later fetch has something to fall back on.
+    ///
+    /// @param file where to keep it
+    /// @param body the document
+    private static void keep(Path file, String body) {
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, body);
+        } catch (IOException e) {
+            LOG.warning("Could not keep a copy at " + file, e);
+        }
+    }
+
+    /// Reads a kept copy.
+    ///
+    /// @param file the file
+    /// @return the document, or `null` when there is none
+    private static @Nullable String read(Path file) {
+        try {
+            return Files.isRegularFile(file) ? Files.readString(file) : null;
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /// Asks the registry whether a package is published at a version.
