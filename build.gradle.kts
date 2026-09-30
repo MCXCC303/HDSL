@@ -358,7 +358,7 @@ launch4j {
     chdir = ""
     errTitle = "Hello DeepSeek! Launcher"
     downloadUrl = "https://adoptium.net/temurin/releases/?os=windows"
-    companyName = "HMCL-DSH contributors"
+    companyName = "HDSL contributors"
     fileDescription = "Hello DeepSeek! Launcher"
     productName = "Hello DeepSeek! Launcher"
     internalName = "HDSL"
