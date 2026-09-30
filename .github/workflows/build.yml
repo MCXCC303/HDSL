@@ -56,7 +56,17 @@ jobs:
       # approving the install scripts it asks about, are skipped there. The
       # launcher provisions a pnpm of its own for the instances a user makes; a
       # runner has none, so it is put on PATH here.
-      run: npm install --global pnpm
+      #
+      # Pinned, and its version printed. What those tests measure is an agreement
+      # with pnpm: where pnpm writes the entry for a build script nobody has
+      # answered for, and whether the launcher reads it there. That has differed
+      # between pnpm versions, so an unpinned runner would decide by itself
+      # whether this suite passes — and a failure would say nothing about the
+      # launcher. The version is printed so that a pinned version going stale is
+      # a line in the log rather than a mystery.
+      run: |
+        npm install --global pnpm@11.24.0
+        pnpm --version
     - name: Install test dependencies (Linux)
       # JavaFX needs GTK even under xvfb; without it the toolkit wedges and the
       # tests hang rather than fail. The t64 name is the one newer Ubuntu uses.

@@ -142,6 +142,20 @@ class DshBuildScriptsKeyTest {
         assertTrue(refused.text().contains("ERR_PNPM_IGNORED_BUILDS"), refused.text());
 
         // Two: the launcher reads it — the whole id, which is what an answer has to name.
+        //
+        // What was refused is recorded by the package manager itself, in the file read here: pnpm
+        // writes the entry with the placeholder that stands for "nobody has answered yet". **Where**
+        // it records that is the package manager's business, and it has differed between versions —
+        // 11.24.0 writes `allowBuilds` into this file — so the file is read before it is interpreted,
+        // and the two cases are told apart rather than both arriving as an empty answer. A pnpm that
+        // recorded nothing has nothing for any reader to find, and that is not this launcher's
+        // defect; a pnpm that recorded the question and a launcher that cannot read it is exactly
+        // what this test exists for. (The suite says which pnpm it was, so a skip is actionable.)
+        String recorded = Files.readString(profileFile(instance));
+        Assumptions.assumeTrue(recorded.contains("allowBuilds"),
+                "the pnpm at " + pnpm + " (" + pnpmVersion(pnpm) + ") recorded no refused build script "
+                        + "in " + profileFile(instance) + ", so there is nothing for the launcher to "
+                        + "read. It wrote: " + recorded);
         List<String> waiting = DshBuildScripts.unanswered(instance);
         assertEquals(1, waiting.size(), "one package is waiting: " + waiting);
         assertTrue(waiting.get(0).startsWith("build-script-probe@file:"),
@@ -157,6 +171,21 @@ class DshBuildScriptsKeyTest {
         assertTrue(Files.isRegularFile(profile.resolve("node_modules").resolve("build-script-probe")
                         .resolve("built.txt")),
                 "and the script ran: " + installed.text());
+    }
+
+    /// Returns what a pnpm says its version is, so a skipped run names the package manager it saw.
+    ///
+    /// Its version is the whole question when the two disagree about where a refused build script is
+    /// written, and a message saying only "nothing was recorded" leaves that to be guessed.
+    ///
+    /// @param pnpm the pnpm
+    /// @return its version, or what running it said instead
+    private static String pnpmVersion(Path pnpm) {
+        try {
+            return DshCommand.run(List.of(pnpm.toString(), "--version"), null, null).text().trim();
+        } catch (Exception e) {
+            return "version unknown: " + e;
+        }
     }
 
     /// Packs a package whose install script leaves a file behind.
