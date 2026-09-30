@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -128,7 +128,7 @@ class DshInstanceTerminalTest {
         assertEquals(shim, path.get(0), pathLine);
         assertEquals(bin.toString(), path.get(1), pathLine);
         // A session with no account carries no key.
-        assertFalse(script.contains(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE), script);
+        assertFalse(script.contains(DshAccountRoute.KEY_ENVIRONMENT_VARIABLE), script);
     }
 
     @Test
@@ -137,7 +137,7 @@ class DshInstanceTerminalTest {
         DshAccount account = new DshAccount("deepseek", "sk-test", null, null);
         String script = DshInstanceTerminal.scriptText(instance(Map.of()), account, runtime(bin));
 
-        assertTrue(script.contains(assignment(DshAccountOverlay.KEY_ENVIRONMENT_VARIABLE, "sk-test")),
+        assertTrue(script.contains(assignment(DshAccountRoute.environmentVariable(account.displayName()), "sk-test")),
                 script);
     }
 

@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1315,7 +1315,7 @@ public final class DshCli {
     /// @param out the stream to print to
     private static void printUsage(PrintStream out) {
         out.println("""
-                HMCL-DSH command line
+                HDSL command line
 
                 usage: hdsl <command> [options]
 

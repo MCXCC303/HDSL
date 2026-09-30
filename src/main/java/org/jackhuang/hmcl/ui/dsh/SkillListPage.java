@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -282,8 +282,9 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
                 ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.add"), SVG.ADD, this::onAdd),
                 // The original's pack list carries a download button, which leads to what
-                // can be installed rather than to a file dialog; this is that.
-                ToolbarListPageSkin.createToolbarButton2(i18n("mods.download"), SVG.DOWNLOAD,
+                // can be installed rather than to a file dialog; this is that, and it says
+                // what it downloads — a skill pack.
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.download"), SVG.DOWNLOAD,
                         this::openMarket),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.reveal"),
                         SVG.FOLDER_OPEN, this::reveal));

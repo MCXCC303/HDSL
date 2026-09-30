@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -235,14 +235,10 @@ public final class DshProcess {
         try {
             return new DshProcess(plan);
         } catch (DshException | RuntimeException e) {
-            // The plan wrote an account overlay, and the only thing that removes one is the state
-            // listener of a process that got as far as being registered. A launch that fails here —
-            // the process cannot be started, the workspace is gone — would leave the file behind for
-            // good: a few hundred bytes in the launcher's directory that nothing will ever look at
-            // again. Removing it is the same cleanup the listener would have done.
-            DshAccountOverlay.remove(plan.accountOverlay());
-            // The note the launch wrote goes with it, and putting back what the launch disturbed is
-            // part of the same cleanup.
+            // The note the plan wrote is the only thing a failed launch leaves behind, and putting
+            // back what it disturbed — the account's route in the profile patch, and the two shapes
+            // in the home's own settings — is the whole of this cleanup. A launch that never got as
+            // far as a process has no state listener to do it, so it is done here.
             try {
                 DshInjectedSettings.settle(plan.instance());
             } catch (DshException settleFailure) {

@@ -1,4 +1,4 @@
-# Dependency versions for HMCL-DSH.
+# Dependency versions for HDSL.
 #
 # This catalog is a trimmed copy of HMCL's own catalog: it keeps only the
 # libraries the transplanted UI kit actually imports. Everything tied to

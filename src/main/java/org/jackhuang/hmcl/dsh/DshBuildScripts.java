@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -100,16 +100,11 @@ public final class DshBuildScripts {
                         // Another top-level key ends the section.
                         break;
                     }
-                    int colon = keySeparator(trimmed);
-                    if (colon <= 0) {
+                    Entry entry = entryOf(line);
+                    if (entry == null) {
                         continue;
                     }
-                    String name = trimmed.substring(0, colon).trim();
-                    String value = trimmed.substring(colon + 1).trim();
-                    if (name.isEmpty()) {
-                        continue;
-                    }
-                    entries.add(new Pending(name, answerOf(value)));
+                    entries.add(new Pending(entry.name(), answerOf(entry.value())));
                 }
             }
         } catch (IOException e) {
@@ -162,15 +157,11 @@ public final class DshBuildScripts {
                 continue;
             }
 
-            int colon = keySeparator(trimmed);
-            if (colon <= 0) {
+            Entry entry = entryOf(line);
+            if (entry == null || !wanted.contains(entry.name())) {
                 continue;
             }
-            String name = trimmed.substring(0, colon).trim();
-            if (!wanted.contains(name)) {
-                continue;
-            }
-            lines.set(i, line.substring(0, line.indexOf(trimmed)) + name + ": " + allowed);
+            lines.set(i, line.substring(0, line.indexOf(trimmed)) + entry.name() + ": " + allowed);
             written++;
         }
 
@@ -213,6 +204,116 @@ public final class DshBuildScripts {
                 .map(Pending::name).toList();
     }
 
+    /// Records the entries a repository-hosted package needs, as questions.
+    ///
+    /// A plugin fetched from a repository is built by its own `prepare` script, and pnpm refuses
+    /// until the profile allows it. For those it writes nothing: the entry has to carry the address
+    /// the repository was resolved to, which only pnpm knows, so it names the entry in its failure
+    /// instead — and the launcher is what writes it. The placeholder written here is the same one
+    /// pnpm writes, so from this point the answer takes the path every other one takes: the
+    /// instance's setting decides, or the interface asks.
+    ///
+    /// An entry the file already holds is left exactly as it is, whatever it says: an answer
+    /// somebody gave is not overwritten because a package manager asked again.
+    ///
+    /// @param instance the instance
+    /// @param keys     the entries pnpm named
+    /// @return how many were added
+    /// @throws DshException when the profile cannot be read or written
+    public static int propose(DshInstance instance, List<String> keys) throws DshException {
+        Path workspace = workspaceFile(instance);
+        if (keys.isEmpty() || !Files.isRegularFile(workspace)) {
+            // A profile with no settings file is one the package manager has not written yet;
+            // creating one here would be inventing settings rather than answering a question.
+            return 0;
+        }
+
+        Set<String> known = new LinkedHashSet<>();
+        for (Pending entry : pending(instance)) {
+            known.add(entry.name());
+        }
+        List<String> added = new ArrayList<>();
+        for (String key : keys) {
+            if (known.add(key)) {
+                added.add(key);
+            }
+        }
+        if (added.isEmpty()) {
+            return 0;
+        }
+
+        List<String> lines;
+        try {
+            lines = new ArrayList<>(Files.readAllLines(workspace, StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            throw new DshException("Failed to read " + workspace, e);
+        }
+
+        // Where a new entry belongs: after the last line of the allowBuilds section, or at the end
+        // of the file when there is no section yet.
+        int insertAt = -1;
+        boolean inSection = false;
+        for (int i = 0; i < lines.size(); i++) {
+            String trimmed = lines.get(i).trim();
+            if (!inSection) {
+                if (trimmed.startsWith("allowBuilds:")) {
+                    inSection = true;
+                    insertAt = i + 1;
+                }
+                continue;
+            }
+            boolean indented = lines.get(i).startsWith(" ") || lines.get(i).startsWith("\t");
+            if (!indented && !trimmed.isEmpty()) {
+                break;
+            }
+            insertAt = i + 1;
+        }
+
+        List<String> written = new ArrayList<>();
+        for (String key : added) {
+            written.add("  " + key + ": " + PLACEHOLDER);
+        }
+        if (insertAt >= 0) {
+            lines.addAll(insertAt, written);
+        } else {
+            if (!lines.isEmpty() && !lines.get(lines.size() - 1).isBlank()) {
+                lines.add("");
+            }
+            lines.add("allowBuilds:");
+            lines.addAll(written);
+        }
+
+        writeAtomically(workspace, String.join("\n", lines) + "\n");
+        LOG.info("Recorded " + added.size() + " build script question(s) in " + workspace);
+        return added.size();
+    }
+
+    /// One entry on a line inside `allowBuilds`.
+    ///
+    /// @param name  the package or key
+    /// @param value what the file says about it
+    private record Entry(String name, String value) {
+    }
+
+    /// Reads one line inside `allowBuilds`, or `null` when it is not an entry.
+    ///
+    /// The split is on the **last** `": "`, because a key may hold one: pnpm names a
+    /// repository-hosted package by the address it resolved the repository to,
+    /// `name@https://host/…`, and splitting on the first colon would cut that address in half and
+    /// lose the entry.
+    ///
+    /// @param line the line
+    /// @return the entry, or `null`
+    private static @Nullable Entry entryOf(String line) {
+        String trimmed = line.trim();
+        int colon = trimmed.lastIndexOf(": ");
+        if (colon <= 0) {
+            return null;
+        }
+        String name = trimmed.substring(0, colon).trim();
+        return name.isEmpty() ? null : new Entry(name, trimmed.substring(colon + 2).trim());
+    }
+
     /// Returns the profile's package-manager settings.
     ///
     /// @param instance the instance
@@ -239,27 +340,6 @@ public final class DshBuildScripts {
             return null;
         }
         return null;
-    }
-
-    /// Returns where an `allowBuilds` entry's key ends.
-    ///
-    /// The colon a space follows, which is where YAML puts a mapping's separator — not the first colon,
-    /// because the key is the package's id and an id that did not come from the registry carries one of
-    /// its own. pnpm writes a package installed from a file as
-    /// `build-script-probe@file:../pkg/build-script-probe-1.0.0.tgz: set this to true or false`, and a
-    /// reader that split at the first colon would call the package `build-script-probe@file`, write
-    /// that back as the answer, and leave the entry pnpm reads undecided: an approval that looks like
-    /// it worked, changes nothing, and quietly loses the id of the package it was about.
-    ///
-    /// @param entry the trimmed line
-    /// @return the index of the separator, or `-1` when there is none
-    private static int keySeparator(String entry) {
-        int separator = entry.indexOf(": ");
-        if (separator >= 0) {
-            return separator;
-        }
-        // A key with nothing after it: YAML reads that value as null, and the entry is still an entry.
-        return entry.endsWith(":") ? entry.length() - 1 : -1;
     }
 
     /// Writes a file by replacing it, so a half-written file is never read.

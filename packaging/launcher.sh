@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HMCL-DSH self-executing launcher for Linux.
+# HDSL self-executing launcher.
 #
 # This script is prepended to the application jar, so `"$0"` is the executable
 # itself. A zip reader finds the central directory at the end of the file, so
@@ -7,17 +7,17 @@
 #
 # This is the Linux artifact; the Windows one is the executable the build wraps
 # the same jar into, and the macOS one is the `.dmg` built by
-# `packaging/mac-packages.sh`. Unlike HMCL's launcher this one has no BSD
-# branch: it looks for a JDK 21+ and runs the jar.
+# `packaging/mac-packages.sh`. Unlike HMCL's launcher this one has no BSD or
+# Windows branches: it looks for a JDK 21+ and runs the jar.
 
 set -e
 
-_HMCLDSH_REQUIRED_JAVA=21
+_HDSL_REQUIRED_JAVA=21
 
 # Resolve a java executable: an explicit override, then JAVA_HOME, then PATH.
 find_java() {
-    if [ -n "${HMCLDSH_JAVA_HOME:-}" ] && [ -x "${HMCLDSH_JAVA_HOME}/bin/java" ]; then
-        echo "${HMCLDSH_JAVA_HOME}/bin/java"
+    if [ -n "${HDSL_JAVA_HOME:-}" ] && [ -x "${HDSL_JAVA_HOME}/bin/java" ]; then
+        echo "${HDSL_JAVA_HOME}/bin/java"
         return 0
     fi
     if [ -n "${JAVA_HOME:-}" ] && [ -x "${JAVA_HOME}/bin/java" ]; then
@@ -35,11 +35,11 @@ JAVA_EXE="$(find_java || true)"
 
 if [ -z "$JAVA_EXE" ]; then
     if [ -z "${LANG##zh_*}" ]; then
-        echo "HMCL-DSH 需要 Java ${_HMCLDSH_REQUIRED_JAVA} 或更高版本，但没有找到 java。" >&2
-        echo "请安装 JRE ${_HMCLDSH_REQUIRED_JAVA}+，或设置 JAVA_HOME。" >&2
+        echo "HDSL 需要 Java ${_HDSL_REQUIRED_JAVA} 或更高版本，但没有找到 java。" >&2
+        echo "请安装 JRE ${_HDSL_REQUIRED_JAVA}+，或设置 JAVA_HOME。" >&2
     else
-        echo "HMCL-DSH needs Java ${_HMCLDSH_REQUIRED_JAVA} or newer, but no java was found." >&2
-        echo "Install a JRE ${_HMCLDSH_REQUIRED_JAVA}+, or set JAVA_HOME." >&2
+        echo "HDSL needs Java ${_HDSL_REQUIRED_JAVA} or newer, but no java was found." >&2
+        echo "Install a JRE ${_HDSL_REQUIRED_JAVA}+, or set JAVA_HOME." >&2
     fi
     exit 1
 fi
@@ -52,11 +52,11 @@ JAVA_MAJOR="$("$JAVA_EXE" -XshowSettings:properties -version 2>&1 \
 case "$JAVA_MAJOR" in
     ''|*[!0-9]*) ;;
     *)
-        if [ "$JAVA_MAJOR" -lt "$_HMCLDSH_REQUIRED_JAVA" ]; then
+        if [ "$JAVA_MAJOR" -lt "$_HDSL_REQUIRED_JAVA" ]; then
             if [ -z "${LANG##zh_*}" ]; then
-                echo "HMCL-DSH 需要 Java ${_HMCLDSH_REQUIRED_JAVA} 或更高版本，当前是 Java ${JAVA_MAJOR}。" >&2
+                echo "HDSL 需要 Java ${_HDSL_REQUIRED_JAVA} 或更高版本，当前是 Java ${JAVA_MAJOR}。" >&2
             else
-                echo "HMCL-DSH needs Java ${_HMCLDSH_REQUIRED_JAVA}+, found Java ${JAVA_MAJOR}." >&2
+                echo "HDSL needs Java ${_HDSL_REQUIRED_JAVA}+, found Java ${JAVA_MAJOR}." >&2
             fi
             exit 1
         fi

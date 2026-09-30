@@ -1,5 +1,5 @@
-HMCL-DSH
-Copyright (C) 2026  HMCL-DSH contributors
+HDSL
+Copyright (C) 2026  HDSL contributors
 
 This program is a modified version of Hello Minecraft! Launcher (HMCL).
 
@@ -24,7 +24,7 @@ STATEMENT OF CHANGES  (GNU GPL v3, section 5(a) and section 7)
 
 The original work has been modified as follows:
 
-1.  Renamed.  The software is distributed under the name "HMCL-DSH", not
+1.  Renamed.  The software is distributed under the name "HDSL", not
     "HMCL" or "Hello Minecraft! Launcher", as required by the additional
     terms attached to HMCL under GNU GPL v3 section 7(c).
 
@@ -69,10 +69,10 @@ TRADEMARKS
 "Hello Minecraft! Launcher", "HMCL" and their logos are the property of their
 respective owners.  They are used in this file only to give credit and to
 satisfy the attribution requirements of the GNU General Public License.  Their
-use does not imply any endorsement of HMCL-DSH by the HMCL project.
+use does not imply any endorsement of HDSL by the HMCL project.
 
 "DeepSeek", "DeepSeek Harness" and "dsh" are the property of their respective
-owners.  HMCL-DSH is an independent, unofficial launcher and is not affiliated
+owners.  HDSL is an independent, unofficial launcher and is not affiliated
 with or endorsed by the DeepSeek Harness project.
 
 --------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,7 +23,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 ///
 /// Upstream ships no plugin store, no categories and no icons: plug-in
 /// discovery is plain npm, and the only metadata a bundle carries is its own
-/// `package.json`. The catalogue is therefore HMCL-DSH's own curated data set,
+/// `package.json`. The catalogue is therefore HDSL's own curated data set,
 /// the counterpart of the Forge/Fabric/NeoForge buttons in HMCL's installer
 /// list.
 ///

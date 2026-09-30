@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -74,7 +74,7 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists the DeepSeek Harness instances managed by HMCL-DSH.
+/// Lists the DeepSeek Harness instances managed by HDSL.
 ///
 /// An instance pins one installed `dsh` version together with the profile,
 /// working directory and `DSH_HOME` it runs against. Creating one is

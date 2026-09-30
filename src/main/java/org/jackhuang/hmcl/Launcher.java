@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The HMCL-DSH JavaFX application entry point.
+/// The HDSL JavaFX application entry point.
 ///
 /// Responsibilities are deliberately small: create the root page, hand it to
 /// the ported window decorator, apply the stylesheets and manage shutdown.
@@ -97,7 +97,7 @@ public final class Launcher extends Application {
         startLogging();
         org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
                 SettingsManager.settings().debugLogProperty().get());
-        LOG.info("HMCL-DSH " + Metadata.VERSION);
+        LOG.info("HDSL " + Metadata.VERSION);
         LOG.info("JavaFX version: " + System.getProperty("javafx.runtime.version"));
         LOG.info("User home: " + Metadata.HMCL_USER_HOME);
         LOG.info("Log folder: " + DshPaths.LOGS);

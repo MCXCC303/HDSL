@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -702,7 +702,7 @@ public final class DshPluginCatalog {
     /// registry keeps this working when npm is missing.
     ///
     /// @return the registry's base address, without a trailing slash
-    private static String npmRegistry() {
+    static String npmRegistry() {
         try {
             DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
             if (runtime != null && runtime.npm() != null) {

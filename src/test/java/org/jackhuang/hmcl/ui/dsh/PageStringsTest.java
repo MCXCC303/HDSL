@@ -110,6 +110,12 @@ class PageStringsTest {
             "download.install.success",
             "download.type.all",
             "dsh.market.dsh_version",
+            // The grouped version list: the heading of each group and the mark on a version
+            // that does not fit what the page is for.
+            "dsh.market.recommend",
+            "dsh.market.group",
+            "dsh.market.group.unclaimed",
+            "dsh.market.not_fitting",
             "dsh.market.fitting",
             "dsh.market.fitting.hidden",
             "dsh.instance.port.mode.global",
@@ -207,6 +213,15 @@ class PageStringsTest {
             // The plugin list's own entries.
             "dsh.instance.plugins.add",
             "dsh.instance.plugins.add.filter",
+            "dsh.instance.plugins.add.url",
+            "dsh.plugin.source.repository",
+            "dsh.plugin.source.repository.empty",
+            "dsh.plugin.source.reference",
+            "dsh.plugin.source.reference_unusable",
+            // The download buttons on the two lists: each says what it downloads, rather than
+            // borrowing the original's word for a mod.
+            "dsh.instance.plugins.download",
+            "dsh.instance.skills.download",
             // The batch toolbar on the plugin list.
             "button.remove",
             "button.remove.confirm",

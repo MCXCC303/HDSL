@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -75,7 +75,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// ┌ 实例意外退出 ─────────────────────────────┐   ← the window's own title
 /// │ 实例非正常退出。请查看日志文件，或联系他人寻求帮助。 │   ← the banner, in the accent colour
 /// │ 启动器   实例     DeepSeek Harness  操作系统  架构 │   ← a name with its value under it
-/// │ HMCL-DSH pokemon  0.1.5-alpha.2      Linux    x86-64
+/// │ HDSL pokemon  0.1.5-alpha.2      Linux    x86-64
 /// │                                                │   ← whatever `os.name` and the platform
 /// │                                                │      detector report on this machine
 /// │ 配置                                             │
@@ -338,7 +338,7 @@ public final class DshCrashDialog extends Stage {
         log.setDisable(process == null);
         log.setOnAction(event -> {
             if (process != null) {
-                new LogWindow(process.managedProcess(), process.windowLogs()).show();
+                new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id()).show();
             }
         });
         FXUtils.installFastTooltip(log, i18n("dsh.crash.view_log"));

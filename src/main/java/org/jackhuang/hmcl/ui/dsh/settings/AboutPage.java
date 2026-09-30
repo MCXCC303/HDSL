@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,7 +34,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /// The "about" tab of the launcher settings page.
 ///
-/// Reports the product identity, the running Java runtime and where HMCL-DSH
+/// Reports the product identity, the running Java runtime and where HDSL
 /// keeps its data. Attribution for the upstream HMCL project lives in the
 /// repository `NOTICE` file rather than in the UI.
 @NotNullByDefault
@@ -90,7 +90,7 @@ public final class AboutPage extends ScrollPane {
         return item;
     }
 
-    /// Builds the list of directories HMCL-DSH owns.
+    /// Builds the list of directories HDSL owns.
     ///
     /// @return the assembled component list
     private static ComponentList buildPathsList() {

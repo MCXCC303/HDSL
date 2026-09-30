@@ -27,6 +27,11 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    # A stuck test must cost minutes, not the runner's six-hour default: the
+    # toolkit tests are bounded in the suite and this is the bound on the job.
+    # Every build step carries a bound of its own, under this one.
+    timeout-minutes: 45
+
     steps:
     - uses: actions/checkout@v5
     - name: Set up JDK 21
@@ -85,6 +90,8 @@ jobs:
       if: runner.os == 'Windows'
       timeout-minutes: 30
     - name: Get short SHA
+      # The default shell on a Windows runner is PowerShell, which reads the
+      # redirect below as its own; the step asks for the shell that writes it.
       shell: bash
       run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> $GITHUB_ENV
     # The .sh embeds the host's JavaFX platform, so one per OS is kept.

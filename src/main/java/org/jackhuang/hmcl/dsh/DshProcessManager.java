@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -77,7 +77,7 @@ public final class DshProcessManager {
     private static final Object LAUNCH_LOCK = new Object();
 
     static {
-        Runtime.getRuntime().addShutdownHook(new Thread(DshProcessManager::stopAll, "HMCL-DSH shutdown"));
+        Runtime.getRuntime().addShutdownHook(new Thread(DshProcessManager::stopAll, "HDSL shutdown"));
     }
 
     /// Launches an instance, or returns the one already running for it.
@@ -146,13 +146,12 @@ public final class DshProcessManager {
             process.setStateListener(state -> {
                 if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
                     RUNNING.remove(instance.id(), process);
-                    // The account overlay belonged to this launch. Removing it here means an
-                    // instance that was started with a key is an instance with no trace of it once
-                    // it has stopped.
-                    DshAccountOverlay.remove(process.plan().accountOverlay());
-                    // And whatever this launch put into the home's own settings goes back to what it
+                    // Whatever this launch put into the home's own settings goes back to what it
                     // was, so the next launch — of any kind, with an account or with none — starts
                     // on the person's own configuration rather than on this launch's leftovers.
+                    // The account's route in the profile's patch layer goes back with it: that is
+                    // what `settle` puts back, and it is why a launch with a key leaves no trace of
+                    // it once the instance has stopped.
                     try {
                         DshInjectedSettings.settle(process.plan().instance());
                     } catch (DshException e) {

@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,7 +25,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
-/// The directory layout HMCL-DSH owns on disk.
+/// The directory layout HDSL owns on disk.
 ///
 /// Two distinct kinds of state live here and must not be confused:
 ///
@@ -41,7 +41,7 @@ public final class DshPaths {
     private DshPaths() {
     }
 
-    /// The root of all HMCL-DSH user data.
+    /// The root of all HDSL user data.
     public static final Path ROOT = Metadata.HMCL_USER_HOME;
 
     /// One directory per installed DeepSeek Harness version, each an npm prefix.
@@ -61,7 +61,7 @@ public final class DshPaths {
     /// Cached copies of remote catalogues such as the quick-install presets.
     public static final Path CATALOG = ROOT.resolve("catalog");
 
-    /// Where the launcher writes its own log, one file per run.
+    /// Where the launcher keeps logs: its own, and the ones a person exports from the log window.
     ///
     /// The launcher's log is a file rather than only a stream because the thing it is for is
     /// reading after the fact: the switch that turns the debug lines on says "in the launcher's
@@ -69,6 +69,11 @@ public final class DshPaths {
     /// afterwards. The name and the layout are [#org.jackhuang.hmcl.util.logging.Logger]'s, which
     /// is the transplanted HMCL logger and writes `2026-09-26T23-34-07.log` here, compressed to
     /// `.xz` when the run ends.
+    ///
+    /// What somebody exports from the log window lands here too. **Not** the process's working
+    /// directory, which is what an export relative to it amounts to: what somebody exports is
+    /// something they will look for again, and a file written into whatever directory the launcher
+    /// happened to be started in is a file they cannot find.
     public static final Path LOGS = ROOT.resolve("logs");
 
     /// Returns the npm prefix directory for a DeepSeek Harness version.
@@ -128,12 +133,6 @@ public final class DshPaths {
         return INSTANCES.resolve(segment(instanceId, "instance id"));
     }
 
-    /// Validates a string for use as a single path segment.
-    ///
-    /// @param value the candidate segment
-    /// @param what  a human-readable name for the value, used in the error message
-    /// @return the trimmed segment
-    /// @throws DshException when the value is empty or contains path separators
     /// Reports whether a value can be used as one segment of a path.
     ///
     /// The same rule [#segment(String, String)] enforces, asked in advance so that a

@@ -2021,7 +2021,7 @@
     -fx-text-fill: -monet-primary;
 }
 
-/* HMCL-DSH: heading row at the top of a versions card. */
+/* HDSL: heading row at the top of a versions card. */
 .line-text-pane.section-header > .container > .title {
     -fx-font-weight: bold;
 }
@@ -2029,7 +2029,7 @@
     -fx-padding: 8 10 4 10;
 }
 
-/* HMCL-DSH: plugin cards in the install wizard. */
+/* HDSL: plugin cards in the install wizard. */
 .installer-item-card {
     -fx-pref-width: 180px;
 }
@@ -2045,14 +2045,14 @@
     -fx-font-weight: bold;
 }
 
-/* HMCL-DSH: the chosen tile in the instance icon chooser. */
+/* HDSL: the chosen tile in the instance icon chooser. */
 .icon-tile-selected {
     -fx-border-color: -monet-primary;
     -fx-border-width: 2px;
     -fx-border-radius: 4;
 }
 
-/* HMCL-DSH: the auto-install list's name column. The original sizes it for its
+/* HDSL: the auto-install list's name column. The original sizes it for its
    own component names ("Fabric", "NeoForge"); the runtime this launcher lists is
    called DeepSeek Harness, and a truncated product name is worse than a column a
    few pixels wider. */

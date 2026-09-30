@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * Adapted from HMCL's packaging logic (CreateDeb), which is licensed under the
  * GNU General Public License version 3. See the NOTICE file for the full
@@ -32,22 +32,22 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
-/// Creates a Debian package for the current HMCL-DSH channel.
+/// Creates a Debian package for the current HDSL channel.
 ///
 /// ## Package layout
 ///
 /// The generated `data.tar.gz` contains four installed artifacts:
 ///
-/// - the self-executing application script under `/usr/share/java/hmcl-dsh/`
+/// - the self-executing application script under `/usr/share/java/hdsl/`
 /// - a channel-specific command under `/usr/bin/`
 /// - a desktop entry under `/usr/share/applications/`
 /// - the icon under `/usr/share/icons/hicolor/256x256/apps/`
 ///
 /// ## Channel commands and aliases
 ///
-/// Every package installs a channel-specific executable such as `hmcl-dsh` or
-/// `hmcl-dsh-beta`. The generic command is not shipped as a plain file;
-/// maintainer scripts register the channel command into a shared `hmcl-dsh`
+/// Every package installs a channel-specific executable such as `hdsl` or
+/// `hdsl-beta`. The generic command is not shipped as a plain file;
+/// maintainer scripts register the channel command into a shared `hdsl`
 /// alternatives group so several channel packages can coexist without file
 /// conflicts.
 public abstract class CreateDeb extends DefaultTask {
@@ -104,28 +104,28 @@ public abstract class CreateDeb extends DefaultTask {
     ///
     /// @return the absolute command path
     private String launcherPath() {
-        return "/usr/bin/hmcl-dsh-" + currentTypeName();
+        return "/usr/bin/hdsl-" + currentTypeName();
     }
 
     /// Returns the installed location of the application script.
     ///
     /// @return the absolute path
     private String targetPath() {
-        return "/usr/share/java/hmcl-dsh/" + getAppShFile().getAsFile().get().getName();
+        return "/usr/share/java/hdsl/" + getAppShFile().getAsFile().get().getName();
     }
 
     /// Returns the desktop entry path.
     ///
     /// @return the absolute path
     private String desktopFilePath() {
-        return "/usr/share/applications/hmcl-dsh-%s.desktop".formatted(currentTypeName());
+        return "/usr/share/applications/hdsl-%s.desktop".formatted(currentTypeName());
     }
 
     /// Returns the installed icon path.
     ///
     /// @return the absolute path
     private String iconTargetPath() {
-        return "/usr/share/icons/hicolor/256x256/apps/hmcl-dsh-%s.png".formatted(currentTypeName());
+        return "/usr/share/icons/hicolor/256x256/apps/hdsl-%s.png".formatted(currentTypeName());
     }
 
     /// Ensures parent directories exist in the tar stream before child entries.
@@ -288,11 +288,14 @@ public abstract class CreateDeb extends DefaultTask {
                 Architecture: all
                 Installed-Size: %d
                 Depends: default-jre-headless | java21-runtime-headless | java21-runtime
+                Replaces: %s
+                Breaks: %s
                 Description: DeepSeek Harness launcher
-                 HMCL-DSH installs, isolates and launches DeepSeek Harness versions
+                 HDSL installs, isolates and launches DeepSeek Harness versions
                  and profiles. It keeps the look of Hello Minecraft! Launcher.
                 Homepage: %s
                 """.formatted(currentType().getPackageName(), getVersion().get(), Math.max(installedSize, 1),
+                currentType().getReplacedPackageName(), currentType().getReplacedPackageName(),
                 getHomepage().get()) + "\n";
     }
 
@@ -300,7 +303,7 @@ public abstract class CreateDeb extends DefaultTask {
     ///
     /// @return the alternatives link path
     private static String commonLauncherPath() {
-        return "/usr/bin/hmcl-dsh";
+        return "/usr/bin/hdsl";
     }
 
     /// Registers the channel command into the shared alternatives group.
@@ -312,7 +315,7 @@ public abstract class CreateDeb extends DefaultTask {
                 set -e
 
                 if [ "$1" = configure ]; then
-                    update-alternatives --install %s hmcl-dsh %s %d
+                    update-alternatives --install %s hdsl %s %d
                 fi
                 """.formatted(commonLauncherPath(), launcherPath(), currentType().getAlternativesPriority());
     }
@@ -326,7 +329,7 @@ public abstract class CreateDeb extends DefaultTask {
                 set -e
 
                 if [ "$1" = remove ] || [ "$1" = deconfigure ]; then
-                    update-alternatives --remove hmcl-dsh %s
+                    update-alternatives --remove hdsl %s
                 fi
                 """.formatted(launcherPath());
     }

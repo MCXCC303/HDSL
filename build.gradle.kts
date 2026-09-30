@@ -1,10 +1,10 @@
-// HMCL-DSH — a DeepSeek Harness launcher built on HMCL's JavaFX UI kit.
+// HDSL — a DeepSeek Harness launcher built on HMCL's JavaFX UI kit.
 //
 // The presentation layer (window chrome, component library, animations, theme
 // engine, image pipeline, async task engine, i18n) is transplanted from HMCL
 // and kept under its original `org.jackhuang.hmcl.*` package names, as GPLv3
 // requires the original copyright notices to stay intact. Everything that
-// launched Minecraft has been removed; the domain layer is HMCL-DSH's own.
+// launched Minecraft has been removed; the domain layer is HDSL's own.
 
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jackhuang.hmcl.gradle.pack.CreateDeb
@@ -67,7 +67,7 @@ version = taggedVersion ?: run {
 }
 
 application {
-    // HMCL-DSH application entry point.
+    // HDSL application entry point.
     mainClass = "org.jackhuang.hmcl.Main"
 }
 
@@ -85,7 +85,7 @@ repositories {
 }
 
 // --------------------------------------------------------------- JavaFX ------
-// HMCL-DSH runs on Windows, Linux and macOS. JavaFX must match the JDK that runs
+// HDSL runs on Windows, Linux and macOS. JavaFX must match the JDK that runs
 // Gradle: the 21.x line supports JDK 17–22, the 25 line is required from JDK 23
 // on. This mirrors HMCL's own JavaFXPlatform.CLASSIC/MODERN split without
 // carrying its buildSrc plugin.
@@ -93,6 +93,9 @@ val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run 
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
     val isMac = os.contains("mac") || os.contains("darwin") || os.contains("osx")
+    // No `require` that the host is Linux or macOS: Windows is a host this build
+    // packages for, and the `when` below is what tells hosts apart — its `else`
+    // is the one place that names every platform the build knows.
     when {
         os.contains("windows") -> when (arch) {
             // OpenJFX publishes no win-aarch64 build; Windows on ARM runs the
@@ -111,7 +114,7 @@ val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run 
             "x86_64", "amd64" -> "linux"
             else -> error("Unsupported Linux architecture: $arch")
         }
-        else -> error("HMCL-DSH supports Windows, Linux and macOS (detected os.name=$os)")
+        else -> error("HDSL supports Windows, Linux and macOS (detected os.name=$os)")
     }
 }
 
@@ -173,6 +176,13 @@ tasks.test {
         showCauses = true
         showStackTraces = true
     }
+    // A bound on every test, so a machine that cannot run one fails in minutes instead of holding the
+    // runner. The toolkit tests are bounded apart from this, in `FxToolkit`: a class initialiser that
+    // never returns is a place no JUnit bound reaches. The name matters —
+    // `junit.jupiter.execution.timeout.default` is the key JUnit reads, and `…method.default` is not a
+    // key at all, which is a bound nobody reads.
+    systemProperty("junit.jupiter.execution.timeout.default", "120s")
+    systemProperty("junit.jupiter.execution.timeout.threaddump.enabled", "true")
     // The launcher keeps its state in one per-user home, and a test that writes
     // settings must not write into the one the user is running. Tests get a home
     // of their own inside the build tree, which is also what makes them able to
@@ -199,7 +209,7 @@ tasks.test {
 }
 
 // --------------------------------------------------------------- resources ---
-// HMCL generates this list at build time. HMCL-DSH does the same, so the
+// HMCL generates this list at build time. HDSL does the same, so the
 // language picker can never drift from the .properties files actually shipped.
 //
 // Registered through `tasks.register` rather than the `by tasks.registering`
@@ -233,7 +243,7 @@ sourceSets.main {
 
 // ------------------------------------------------------------- toolchain -----
 java {
-    // HMCL-DSH requires JDK 21+. We do not pin a toolchain so the build works
+    // HDSL requires JDK 21+. We do not pin a toolchain so the build works
     // with whichever >= 21 JDK the developer has active (Arch: `archlinux-java`).
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
@@ -303,7 +313,7 @@ tasks.named<ShadowJar>("shadowJar") {
     manifest {
         attributes(
             "Main-Class" to "org.jackhuang.hmcl.Main",
-            "Implementation-Title" to "HMCL-DSH",
+            "Implementation-Title" to "HDSL",
             "Implementation-Version" to project.version.toString(),
         )
     }

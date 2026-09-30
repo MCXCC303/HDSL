@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -48,7 +48,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// Owns the application stage, the window decorator and the dialog helpers the
 /// ported component library calls into.
 ///
-/// This is the HMCL-DSH replacement for HMCL's `Controllers`: same entry points,
+/// This is the HDSL replacement for HMCL's `Controllers`: same entry points,
 /// but without the Minecraft page registry, account dialogs or update checker.
 @NotNullByDefault
 public final class Controllers {
@@ -393,7 +393,7 @@ public final class Controllers {
 
     /// Handles a hyperlink click coming from rendered rich text.
     ///
-    /// HMCL-DSH has no in-application URI scheme yet, so every link is handed
+    /// HDSL has no in-application URI scheme yet, so every link is handed
     /// to the desktop or copied to the clipboard.
     ///
     /// @param href the link target

@@ -1,4 +1,4 @@
-// Build logic for HMCL-DSH packaging. Kept minimal on purpose: unlike HMCL's
+// Build logic for HDSL packaging. Kept minimal on purpose: unlike HMCL's
 // buildSrc this only needs the archive writers used to produce a .deb.
 repositories {
     mavenCentral()

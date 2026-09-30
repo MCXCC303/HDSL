@@ -1159,6 +1159,8 @@ public final class Themes {
     ///
     /// @param stage the stage retaining the registration, accessed on the JavaFX application thread
     public static void applyNativeDarkMode(Stage stage) {
+        // Windows 11 is where this does anything: on Linux and macOS the stage
+        // is already drawn by the toolkit, and there is no frame to recolour.
         if (stage.getProperties().containsKey(NATIVE_DARK_MODE_LISTENER)) {
             return;
         }

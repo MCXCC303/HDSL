@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@ import javafx.scene.control.Skin;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import org.jackhuang.hmcl.dsh.DshException;
+import org.jackhuang.hmcl.dsh.DshPluginSources;
 import org.jackhuang.hmcl.dsh.DshInstance;
 import org.jackhuang.hmcl.dsh.DshLocalPlugins;
 import org.jackhuang.hmcl.dsh.DshPluginInstaller;
@@ -260,6 +261,33 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 DshLocalPlugins.install(instance, file, progress::accept), this::refresh);
     }
 
+    /// Installs a plugin from the source a person names.
+    ///
+    /// A repository is what somebody has when a plugin is a fork, a branch being worked on, or a
+    /// package nobody ever published: there is no registry entry to name it by, and the revision is
+    /// as much a part of what is installed as the repository is. A directory on this machine is what
+    /// somebody has while writing the plugin at all, and `file:` / `link:` are how the profile names
+    /// one. The address and the revision are asked for together, and the installation is the
+    /// profile's usual one — a `dsh plugin add` behind the progress dialog, with what went wrong
+    /// reported there.
+    ///
+    /// Only the address is checked for being there, which is the part the dialog can say; whether it
+    /// can be written as a specification, whether the revision exists, whether the directory holds a
+    /// package, and whether the package builds are all settled by the work, which says which of them
+    /// failed.
+    private void installFromSource() {
+        Controllers.dialog(new PluginSourceDialog((source, handler) -> {
+            if (source.repository() == null || source.repository().isBlank()) {
+                handler.reject(i18n("dsh.plugin.source.repository.empty"));
+                return;
+            }
+            handler.resolve();
+            PluginInstalls.run(instance, progress ->
+                    DshPluginSources.install(instance, source.repository(), source.reference(),
+                            progress::accept), this::refresh);
+        }));
+    }
+
     /// Holds the list the page is drawn in, and gives the page the toolbar that
     /// acts on a selection.
     ///
@@ -276,10 +304,16 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
                 // plugin is a package, so the file is a packed one.
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add"), SVG.ADD,
                         this::installFromFile),
+                // The same package from wherever it is published: a plugin that is a fork, a
+                // branch, or a repository nobody published has a repository and a revision
+                // rather than a registry entry, and this is how one of those gets in.
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add.url"), SVG.PUBLIC,
+                        this::installFromSource),
                 // The original's mod list also carries 下载, which leads to the list
                 // of what can be installed rather than to a file dialog; this is
-                // that, pointing at the download page's plugin tab.
-                ToolbarListPageSkin.createToolbarButton2(i18n("mods.download"), SVG.DOWNLOAD,
+                // that, pointing at the download page's plugin tab. What the button
+                // says is what it downloads — a plugin, not a mod.
+                ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.download"), SVG.DOWNLOAD,
                         this::openMarket),
                 ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.reveal"), SVG.FOLDER_OPEN,
                         this::revealProfile));

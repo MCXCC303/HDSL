@@ -32,6 +32,7 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import org.jackhuang.hmcl.dsh.DshLogs;
 import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.theme.Themes;
@@ -42,13 +43,11 @@ import org.jackhuang.hmcl.util.Log4jLevel;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
 import org.jackhuang.hmcl.util.platform.SystemUtils;
+import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -86,14 +85,30 @@ public final class LogWindow extends Stage {
     private final LogWindowImpl impl;
     private final ManagedProcess gameProcess;
 
+    /// The instance these lines came from, or `null` when they came from none.
+    ///
+    /// Only the name of an export uses it, and an export is a file somebody has to be able to tell
+    /// apart from the others in the folder: the instance is what says which one it is.
+    private final @Nullable String instanceId;
+
     public LogWindow(ManagedProcess gameProcess) {
-        this(gameProcess, new CircularArrayList<>());
+        this(gameProcess, new CircularArrayList<>(), null);
     }
 
     public LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs) {
+        this(gameProcess, logs, null);
+    }
+
+    /// Creates the window.
+    ///
+    /// @param gameProcess the process whose output is shown
+    /// @param logs        the lines already collected
+    /// @param instanceId  the instance the lines came from, or `null`
+    public LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs, @Nullable String instanceId) {
         Themes.applyNativeDarkMode(this);
 
         this.logs = logs;
+        this.instanceId = instanceId;
         this.impl = new LogWindowImpl();
         setScene(new Scene(impl, 800, 480));
         StyleSheets.init(getScene());
@@ -221,9 +236,10 @@ public final class LogWindow extends Stage {
 
         private void onExportLogs() {
             thread(() -> {
-                Path logFile = Paths.get("minecraft-exported-logs-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")) + ".log").toAbsolutePath();
+                Path logFile;
                 try {
-                    Files.write(logFile, logs.stream().map(LogLine::getLog).collect(Collectors.toList()));
+                    logFile = DshLogs.write(LogWindow.this.instanceId,
+                            logs.stream().map(LogLine::getLog).collect(Collectors.toList()));
                 } catch (IOException e) {
                     LOG.warning("Failed to export logs", e);
                     return;
@@ -405,7 +421,7 @@ public final class LogWindow extends Stage {
                 JFXButton terminateButton = new JFXButton(i18n("logwindow.terminate_game"));
                 terminateButton.setOnAction(e -> getSkinnable().onTerminateGame());
 
-                // HMCL-DSH launches Node processes, so the JVM jstack dump action
+                // HDSL launches Node processes, so the JVM jstack dump action
                 // has no meaning here and is not offered.
 
                 JFXButton clearButton = new JFXButton(i18n("button.clear"));

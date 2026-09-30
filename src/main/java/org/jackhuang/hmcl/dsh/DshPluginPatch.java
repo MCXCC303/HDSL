@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -322,11 +322,14 @@ public final class DshPluginPatch {
     /// error a hand-edit runs into. The placeholder is commented out instead,
     /// and [withPlaceholderRestored] puts it back when the last entry goes.
     ///
+    /// Shared with [DshProfilePatch], which appends a row for an entry the file
+    /// does not mention yet: the placeholder is the same trap for both.
+    ///
     /// @param text  the patch text
     /// @param block the entry to append
     /// @return the updated text
     /// @throws DshException when the file is not an entry list
-    private static String appendEntry(String text, String block) throws DshException {
+    static String appendEntry(String text, String block) throws DshException {
         if (text.trim().isEmpty()) {
             return block;
         }

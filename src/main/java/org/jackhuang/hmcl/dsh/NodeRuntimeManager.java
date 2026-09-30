@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -50,7 +50,7 @@ import java.util.stream.Stream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Installs and enumerates the Node.js runtimes HMCL-DSH owns.
+/// Installs and enumerates the Node.js runtimes HDSL owns.
 ///
 /// This mirrors HMCL's Java runtime management: instead of depending on
 /// whatever the distribution ships, the launcher can fetch a specific Node

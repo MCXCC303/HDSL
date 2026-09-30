@@ -1,6 +1,6 @@
 /*
- * HMCL-DSH
- * Copyright (C) 2026  HMCL-DSH contributors
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -56,6 +56,6 @@ public enum DshHomeMode {
     /// The user names the home directory, typically to adopt an existing
     /// `~/.dsh` installation.
     ///
-    /// HMCL-DSH never moves or deletes anything in a custom home.
+    /// HDSL never moves or deletes anything in a custom home.
     CUSTOM
 }
