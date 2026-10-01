@@ -12,12 +12,25 @@ permissions:
 jobs:
 
   # The Windows artifacts are built by a Windows runner, because the executable
-  # has to be built with the platform's own JavaFX natives inside it. They are
-  # handed to the Linux job as an artifact, so the one `gh release create` there
-  # publishes the whole release from one directory.
+  # has to be built with the platform's own JavaFX natives inside it, and this job
+  # uploads them into the release itself rather than handing them to another job as
+  # an artifact.
+  #
+  # `needs: release` is what makes that upload safe: `gh release upload` fails on a
+  # tag with no release behind it, and a Windows build is not reliably slower than
+  # the Linux one, so there is no ordering to fall back on. The dependency is not
+  # the other way round — a Windows runner that wedges must not cost the Linux and
+  # macOS packages their release, which is the reason the macOS job below waits
+  # for nothing either.
   release-windows:
 
+    needs: release
     runs-on: windows-latest
+
+    # A bound on the job, the way `build.yml` bounds each of its steps: a runner
+    # that cannot get through this reports inside the hour instead of holding the
+    # release for the runner's six-hour default.
+    timeout-minutes: 45
 
     steps:
     - uses: actions/checkout@v5
@@ -53,6 +66,7 @@ jobs:
       # which is what the backslash is for; the runner's own desktop session
       # is what the JavaFX tests run under.
       run: .\gradlew.bat clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
+      timeout-minutes: 30
     # The plain jar travels beside the executable, the way HMCL publishes its
     # own: both are built here, on a Windows runner, so both carry the Windows
     # JavaFX. The jar is for the people who would rather run `java -jar` (or
@@ -66,16 +80,25 @@ jobs:
         ( cd dist && sha256sum "hdsl-${VERSION}.jar" > "hdsl-${VERSION}.jar.sha256" )
         ls -l dist
 
-    - name: Upload the Windows artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: windows-dist
-        path: dist/*
+    # `--clobber` for the reason the macOS job gives below: a re-run of this job
+    # replaces what the previous attempt uploaded rather than failing on it.
+    - name: Upload the Windows packages
+      shell: bash
+      run: |
+        gh release upload "${GITHUB_REF_NAME}" \
+          "dist/hdsl-${VERSION}.exe" \
+          "dist/hdsl-${VERSION}.exe.sha256" \
+          "dist/hdsl-${VERSION}.jar" \
+          "dist/hdsl-${VERSION}.jar.sha256" \
+          --clobber
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   release:
 
-    needs: release-windows
     runs-on: ubuntu-latest
+
+    timeout-minutes: 45
 
     steps:
     - uses: actions/checkout@v5
@@ -127,6 +150,7 @@ jobs:
       run: xvfb-run --auto-servernum ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
       env:
         JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      timeout-minutes: 30
     # appimagetool is an AppImage itself; the released one is used rather than a
     # distribution package so the packages are built by the same tool everywhere.
     - name: Fetch appimagetool
@@ -155,16 +179,10 @@ jobs:
         # The two Gradle writes go beside them, so one directory holds the whole release.
         cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
 
-    - name: Take the Windows artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: windows-dist
-        path: dist
-
     # The note a release goes public with is written by the `release-note` job below, once every
     # asset — and every `.sha256` beside it — is in the release. Nothing is written here because
     # nothing here can see the whole release: Gradle's two artifacts are summed a step after this
-    # point, and the macOS packages arrive from a job that runs beside this one.
+    # point, and the macOS and Windows packages arrive from jobs that run beside this one.
 
     - name: Sum the Gradle artifacts
       run: |
@@ -177,9 +195,11 @@ jobs:
 
     - name: Create the release
       run: |
-        # The assets are listed by glob rather than by name so that a file the runner did not build is
-        # simply absent: `gh release create` fails the whole release over one path that does not exist,
-        # and the AppImage depends on a tool fetched over the network.
+        # `gh release create` fails the whole release over one path that does not exist, so the list is
+        # exactly what this job built and nothing more: the Arch package's name is read back and checked
+        # a step above, and an AppImage that was not built fails the fetch it depends on rather than
+        # this. The Windows and macOS assets are added by the jobs that build them, which is why none
+        # of them is named here.
         gh release create "${GITHUB_REF_NAME}" \
           dist/hdsl-${VERSION}-linux-x64.tar.zst \
           dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256 \
@@ -189,10 +209,6 @@ jobs:
           dist/HDSL-${VERSION}-x86_64.AppImage.sha256 \
           dist/hdsl-${VERSION}.deb \
           dist/hdsl-${VERSION}.deb.sha256 \
-          dist/hdsl-${VERSION}.exe \
-          dist/hdsl-${VERSION}.exe.sha256 \
-          dist/hdsl-${VERSION}.jar \
-          dist/hdsl-${VERSION}.jar.sha256 \
           dist/hdsl-${VERSION}.sh \
           dist/hdsl-${VERSION}.sh.sha256 \
           --target "${{ github.sha }}" \
@@ -207,7 +223,7 @@ jobs:
   # macos-latest covering Apple Silicon and macos-26-intel covering Intel.
   #
   # Deliberately no `needs: release`. A release is created by one job and added
-  # to by the other, and `gh release upload` is incremental, so nothing here
+  # to by the others, and `gh release upload` is incremental, so nothing here
   # depends on the Linux job having run first. Waiting for it would only mean
   # that a Mac failure leaves a published release missing half its assets —
   # the release goes public the moment the Linux job creates it, whether or not
@@ -220,17 +236,19 @@ jobs:
 
     runs-on: ${{ matrix.os }}
 
+    timeout-minutes: 45
+
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Set up JDK 21
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: '21'
     - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      uses: gradle/actions/setup-gradle@v5
       with:
         cache-cleanup: never
 
@@ -245,6 +263,7 @@ jobs:
       run: ./gradlew clean build -PreleaseVersion=${{ env.VERSION }} --no-daemon --parallel
       env:
         JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+      timeout-minutes: 30
 
     - name: Build the macOS packages
       run: |
@@ -269,24 +288,27 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # The note a release goes public with cannot be written while the release is being built: Gradle's
-  # two artifacts are summed one step after the Linux job would write it, and the macOS packages are
-  # built and uploaded by a job of their own that runs beside that one. So it is written here, once
-  # every asset — and every `.sha256` beside it — is in the release, and put in place with
-  # `gh release edit`.
+  # two artifacts are summed one step after the Linux job would write it, and the macOS and Windows
+  # packages are built and uploaded by jobs of their own. So it is written here, once every asset —
+  # and every `.sha256` beside it — is in the release, and put in place with `gh release edit`.
   #
   # A row with no checksum to read is an artifact the runner did not build, which is the only thing
-  # `pending` means here; `needs` and `always()` are what make that true for a Mac that failed without
-  # costing the Linux packages their table.
+  # `pending` means here; `needs` and `always()` are what make that true for a Mac or a Windows runner
+  # that failed without costing the Linux packages their table. Every uploading job is named in
+  # `needs` for that reason — a job left out of it would have its assets arrive after the table was
+  # written, and a checksum that was correct when it was read is not one that is correct now.
   #
   # Nothing is checked out here — the job reads a release, not a tree — so every `gh` call names the
   # repository: without one, `gh` looks for `.git` to work out which repository is meant and fails
   # with "failed to run git: not a git repository", which is what this job did first.
   release-note:
 
-    needs: [release, release-mac]
+    needs: [release, release-mac, release-windows]
     if: always() && needs.release.result == 'success'
 
     runs-on: ubuntu-latest
+
+    timeout-minutes: 15
 
     steps:
     - name: Take the version from the tag
