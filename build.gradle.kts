@@ -23,9 +23,10 @@ group = "org.jackhuang.hmcl"
 
 // The version a build with no tag to stand on carries. A release takes its version from the
 // tag, `-PreleaseVersion=1.2.3`; a build whose own commit is tagged takes the tag's version; a
-// build past a tag carries that tag's version plus the commit it came from, `0.2.0+g1a613c5`,
-// so a package built here is never mistaken for one a tag published. Only a repository with no
-// tags at all falls back to this.
+// build past a tag carries that tag's version, how many commits past it stands, and the commit
+// it came from, `0.2.0+r42+g1a613c5`, so a package built here is never mistaken for one a tag
+// published and two builds of one commit are one version. Only a repository with no tags at all
+// falls back to this.
 val untaggedVersion = "0.1.0"
 
 // Runs git in the repository and returns its trimmed output, or null when git is
