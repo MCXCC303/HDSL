@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,6 +35,12 @@ import java.util.function.Supplier;
 /// global setting takes effect without a restart.
 @NotNullByDefault
 public final class DshEnvironment {
+    /// The variable the launcher states, and the only one it refuses to have taken over.
+    ///
+    /// Spelled here rather than reached for through [DshLaunchArguments]'s prefix, because the two
+    /// have to refuse the same name and the name is not that class's to own.
+    static final String HOMEDIRECTORY_VARIABLE = "DSH_HOME";
+
     private DshEnvironment() {
     }
 
@@ -71,6 +78,23 @@ public final class DshEnvironment {
 
     /// Returns the variables an instance runs with.
     ///
+    /// The launcher's own set first and the instance's over it, so an instance states what it
+    /// overrides rather than repeating what it inherits.
+    ///
+    /// **`DSH_HOME` is refused here, and that is the point of this method existing at all.** The
+    /// launch states the home itself, and the sets a person edits reach the child *after* that
+    /// statement — so a `DSH_HOME=` typed into either environment box silently moved the instance
+    /// to another home, with no message anywhere. Measured: the child of an instance whose home was
+    /// `…\environment-windows\home` reported `DSH_HOME=…\decoy-home`. The same move through the
+    /// command line is refused out loud by [DshLaunchArguments], and the two cannot disagree: what
+    /// belongs to the launcher is the same thing whichever door it comes through. What is at stake
+    /// is the instance's own profiles, credentials and sessions, which is exactly what the home
+    /// decides — and its port's origin, since the browser keys its stored state by that too.
+    ///
+    /// A refusal is quiet rather than fatal: the environment box is edited as free text and saved on
+    /// every keystroke, so a half-typed `DSH_HOME` must not fail a launch. The line is dropped, said
+    /// in the log, and the instance still starts on its own home.
+    ///
     /// @param instance the instance
     /// @return the variables, never `null`
     public static Map<String, String> of(DshInstance instance) {
@@ -78,13 +102,41 @@ public final class DshEnvironment {
         try {
             Map<String, String> launcherWide =
                     org.jackhuang.hmcl.setting.SettingsManager.settings().globalEnvironment();
-            merged.putAll(launcherWide);
+            putRefusingTheLaunchersOwn(merged, launcherWide);
         } catch (RuntimeException e) {
             org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
                     "Could not read the launcher's environment", e);
         }
-        merged.putAll(instance.environment());
+        putRefusingTheLaunchersOwn(merged, instance.environment());
         return merged;
+    }
+
+    /// Copies a set into another, dropping the variables the launcher states for itself.
+    ///
+    /// @param target the map to add to
+    /// @param source the set as the person wrote it
+    private static void putRefusingTheLaunchersOwn(Map<String, String> target,
+                                                   Map<String, String> source) {
+        for (Map.Entry<String, String> entry : source.entrySet()) {
+            if (isReserved(entry.getKey())) {
+                org.jackhuang.hmcl.util.logging.Logger.LOG.warning(
+                        "Not setting " + entry.getKey() + ": the launcher states it for the instance");
+                continue;
+            }
+            target.put(entry.getKey(), entry.getValue());
+        }
+    }
+
+    /// Reports whether a variable name is one the launcher states rather than the person.
+    ///
+    /// Compared without regard to case, because that is how Windows treats an environment: a
+    /// `dsh_home` would otherwise be a second spelling of the variable this class refuses, and it
+    /// would win on the machine this launcher is used on most.
+    ///
+    /// @param name the variable name
+    /// @return whether it belongs to the launcher
+    static boolean isReserved(@Nullable String name) {
+        return name != null && HOMEDIRECTORY_VARIABLE.equalsIgnoreCase(name.trim());
     }
 
     /// Parses a set written as lines of `NAME=VALUE`.

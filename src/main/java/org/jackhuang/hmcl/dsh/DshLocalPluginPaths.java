@@ -135,7 +135,7 @@ public final class DshLocalPluginPaths {
                         continue;
                     }
                     String text = Files.readString(file, StandardCharsets.UTF_8);
-                    String rewritten = rewrite(text, oldDirectory.toString(), newDirectory.toString());
+                    String rewritten = rewritePaths(text, oldDirectory, newDirectory);
                     if (rewritten.equals(text)) {
                         continue;
                     }
@@ -173,6 +173,40 @@ public final class DshLocalPluginPaths {
         try (Stream<Path> entries = Files.list(profiles)) {
             return entries.filter(Files::isDirectory).sorted().toList();
         }
+    }
+
+    /// Replaces the directory an instance used to live in with the one it lives in now,
+    /// in every form a record may hold it.
+    ///
+    /// A JSON manifest escapes a backslash, so on Windows the directory appears there
+    /// doubled (`C:\\…\\id`); a lockfile quotes it plainly (`C:\…\id`); and a tool that
+    /// normalises separators writes it with forward slashes (`C:/…/id`). All three are
+    /// the same directory, and a rewrite that reaches only one of them leaves a renamed
+    /// Windows instance exactly as stuck as an unrenamed one.
+    ///
+    /// @param text the record
+    /// @param from the directory the paths were recorded against
+    /// @param to   the directory they belong to now
+    /// @return the record, with those paths moved
+    private static String rewritePaths(String text, Path from, Path to) {
+        String moved = rewrite(text, from.toString(), to.toString());
+        String escapedFrom = jsonEscaped(from.toString());
+        if (!escapedFrom.equals(from.toString())) {
+            moved = rewrite(moved, escapedFrom, jsonEscaped(to.toString()));
+        }
+        String slashedFrom = from.toString().replace('\\', '/');
+        if (!slashedFrom.equals(from.toString())) {
+            moved = rewrite(moved, slashedFrom, to.toString().replace('\\', '/'));
+        }
+        return moved;
+    }
+
+    /// Escapes a path the way a JSON document holds it.
+    ///
+    /// @param path the path, in the platform's own separators
+    /// @return the path as JSON text, with its backslashes and quotes doubled
+    private static String jsonEscaped(String path) {
+        return path.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /// Replaces the directory an instance used to live in with the one it lives in now.

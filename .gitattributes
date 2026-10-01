@@ -1,0 +1,20 @@
+# 换行符规则：本仓库同时供 Windows、Linux、macOS 使用。
+#
+# 为什么不能只写 `text=auto`：它只决定「提交时是否把文本归一成 LF」，检出时用什么换行
+# 由 `core.eol` 决定，而它的默认值是「各平台自己的」。也就是说光有 `text=auto`，
+# 同一份 .java / .sh 在 Windows 上检出成 CRLF、在 Linux 和 macOS 上是 LF，
+# diff、校验和与 CI 比对都会随平台漂移。下面把 eol 也写死：文本一律按 LF 检出，
+# 只有 Windows 的批处理是 CRLF。这正是三端合一仓库需要的，也是这个文件存在的理由。
+* text=auto eol=lf
+
+# Windows 批处理用 CRLF：这是 Windows 自己的惯例，且 cmd.exe 是按字节偏移解析批处理
+# 文件的，纯 LF 的 .bat/.cmd 在 goto / 标签查找上有过已知异常。本机实测这份 gradlew.bat
+# 用 LF 也能跑，但让批处理保持 Windows 的原生换行，比依赖边角行为便宜。
+#
+# gradlew.bat 必须留在仓库里：它是 Windows 上唯一的入口，CI 就是这么调它的
+# （.github/workflows/build.yml 与 release.yml 里的 `.\gradlew.bat build`）。
+# 它自首次提交起就是以 CRLF 存进来的，加上本文件后 Git 会把它归一成「仓库里 LF、
+# 检出 CRLF」——这会在 diff 里表现为一次整文件的换行改动，没有功能变化，是一次性的。
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew.bat text eol=crlf

@@ -132,6 +132,32 @@ public final class LauncherSettings {
         return pluginCatalogUrl;
     }
 
+    /// Every place the plugin catalogue is read from, in the order they are tried.
+    ///
+    /// A list rather than one address, because one host serving one JSON document
+    /// is one point of failure and one list of plugins: a mirror is what a network
+    /// that cannot reach the community host needs, and a second community
+    /// catalogue is what somebody who wants more plugins than one list holds
+    /// needs. An entry is an address or the name of an npm package that publishes
+    /// the same document.
+    ///
+    /// The order is the order of authority: the first source that lists a plugin
+    /// is the one the plugin's description, version and download count come from,
+    /// so putting a mirror first is how a person says "prefer this one".
+    private final javafx.collections.ObservableList<String> pluginCatalogSources =
+            javafx.collections.FXCollections.observableArrayList();
+
+    /// Returns the catalogue sources.
+    ///
+    /// Empty means the built-in pair — the community address and the npm package
+    /// that publishes the same document — which is what a launcher that has never
+    /// been asked keeps using.
+    ///
+    /// @return the property
+    public javafx.collections.ObservableList<String> pluginCatalogSourcesProperty() {
+        return pluginCatalogSources;
+    }
+
     /// Where the modpack market's index is read from, or empty for the one the ecosystem publishes.
     ///
     /// The same three-source arrangement the plugin catalogue has, and for the same reason: the market

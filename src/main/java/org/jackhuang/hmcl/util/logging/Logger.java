@@ -177,6 +177,17 @@ public final class Logger {
             return;
         }
 
+        // The raw file may already be gone: something outside this class removed it, or removed
+        // the directory it was in. That is not a failure to report — the run is over, and there is
+        // nothing left to compress — and trying anyway wrote a stack trace at the end of a run
+        // that had nothing wrong with it. Measured: the test suite deletes its own temporary home
+        // while the JVM is still up, and every such run ended with
+        // `NoSuchFileException: …/2026-09-27T00-30-00.log.xz` on standard error.
+        if (!Files.isRegularFile(logFile)) {
+            logWriter.close();
+            return;
+        }
+
         boolean failed = false;
         Path xzFile = logFile.resolveSibling(logFile.getFileName() + ".xz");
         try (XZOutputStream output = new XZOutputStream(Files.newOutputStream(xzFile), new LZMA2Options())) {
@@ -248,6 +259,15 @@ public final class Logger {
             }
         });
         loggerThread.setName("HMCL Logger Thread");
+        // A daemon thread, because the only thing that tells this one to stop is the shutdown hook
+        // below — and that hook only runs once the JVM is already exiting, which it cannot do while a
+        // non-daemon thread is still running. Left non-daemon the two wait for each other: closing the
+        // launcher's window ran the whole shutdown and then left the process behind, measured
+        // (`DestroyJavaVM` waiting, `HMCL Logger Thread` alive, minutes and hours after the window was
+        // gone), and a lingering launcher holds its own files open. Daemon keeps the flow the hook was
+        // written for: the hook queues the shutdown, joins this thread, and the log is flushed on the
+        // way out because daemon threads keep running while the hooks do.
+        loggerThread.setDaemon(true);
         loggerThread.start();
 
         Thread cleanerThread = new Thread(this::onExit);

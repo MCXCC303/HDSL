@@ -196,6 +196,11 @@ class DshLocalPluginPathsTest {
 
     /// Writes the profile records a local installation leaves behind.
     ///
+    /// The manifest holds its paths the way a package manager writes them, which is JSON:
+    /// on Windows that means a backslash arrives doubled. The lockfile below is written the
+    /// way that same package manager quotes YAML, plainly — the two records of one
+    /// installation genuinely differ, and the rewrite has to reach both.
+    ///
     /// @param instance     the instance
     /// @param oldDirectory the instance directory the records name
     /// @return the manifest that was written
@@ -224,8 +229,8 @@ class DshLocalPluginPathsTest {
                     }
                   }
                 }
-                """.formatted(INSIDE, plugins.resolve(INSIDE + "-1.0.0.tgz"),
-                OUTSIDE, ELSEWHERE, REGISTRY, INSIDE, REGISTRY);
+                """.formatted(INSIDE, jsonEscaped(plugins.resolve(INSIDE + "-1.0.0.tgz").toString()),
+                OUTSIDE, jsonEscaped(ELSEWHERE.toString()), REGISTRY, INSIDE, REGISTRY);
         Files.createDirectories(profile);
         Files.writeString(profile.resolve("package.json"), manifest);
         return manifest;
@@ -269,31 +274,55 @@ class DshLocalPluginPathsTest {
 
     /// Returns the text a rewrite is expected to produce.
     ///
+    /// Both spellings of the directory are replaced, the plain one and the JSON-escaped
+    /// one, because the records hold both and neither is allowed to survive a rename.
+    /// The second form is only tried where it differs from the first — on Linux it does
+    /// not, and running the same replacement twice would move a record twice over, for
+    /// the new directory carries the old one inside it as a prefix.
+    ///
     /// @param text the text as it was
     /// @param from the directory the paths were recorded against
     /// @param to   the directory they belong to now
     /// @return the text with those paths moved
     private static String expected(String text, Path from, Path to) {
-        return text.replace(from.toString(), to.toString());
+        String moved = text.replace(from.toString(), to.toString());
+        String escapedFrom = jsonEscaped(from.toString());
+        if (!escapedFrom.equals(from.toString())) {
+            moved = moved.replace(escapedFrom, jsonEscaped(to.toString()));
+        }
+        return moved;
+    }
+
+    /// Escapes a path the way the manifest's JSON holds it.
+    ///
+    /// @param path the path, in the platform's own separators
+    /// @return the path with its backslashes doubled, an identity on Linux
+    private static String jsonEscaped(String path) {
+        return path.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     /// Asserts that every path the manifest records inside the instance exists.
     ///
     /// This is the defect stated plainly: the profile has to keep naming a file that is there,
-    /// because that is what the next plugin operation resolves.
+    /// because that is what the next plugin operation resolves. The lines are matched with
+    /// forward slashes, because a manifest written on Windows holds its paths either way
+    /// and the assertion is about the file, not the spelling.
     ///
     /// @param manifest  the profile manifest
     /// @param directory the instance directory whose paths are checked
     /// @throws Exception when it cannot be read
     private static void assertResolves(Path manifest, Path directory) throws Exception {
-        String marker = "file:" + directory + "/";
+        String marker = "file:" + directory.toString().replace('\\', '/') + "/";
         int checked = 0;
         for (String line : Files.readAllLines(manifest, StandardCharsets.UTF_8)) {
-            int at = line.indexOf(marker);
+            // One or more backslashes become one slash, so the JSON-escaped spelling
+            // (`C:\\…`) and the plain one (`C:\…`) read the same way.
+            String readable = line.replaceAll("\\\\+", "/");
+            int at = readable.indexOf(marker);
             if (at < 0) {
                 continue;
             }
-            String spec = line.substring(at + "file:".length()).replaceAll("[\",\\s]+$", "");
+            String spec = readable.substring(at + "file:".length()).replaceAll("[\",\\s]+$", "");
             assertTrue(Files.isRegularFile(Path.of(spec)),
                     "the profile has to keep naming a file that is there, not " + spec);
             checked++;

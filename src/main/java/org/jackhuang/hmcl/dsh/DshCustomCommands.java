@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -61,17 +62,24 @@ public final class DshCustomCommands {
 
         LOG.info("Running the " + phase + " command of " + instance.id() + ": " + command);
         Map<String, String> environment = new LinkedHashMap<>();
-        environment.put("DSH_HOME", instance.homeDirectory().toString());
+        // The same three values the launch states, and the same refusal of a `DSH_HOME` typed into
+        // an environment box — read through [DshEnvironment#of], which is where that refusal lives.
+        // A command written to prepare or back up "the instance's home" has to operate on the
+        // instance's own home, and measured before this, it operated on whatever a variable named
+        // `DSH_HOME` said.
         environment.put("DSH_INSTANCE", instance.id());
         environment.put("DSH_VERSION", instance.version());
         environment.putAll(DshEnvironment.of(instance));
+        environment.put(DshEnvironment.HOMEDIRECTORY_VARIABLE, instance.homeDirectory().toString());
 
         try {
             // A command is a shell line, not a program and its arguments: that is what a
             // person types into the box, and splitting it here would take away the pipes,
-            // redirections and quoting they wrote.
+            // redirections and quoting they wrote. The shell that reads it is the system's
+            // own: `/bin/sh` where that is a thing, and `cmd.exe` — named by `ComSpec`,
+            // which Windows keeps pointed at it even when it has moved — where it is not.
             DshCommand.Result result = DshCommand.run(
-                    List.of("/bin/sh", "-c", command), instance.workspacePath(), environment, onLine);
+                    shellCommand(command), instance.workspacePath(), environment, onLine);
             if (result.exitCode() != 0) {
                 throw new DshException("The " + phase + " command exited with code "
                         + result.exitCode() + ": " + command);
@@ -100,5 +108,27 @@ public final class DshCustomCommands {
         } catch (DshException e) {
             LOG.warning(e.getMessage());
         }
+    }
+
+    /// Builds the command that hands a shell line to the system's shell.
+    ///
+    /// `/bin/sh -c` is the Linux spelling. Windows has no `/bin`, but its
+    /// command interpreter runs a line just as well: `cmd.exe /d /s /c` — `/d`
+    /// so no startup script of the machine's runs first, `/s` so the whole line
+    /// after `/c` is taken as it was typed, however it is quoted — and the
+    /// interpreter is named by `ComSpec` because that is where Windows itself
+    /// records which one to use.
+    ///
+    /// @param command the shell line
+    /// @return the program and its arguments
+    static List<String> shellCommand(String command) {
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+            String interpreter = System.getenv("ComSpec");
+            if (interpreter == null || interpreter.isBlank()) {
+                interpreter = "cmd.exe";
+            }
+            return List.of(interpreter, "/d", "/s", "/c", command);
+        }
+        return List.of("/bin/sh", "-c", command);
     }
 }

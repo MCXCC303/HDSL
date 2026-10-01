@@ -29,6 +29,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
+import org.jackhuang.hmcl.dsh.DshPaths;
 import org.jackhuang.hmcl.setting.LauncherSettings;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.setting.FontManager;
@@ -36,6 +37,7 @@ import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.WindowsNativeUtils;
 import org.jackhuang.hmcl.ui.dsh.MainPage;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.i18n.I18n;
@@ -54,16 +56,51 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// Everything DeepSeek Harness specific lives in `org.jackhuang.hmcl.dsh`.
 @NotNullByDefault
 public final class Launcher extends Application {
+    /// How many runs' logs are kept.
+    ///
+    /// The transplanted logger writes one file per run; keeping a handful means the run that
+    /// went wrong is still there after the next few, which is what somebody comparing a good
+    /// launch with a bad one needs. The original keeps its own count in the same way.
+    private static final int LOG_RETENTION = 10;
+
+    /// Whether the launcher's log has been started.
+    ///
+    /// Started before the interface, and once per process: the logger installs a worker thread
+    /// and a shutdown hook, and a second start would leave the first behind writing into a file
+    /// nothing names any more.
+    private static boolean loggingStarted;
+
     /// The root page created for this application run.
     private MainPage mainPage;
 
+    /// Starts the launcher's own log, once per run.
+    ///
+    /// Nothing logs until this runs: the logger holds the lines in memory and writes them from
+    /// its own thread, which **is** this class's business, because without it the switch that
+    /// asks for debug lines turns on a flag nothing reads, in a process nothing writes. That is
+    /// exactly what it did — the debug log setting was stored, read, and applied to a logger
+    /// that was never started, so turning it on changed nothing a person could see.
+    ///
+    /// Called from [#main] rather than from [#start] so that the lines written on the way to
+    /// the first frame are kept as well.
+    static void startLogging() {
+        if (loggingStarted) {
+            return;
+        }
+        loggingStarted = true;
+        org.jackhuang.hmcl.util.logging.Logger.LOG.setLogRetention(LOG_RETENTION);
+        org.jackhuang.hmcl.util.logging.Logger.LOG.start(DshPaths.LOGS);
+    }
+
     @Override
     public void start(Stage primaryStage) {
+        startLogging();
         org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
                 SettingsManager.settings().debugLogProperty().get());
         LOG.info("HDSL " + Metadata.VERSION);
         LOG.info("JavaFX version: " + System.getProperty("javafx.runtime.version"));
         LOG.info("User home: " + Metadata.HMCL_USER_HOME);
+        LOG.info("Log folder: " + DshPaths.LOGS);
 
         // The folders, the selected one and the instances inside it are observed
         // by the interface rather than looked up by it, so the manager that owns
@@ -78,6 +115,9 @@ public final class Launcher extends Application {
 
         FXUtils.setIcon(primaryStage);
         primaryStage.setTitle(Metadata.FULL_TITLE);
+        // What the taskbar pins, relaunches and groups under is the launcher's own
+        // Windows executable; a no-op everywhere that executable is not in play.
+        WindowsNativeUtils.installWindowsAppUserModelRelaunchProperties(primaryStage);
         primaryStage.show();
 
         String page = startPage();
@@ -131,6 +171,11 @@ public final class Launcher extends Application {
     ///
     /// @param args command-line arguments, currently unused
     public static void main(String[] args) {
+        // The log comes before everything else, including the scale: the lines written while the
+        // launcher is finding its feet — the settable scale among them — are the ones a run that
+        // fails on the way in is diagnosed from, and the logger keeps whatever it is handed
+        // before it starts and writes it once it has.
+        startLogging();
         setupUiScale();
         // Before the toolkit starts: the language every page will speak, and the text
         // rendering the renderer reads as it initialises.
@@ -188,10 +233,9 @@ public final class Launcher extends Application {
         float scale = Float.NaN;
 
         if (requested != null && !(requested = requested.trim()).isEmpty()) {
-            // Logged where the original logs it. Nothing comes of it as things
-            // stand — this launcher never starts its logger, so no level of it
-            // reaches the console or a file — but the value belongs on the
-            // record for when it does, and the message is the original's.
+            // Logged where the original logs it. The scale is read before the toolkit exists, so
+            // this line is one of the first the run's own log holds — which is what makes a
+            // window that came up the wrong size diagnosable after the fact.
             LOG.info("HMCL_UI_SCALE: " + requested);
 
             try {

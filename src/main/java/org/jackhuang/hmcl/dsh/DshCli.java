@@ -120,7 +120,16 @@ public final class DshCli {
         /// Prints the folders the launcher looks for instances in.
         LIST_DIRECTORIES(true),
         /// Adds a folder to that list.
-        ADD_DIRECTORY(false)
+        ADD_DIRECTORY(false),
+
+        /// Prints the places the plugin catalogue is read from.
+        LIST_PLUGIN_SOURCES(true),
+
+        /// Adds a place for the plugin catalogue to be read from.
+        ADD_PLUGIN_SOURCE(false),
+
+        /// Removes one, and puts the published pair back when the last is gone.
+        REMOVE_PLUGIN_SOURCE(false)
         ;
 
         /// Whether this command reports on the launcher itself rather than on something named.
@@ -201,6 +210,9 @@ public final class DshCli {
                 && !args.contains("--import-sessions")
                 && !args.contains("--list-directories")
                 && !args.contains("--add-directory")
+                && !args.contains("--list-plugin-sources")
+                && !args.contains("--add-plugin-source")
+                && !args.contains("--remove-plugin-source")
                 && !args.contains("--help")
                 && !args.contains("-h")) {
             return null;
@@ -254,6 +266,15 @@ public final class DshCli {
                 case "--list-directories" -> command = Command.LIST_DIRECTORIES;
                 case "--add-directory" -> {
                     command = Command.ADD_DIRECTORY;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--list-plugin-sources" -> command = Command.LIST_PLUGIN_SOURCES;
+                case "--add-plugin-source" -> {
+                    command = Command.ADD_PLUGIN_SOURCE;
+                    if (i + 1 < args.size()) positional.add(args.get(++i));
+                }
+                case "--remove-plugin-source" -> {
+                    command = Command.REMOVE_PLUGIN_SOURCE;
                     if (i + 1 < args.size()) positional.add(args.get(++i));
                 }
                 case "--import-sessions" -> {
@@ -502,6 +523,15 @@ public final class DshCli {
                 case ADD_DIRECTORY -> {
                     return addDirectory(invocation, out, err);
                 }
+                case LIST_PLUGIN_SOURCES -> {
+                    return listPluginSources(out);
+                }
+                case ADD_PLUGIN_SOURCE -> {
+                    return addPluginSource(invocation, out, err);
+                }
+                case REMOVE_PLUGIN_SOURCE -> {
+                    return removePluginSource(invocation, out, err);
+                }
                 case IMPORT_SESSIONS -> {
                     return importSessions(invocation, out, err);
                 }
@@ -595,11 +625,11 @@ public final class DshCli {
 
                     out.println("Moving " + instance.id() + " from " + instance.version() + " to " + version);
                     DshVersionManager.install(instance, version, out::println);
-                    DshInstanceManager.update(new DshInstance(instance.id(), version, instance.profile(),
-                            instance.workspace(), instance.nodeRuntime(), instance.homeMode(),
-                            instance.customHome(), instance.extraArguments(), instance.environment(),
-                            instance.icon(), instance.iconFile(), instance.portMode(), instance.port(),
-                            instance.createdAt()));
+                    // Rebuilt from the instance rather than from the fields the
+                    // command happens to care about: everything the upgrade does
+                    // not change — the folder it lives in, its icon, its port —
+                    // has to survive being recorded again.
+                    DshInstanceManager.update(instance.withVersion(version));
 
                     if (!specs.isEmpty()) {
                         out.println("Reinstalling " + specs.size() + " plugin(s)");
@@ -801,6 +831,11 @@ public final class DshCli {
 
     /// Adds a folder to the list and reports what it holds.
     ///
+    /// The folder is selected as well as added, which is what the page that adds
+    /// one does and what a person means by it: from here on the instances in
+    /// this folder are the ones being worked on, and — with no instance named on
+    /// the command line — this is where a new one is made.
+    ///
     /// @param invocation the parsed invocation
     /// @param out        the stream for normal output
     /// @param err        the stream for error output
@@ -814,6 +849,7 @@ public final class DshCli {
             var added = org.jackhuang.hmcl.setting.GameDirectoryManager.add(
                     Path.of(invocation.arguments().get(0)));
             int count = org.jackhuang.hmcl.setting.GameDirectoryManager.countInstances(added);
+            org.jackhuang.hmcl.setting.GameDirectoryManager.select(added.id());
             out.println("Added " + added.displayName() + " (" + added.path() + ")");
             out.println("Found " + count + " instance(s); nothing was copied or moved");
             return 0;
@@ -822,6 +858,82 @@ public final class DshCli {
             return 1;
         }
     }
+
+    /// Prints the places the plugin catalogue is read from.
+    ///
+    /// Every source that answers contributes plugins, so what this prints is the
+    /// order of authority as well as the list: the first source that lists a
+    /// plugin is where its description, version and download count come from.
+    ///
+    /// @param out the stream for normal output
+    /// @return the process exit code
+    private static int listPluginSources(PrintStream out) {
+        List<String> configured = DshPluginCatalog.configuredSources();
+        List<String> resolved = DshPluginCatalog.sources();
+        for (String source : resolved) {
+            boolean builtIn = !configured.contains(source);
+            out.println((builtIn ? "  " : "* ") + source
+                    + (builtIn ? "  [built in]" : "")
+                    + (DshPluginCatalog.isPackageSource(source) ? "  [npm package]" : ""));
+        }
+        out.println("  " + DshPluginCatalog.fallbackSource()
+                + "  [npm package, read only when none of the above answers]");
+        if (configured.isEmpty()) {
+            out.println("(nothing configured; the address above is what the launcher publishes with)");
+        }
+        return 0;
+    }
+
+    /// Adds a place for the plugin catalogue to be read from.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int addPluginSource(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --add-plugin-source needs an address or an npm package name");
+            return 1;
+        }
+        String source = invocation.arguments().get(0);
+        try {
+            DshPluginCatalog.addSource(source);
+            out.println("Added " + source);
+            return listPluginSources(out);
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
+
+    /// Removes a place the plugin catalogue was read from.
+    ///
+    /// Removing the last one puts the published pair back, which is said out loud
+    /// rather than left to be discovered.
+    ///
+    /// @param invocation the parsed invocation
+    /// @param out        the stream for normal output
+    /// @param err        the stream for error output
+    /// @return the process exit code
+    private static int removePluginSource(Invocation invocation, PrintStream out, PrintStream err) {
+        if (invocation.arguments().isEmpty()) {
+            err.println("error: --remove-plugin-source needs an address or an npm package name");
+            return 1;
+        }
+        String source = invocation.arguments().get(0);
+        try {
+            DshPluginCatalog.removeSource(source);
+            out.println("Removed " + source);
+            if (DshPluginCatalog.configuredSources().isEmpty()) {
+                out.println("That was the last one, so the launcher is back to the published pair");
+            }
+            return listPluginSources(out);
+        } catch (DshException e) {
+            err.println("error: " + e.getMessage());
+            return 1;
+        }
+    }
+
     /// Copies another home's sessions into an instance.
     ///
     /// The source is read and never written: the point of importing is to take
@@ -941,9 +1053,9 @@ public final class DshCli {
             // launch goes wrong the first question is which of those decided the flags. Reading it
             // off the process table afterwards is not always possible — the child exits, or the
             // tooling cannot see another process's arguments.
-            // Built once and handed on. Building it is what asks the supplier for its models, so a
-            // second build — which is what printing and then launching used to do — costs a second
-            // round trip to the vendor.
+            // Built once and handed on. Building it is what writes the account's overlay, so building
+            // a second one — which is what printing and then launching used to do — leaves the first
+            // one behind for good.
             DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
             out.println("command: " + plan.commandLine());
 
@@ -1234,6 +1346,9 @@ public final class DshCli {
                                                    move a session to another instance
 
                 plugins:
+                  --list-plugin-sources           the places the plugin catalogue is read from
+                  --add-plugin-source <address>   add one: an address or an npm package name
+                  --remove-plugin-source <address>  remove one
                   --install-plugin <id> <spec>     install a plugin into an instance profile
                   --remove-plugin <id> <spec>...   remove one or more plugins from an instance profile
                   --export-sessions <id> <file>    write the instance's sessions into a pack

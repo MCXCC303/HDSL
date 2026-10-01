@@ -83,14 +83,19 @@ public final class Metadata {
 
     /// The identifier used for Windows taskbar grouping.
     ///
-    /// Retained only so the transplanted window code keeps compiling; HDSL
-    /// does not target Windows.
+    /// The transplanted window code groups the launcher's windows — and the
+    /// instance processes it starts — under this id, which is what keeps them
+    /// one entry in the taskbar rather than one per window.
     public static final String WINDOWS_APP_USER_MODEL_ID = APPLICATION_ID;
 
     /// The directory the launcher was started from.
     public static final Path CURRENT_DIRECTORY = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
 
     /// The per-user directory holding shared HDSL data.
+    ///
+    /// Where that is follows the platform's own convention, as HMCL's does:
+    /// `~/.local/share/hdsl` (or `$XDG_DATA_HOME/hdsl`) on Linux, and
+    /// `%APPDATA%\.hdsl` on Windows.
     public static final Path HMCL_USER_HOME;
 
     /// The per-workspace directory holding HDSL configuration and state.

@@ -214,11 +214,18 @@ public final class DshProcess {
     /// @throws DshException when it cannot be started
     public static DshProcess startPrepared(DshInstance instance, DshLauncher.LaunchPlan plan)
             throws DshException {
-        // An instance may answer for itself about debug lines, so the switch is applied here
-        // rather than once at startup: what is written while this instance runs is what its
-        // own answer says.
-        org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(
-                org.jackhuang.hmcl.setting.SettingsManager.settings().debugLogFor(instance.id()));
+        // The launcher's own debug switch is **not** touched here, and it used to be: this ran
+        // `setDebugEnabled(settings().debugLogFor(instance.id()))`, which reads the instance's own
+        // answer first — so launching one instance that had debug logging switched on turned it on
+        // for the whole launcher, and nothing ever turned it back off. `debugLogFor` is still what
+        // an instance's own page shows and stores; what it cannot be is a per-instance setting,
+        // because the logger it governs is a launcher-wide object with one file and one flag. The
+        // switch that matters for a launch is applied once, at startup, from the launcher's own
+        // setting ([org.jackhuang.hmcl.Launcher#startLogging]).
+        //
+        // What an instance's own debug lines are, then, is its child process's output — and that
+        // is not lost: it goes to the instance's log window and into the crash report either way.
+        //
         // Whatever was asked to happen before this instance starts happens first, and a
         // failure stops the launch: it was asked for, and starting anyway would ignore it.
         DshCustomCommands.run(instance,

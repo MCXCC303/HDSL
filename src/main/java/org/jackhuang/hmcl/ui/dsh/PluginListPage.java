@@ -227,10 +227,15 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
     }
 
     /// Opens the page that lists the community's plugins.
+    ///
+    /// Opened *for this instance*, which is the whole of what 下载 means on this page: a plugin
+    /// installed from here belongs to the instance whose list this is. The market's own picker
+    /// defaults to whatever the launcher has selected, and opening an instance does not select it —
+    /// so without this, 下载 installed into an instance the person was not looking at.
     private void openMarket() {
         DownloadPage page = Controllers.getDownloadPage();
         Controllers.navigate(page);
-        page.openTab("plugins");
+        page.openPluginsFor(instance);
     }
 
     /// Installs a plugin from a packed file the user chooses.

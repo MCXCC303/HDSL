@@ -22,6 +22,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -209,11 +210,16 @@ public final class DshSessions {
     ///
     /// When `flock` is unavailable the check degrades to "not held"; the caller
     /// separately refuses to migrate out of a running instance, which covers the
-    /// case that matters most.
+    /// case that matters most. Windows is that case from the start — there is no
+    /// `flock(1)` there at all, and starting one per session to be told so is
+    /// not a question worth the noise — so it answers "not held" directly.
     ///
     /// @param lockFile the session's lock file
     /// @return whether another process holds the lease
     private static boolean isHeld(Path lockFile) {
+        if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+            return false;
+        }
         if (!Files.exists(lockFile)) {
             return false;
         }

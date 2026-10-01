@@ -45,9 +45,18 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 ///   node-pty: set this to true or false
 /// ```
 ///
-/// and refuses the installation until somebody answers. Answering is a decision about
-/// running code, so this launcher does not answer on its own: it reads what is waiting
-/// so the interface can say so, and writes an answer when a person gives one. That is
+/// and refuses the installation until somebody answers. That refusal is the usual case rather than an
+/// edge one: `strict-dep-builds` is true in pnpm 11's own defaults, so an undecided build makes it
+/// exit non-zero — after writing the placeholder, which is what this reads.
+///
+/// What it writes as the entry's key is the package's **id** rather than always its name. A package
+/// from the registry is `node-pty`; one installed from a file is
+/// `build-script-probe@file:../pkg/build-script-probe-1.0.0.tgz`, because the version a `file:`
+/// dependency resolves to is not a version. The id therefore carries a colon of its own, and the key
+/// read here is the whole of it — kept whole, and written back whole.
+///
+/// Answering is a decision about running code, so this launcher does not answer on its own: it reads
+/// what is waiting so the interface can say so, and writes an answer when a person gives one. That is
 /// what makes it a setting rather than a behaviour — one that can be on for an instance
 /// whose plugins are known and off for one whose plugins are not.
 @NotNullByDefault
@@ -60,7 +69,8 @@ public final class DshBuildScripts {
 
     /// One package waiting to be answered about.
     ///
-    /// @param name    the package
+    /// @param name    the package, as the key pnpm wrote for it: its name for a package from the
+    ///                 registry, its whole id for one installed from a file or a repository
     /// @param allowed whether it is already answered, and how
     public record Pending(String name, @Nullable Boolean allowed) {
     }
@@ -174,6 +184,23 @@ public final class DshBuildScripts {
     /// @throws DshException when the profile cannot be read
     public static List<String> unanswered(DshInstance instance) throws DshException {
         return pending(instance).stream().filter(entry -> entry.allowed() == null)
+                .map(Pending::name).toList();
+    }
+
+    /// Returns the names of the packages the profile says install scripts are not run for.
+    ///
+    /// A refusal is remembered in the same file as an approval, so a package installed after one
+    /// carries that answer with it for good: nothing asks again, and the package stays without the
+    /// scripts that would have finished it — which is what leaves a plugin installed and unable to
+    /// load, with the launcher reporting an ordinary success. Reading these back is what lets the
+    /// installer ask about a package it is installing *again*: a refusal answers one installation,
+    /// and the next installation is another one.
+    ///
+    /// @param instance the instance
+    /// @return the names
+    /// @throws DshException when the profile cannot be read
+    public static List<String> refused(DshInstance instance) throws DshException {
+        return pending(instance).stream().filter(entry -> Boolean.FALSE.equals(entry.allowed()))
                 .map(Pending::name).toList();
     }
 

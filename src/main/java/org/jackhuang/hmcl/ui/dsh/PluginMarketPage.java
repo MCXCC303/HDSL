@@ -564,6 +564,46 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
         return chosen != null ? chosen : GameDirectoryManager.selectedInstanceProperty().get();
     }
 
+    /// Points the picker at one instance.
+    ///
+    /// What a page reached from an instance's own plugin list does on the way in: 下载 there means
+    /// "install one into *this* instance", and the picker's default is not that instance. It follows
+    /// the launcher's selection instead, and opening an instance does not select it — the radio button
+    /// in the list does — so the two come apart exactly when a person has selected one instance and is
+    /// looking at another. Reported as: installed into `0.1.7-rc.2-2`, and it appeared in
+    /// `0.0.1-rc.5`, which was the selected one.
+    ///
+    /// The instance is matched by id rather than by value: the page's own list was read from disk, and
+    /// the caller holds whatever it read, which may differ in a field that has since changed.
+    ///
+    /// @param instance the instance the market was opened for, or `null` to leave the picker alone
+    public void showInstance(@Nullable DshInstance instance) {
+        if (instance == null) {
+            return;
+        }
+        DshInstance matching = matchingInstance(instanceBox.getItems(), instance);
+        if (matching != null) {
+            instanceBox.setValue(matching);
+            return;
+        }
+        LOG.warning("The marketplace was opened for instance " + instance.id()
+                + ", which is not in the list of instances; the picker keeps its own choice");
+    }
+
+    /// Returns the instance in a picker's list that answers to an id.
+    ///
+    /// @param instances what the picker holds
+    /// @param wanted    the instance the market was opened for
+    /// @return the one among them with that id, or `null` when none has it
+    static @Nullable DshInstance matchingInstance(List<DshInstance> instances, DshInstance wanted) {
+        for (DshInstance candidate : instances) {
+            if (candidate.id().equals(wanted.id())) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
     /// One result row: the plugin, what it is, and the way to its own page.
     ///
     /// The shape the session and plugin lists use: a two-line item on the surface

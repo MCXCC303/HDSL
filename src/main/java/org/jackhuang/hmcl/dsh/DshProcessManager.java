@@ -107,10 +107,10 @@ public final class DshProcessManager {
 
     /// Launches an instance from a plan that has already been built.
     ///
-    /// Building a plan is not free of consequence: it writes the account's route into the profile's
-    /// own patch layer and asks the supplier for its models. A caller that built one — to print what
-    /// was about to run, which is what the command line interface does — hands that same plan over
-    /// rather than paying for a second one.
+    /// Building a plan is not free of consequence: it writes the account's overlay. A caller that
+    /// built one — to print what was about to run, which is what the command line interface does —
+    /// must be able to hand that same plan over rather than have a second one built, because the
+    /// second build writes a second overlay and the first is never removed by anybody.
     ///
     /// @param instance the instance
     /// @param account  the account, or `null` for none
@@ -149,6 +149,9 @@ public final class DshProcessManager {
                     // Whatever this launch put into the home's own settings goes back to what it
                     // was, so the next launch — of any kind, with an account or with none — starts
                     // on the person's own configuration rather than on this launch's leftovers.
+                    // The account's route in the profile's patch layer goes back with it: that is
+                    // what `settle` puts back, and it is why a launch with a key leaves no trace of
+                    // it once the instance has stopped.
                     try {
                         DshInjectedSettings.settle(process.plan().instance());
                     } catch (DshException e) {

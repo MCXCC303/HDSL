@@ -107,6 +107,7 @@ public final class InstanceSettingsPage extends ScrollPane {
         environmentList.getContent().add(buildNodeRuntimeRow());
         environmentList.getContent().add(buildLaunchArgumentsRow());
         environmentList.getContent().add(buildHomeModeRow());
+        environmentList.getContent().add(buildHomePathRow());
 
         ComponentList portList = new ComponentList();
         portList.getContent().add(buildPortModeRow());
@@ -456,6 +457,12 @@ public final class InstanceSettingsPage extends ScrollPane {
     /// is kept away from another's). Everything else, including which profile to boot and whether
     /// to open a browser, is theirs to decide — see [DshLaunchArguments] for the split.
     ///
+    /// A value with a space in it is typed in quotes, and **either quoting carries a Windows path**:
+    /// `--patch "C:\Users\me\a.yml"` and `--patch 'C:\Users\me\a.yml'` both arrive as written. The
+    /// exception is a UNC path, whose two leading separators are one escaped separator inside double
+    /// quotes, so `\\server\share` has to be written in single quotes. This is the one thing about
+    /// the row a person cannot work out by trying it.
+    ///
     /// @return the row
     private LineInheritableTextField buildLaunchArgumentsRow() {
         LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.launch_args"));
@@ -529,6 +536,36 @@ public final class InstanceSettingsPage extends ScrollPane {
                 write(instance.withHome(mode, null));
             }
         });
+        return row;
+    }
+
+    /// Builds the row that says where this instance's `DSH_HOME` is.
+    ///
+    /// The row above decides *how* the home is resolved; this says *where that lands*, which is the
+    /// half of it a mode's name cannot tell anybody. It matters most for the two modes that share:
+    /// a home shared by version is one directory for every instance pinned to that version — in
+    /// whatever folder those instances are — so two instances in two different folders read and write
+    /// one set of profiles, plugins and credentials without either of them mentioning the other. That
+    /// is how a plugin installed into one instance appears in another, which is worth knowing before
+    /// it is noticed rather than after.
+    ///
+    /// So the folder is named, and a folder more than one instance uses says how many others do.
+    ///
+    /// @return the row
+    private LineTextPane buildHomePathRow() {
+        LineTextPane row = new LineTextPane();
+        try {
+            Path home = instance.homeDirectory();
+            int others = DshInstanceManager.othersSharingHome(instance).size();
+            row.setTitle(others == 0
+                    ? i18n("dsh.instance.home.path")
+                    : i18n("dsh.instance.home.path.shared", others));
+            row.setText(home.toString());
+        } catch (DshException e) {
+            // A custom home that was never chosen: the row is where the reason belongs.
+            row.setTitle(i18n("dsh.instance.home.path"));
+            row.setText(e.getMessage());
+        }
         return row;
     }
 

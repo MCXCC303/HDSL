@@ -18,6 +18,8 @@
 package org.jackhuang.hmcl.dsh;
 
 import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -59,11 +61,19 @@ public final class DshPaths {
     /// Cached copies of remote catalogues such as the quick-install presets.
     public static final Path CATALOG = ROOT.resolve("catalog");
 
-    /// Where the logs a person exports from the log window are written.
+    /// Where the launcher keeps logs: its own, and the ones a person exports from the log window.
     ///
-    /// **Not** the process's working directory, which is what an export relative to it amounts to:
-    /// what somebody exports is something they will look for again, and a file written into
-    /// whatever directory the launcher happened to be started in is a file they cannot find.
+    /// The launcher's log is a file rather than only a stream because the thing it is for is
+    /// reading after the fact: the switch that turns the debug lines on says "in the launcher's
+    /// log", and a person who turns it on to diagnose something wants to find the file
+    /// afterwards. The name and the layout are [#org.jackhuang.hmcl.util.logging.Logger]'s, which
+    /// is the transplanted HMCL logger and writes `2026-09-26T23-34-07.log` here, compressed to
+    /// `.xz` when the run ends.
+    ///
+    /// What somebody exports from the log window lands here too. **Not** the process's working
+    /// directory, which is what an export relative to it amounts to: what somebody exports is
+    /// something they will look for again, and a file written into whatever directory the launcher
+    /// happened to be started in is a file they cannot find.
     public static final Path LOGS = ROOT.resolve("logs");
 
     /// Returns the npm prefix directory for a DeepSeek Harness version.
@@ -83,7 +93,7 @@ public final class DshPaths {
     /// @return the home directory
     /// @throws DshException when the version is not usable as a path segment
     public static Path versionHomeDirectory(String version) throws DshException {
-        return HOMES.resolve(requireSafeSegment(version, "version"));
+        return HOMES.resolve(segment(version, "version"));
     }
 
     /// The directory holding an instance's own copy of DeepSeek Harness.
@@ -109,7 +119,7 @@ public final class DshPaths {
     /// @return the runtime directory
     /// @throws DshException when the version cannot be used as a directory name
     public static Path runtimeDirectory(String version) throws DshException {
-        return RUNTIMES.resolve(requireSafeSegment(version, "runtime version"));
+        return RUNTIMES.resolve(segment(version, "runtime version"));
     }
 
     /// Returns the launcher instance directory for an instance id.
@@ -120,40 +130,62 @@ public final class DshPaths {
     /// @return the instance directory
     /// @throws DshException when the identifier cannot be used as a directory name
     public static Path instanceDirectory(String instanceId) throws DshException {
-        return INSTANCES.resolve(requireSafeSegment(instanceId, "instance id"));
+        return INSTANCES.resolve(segment(instanceId, "instance id"));
     }
 
-    /// Validates a string for use as a single path segment.
-    ///
-    /// @param value the candidate segment
-    /// @param what  a human-readable name for the value, used in the error message
-    /// @return the trimmed segment
-    /// @throws DshException when the value is empty or contains path separators
     /// Reports whether a value can be used as one segment of a path.
     ///
-    /// The same rule [requireSafeSegment] enforces, asked in advance so that a
+    /// The same rule [#segment(String, String)] enforces, asked in advance so that a
     /// page can refuse a name before it is used to make a directory.
     ///
     /// @param value the value to test
     /// @return whether it is usable
     public static boolean isUsableSegment(@Nullable String value) {
         String trimmed = value == null ? "" : value.trim();
-        return !trimmed.isEmpty()
-                && !trimmed.equals(".")
-                && !trimmed.equals("..")
-                && !trimmed.contains("/")
-                && !trimmed.contains("\\")
-                && trimmed.indexOf('\0') < 0;
+        return isSafeSegment(trimmed);
     }
 
-    private static String requireSafeSegment(String value, String what) throws DshException {
+    /// Reports whether a trimmed string is a usable single path segment.
+    ///
+    /// The rule is the one the transplanted HMCL has always used for the names
+    /// it makes directories from, [FileUtils#isNameValid(OperatingSystem, String)],
+    /// and it covers everything a hand-written list here used to: the reserved
+    /// device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…`COM9`, `LPT1`…`LPT9`,
+    /// and the superscript spellings, with or without an extension), the
+    /// trailing dot or space Windows strips off a name, the drive-separated
+    /// colon, the separators, the control characters and the code points that
+    /// are not characters.
+    ///
+    /// Windows' answer is the one asked for, on every platform, and that is
+    /// deliberate: the three systems this launcher runs on share one repository
+    /// and one set of instance folders, and a name one of them accepts and
+    /// another cannot even write is a folder that stops working the moment it
+    /// is copied to the other. Separators are refused by that rule on Windows
+    /// and are named here as well, because they are what would turn one segment
+    /// into two — the one failure the caller can never recover from.
+    ///
+    /// @param trimmed the value, already trimmed
+    /// @return whether it is usable
+    private static boolean isSafeSegment(String trimmed) {
+        if (trimmed.isEmpty() || trimmed.contains("/") || trimmed.contains("\\")) {
+            return false;
+        }
+        return FileUtils.isNameValid(OperatingSystem.WINDOWS, trimmed);
+    }
+
+    /// Returns a value as a path segment, refusing one that cannot be a directory name.
+    ///
+    /// Public because a caller that has a folder of its own — the folder the
+    /// user is looking at, which is where a new instance goes — has to apply the
+    /// same rule this class applies to the folders it owns.
+    ///
+    /// @param value the candidate segment
+    /// @param what  a human-readable name for the value, used in the error message
+    /// @return the trimmed segment
+    /// @throws DshException when the value cannot be used as a directory name
+    public static String segment(@Nullable String value, String what) throws DshException {
         String trimmed = value == null ? "" : value.trim();
-        if (trimmed.isEmpty()
-                || trimmed.equals(".")
-                || trimmed.equals("..")
-                || trimmed.contains("/")
-                || trimmed.contains("\\")
-                || trimmed.indexOf('\0') >= 0) {
+        if (!isSafeSegment(trimmed)) {
             throw new DshException("Invalid " + what + ": " + value);
         }
         return trimmed;

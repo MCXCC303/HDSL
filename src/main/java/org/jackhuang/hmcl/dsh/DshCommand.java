@@ -25,6 +25,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -39,6 +40,13 @@ import java.util.function.Consumer;
 public final class DshCommand {
     /// The programs this launcher has started and is waiting on.
     private static final java.util.Set<Process> RUNNING = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /// How long the readers of a command's output are given to finish once the process has ended.
+    ///
+    /// What the process wrote is already in the pipe by then, so this bounds scheduling rather than
+    /// work: the readers of a finished process finish in microseconds. The bound is only ever reached
+    /// when a descendant inherited the pipe and holds it open, where waiting longer would not help.
+    private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(2);
 
     private DshCommand() {
     }
@@ -139,6 +147,16 @@ public final class DshCommand {
 
         try {
             int exitCode = running.waitFor();
+            // The process has ended, but its output has not necessarily been read: the line it
+            // wrote last is still in the pipe, and the thread reading it is a scheduling delay
+            // away from handing it over. Interrupting that thread instead of waiting for it
+            // discards the line — and for a `node --version` the line is the whole answer, which
+            // is how a machine with Node.js installed comes to be reported as having none.
+            //
+            // So the readers are waited for first. This is not the same as waiting for the
+            // process: what it left in the pipe is already written, and the wait is bounded
+            // because a descendant that inherited the pipe would otherwise hold it open.
+            process.awaitRelatedThreads(DRAIN_TIMEOUT);
             process.destroyRelatedThreads();
             return new Result(exitCode, List.copyOf(output));
         } catch (InterruptedException e) {

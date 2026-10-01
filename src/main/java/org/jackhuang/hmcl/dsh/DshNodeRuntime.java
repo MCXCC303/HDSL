@@ -17,14 +17,19 @@
  */
 package org.jackhuang.hmcl.dsh;
 
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Describes the JavaScript toolchain the launcher found on this machine.
 ///
@@ -81,8 +86,9 @@ public record DshNodeRuntime(
 
     /// Describes a launcher-managed runtime in the same shape as a probed one.
     ///
-    /// `pnpm` is deliberately left unset: a managed runtime has no `pnpm` of its
-    /// own, so plugin management falls back to whatever the system provides.
+    /// `pnpm` is deliberately left unset when the runtime has none: a runtime
+    /// without pnpm is still a runtime, so plugin management falls back to
+    /// whatever the system provides.
     ///
     /// @param runtime the installed runtime
     /// @return the descriptor
@@ -90,11 +96,7 @@ public record DshNodeRuntime(
         // pnpm lives beside node, not in the distribution metadata, so it is
         // probed directly. Leaving it unresolved made every managed runtime look
         // incapable of plugin management even after pnpm was installed into it.
-        Path bin = runtime.node().getParent();
-        Path pnpm = bin == null ? null : bin.resolve("pnpm");
-        if (pnpm != null && !Files.isExecutable(pnpm)) {
-            pnpm = null;
-        }
+        Path pnpm = NodeRuntime.pnpmIn(runtime.directory());
 
         return new DshNodeRuntime(
                 runtime.node(),
@@ -104,6 +106,7 @@ public record DshNodeRuntime(
                 pnpm,
                 pnpm == null ? null : versionOf(pnpm));
     }
+
 
     /// Probes the toolchain on the current `PATH`.
     ///
@@ -171,9 +174,11 @@ public record DshNodeRuntime(
     /// Returns the directory holding this runtime's executables.
     ///
     /// Used to put the runtime ahead of the system's tooling on the child's
-    /// PATH, which is what makes a managed runtime self-contained.
+    /// PATH, which is what makes a managed runtime self-contained. That
+    /// directory is `bin` on Linux and the distribution root on Windows, which
+    /// is where the platform's own node executable already sits.
     ///
-    /// @return the `bin` directory
+    /// @return the directory of the `node` executable
     public Path binDirectory() {
         Path parent = node.getParent();
         return parent == null ? node : parent;
@@ -228,25 +233,50 @@ public record DshNodeRuntime(
 
     /// Asks an executable for its version.
     ///
+    /// Asked twice before giving up, because a probe that fails once is not a runtime that is
+    /// missing: each probe starts a fresh process, and a machine under load fails to start one now
+    /// and then. Measured on a CI runner: one `node --version` of the five in one second failed
+    /// while the four around it answered, and what the launcher said about it was "Node.js was not
+    /// found on PATH" — in a test that had read that same version a hundred milliseconds earlier.
+    /// One failed probe deciding that a machine has no Node.js is the wrong conclusion to draw from
+    /// it, and it is drawn every time a person launches an instance.
+    ///
+    /// The reason the last probe failed is logged rather than kept: it is the only thing that says
+    /// whether this was a load problem or a `node` that is genuinely broken.
+    ///
     /// @param executable the program to run with `--version`
-    /// @return the trimmed first output line, or `null` when the probe failed
-    private static @Nullable String versionOf(Path executable) {
-        try {
-            DshCommand.Result result = DshCommand.run(List.of(executable.toString(), "--version"));
-            if (!result.isSuccess() || result.output().isEmpty()) {
+    /// @return the trimmed first output line, or `null` when no probe answered
+    static @Nullable String versionOf(Path executable) {
+        String failure = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            try {
+                DshCommand.Result result = DshCommand.run(List.of(executable.toString(), "--version"));
+                if (result.isSuccess() && !result.output().isEmpty()) {
+                    String first = result.output().get(0).trim();
+                    return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
+                }
+                failure = "`" + executable + " --version` exited " + result.exitCode();
+            } catch (IOException e) {
+                failure = "`" + executable + " --version` could not be started: " + e;
+            } catch (InterruptedException e) {
+                // An interrupted probe is not one that answers on a second try.
+                Thread.currentThread().interrupt();
                 return null;
             }
-            String first = result.output().get(0).trim();
-            return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
-        } catch (IOException | InterruptedException e) {
-            if (e instanceof InterruptedException) {
-                Thread.currentThread().interrupt();
-            }
-            return null;
         }
+
+        LOG.warning("Could not read the version of " + executable + ": " + failure);
+        return null;
     }
 
     /// Resolves an executable on `PATH`.
+    ///
+    /// On Windows a program is not one file name but a family of them: `node`
+    /// is `node.exe`, and `npm` and `pnpm` are `.cmd` shims. Every extension
+    /// `PATHEXT` names is tried, and `.exe`/`.cmd`/`.bat` with it, because a
+    /// `PATHEXT` that has been edited is not a `PATHEXT` that can be trusted to
+    /// still name the common three. The file's existence is the test there —
+    /// Windows has no execute bit for `Files#isExecutable` to read.
     ///
     /// @param name the executable name
     /// @return the resolved path, or empty when it is not on `PATH`
@@ -255,15 +285,58 @@ public record DshNodeRuntime(
         if (path == null || path.isBlank()) {
             return Optional.empty();
         }
+        List<String> candidates = executableNames(name);
         for (String entry : path.split(java.io.File.pathSeparator)) {
             if (entry.isBlank()) {
                 continue;
             }
-            Path candidate = Path.of(entry).resolve(name);
-            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return Optional.of(candidate);
+            Path directory = Path.of(entry);
+            for (String candidate : candidates) {
+                Path file = directory.resolve(candidate);
+                if (Files.isRegularFile(file) && isExecutable(file)) {
+                    return Optional.of(file);
+                }
             }
         }
         return Optional.empty();
+    }
+
+    /// Returns the file names one program name can be found under.
+    ///
+    /// @param name the program name as typed
+    /// @return the names to look for, the plain one first
+    private static List<String> executableNames(String name) {
+        if (OperatingSystem.CURRENT_OS != OperatingSystem.WINDOWS) {
+            return List.of(name);
+        }
+        // A name that already carries an extension is looked for as it is; the
+        // caller that spelled `npm.cmd` out knows which file it means.
+        for (String suffix : new String[]{".exe", ".cmd", ".bat", ".com"}) {
+            if (name.toLowerCase(Locale.ROOT).endsWith(suffix)) {
+                return List.of(name);
+            }
+        }
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        names.add(name + ".exe");
+        names.add(name + ".cmd");
+        names.add(name + ".bat");
+        String pathExt = System.getenv("PATHEXT");
+        if (pathExt != null) {
+            for (String extension : pathExt.split(";")) {
+                String trimmed = extension.trim();
+                if (!trimmed.isEmpty()) {
+                    names.add(name + trimmed.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return List.copyOf(names);
+    }
+
+    /// Reports whether a file can be run as a program.
+    ///
+    /// @param file the file
+    /// @return whether it is executable, which every regular file is on Windows
+    private static boolean isExecutable(Path file) {
+        return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS || Files.isExecutable(file);
     }
 }

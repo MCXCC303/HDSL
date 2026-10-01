@@ -141,10 +141,16 @@ class DshProcessLifecycleTest {
         throw new AssertionError("Timed out waiting for " + what);
     }
 
-    /// Skips a test when the launcher has no Node.js to run the stub with.
+    /// Skips a test when the launcher has no Node.js it may run the stub with.
+    ///
+    /// The version range is part of the gate, not just the presence: a machine
+    /// may well hold a Node the launcher itself would refuse — an old
+    /// distribution, a CI image — and refusing it is the launcher's own tested
+    /// behaviour, not something these tests need to fail on.
     private static void requireNode() {
-        Assumptions.assumeTrue(DshNodeRuntime.detect().isPresent(),
-                "Node.js is not on PATH; the launcher cannot start anything without it");
+        Assumptions.assumeTrue(
+                DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
+                "Node.js ^22.19.0 || >=24.0.0 is not on PATH; the launcher cannot start anything without it");
     }
 
     @Test
@@ -185,6 +191,12 @@ class DshProcessLifecycleTest {
     }
 
     @Test
+    // The window this reports on is a signal's: `destroy()` on Linux is a
+    // SIGTERM the child may sit and drain, while on Windows it is a
+    // TerminateProcess that takes the child at once. There being no such
+    // window there is the platform's own behaviour, not a bug in the
+    // launcher, so the test asks for the platform that has one.
+    @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.LINUX)
     void anInstanceIsBusyUntilItHasFinishedStopping() throws Exception {
         requireNode();
         DshInstance instance = makeInstance();

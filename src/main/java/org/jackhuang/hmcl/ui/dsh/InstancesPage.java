@@ -46,6 +46,7 @@ import org.jackhuang.hmcl.dsh.DshProcessManager.LaunchState;
 import org.jackhuang.hmcl.setting.DshInstanceRepository;
 import org.jackhuang.hmcl.setting.GameDirectory;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
@@ -66,8 +67,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
+import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Lists the DeepSeek Harness instances managed by HDSL.
 ///
@@ -445,18 +450,29 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 
     /// Removes an instance after confirmation.
     ///
+    /// Off the interface thread, for the reason [InstancePage#removeInstance] states: the
+    /// removal stops a running instance first and then removes its tree with retries, and both
+    /// of those wait. A list that cannot repaint while a child process drains is a list Windows
+    /// reports as not responding, which is what removing an instance used to do.
+    ///
+    /// The question stays open until the removal has finished, for the second half of the same
+    /// reason: the retries mean this can take seconds, the row it is about is still on the list
+    /// throughout, and a dialog that has already closed turns those seconds into an invitation to
+    /// answer the same question again.
+    ///
     /// @param instance the instance to remove
     private void removeInstance(DshInstance instance) {
-        Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
+        String id = instance.id();
+        Controllers.confirmAsync(i18n("dsh.instance.remove.confirm", id),
                 i18n("dsh.instance.remove"),
-                () -> {
+                i18n("dsh.instance.removing", id),
+                () -> CompletableFuture.runAsync(() -> {
                     try {
-                        DshInstanceManager.delete(instance.id());
-                        Controllers.showToast(i18n("dsh.instance.removed", instance.id()));
+                        DshInstanceManager.delete(id);
                     } catch (DshException e) {
-                        Controllers.dialog(e.getMessage(), i18n("dsh.instance.remove_failed"), MessageType.ERROR);
+                        throw new CompletionException(e);
                     }
-                },
-                null);
+                }, Schedulers.io()),
+                i18n("dsh.instance.remove_failed"));
     }
 }

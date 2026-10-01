@@ -24,6 +24,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.ui.animation.ContainerAnimations;
 import org.jackhuang.hmcl.ui.animation.Motion;
+import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.InputDialogPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -31,13 +32,18 @@ import com.jfoenix.validation.base.ValidatorBase;
 import org.jackhuang.hmcl.ui.decorator.Decorator;
 import org.jackhuang.hmcl.util.FutureCallback;
 import org.jackhuang.hmcl.util.io.FileUtils;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.function.Supplier;
+
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Owns the application stage, the window decorator and the dialog helpers the
 /// ported component library calls into.
@@ -184,6 +190,119 @@ public final class Controllers {
     public static void confirm(String text, @Nullable String title, MessageType type,
                                Runnable yes, @Nullable Runnable no) {
         dialog(new MessageDialogPane.Builder(text, title, type).yesOrNo(yes, no).build());
+    }
+
+    /// Asks a yes/no question whose answer takes time, and stays until it has been answered.
+    ///
+    /// The dialog a question is asked in used to close the moment the button was pressed, which is
+    /// the moment least likely to be the end of it: removing an instance stops a running child and
+    /// then takes its tree away with retries, which is seconds rather than milliseconds, and nothing
+    /// on the screen says so. What a person sees is a dialog that vanished and a list that still
+    /// shows the row, so they press it again — and a question that closes before its answer arrives
+    /// is a question that gets answered twice, on a row whose second answer is about something that
+    /// may already have happened.
+    ///
+    /// This one keeps the dialog open, replaces its buttons with a spinner and does not close it
+    /// until the work has finished. The press is taken on the interface thread and the work is not,
+    /// because the whole point of it is that it waits: the spinner has to be on the screen before
+    /// anything blocks, and one frame of it after is one frame too late.
+    ///
+    /// A failure leaves the dialog where it is and says why beside it, so the person can try again or
+    /// decline — which is the only honest thing to do with a question whose answer did not happen.
+    ///
+    /// @param text   the question
+    /// @param title  the dialog title, or `null`
+    /// @param wait   what the dialog is waiting for, shown in place of the buttons
+    /// @param work   the work to run when confirmed, off the interface thread
+    /// @param failed the title of the dialog that reports a failure, or `null` to say nothing
+    public static void confirmAsync(String text, @Nullable String title, String wait,
+                                    Supplier<? extends CompletionStage<?>> work,
+                                    @Nullable String failed) {
+        MessageDialogPane pane = new MessageDialogPane.Builder(text, title, MessageType.QUESTION)
+                .askYesOrNo(question -> answerQuestion(question, wait, work, failed), null)
+                .build();
+        dialog(pane);
+    }
+
+    /// Starts the work a question was answered with, and holds the question open until it ends.
+    ///
+    /// The waiting state is set here rather than by the button, because the button's own closing
+    /// handler is registered first and would have closed the dialog before this ran — which is what
+    /// the removal confirmation used to do: it vanished on the press and the removal carried on
+    /// invisibly, so pressing again looked like the obvious thing to do.
+    ///
+    /// The work itself is the caller's, started by the supplier it handed over; what happens here is
+    /// only what the answer means. Success closes the question. Failure puts its buttons back and
+    /// says why beside it, because a question whose answer did not happen is one that has to be
+    /// asked again.
+    ///
+    /// Both of those touch the dialog, so both happen on the interface thread. The work finishes
+    /// wherever it was running — for a removal, on a worker thread some forty seconds later — and a
+    /// dialog is closed on the interface thread or not at all: [DialogUtils#close] checks the thread
+    /// and throws into this stage when it is not the interface one, and nobody reads the result of a
+    /// stage like this one. What that looks like from the outside is a question that keeps its
+    /// spinner after its work has finished, with nothing logged beside it — which is what the removal
+    /// confirmation did.
+    ///
+    /// Not private, because that thread is the whole of what this method promises and it is measured
+    /// by [org.jackhuang.hmcl.ui.ConfirmationWorkThreadTest].
+    ///
+    /// @param pane   the question
+    /// @param wait   what it is waiting for, shown in place of the buttons
+    /// @param work   the work to run when confirmed
+    /// @param failed the title of the dialog that reports a failure, or `null` to say nothing
+    static void answerQuestion(MessageDialogPane pane, String wait,
+                               Supplier<? extends CompletionStage<?>> work,
+                               @Nullable String failed) {
+        pane.setWorking(true, wait);
+        CompletableFuture<?> running;
+        try {
+            running = work.get().toCompletableFuture();
+        } catch (RuntimeException thrown) {
+            reportFailure(pane, failed, thrown);
+            return;
+        }
+        running.handle((ignored, throwable) -> throwable)
+                .thenAcceptAsync(thrown -> {
+                    if (thrown == null) {
+                        pane.fireEvent(new DialogCloseEvent());
+                    } else {
+                        reportFailure(pane, failed, thrown);
+                    }
+                }, Schedulers.javafx())
+                // The toolkit turns a dialog touched from the wrong thread into an exception in this
+                // stage, and a stage nobody reads swallows it: the question then sits there for as
+                // long as the launcher is open, saying it is still waiting for work that has already
+                // finished. Read here, so that the next such mistake is one line in the log.
+                .exceptionally(thrown -> {
+                    LOG.error("Could not finish the dialog of a question whose work had ended", thrown);
+                    return null;
+                });
+    }
+
+    /// Says why a question could not be answered, and lets it be asked again.
+    ///
+    /// The reason is dug out of the wrapping rather than taken from its outside, because the work
+    /// runs in a task: what a person needs is the sentence the layer that failed wrote, not the name
+    /// of the layer that was carrying it.
+    ///
+    /// @param pane   the question's dialog
+    /// @param title  the failure dialog's title, or `null` to say nothing
+    /// @param thrown what went wrong, or `null`
+    private static void reportFailure(MessageDialogPane pane, @Nullable String title, @Nullable Throwable thrown) {
+        if (title == null) {
+            return;
+        }
+        pane.setWorking(false, null);
+        String reason = thrown == null ? "" : thrown.toString();
+        for (Throwable cause = thrown; cause != null; cause = cause.getCause()) {
+            if (cause.getMessage() != null && !cause.getMessage().isBlank()) {
+                reason = cause.getMessage();
+                break;
+            }
+        }
+        LOG.warning("A question was answered and the work failed: " + reason, thrown);
+        dialog(reason, title, MessageType.ERROR);
     }
 
     /// Navigates the content area to a page with the standard transition.

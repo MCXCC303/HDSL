@@ -135,8 +135,11 @@ public final class DshPluginBundle {
     ///
     /// @param declared         the specification
     /// @param profileDirectory the profile, for a specification that is relative
+    /// Shared with [DshPluginInstaller], which has to know the package a specification is about
+    /// before it can ask about that package's install scripts.
+    ///
     /// @return the file, or `null` when the specification does not name one
-    private static @Nullable Path fileOf(String declared, Path profileDirectory) {
+    static @Nullable Path fileOf(String declared, Path profileDirectory) {
         String raw = declared.trim();
         if (raw.startsWith("link:")) {
             // A link is a promise about a directory, not a file, and the directory is not part of

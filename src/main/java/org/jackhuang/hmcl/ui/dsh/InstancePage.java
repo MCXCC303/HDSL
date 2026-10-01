@@ -487,7 +487,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
                 }));
     }
 
-    /// Copies this instance's configuration into a new one.
+    /// Copies this instance into a new one.
     ///
     /// The copy is filled from a pack the launcher writes and reads back — version, profile, plugin
     /// list, patch layer, local plugin files, plugin settings, skills — and the work runs behind a
@@ -525,18 +525,32 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
     }
 
     /// Deletes this instance after confirmation, leaving the page afterwards.
+    ///
+    /// The removal runs off the interface thread, because of what it waits for rather than
+    /// because of how long it usually takes: an instance that is running is stopped first and
+    /// the stop waits for the child to drain — up to the harness's own bounded shutdown — and
+    /// the instance's tree is then removed with retries, because a handle that is closing takes
+    /// a moment to close. Done here, on the interface thread, that is a window that stops
+    /// repainting for as long as it takes the child to die: Windows paints it white and offers
+    /// to end it, and what the person reported is a launcher that has crashed. Nothing about the
+    /// removal needs the interface to stand still, so it does not.
+    ///
+    /// The question outlives the answer for the same reason it is asked at all: the seconds this
+    /// takes are seconds in which the instance is still on the screen, and a dialog that has already
+    /// closed makes pressing again the obvious thing to do.
     private void removeInstance() {
-        Controllers.confirm(i18n("dsh.instance.remove.confirm", instance.id()),
+        String id = instance.id();
+        Controllers.confirmAsync(i18n("dsh.instance.remove.confirm", id),
                 i18n("dsh.instance.remove"),
-                () -> {
+                i18n("dsh.instance.removing", id),
+                () -> CompletableFuture.runAsync(() -> {
                     try {
-                        DshInstanceManager.delete(instance.id());
-                        Controllers.navigate(Controllers.getInstancesPage());
+                        DshInstanceManager.delete(id);
                     } catch (DshException e) {
-                        Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+                        throw new CompletionException(e);
                     }
-                },
-                null);
+                }, Schedulers.io()),
+                i18n("dsh.instance.remove_failed"));
     }
 
     /// Rebuilds the plugin list from the profile manifest on disk.
