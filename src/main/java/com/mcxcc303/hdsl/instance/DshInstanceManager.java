@@ -297,19 +297,23 @@ public final class DshInstanceManager {
 		// another machine — therefore cannot turn "remove this instance" into a
 		// deletion somewhere the user never pointed the launcher at.
 
-		if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
-			LOG.info("Stopping instance " + id + " before removing it");
-			DshProcessManager.stop(id);
-		}
+		// An install or a rename rewriting this directory while it is being deleted leaves an
+		// instance that is neither there nor gone, so the removal takes the same lock they do.
+		InstanceLocks.withLock(instance, "removed", () -> {
+			if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
+				LOG.info("Stopping instance " + id + " before removing it");
+				DshProcessManager.stop(id);
+			}
 
-		try {
-			DshFiles.deleteTree(directory);
-		} catch (IOException e) {
-			throw new DshException(
-					"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
-		}
-		LOG.info("Removed instance " + id);
-		fireChanged();
+			try {
+				DshFiles.deleteTree(directory);
+			} catch (IOException e) {
+				throw new DshException(
+						"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
+			}
+			LOG.info("Removed instance " + id);
+			fireChanged();
+		});
 	}
 
 	/// Reports whether an instance id is already taken.
@@ -358,7 +362,9 @@ public final class DshInstanceManager {
 		Path newDirectory = oldDirectory.resolveSibling(DshPaths.segment(normalized, "instance id"));
 		renamed = renamed.withDirectory(newDirectory);
 
+		InstanceLocks.acquire(existing, "renamed");
 		boolean moved = false;
+		try {
 		if (Files.isDirectory(oldDirectory)) {
 			// Nothing at the destination is removed to make room for the move. The
 			// destination is a sibling inside a folder of the launcher's — which for an
@@ -400,6 +406,9 @@ public final class DshInstanceManager {
 
 		fireChanged();
 		return renamed;
+		} finally {
+			InstanceLocks.release(existing);
+		}
 	}
 
 	/// Copies an instance into a new one, its configuration and all.
