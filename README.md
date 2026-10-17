@@ -69,6 +69,26 @@ HDSL 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特的操作
 | 运行时 | **Java 21**（构建与运行） |
 | DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm ≥ 10.9**（10.9 起才支持 `dangerouslyAllowAllBuilds`；pnpm 8/9 不认 `pnpm-workspace.yaml` 里的 `overrides`，会直接拒绝安装） |
 
+## Windows 命令行输出
+
+`hdsl.exe` 是 GUI 子系统程序：从 PowerShell / 终端直接运行时，stdout 和 stderr 会继承当前控制台；双击时没有控制台，输出不会出现（启动器自己的日志在 `%APPDATA%\.hdsl\logs`）。
+
+需要把 CLI 输出重定向到文件时，用 `java -jar` 跑这个 exe，不要依赖 `hdsl.exe > file`：
+
+```bat
+java -jar hdsl-<version>.exe doctor > doctor.txt 2> doctor.err
+echo %ERRORLEVEL%
+```
+
+PowerShell：
+
+```powershell
+& java -jar .\hdsl-<version>.exe doctor > doctor.txt 2> doctor.err
+$LASTEXITCODE
+```
+
+原因：`hdsl.exe` 是 gui 子系统，`cmd` 的 `>` 和 `start /wait` 都不能可靠地带回输出和退出码（实测 `start /wait` 的输出为空，`hdsl.exe >` 的退出码是 0）。`java -jar` 是控制台进程，重定向和退出码都正常，前提是 `java` 是 21 或更新。只想抓输出、不判断退出码时，PowerShell 的 `Start-Process -Wait -RedirectStandardOutput/RedirectStandardError` 也能用；它的 `ExitCode` 对 gui exe 为 0，不能拿来判断成败。
+
 ## 构建
 
 ```bash
