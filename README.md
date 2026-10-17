@@ -67,7 +67,33 @@ HDSL 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特的操作
 | 项目 | 要求 |
 |---|---|
 | 运行时 | **Java 21**（构建与运行） |
-| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
+| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm ≥ 10.9**（10.9 起才支持 `dangerouslyAllowAllBuilds`；pnpm 8/9 不认 `pnpm-workspace.yaml` 里的 `overrides`，会直接拒绝安装） |
+
+## Windows 命令行输出
+
+`hdsl.exe` 是 GUI 子系统程序。从 PowerShell 或终端直接运行时，stdout 和 stderr 会继承当前控制台；双击启动时没有控制台，因此不会显示输出（启动器日志位于 `%APPDATA%\.hdsl\logs`）。
+
+如需将 CLI 输出重定向到文件，请通过 `java -jar` 运行该 exe，不要依赖 `hdsl.exe > file`。
+
+cmd：
+
+```bat
+java -jar hdsl-<version>.exe doctor > doctor.txt 2> doctor.err
+echo %ERRORLEVEL%
+```
+
+PowerShell：
+
+```powershell
+& java -jar .\hdsl-<version>.exe doctor > doctor.txt 2> doctor.err
+$LASTEXITCODE
+```
+
+注意：`hdsl.exe` 为 GUI 子系统程序，`cmd` 的 `>` 与 `start /wait` 均无法可靠捕获输出和退出码（实测 `start /wait` 输出为空，`hdsl.exe >` 的退出码为 0）。`java -jar` 是控制台进程，重定向和退出码均正常，但要求 Java 21+。如果只需捕获输出、不判断退出码，也可使用 PowerShell：
+```powershell
+Start-Process -Wait -RedirectStandardOutput/RedirectStandardError
+```
+不过其对 GUI exe 的 `ExitCode` 恒为 0，不能用于判断成败。
 
 ## 构建
 

@@ -120,18 +120,49 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		       parsed.compareTo(MINIMUM_NODE_22) >= 0;
 	}
 
+	/// Tests a version string against the oldest pnpm this launcher supports.
+	///
+	/// A version it cannot read answers false, so callers that are asking about a tool they merely
+	/// failed to read a version from have to check for that first: refusing an unreadable pnpm
+	/// would turn "we could not tell" into a block on people whose pnpm is perfectly good.
+	///
+	/// @param version the version string, optionally prefixed with `v`, or `null`
+	/// @return whether the version is new enough
+	public static boolean isSupportedPnpmVersion(@Nullable String version) {
+		Version parsed = parse(version);
+		return parsed != null && parsed.compareTo(MINIMUM_PNPM_VERSION) >= 0;
+	}
+
+	/// The oldest pnpm this launcher supports.
+	///
+	/// Two things set the boundary. The launcher puts the overrides it holds dependencies to in
+	/// `pnpm-workspace.yaml` rather than `package.json`, because pnpm has not read them there since
+	/// pnpm 10; pnpm 8 and 9 read the file as a workspace root's configuration and refuse the install
+	/// outright with `ERR_PNPM_INVALID_WORKSPACE_CONFIGURATION`. And `dangerouslyAllowAllBuilds`,
+	/// which lets the harness's native dependencies build, was added in pnpm 10.9 — below that the
+	/// install looks complete and fails the first time a native module is used.
+	/// [#isSupportedPnpmVersion] turns either failure into one that names the version.
+	private static final Version MINIMUM_PNPM_VERSION = new Version(10, 9, 0);
+
+	/// [#MINIMUM_PNPM_VERSION] as it is written in the requirement shown to the user.
+	public static final String MINIMUM_PNPM = "10.9";
+
 	/// Returns the toolchain requirement shown to the user.
 	///
 	/// @return a human-readable requirement string
 	public static String requirement() {
-		return "Node.js ^22.19.0 || >=24.0.0, plus pnpm for plugin management";
+		return "Node.js ^22.19.0 || >=24.0.0, plus pnpm " + MINIMUM_PNPM +
+		       " or newer for installation and plugin management";
 	}
 
 	/// Parses a leading `major.minor.patch` from a version string.
 	///
 	/// @param version the raw version, optionally prefixed with `v`
 	/// @return the parsed version, or `null` when it cannot be parsed
-	private static @Nullable Version parse(String version) {
+	private static @Nullable Version parse(@Nullable String version) {
+		if (version == null) {
+			return null;
+		}
 		String cleaned = version.trim();
 		if (cleaned.startsWith("v") || cleaned.startsWith("V")) {
 			cleaned = cleaned.substring(1);
