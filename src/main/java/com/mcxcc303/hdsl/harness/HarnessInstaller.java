@@ -27,12 +27,14 @@ import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -314,16 +316,35 @@ public final class HarnessInstaller {
 	/// is the same trust npm extends by default, which is what the upstream
 	/// package is installed with.
 	///
+	/// On Windows nothing is linked, and that is the point of it. pnpm builds
+	/// `node_modules` out of links, and where Windows refuses it a symbolic link —
+	/// no developer mode, no elevation, security software — it falls back to
+	/// **absolute junctions**, which name the path they were made at. A junction
+	/// therefore breaks the moment anything renames a directory above it: the
+	/// staging rename this method used to be paired with, renaming an instance,
+	/// and whatever gets added next. `hoisted` copies the packages instead of
+	/// linking them, so there is nothing to break. It costs nothing for it: the
+	/// tree comes out the same size (about 474 MB against 478 MB for 0.2.0-rc.2),
+	/// because the store is only ever a source to copy from either way.
+	///
+	/// Everywhere else is left alone. pnpm makes relative symbolic links there,
+	/// which survive a rename, and hoisted would only cost the shared layout the
+	/// store already gives for free.
+	///
 	/// @param runtime the runtime to take pnpm from
 	/// @param project the project directory
 	/// @return the command
 	static List<String> buildInstallCommand(DshNodeRuntime runtime, Path project) {
-		return List.of(runtime.pnpm().toString(),
-		               "install",
-		               "--dir",
-		               project.toString(),
-		               "--reporter=append-only",
-		               "--config.dangerously-allow-all-builds=true");
+		List<String> command = new ArrayList<>(List.of(runtime.pnpm().toString(),
+		                                               "install",
+		                                               "--dir",
+		                                               project.toString(),
+		                                               "--reporter=append-only",
+		                                               "--config.dangerously-allow-all-builds=true"));
+		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+			command.add("--config.node-linker=hoisted");
+		}
+		return List.copyOf(command);
 	}
 
 	/// Installs the DeepSeek Harness an instance runs, into that instance.
