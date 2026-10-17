@@ -67,7 +67,7 @@ HDSL 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特的操作
 | 项目 | 要求 |
 |---|---|
 | 运行时 | **Java 21**（构建与运行） |
-| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
+| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm ≥ 10.9**（10.9 起才支持 `dangerouslyAllowAllBuilds`；pnpm 8/9 不认 `pnpm-workspace.yaml` 里的 `overrides`，会直接拒绝安装） |
 
 ## 构建
 

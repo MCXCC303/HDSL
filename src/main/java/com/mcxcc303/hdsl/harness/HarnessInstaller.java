@@ -562,6 +562,12 @@ public final class HarnessInstaller {
 			if (!runtime.canManagePlugins()) {
 				throw new DshException("pnpm was not found on PATH; installing DeepSeek Harness requires it");
 			}
+			// Refused here rather than left to fail inside pnpm, where pnpm 8 and 9 answer
+			// ERR_PNPM_INVALID_WORKSPACE_CONFIGURATION and never mention their own version.
+			String pnpmVersion = runtime.pnpmVersion();
+			if (pnpmVersion != null && !DshNodeRuntime.isSupportedPnpmVersion(pnpmVersion)) {
+				throw new DshException("pnpm " + pnpmVersion + " is too old; " + DshNodeRuntime.requirement());
+			}
 			// The whole install is held, not just the marker: the damage two overlapping installs
 			// would do is done by the tree, not by the marker.
 			installExclusively(instance, version, runtime, target, onLine);
