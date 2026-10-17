@@ -31,23 +31,23 @@ import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.List;
 
-/// The commands about plugins: installing one from a name or a file, removing them, and answering
-/// the question pnpm asks about a package's install scripts.
+/**
+ * The commands about plugins
+ */
 @NotNullByDefault
 public final class PluginCommands {
 
 	private PluginCommands() {
 	}
 
-	/// Runs the `plugin install` command.
+	/**
+	 * Runs the `plugin install` command
+	 */
 	static int installPlugin(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
 		if (instance == null) {
 			err.println("error: instance " + id + " does not exist");
-			return 1;
-		}
-		if (RunningInstances.isUp(instance, err)) {
 			return 1;
 		}
 		String spec = invocation.option("spec");
@@ -60,12 +60,12 @@ public final class PluginCommands {
 		return 0;
 	}
 
-	/// Runs the `plugin build-scripts` command: what a profile is waiting to be told, or the answer
-	/// to it.
-	///
-	/// With neither `--allow` nor `--deny` nothing is answered — what is waiting is printed, so that
-	/// a look costs nothing. With one of them the packages named are answered for, and every package
-	/// still waiting when none is named.
+	/**
+	 * Runs the `plugin build-scripts` command
+	 * <p>
+	 * Without `--allow` or `--deny` it prints the profile's install-script entries. <br>
+	 * With one of them the packages named are answered for, or every package still waiting when none is named
+	 */
 	static int buildScripts(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -82,12 +82,6 @@ public final class PluginCommands {
 			return 0;
 		}
 
-		// Looking is free; answering is not. The answer is written where the running harness reads
-		// it, and it is the profile's own file that would be changed under it.
-		if (RunningInstances.isUp(instance, err)) {
-			return 1;
-		}
-
 		boolean allow = invocation.flag("allow");
 		List<String> named = invocation.values("package");
 		List<String> targets = named.isEmpty() ? DshBuildScripts.unanswered(instance) : named;
@@ -97,15 +91,14 @@ public final class PluginCommands {
 		return 0;
 	}
 
-	/// Runs the `plugin install-file` command.
+	/**
+	 * Runs the `plugin install-file` command
+	 */
 	static int installPluginFile(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
 		if (instance == null) {
 			err.println("error: instance " + id + " does not exist");
-			return 1;
-		}
-		if (RunningInstances.isUp(instance, err)) {
 			return 1;
 		}
 		Path file = Path.of(invocation.option("file"));
@@ -119,15 +112,14 @@ public final class PluginCommands {
 		return 0;
 	}
 
-	/// Runs the `plugin remove` command.
+	/**
+	 * Runs the `plugin remove` command
+	 */
 	static int removePlugin(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
 		if (instance == null) {
 			err.println("error: instance " + id + " does not exist");
-			return 1;
-		}
-		if (RunningInstances.isUp(instance, err)) {
 			return 1;
 		}
 		List<String> specs = invocation.values("spec");
