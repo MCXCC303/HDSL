@@ -294,6 +294,7 @@ public final class InstanceCommands {
 
 	/**
 	 * Runs the `instance list` command: the instances, or the running ones under `--running`
+	 * This command now also provide running status.
 	 */
 	static int listInstances(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		if (invocation.flag("running")) {
@@ -303,11 +304,24 @@ public final class InstanceCommands {
 		if (instances.isEmpty()) {
 			out.println("(no instances)");
 		}
-		DshTable table = new DshTable("INSTANCE", "DSH VERSION", "PROFILE", "NODE", "HOME MODE", "HOME", "WORKSPACE");
+		List<DshProcessManager.Running> running = DshProcessManager.running();
+		DshTable table = new DshTable("INSTANCE",
+		                              "STATUS",
+		                              "DSH VERSION",
+		                              "PROFILE",
+		                              "NODE",
+		                              "HOME MODE",
+		                              "HOME",
+		                              "WORKSPACE");
 		for (DshInstance instance : instances) {
 			// This prints resolved values instead of stored values
-			table.row(instance.id(), instance.version(), instance.profile(), instance.nodeRuntimeOrDefault(),
-			          instance.homeMode().name(), instance.homeDirectory().toString(),
+			table.row(instance.id(),
+			          DshProcessManager.stateOf(instance.id()).name(),
+			          instance.version(),
+			          instance.profile(),
+			          instance.nodeRuntimeOrDefault(),
+			          instance.homeMode().name(),
+			          instance.homeDirectory().toString(),
 			          instance.workspacePath().toString());
 		}
 		table.print(out);
