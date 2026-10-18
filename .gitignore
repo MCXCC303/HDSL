@@ -11,9 +11,11 @@ dist/
 .dev/
 .verify/
 # Everything under docs/ stays out of the product except the plugin guide, which is written
-# for other people rather than for this desk.
+# for other people rather than for this desk, and the agent skills config, which belongs in
+# the repo so every clone reads it.
 docs/*
 !docs/plugin-guide/
+!docs/agents/
 
 # build outputs, but keep the vendored JFoenix patch base
 *.jar
