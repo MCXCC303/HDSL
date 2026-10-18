@@ -17,16 +17,19 @@
  */
 package com.mcxcc303.hdsl.instance;
 
+import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -103,6 +106,89 @@ class DshPortHolderTest {
 		             "a quoted Windows path is one token, not the word before the first space");
 		assertEquals("node", new DshPortHolder.Holder(1, "/usr/bin/node script.js", null).displayName());
 		assertEquals("", new DshPortHolder.Holder(1, null, null).displayName());
+	}
+
+	/// Reads the profile a harness command line was told to boot.
+	@Test
+	void readsTheProfileFromTheCommandLine() {
+		assertEquals("web", DshPortHolder.profileOf("node /x/bin.js --profile web --port 3081"));
+		assertEquals("web", DshPortHolder.profileOf("node /x/bin.js --profile \"web\" --port 3081"));
+		assertNull(DshPortHolder.profileOf("node /x/bin.js --port 3081"));
+		assertNull(DshPortHolder.profileOf(null));
+	}
+
+	/// Recognises DeepSeek Harness from the package in the command line, and nothing less.
+	@Test
+	void recognisesDeepSeekHarness() {
+		assertTrue(DshPortHolder.looksLikeDsh(
+				"/usr/bin/node /opt/hdsl/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js --profile web --port 3081"));
+		assertTrue(DshPortHolder.looksLikeDsh(
+				"\"C:\\Program Files\\nodejs\\node.exe\" \"C:\\hdsl\\dsh\\node_modules\\@deepseek-ai\\dsh\\lib\\bin.js\""));
+		assertFalse(DshPortHolder.looksLikeDsh("/usr/bin/node /home/someone/dsh/server.js"),
+		            "a path that merely contains the word dsh is not the package");
+		assertFalse(DshPortHolder.looksLikeDsh("/usr/bin/python3 -m http.server 3081"));
+		assertFalse(DshPortHolder.looksLikeDsh(null));
+	}
+
+	/// Matches a path as a whole path, in either separator spelling.
+	@Test
+	void matchesAWholePathOnly() throws IOException {
+		Path directory = Files.createTempDirectory("port-path").toRealPath();
+
+		assertTrue(DshPortHolder.mentionsPath("node " + directory.resolve("dsh") + "/lib/bin.js", directory));
+		assertTrue(DshPortHolder.mentionsPath("node " + directory.toString().replace('/', '\\') + "\\dsh\\lib",
+		                                      directory),
+		           "the same path spelled with backslashes is still the same path");
+		assertFalse(DshPortHolder.mentionsPath("node " + directory + "x/dsh/lib/bin.js", directory),
+		            "a longer name that starts the same way is another path");
+		assertFalse(DshPortHolder.mentionsPath(null, directory));
+	}
+
+	/// Identifies who holds a port against the instances the launcher knows.
+	@Test
+	void identifiesTheProgramHoldingAPort() throws Exception {
+		Path root = Files.createTempDirectory("port-origin");
+		DshInstance target = instanceAt("target", root.resolve("target"));
+		DshInstance other = instanceAt("other", root.resolve("other"));
+
+		assertEquals(DshPortHolder.Origin.THIS_INSTANCE,
+		             DshPortHolder.identify("node " + target.dshEntryPoint() + " --profile web", target,
+		                                    List.of(target, other)).origin());
+		DshPortHolder.Identification byOther = DshPortHolder.identify(
+				"node " + other.dshEntryPoint(), target, List.of(target, other));
+		assertEquals(DshPortHolder.Origin.OTHER_INSTANCE, byOther.origin());
+		assertEquals("other", byOther.instanceId());
+		assertEquals(DshPortHolder.Origin.DSH_UNMANAGED,
+		             DshPortHolder.identify("/usr/bin/node /usr/lib/node_modules/@deepseek-ai/dsh/lib/bin.js web",
+		                                    target, List.of(target, other)).origin());
+		assertEquals(DshPortHolder.Origin.NOT_DSH,
+		             DshPortHolder.identify("/usr/bin/python3 -m http.server", target,
+		                                    List.of(target, other)).origin());
+		assertEquals(DshPortHolder.Origin.UNKNOWN,
+		             DshPortHolder.identify(null, target, List.of(target, other)).origin(),
+		             "a command line that could not be read is not evidence that it is not DSH");
+		assertEquals(DshPortHolder.Origin.UNKNOWN,
+		             DshPortHolder.identify("/usr/bin/node", target, List.of(target, other)).origin(),
+		             "an executable without its arguments says nothing about what it runs");
+	}
+
+	/// Builds an instance whose own directory is a chosen one.
+	private static DshInstance instanceAt(String id, Path directory) {
+		return new DshInstance(id,
+		                       "0.2.1-rc.2",
+		                       "web",
+		                       directory.resolve("workspace").toString(),
+		                       DshNodeRuntime.SYSTEM,
+		                       DshHomeMode.ISOLATED,
+		                       null,
+		                       List.of(),
+		                       Map.of(),
+		                       DshInstanceIcon.DEFAULT.id(),
+		                       null,
+		                       DshPortMode.AUTO,
+		                       3081,
+		                       0L,
+		                       directory.toString());
 	}
 
 	/// Finds the listener this very test opened.

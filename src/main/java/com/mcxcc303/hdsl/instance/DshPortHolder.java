@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.instance;
 
+import com.mcxcc303.hdsl.core.DshException;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
@@ -60,6 +62,10 @@ public final class DshPortHolder {
 	/// `lsof` is the one that can hang — a mounted filesystem that stopped answering holds its
 	/// scan — so the answer is bounded rather than waited for indefinitely.
 	private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(2);
+
+	/// How long the command-line fallback is given. A shell that has to start first takes longer
+	/// than a native tool, and it is only asked when the platform would not answer directly.
+	private static final Duration FALLBACK_TIMEOUT = Duration.ofSeconds(4);
 
 	/// How long a stopped process is given to exit before it is killed outright.
 	private static final Duration KILL_GRACE = Duration.ofSeconds(5);
@@ -122,6 +128,208 @@ public final class DshPortHolder {
 		REFUSED_ANCESTOR,
 		/// The process could not be stopped, usually because it belongs to another user.
 		FAILED
+	}
+
+	/// What kind of program was found holding the port.
+	public enum Origin {
+		/// This instance's own DeepSeek Harness, left running by an earlier launch.
+		THIS_INSTANCE,
+		/// A known instance's DeepSeek Harness, left running by an earlier launch.
+		OTHER_INSTANCE,
+		/// A DeepSeek Harness this launcher does not manage — started by hand, or by another tool.
+		DSH_UNMANAGED,
+		/// A program that is not DeepSeek Harness.
+		NOT_DSH,
+		/// Nothing was learned, usually because the platform will not print the command line.
+		UNKNOWN
+	}
+
+	/// What an occupied port was found to belong to.
+	///
+	/// @param origin     the kind of program
+	/// @param instanceId the instance it belongs to, for the two instance kinds
+	public record Identification(Origin origin, @Nullable String instanceId) {
+	}
+
+	/// Identifies the program holding a port against the instances this launcher knows.
+	///
+	/// @param commandLine the command line [find] reported, or `null`
+	/// @param target      the instance about to be launched
+	/// @return the identification, never `null`
+	public static Identification identify(@Nullable String commandLine, DshInstance target) {
+		if (commandLine == null || commandLine.isBlank()) {
+			return new Identification(Origin.UNKNOWN, null);
+		}
+		try {
+			return identify(commandLine, target, InstanceListing.list());
+		} catch (RuntimeException e) {
+			// The listing reads manifests from disk, and a broken one is not a reason to lose the
+			// prompt: the target itself is still enough to recognise a leftover of its own.
+			LOG.warning("Could not list the instances while identifying a port holder", e);
+			return identify(commandLine, target, List.of());
+		}
+	}
+
+	/// Identifies the program holding a port against a known set of instances.
+	///
+	/// The command line is the evidence, in order of strength: the target's own entry point means
+	/// this instance left a harness behind; another instance's entry means that one did; the
+	/// package name alone means a harness this launcher does not manage. A command line that names
+	/// none of them is a different program.
+	///
+	/// @param commandLine the command line [find] reported, or `null`
+	/// @param target      the instance about to be launched
+	/// @param known       every instance the caller considered
+	/// @return the identification, never `null`
+	static Identification identify(@Nullable String commandLine,
+	                               DshInstance target,
+	                               List<DshInstance> known) {
+		if (commandLine == null || commandLine.isBlank()) {
+			return new Identification(Origin.UNKNOWN, null);
+		}
+		if (mentionsInstance(commandLine, target)) {
+			return new Identification(Origin.THIS_INSTANCE, target.id());
+		}
+		for (DshInstance instance : known) {
+			if (instance.id().equals(target.id())) {
+				continue;
+			}
+			if (mentionsInstance(commandLine, instance)) {
+				return new Identification(Origin.OTHER_INSTANCE, instance.id());
+			}
+		}
+		return looksLikeDsh(commandLine)
+		       ? new Identification(Origin.DSH_UNMANAGED, null)
+		       : new Identification(hasArguments(commandLine) ? Origin.NOT_DSH : Origin.UNKNOWN, null);
+	}
+
+	/// Reports whether a command line carries arguments after the program.
+	///
+	/// A platform that will not print a command line sometimes still prints the executable, and an
+	/// executable alone says nothing about what was run: `node` is every Node.js program. Such a
+	/// line is not evidence of "not DeepSeek Harness", so it is reported as unknown instead.
+	///
+	/// @param commandLine the command line
+	/// @return whether anything follows the program
+	private static boolean hasArguments(String commandLine) {
+		String text = commandLine.trim();
+		if (text.isEmpty()) {
+			return false;
+		}
+		int afterProgram;
+		if (text.charAt(0) == '"') {
+			int end = text.indexOf('"', 1);
+			if (end < 0) {
+				return false;
+			}
+			afterProgram = end + 1;
+		} else {
+			int space = text.indexOf(' ');
+			afterProgram = space < 0 ? text.length() : space;
+		}
+		return !text.substring(afterProgram).trim().isEmpty();
+	}
+
+	/// Reports whether a command line names a file or directory of an instance.
+	///
+	/// @param commandLine the command line
+	/// @param instance    the instance
+	/// @return whether it appears
+	static boolean mentionsInstance(String commandLine, DshInstance instance) {
+		try {
+			return mentionsPath(commandLine, instance.dshEntryPoint())
+			       || mentionsPath(commandLine, instance.dshDirectory());
+		} catch (DshException | RuntimeException e) {
+			return false;
+		}
+	}
+
+	/// Reports whether a command line names a path, as a whole path.
+	///
+	/// Separators are normalised and, on Windows, so is case: the same directory is spelled with
+	/// backslashes in one place and forward slashes in another, and a command line quotes a path
+	/// that contains spaces rather than passing it bare. A match has to end at a path boundary, so
+	/// that an instance directory does not match the longer name of another one starting the same.
+	///
+	/// @param commandLine the command line, or `null`
+	/// @param path        the path to look for
+	/// @return whether it appears
+	static boolean mentionsPath(@Nullable String commandLine, Path path) {
+		if (commandLine == null || commandLine.isBlank()) {
+			return false;
+		}
+		String haystack = normalizePath(commandLine);
+		String needle = normalizePath(path.toAbsolutePath().normalize().toString());
+		if (needle.isEmpty()) {
+			return false;
+		}
+		int from = 0;
+		while (true) {
+			int at = haystack.indexOf(needle, from);
+			if (at < 0) {
+				return false;
+			}
+			int end = at + needle.length();
+			boolean startsAPath = at == 0 || !isPathCharacter(haystack.charAt(at - 1));
+			boolean endsAPath = end == haystack.length()
+			                    || haystack.charAt(end) == '/'
+			                    || !isPathCharacter(haystack.charAt(end));
+			if (startsAPath && endsAPath) {
+				return true;
+			}
+			from = end;
+		}
+	}
+
+	/// The npm package DeepSeek Harness ships as. A command line that runs a file inside it is
+	/// DeepSeek Harness; the process name is not a signal, because `node` runs everything.
+	static final String DSH_PACKAGE = "@deepseek-ai/dsh";
+
+	/// Reports whether a command line runs DeepSeek Harness.
+	///
+	/// The launcher itself starts `node <package>/lib/bin.js`, and a harness started by hand or by
+	/// another tool is the same package run the same way — so the package name in the command line
+	/// is the signal. The process name is not: `node` runs everything, and a path that merely
+	/// contains the word `dsh` is not this package.
+	///
+	/// @param commandLine the command line, or `null`
+	/// @return whether it looks like DeepSeek Harness
+	static boolean looksLikeDsh(@Nullable String commandLine) {
+		return commandLine != null && normalizePath(commandLine).contains(DSH_PACKAGE);
+	}
+
+	/// Returns the profile a DeepSeek Harness command line was told to boot.
+	///
+	/// The launch command states it with `--profile <name>`. A harness started by hand usually does
+	/// not, in which case there is nothing to report.
+	///
+	/// @param commandLine the command line, or `null`
+	/// @return the profile, or `null` when none was named
+	public static @Nullable String profileOf(@Nullable String commandLine) {
+		if (commandLine == null) {
+			return null;
+		}
+		String[] tokens = commandLine.split("\\s+");
+		for (int i = 0; i + 1 < tokens.length; i++) {
+			if ("--profile".equals(tokens[i])) {
+				String value = tokens[i + 1].replace("\"", "").trim();
+				return value.isEmpty() ? null : value;
+			}
+		}
+		return null;
+	}
+
+	/// Normalises a command line or a path for comparison.
+	private static String normalizePath(String text) {
+		String normalized = text.replace('\\', '/');
+		return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
+		       ? normalized.toLowerCase(Locale.ROOT)
+		       : normalized;
+	}
+
+	/// Reports whether a character belongs to a path, so a match can be bounded by one.
+	private static boolean isPathCharacter(char c) {
+		return Character.isLetterOrDigit(c) || c == '_' || c == '-' || c == '.' || c == '~';
 	}
 
 	/// Finds the process listening on a port.
@@ -435,9 +643,11 @@ public final class DshPortHolder {
 	private static Holder holderOf(long pid) {
 		ProcessHandle handle = ProcessHandle.of(pid).orElse(null);
 		String commandLine = null;
+		String executable = null;
 		Instant startedAt = null;
 		if (handle != null) {
-			commandLine = handle.info().commandLine().or(() -> handle.info().command()).orElse(null);
+			commandLine = handle.info().commandLine().orElse(null);
+			executable = handle.info().command().orElse(null);
 			startedAt = handle.info().startInstant().orElse(null);
 		}
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.LINUX) {
@@ -446,7 +656,45 @@ public final class DshPortHolder {
 				commandLine = fromProc;
 			}
 		}
+		if (commandLine == null) {
+			commandLine = fallbackCommandLine(pid);
+		}
+		// An executable alone is still worth showing, but it says nothing about the arguments, and
+		// the identification reads a line without arguments as "unknown" rather than "not DSH".
+		if (commandLine == null) {
+			commandLine = executable;
+		}
 		return new Holder(pid, commandLine, startedAt);
+	}
+
+	/// Asks the platform for a process's command line when it would not hand one over directly.
+	///
+	/// `ProcessHandle` reports nothing for a process this user may not inspect, which is exactly
+	/// the leftover harness this is for. Windows and macOS both have a command that still answers
+	/// for a process of this user — the handler that started it is long gone, so the alternative is
+	/// to report the process as unidentified.
+	///
+	/// @param pid the process
+	/// @return the command line, or `null` when no command answers
+	private static @Nullable String fallbackCommandLine(long pid) {
+		List<String> lines = Collections.synchronizedList(new ArrayList<>());
+		switch (OperatingSystem.CURRENT_OS) {
+			case WINDOWS -> run(List.of("powershell", "-NoProfile", "-NonInteractive", "-Command",
+			                            "(Get-CimInstance Win32_Process -Filter \"ProcessId=" + pid +
+			                            "\").CommandLine"), lines, FALLBACK_TIMEOUT);
+			case MACOS, FREEBSD -> run(List.of("ps", "-p", Long.toString(pid), "-o", "command="),
+			                           lines, FALLBACK_TIMEOUT);
+			default -> {
+				return null;
+			}
+		}
+		for (String raw : List.copyOf(lines)) {
+			String text = raw.trim();
+			if (!text.isEmpty()) {
+				return text;
+			}
+		}
+		return null;
 	}
 
 	/// Returns a process's command line from `/proc/<pid>/cmdline`, or `null`.
@@ -475,6 +723,16 @@ public final class DshPortHolder {
 	/// @param lines   the list the output lines are added to
 	/// @return the exit code, or `-1` when the command did not finish
 	private static int run(List<String> command, List<String> lines) {
+		return run(command, lines, COMMAND_TIMEOUT);
+	}
+
+	/// Runs a lookup command with a bound, collecting its output.
+	///
+	/// @param command the program and its arguments
+	/// @param lines   the list the output lines are added to
+	/// @param timeout how long the command is given
+	/// @return the exit code, or `-1` when the command did not finish
+	private static int run(List<String> command, List<String> lines, Duration timeout) {
 		ProcessBuilder builder = new ProcessBuilder(command);
 		builder.redirectErrorStream(true);
 
@@ -493,10 +751,10 @@ public final class DshPortHolder {
 		});
 		Process raw = process.getProcess();
 		try {
-			if (!raw.waitFor(COMMAND_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
+			if (!raw.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
 				raw.destroyForcibly();
 				raw.waitFor(1, TimeUnit.SECONDS);
-				LOG.info(command.get(0) + " did not answer within " + COMMAND_TIMEOUT.toSeconds() + "s");
+				LOG.info(command.get(0) + " did not answer within " + timeout.toSeconds() + "s");
 				return -1;
 			}
 			process.awaitRelatedThreads(Duration.ofSeconds(1));

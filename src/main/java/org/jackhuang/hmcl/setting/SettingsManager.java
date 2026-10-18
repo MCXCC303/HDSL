@@ -562,6 +562,9 @@ public final class SettingsManager {
 		@SerializedName("debugLog")
 		private @Nullable Boolean debugLog;
 
+		@SerializedName("checkLeftoverPorts")
+		private @Nullable Boolean checkLeftoverPorts;
+
 		@SerializedName("preLaunchCommand")
 		private @Nullable String preLaunchCommand;
 
@@ -698,6 +701,7 @@ public final class SettingsManager {
 			        : settings.isolationPolicyProperty().get().id();
 			snapshot.showLogs = settings.showLogsProperty().get();
 			snapshot.debugLog = settings.debugLogProperty().get();
+			snapshot.checkLeftoverPorts = settings.checkLeftoverPortsProperty().get();
 			snapshot.preLaunchCommand = settings.preLaunchCommandProperty().get();
 			snapshot.postExitCommand = settings.postExitCommandProperty().get();
 			snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
@@ -911,6 +915,9 @@ public final class SettingsManager {
 				// told as well: without this it stays as the interface left it, which
 				// after a restart is off.
 				org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(debugLog);
+			}
+			if (checkLeftoverPorts != null) {
+				settings.checkLeftoverPortsProperty().set(checkLeftoverPorts);
 			}
 			if (preLaunchCommand != null) {
 				settings.preLaunchCommandProperty().set(preLaunchCommand);

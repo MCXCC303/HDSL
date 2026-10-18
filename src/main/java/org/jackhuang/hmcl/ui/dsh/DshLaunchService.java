@@ -24,6 +24,8 @@ import com.mcxcc303.hdsl.harness.DshSurface;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshPortHolder;
 import com.mcxcc303.hdsl.instance.DshPorts;
+import com.mcxcc303.hdsl.instance.InstanceListing;
+import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshLauncher;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
 import com.mcxcc303.hdsl.launch.DshProcess;
@@ -49,8 +51,11 @@ import org.jetbrains.annotations.Nullable;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -415,11 +420,11 @@ public final class DshLaunchService {
 		// Only the browser surface binds a port; an instance that boots anything else is not
 		// waiting on this one, however its record was written.
 		if (!DshSurface.of(instance).isWeb()) {
-			return new PortConflict(true, null, null);
+			return new PortConflict(true, null, null, null);
 		}
 		// The port may have been let go while the launch was being readied.
 		if (DshPorts.isFree(port)) {
-			return new PortConflict(true, null, null);
+			return new PortConflict(true, null, null, null);
 		}
 
 		DshPortHolder.Holder holder = DshPortHolder.find(port).orElse(null);
@@ -432,7 +437,9 @@ public final class DshLaunchService {
 				}
 			}
 		}
-		return new PortConflict(false, holder, managedInstance);
+		DshPortHolder.Identification identification =
+				DshPortHolder.identify(holder == null ? null : holder.commandLine(), instance);
+		return new PortConflict(false, holder, managedInstance, identification);
 	}
 
 	/// Asks what to do about a port that something else is holding.
@@ -457,8 +464,7 @@ public final class DshLaunchService {
 			// Another instance the launcher knows is running has its own stop, which also keeps the
 			// launcher's own records straight, so this prompt does not take that pid into its hands.
 			PORT_PROMPTS.remove(id);
-			Controllers.dialog(i18n("dsh.launch.port_managed", conflict.managedInstance(), port),
-			                   i18n("dsh.launch.port_prompt.title"), MessageType.WARNING);
+			openOrExplainRunningInstance(conflict.managedInstance(), port);
 			return;
 		}
 
@@ -475,16 +481,38 @@ public final class DshLaunchService {
 			return;
 		}
 
+		DshPortHolder.Identification identification = conflict.identification();
+		DshPortHolder.Origin origin = identification == null
+		                              ? DshPortHolder.Origin.UNKNOWN
+		                              : identification.origin();
 		String commandLine = holder.commandLine();
+		String profile = DshPortHolder.profileOf(commandLine);
 		LOG.info("Port " + port + " for instance " + id + " is held by pid " + holder.pid() +
-		         (commandLine == null ? "" : " (" + commandLine + ")"));
+		         " (" + (commandLine == null ? "command line unavailable" : commandLine) + "), identified as " +
+		         origin + (identification == null || identification.instanceId() == null
+		                   ? "" : " for instance " + identification.instanceId()) +
+		         (profile == null ? "" : ", profile " + profile));
+
 		String name = holder.displayName();
 		String description = name.isEmpty() ? i18n("dsh.launch.port_unknown_process") : name;
-		Controllers.dialog(new MessageDialogPane.Builder(
-				i18n("dsh.launch.port_prompt", port, id, description, holder.pid()),
-				i18n("dsh.launch.port_prompt.title"),
-				MessageType.QUESTION)
-				                   .addAction(i18n("dsh.launch.port_kill"),
+		String body;
+		String killLabel = i18n("dsh.launch.port_kill");
+		switch (origin) {
+			case THIS_INSTANCE -> body = i18n("dsh.launch.port_this_instance", port, holder.pid());
+			case OTHER_INSTANCE -> body = i18n("dsh.launch.port_other_instance", port,
+			                                   identification.instanceId(), holder.pid());
+			case DSH_UNMANAGED -> {
+				body = i18n("dsh.launch.port_dsh_elsewhere", port, holder.pid(), description);
+				killLabel = i18n("dsh.launch.port_kill_dsh");
+			}
+			case NOT_DSH -> body = i18n("dsh.launch.port_not_dsh", port, description, holder.pid());
+			default -> body = i18n("dsh.launch.port_prompt", port, id, description, holder.pid());
+		}
+
+		Controllers.dialog(new MessageDialogPane.Builder(body,
+		                                                  i18n("dsh.launch.port_prompt.title"),
+		                                                  MessageType.QUESTION)
+				                   .addAction(killLabel,
 				                              () -> killAndContinue(instance, port, holder, onDone, showOutput))
 				                   .addCancel(i18n("button.cancel"), () -> PORT_PROMPTS.remove(id))
 				                   .build());
@@ -538,14 +566,171 @@ public final class DshLaunchService {
 		                   i18n("dsh.launch.failed"), MessageType.WARNING);
 	}
 
+	/// Says a running instance already holds the port, and offers to open it when it is serving.
+	///
+	/// @param runningId the running instance that holds the port
+	/// @param port      the port it needs
+	private static void openOrExplainRunningInstance(String runningId, int port) {
+		DshInstance running = InstanceStore.find(runningId);
+		Optional<URI> address = running == null
+		                        ? Optional.empty()
+		                        : DshProcessManager.findRunning(running).flatMap(DshProcessManager.Running::webUrl);
+		if (address.isEmpty()) {
+			Controllers.dialog(i18n("dsh.launch.port_managed", runningId, port),
+			                   i18n("dsh.launch.port_prompt.title"), MessageType.WARNING);
+			return;
+		}
+		Controllers.dialog(new MessageDialogPane.Builder(
+				i18n("dsh.launch.port_managed", runningId, port),
+				i18n("dsh.launch.port_prompt.title"),
+				MessageType.WARNING)
+				                   .addAction(i18n("dsh.launch.port_managed.open"),
+				                              () -> FXUtils.openLink(address.get().toString()))
+				                   .addCancel(i18n("button.cancel"), null)
+				                   .build());
+	}
+
+	/// Looks for DeepSeek Harness processes left on instance ports, when the launcher starts.
+	///
+	/// Only leftovers are reported: a process that belongs to an instance the launcher is running is
+	/// one it knows about, with its own stop, and is not this prompt's business. The scan is skipped
+	/// when the setting is off, and says nothing when every instance port is free.
+	public static void checkLeftoverPorts() {
+		if (!SettingsManager.settings().checkLeftoverPortsProperty().get()) {
+			return;
+		}
+		CompletableFuture.supplyAsync(DshLaunchService::findLeftovers, Schedulers.io())
+		                 .whenComplete((leftovers, throwable) -> runInFX(() -> {
+			                 if (throwable != null) {
+				                 LOG.warning("Could not look for leftover harness processes", throwable);
+				                 return;
+			                 }
+			                 if (leftovers == null || leftovers.isEmpty()) {
+				                 return;
+			                 }
+			                 askAboutLeftovers(leftovers);
+		                 }));
+	}
+
+	/// Finds harness processes holding an instance port while no instance is running on it.
+	///
+	/// @return the leftovers, in instance order
+	private static List<Leftover> findLeftovers() {
+		Set<Long> known = new HashSet<>();
+		for (DshProcessManager.Running running : DshProcessManager.running()) {
+			known.add(running.pid());
+		}
+		List<Leftover> found = new ArrayList<>();
+		for (DshInstance instance : InstanceListing.list()) {
+			int port = instance.portOrDefault();
+			if (port <= 0 || DshPorts.isFree(port)) {
+				continue;
+			}
+			DshPortHolder.Holder holder = DshPortHolder.find(port).orElse(null);
+			if (holder == null || known.contains(holder.pid())) {
+				continue;
+			}
+			DshPortHolder.Identification identification = DshPortHolder.identify(holder.commandLine(), instance);
+			switch (identification.origin()) {
+				case NOT_DSH, UNKNOWN -> {
+					// Not something this prompt can name as a harness.
+				}
+				default -> found.add(new Leftover(instance, port, holder, identification));
+			}
+		}
+		return found;
+	}
+
+	/// Asks whether the leftovers should be stopped.
+	///
+	/// @param leftovers the leftovers found
+	private static void askAboutLeftovers(List<Leftover> leftovers) {
+		StringBuilder body = new StringBuilder(i18n("dsh.launch.leftover.intro"));
+		for (Leftover leftover : leftovers) {
+			body.append('\n')
+			    .append(i18n("dsh.launch.leftover.line",
+			                 leftover.instance().id(),
+			                 leftover.port(),
+			                 leftover.holder().pid(),
+			                 labelOf(leftover)));
+		}
+		Controllers.dialog(new MessageDialogPane.Builder(body.toString(),
+		                                                  i18n("dsh.launch.leftover.title"),
+		                                                  MessageType.WARNING)
+				                   .addAction(i18n("dsh.launch.leftover.stop"),
+				                              () -> stopLeftovers(leftovers))
+				                   .addCancel(i18n("dsh.launch.leftover.ignore"), null)
+				                   .build());
+	}
+
+	/// Describes a leftover on one line of the prompt.
+	///
+	/// @param leftover the leftover
+	/// @return the description
+	private static String labelOf(Leftover leftover) {
+		DshPortHolder.Identification identification = leftover.identification();
+		String label = switch (identification.origin()) {
+			case THIS_INSTANCE -> i18n("dsh.launch.leftover.this");
+			case OTHER_INSTANCE -> i18n("dsh.launch.leftover.other", identification.instanceId());
+			default -> i18n("dsh.launch.leftover.unmanaged");
+		};
+		String profile = DshPortHolder.profileOf(leftover.holder().commandLine());
+		return profile == null ? label : label + " (" + profile + ")";
+	}
+
+	/// Stops the leftovers, and says what became of them.
+	///
+	/// @param leftovers the leftovers to stop
+	private static void stopLeftovers(List<Leftover> leftovers) {
+		CompletableFuture.supplyAsync(() -> {
+			int stopped = 0;
+			for (Leftover leftover : leftovers) {
+				DshPortHolder.KillResult result = DshPortHolder.kill(leftover.holder());
+				if (result == DshPortHolder.KillResult.KILLED ||
+				    result == DshPortHolder.KillResult.NOT_RUNNING) {
+					stopped++;
+				}
+			}
+			return stopped;
+		}, Schedulers.io()).whenComplete((stopped, throwable) -> runInFX(() -> {
+			if (throwable != null || stopped == null) {
+				LOG.warning("Could not stop the leftover harness processes", throwable);
+				Controllers.dialog(i18n("dsh.launch.leftover.failed", leftovers.size()),
+				                   i18n("dsh.launch.leftover.title"), MessageType.WARNING);
+				return;
+			}
+			int failed = leftovers.size() - stopped;
+			if (failed > 0) {
+				Controllers.dialog(i18n("dsh.launch.leftover.failed", failed),
+				                   i18n("dsh.launch.leftover.title"), MessageType.WARNING);
+			} else {
+				Controllers.showToast(i18n("dsh.launch.leftover.stopped", stopped));
+			}
+		}));
+	}
+
+	/// One harness process left on an instance port.
+	///
+	/// @param instance       the instance whose port it holds
+	/// @param port           the port
+	/// @param holder         the process
+	/// @param identification what kind of harness it was found to be
+	private record Leftover(DshInstance instance,
+	                        int port,
+	                        DshPortHolder.Holder holder,
+	                        DshPortHolder.Identification identification) {
+	}
+
 	/// What was found on the port an instance needs.
 	///
 	/// @param free            whether the launch can start now
 	/// @param holder          the process holding it, or `null` when it could not be identified
-	/// @param managedInstance the instance the process belongs to, or `null`
+	/// @param managedInstance the running instance the process belongs to, or `null`
+	/// @param identification  what kind of program the process was found to be
 	private record PortConflict(boolean free,
 	                            @Nullable DshPortHolder.Holder holder,
-	                            @Nullable String managedInstance) {
+	                            @Nullable String managedInstance,
+	                            DshPortHolder.Identification identification) {
 	}
 
 	/// What became of an attempt to stop a process.

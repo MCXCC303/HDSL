@@ -123,6 +123,18 @@ public final class LauncherSettings {
 		return debugLog;
 	}
 
+	// Whether the launcher looks for harness processes left on instance ports when it starts.
+	private final BooleanProperty checkLeftoverPorts = new SimpleBooleanProperty(true);
+
+	/**
+	 * Returns whether leftover harness processes are looked for when the launcher starts.
+	 *
+	 * @return the property
+	 */
+	public BooleanProperty checkLeftoverPortsProperty() {
+		return checkLeftoverPorts;
+	}
+
 	/**
 	 * Returns the address the plugin catalogue is read from.
 	 * <p>

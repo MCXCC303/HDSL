@@ -38,6 +38,7 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.WindowsNativeUtils;
+import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
 import org.jackhuang.hmcl.ui.dsh.MainPage;
 import org.jackhuang.hmcl.util.StringUtils;
 import org.jackhuang.hmcl.util.i18n.I18n;
@@ -126,6 +127,10 @@ public final class Launcher extends Application {
         }
 
         LOG.info("Main window shown");
+
+        // Leftovers from a launcher that went away are named once the window is up, so a person
+        // sees which instance ports are still held before the first launch runs into one.
+        Platform.runLater(DshLaunchService::checkLeftoverPorts);
     }
 
     /// Reads the `--page` start-up option.

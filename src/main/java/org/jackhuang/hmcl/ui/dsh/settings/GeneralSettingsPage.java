@@ -26,6 +26,7 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jackhuang.hmcl.ui.construct.LineSelectButton;
+import org.jackhuang.hmcl.ui.construct.LineToggleButton;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jackhuang.hmcl.util.i18n.SupportedLocale;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -62,6 +63,7 @@ public final class GeneralSettingsPage extends ScrollPane {
 		ComponentList general = new ComponentList();
 		general.getContent().add(buildLanguageRow());
 		general.getContent().add(buildStorageRow());
+		general.getContent().add(buildLeftoverPortsRow());
 
 		// What installing a pack does, in a card of its own. The original gives a group of settings
 		// that decide one thing its own heading, and these decide how a pack's dependencies are
@@ -80,6 +82,18 @@ public final class GeneralSettingsPage extends ScrollPane {
 		// Must run after the content is installed: smooth scrolling binds to
 		// the content node and fails on a null content.
 		FXUtils.smoothScrolling(this);
+	}
+
+	/// Builds the row that decides whether leftover harness processes are looked for at startup.
+	///
+	/// @return the row
+	private LineToggleButton buildLeftoverPortsRow() {
+		LineToggleButton row = new LineToggleButton();
+		row.setTitle(i18n("dsh.settings.leftover_ports"));
+		row.setSubtitle(i18n("dsh.settings.leftover_ports.hint"));
+		row.selectedProperty().bindBidirectional(settings().checkLeftoverPortsProperty());
+		row.selectedProperty().addListener((observable, was, value) -> SettingsManager.save());
+		return row;
 	}
 
 	/// Builds the row that decides how a pack's dependencies are resolved.

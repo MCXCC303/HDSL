@@ -183,7 +183,13 @@ public final class InstanceCommands {
 		}
 
 		// The plan cannot be read from the process table once the child exits
-		DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
+		DshLauncher.LaunchPlan plan;
+		try {
+			plan = DshLauncher.plan(instance);
+		} catch (DshPorts.PortUnavailableException unavailable) {
+			err.println("error: " + describePortConflict(instance, unavailable.port()));
+			return 1;
+		}
 		out.println("command: " + plan.commandLine());
 
 		DshProcess process = DshProcessManager.launch(instance, null, plan);
@@ -217,6 +223,29 @@ public final class InstanceCommands {
 		}
 		process.stop();
 		return process.exitCode().orElse(0);
+	}
+
+	/**
+	 * Describes the process holding an instance's port, for a command line that cannot ask.
+	 *
+	 * @param instance the instance whose port is taken
+	 * @param port     the port
+	 * @return the sentence to print
+	 */
+	private static String describePortConflict(DshInstance instance, int port) {
+		DshPortHolder.Holder holder = DshPortHolder.find(port).orElse(null);
+		if (holder == null) {
+			return "port " + port + " is already in use; free it and start again";
+		}
+		DshPortHolder.Identification identification = DshPortHolder.identify(holder.commandLine(), instance);
+		String what = switch (identification.origin()) {
+			case THIS_INSTANCE -> "this instance's leftover DeepSeek Harness";
+			case OTHER_INSTANCE -> "a leftover DeepSeek Harness of instance \"" + identification.instanceId() + "\"";
+			case DSH_UNMANAGED -> "a DeepSeek Harness this launcher does not manage";
+			case NOT_DSH -> "another program";
+			case UNKNOWN -> "a process that could not be identified";
+		};
+		return "port " + port + " is held by " + what + " (pid " + holder.pid() + "); stop it and start again";
 	}
 
 	/**
@@ -283,6 +312,9 @@ public final class InstanceCommands {
 			}
 			DshProcessManager.stop(instance.id());
 			return 0;
+		} catch (DshPorts.PortUnavailableException unavailable) {
+			err.println("error: " + describePortConflict(instance, unavailable.port()));
+			return 1;
 		} catch (DshException e) {
 			err.println("error: " + e.getMessage());
 			return 1;
