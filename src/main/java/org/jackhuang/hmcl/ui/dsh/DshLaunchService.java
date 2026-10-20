@@ -376,15 +376,15 @@ public final class DshLaunchService {
 				int taken = portOf(failure);
 				if (taken > 0) {
 					// A taken port is a setting to change, so it gets the warning dialog rather than
-					// the crash one. The holder is looked up off the interface thread, and left
-					// unnamed when that lookup fails.
+					// the crash one. The holder is looked up off the interface thread; the pid is still
+					// worth showing when the lookup names nothing.
 					CompletableFuture.supplyAsync(() -> PortOccupant.find(taken), Schedulers.io())
 					                 .whenComplete((occupant, throwable) -> runInFX(() -> {
 						                 if (throwable != null) {
 							                 LOG.info("Could not name the process holding port " + taken, throwable);
 						                 }
 						                 Controllers.dialog(failureMessage(instance, failure, occupant == null ? null : occupant.orElse(null)),
-							                 i18n("dsh.launch.failed"),
+							                 i18n("dsh.launch.port_prompt.title"),
 							                 MessageType.WARNING);
 					                 }));
 				} else {
@@ -517,10 +517,12 @@ public final class DshLaunchService {
 			return failure == null ? i18n("dsh.launch.failed") : failure.getMessage();
 		}
 		String description = PortOccupant.describe(occupant);
-		if (description == null) {
+		if (occupant == null) {
 			return i18n("dsh.launch.port_taken", port, instance.id());
 		}
-		return i18n("dsh.launch.port_taken_by", port, description, occupant.pid(), instance.id());
+		return i18n("dsh.launch.port_taken_by", port,
+		            description != null ? description : i18n("dsh.launch.port_holder.unknown"),
+		            occupant.pid(), instance.id());
 	}
 
 	/// Finds the port a failure is about, if it is about one.

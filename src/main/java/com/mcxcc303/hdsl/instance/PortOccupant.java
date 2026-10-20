@@ -27,20 +27,15 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.OptionalLong;
-import java.util.Set;
+import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
  * Names the process holding a port.
- *
+ * <p>
  * The process is named as the platform found it; whether it may be stopped is not decided here.
- *
+ * <p>
  * Blocks: it reads the process table or runs a lookup command, so the caller must keep it off
  * the interface thread.
  */
@@ -64,16 +59,17 @@ public final class PortOccupant {
 	 * The process holding a port.
 	 *
 	 * @param pid         the process id
+	 * @param name        the executable's name, or `null` when the platform would not say
 	 * @param commandLine the command line it was started with, or `null` when the platform
 	 *                    would not say
 	 * @param executable  the program alone, or `null` when the platform would not say
 	 */
-	public record Occupant(long pid, @Nullable String commandLine, @Nullable String executable) {
-	}
+	public record Occupant(long pid, @Nullable String name, @Nullable String commandLine,
+	                       @Nullable String executable) {}
 
 	/**
 	 * Finds the process listening on a port.
-	 *
+	 * <p>
 	 * When more than one socket shares the port, only the first the platform lists is named.
 	 *
 	 * @param port the port
@@ -117,14 +113,68 @@ public final class PortOccupant {
 			commandLine = handle.info().commandLine().orElse(null);
 			executable = handle.info().command().orElse(null);
 		}
+		// `ProcessHandle` reports nothing for a process of another user, and these do.
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.LINUX) {
-			// `ProcessHandle` reports nothing for a process of another user, and `/proc` does.
 			String fromProc = linuxCommandLine(pid);
 			if (fromProc != null) {
 				commandLine = fromProc;
 			}
 		}
-		return new Occupant(pid, commandLine, executable);
+		String name = nameOf(commandLine);
+		if (name == null) {
+			name = nameOf(executable);
+		}
+		if (name == null && OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
+			name = imageNameFromTasklist(run(List.of("tasklist", "/FI", "PID eq " + pid, "/FO", "CSV", "/NH"),
+			                                 LOOKUP_TIMEOUT));
+		}
+		return new Occupant(pid, name, commandLine, executable);
+	}
+
+	/**
+	 * Returns the name of the executable a command line or an executable path starts with.
+	 *
+	 * @param commandLine the command line, an executable path, or `null`
+	 * @return the executable's name, or `null` when none can be read
+	 */
+	static @Nullable String nameOf(@Nullable String commandLine) {
+		if (commandLine == null) {
+			return null;
+		}
+		String text = commandLine.trim();
+		if (text.isEmpty()) {
+			return null;
+		}
+		String first;
+		if (text.charAt(0) == '"') {
+			int end = text.indexOf('"', 1);
+			first = end > 0 ? text.substring(1, end) : text.substring(1);
+		} else {
+			first = text.split("\\s+", 2)[0];
+		}
+		int slash = Math.max(first.lastIndexOf('/'), first.lastIndexOf('\\'));
+		String name = (slash >= 0 ? first.substring(slash + 1) : first).trim();
+		return name.isEmpty() ? null : name;
+	}
+
+	/**
+	 * Returns the image name out of `tasklist` CSV output.
+	 *
+	 * @param lines the output lines
+	 * @return the image name, or `null` when no row names one
+	 */
+	static @Nullable String imageNameFromTasklist(List<String> lines) {
+		for (String raw : lines) {
+			String line = raw.trim();
+			if (!line.startsWith("\"")) {
+				continue;
+			}
+			int end = line.indexOf('"', 1);
+			if (end > 1) {
+				return line.substring(1, end);
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -157,9 +207,6 @@ public final class PortOccupant {
 	/**
 	 * Reads the listening pid out of `netstat -ano` output.
 	 *
-	 * The state column is not read: Windows translates it, so a German machine writes `ABHÖREN`
-	 * where an English one writes `LISTENING`.
-	 *
 	 * @param lines the output lines
 	 * @param port  the port to find
 	 * @return the pid, or empty when no row listens on it
@@ -172,6 +219,8 @@ public final class PortOccupant {
 				continue;
 			}
 			String[] fields = line.split("\\s+");
+			// The state column is translated by Windows, so it is not read.
+			// A listening row is the one whose protocol is `TCP` and whose foreign port is `0`.
 			if (fields.length < 5 || !"TCP".equalsIgnoreCase(fields[0])) {
 				continue;
 			}
@@ -203,7 +252,7 @@ public final class PortOccupant {
 
 	/**
 	 * Finds the listening pid on Linux out of `/proc`.
-	 *
+	 * <p>
 	 * `/proc/net/tcp` and its IPv6 sibling hold, per row, the local port and the socket's inode;
 	 * the pid is then the one whose descriptors include that inode.
 	 *
@@ -297,7 +346,7 @@ public final class PortOccupant {
 	 * Reports whether any descriptor in a process's `fd` directory is one of the sockets.
 	 *
 	 * @param descriptors the process's `fd` directory
-	 * @param inodes     the socket inodes to look for
+	 * @param inodes      the socket inodes to look for
 	 * @return whether the process holds one of them
 	 */
 	private static boolean holdsSocket(Path descriptors, Set<String> inodes) {
@@ -388,18 +437,21 @@ public final class PortOccupant {
 
 	/**
 	 * A short form of the process, for a message that has a line to itself.
-	 *
-	 * The command line is preferred over the program alone, and anything past [#MAX_DESCRIBED]
-	 * is replaced by an ellipsis.
+	 * <p>
+	 * The command line is preferred over the name and the name over the program alone, and
+	 * anything past [#MAX_DESCRIBED] is replaced by an ellipsis.
 	 *
 	 * @param occupant the process
-	 * @return the text to show, or `null` when the platform named neither
+	 * @return the text to show, or `null` when the platform named nothing
 	 */
 	public static @Nullable String describe(@Nullable Occupant occupant) {
 		if (occupant == null) {
 			return null;
 		}
-		String text = occupant.commandLine() != null ? occupant.commandLine() : occupant.executable();
+		String text = occupant.commandLine() != null ? occupant.commandLine() : occupant.name();
+		if (text == null) {
+			text = occupant.executable();
+		}
 		if (text == null || text.isBlank()) {
 			return null;
 		}

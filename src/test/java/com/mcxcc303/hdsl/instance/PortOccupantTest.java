@@ -115,6 +115,8 @@ class PortOccupantTest {
 			assertTrue(occupant.isPresent(), "the test's own listener should be found on port " + port);
 			assertEquals(ProcessHandle.current().pid(), occupant.get().pid(),
 			             "the process holding the port is this JVM");
+			assertNotNull(occupant.get().name(),
+			              "this JVM's own name is readable, so the fallback chain reaches it");
 		}
 
 		assertTrue(PortOccupant.find(port, LOOKUP_TIMEOUT).isEmpty(),
@@ -132,36 +134,70 @@ class PortOccupantTest {
 	}
 
 	/**
-	 * Describes a process by its command line, shortened at a code point boundary.
+	 * Describes a process by its command line, falling back to its name and shortened at a
+	 * code point boundary.
 	 */
 	@Test
 	void describesAProcessByItsCommandLine() {
-		var byLine = new PortOccupant.Occupant(42, "node /opt/dsh/lib/bin.js --port 3081", "/usr/bin/node");
-		var byProgram = new PortOccupant.Occupant(42, null, "/usr/bin/node");
-		var unknown = new PortOccupant.Occupant(42, null, null);
-		var blank = new PortOccupant.Occupant(42, "   ", null);
+		var byLine = new PortOccupant.Occupant(42, "node", "node /opt/dsh/lib/bin.js --port 3081", "/usr/bin/node");
+		var byName = new PortOccupant.Occupant(42, "node.exe", null, null);
+		var byProgram = new PortOccupant.Occupant(42, null, null, "/usr/bin/node");
+		var unknown = new PortOccupant.Occupant(42, null, null, null);
+		var blank = new PortOccupant.Occupant(42, "  ", "   ", null);
 
 		assertEquals("node /opt/dsh/lib/bin.js --port 3081", PortOccupant.describe(byLine),
 		             "the command line names the process more precisely than the program does");
+		assertEquals("node.exe", PortOccupant.describe(byName),
+		             "a name read without a command line is still worth showing");
 		assertEquals("/usr/bin/node", PortOccupant.describe(byProgram));
 		assertNull(PortOccupant.describe(unknown), "a process nothing is known about is not described");
 		assertNull(PortOccupant.describe(null));
 		assertNull(PortOccupant.describe(blank));
 
 		String atLimit = "x".repeat(120);
-		assertEquals(atLimit, PortOccupant.describe(new PortOccupant.Occupant(42, atLimit, null)),
+		assertEquals(atLimit, PortOccupant.describe(new PortOccupant.Occupant(42, null, atLimit, null)),
 		             "a command line that fits is shown whole");
 
 		String overLimit = "x".repeat(121);
-		assertEquals(atLimit + "...", PortOccupant.describe(new PortOccupant.Occupant(42, overLimit, null)),
+		assertEquals(atLimit + "...", PortOccupant.describe(new PortOccupant.Occupant(42, null, overLimit, null)),
 		             "one character over the limit loses that character and gains an ellipsis");
 
 		// A character outside the basic plane is two code units, and a cut between them would
 		// leave half of it on its own.
 		String emoji = "y".repeat(119) + "😀" + "z".repeat(10);
-		String described = PortOccupant.describe(new PortOccupant.Occupant(42, emoji, null));
+		String described = PortOccupant.describe(new PortOccupant.Occupant(42, null, emoji, null));
 		assertNotNull(described);
 		assertEquals("y".repeat(119) + "😀...", described,
 		             "the cut lands after the whole character rather than inside it");
+	}
+
+	/**
+	 * Takes the executable's name out of a command line, quote-aware.
+	 */
+	@Test
+	void namesTheProcessFromItsCommandLine() {
+		assertEquals("node.exe",
+		             PortOccupant.nameOf("\"C:\\Program Files\\nodejs\\node.exe\" -e x"),
+		             "a quoted Windows path is one token, not the word before the first space");
+		assertEquals("node", PortOccupant.nameOf("/usr/bin/node script.js"));
+		assertEquals("python3", PortOccupant.nameOf("/usr/bin/python3"));
+		assertNull(PortOccupant.nameOf(null));
+		assertNull(PortOccupant.nameOf("   "));
+	}
+
+	/**
+	 * Reads the image name out of `tasklist` CSV output, skipping the notices it prints
+	 * instead of a row.
+	 */
+	@Test
+	void readsTheImageNameOutOfTasklistRows() {
+		assertEquals("node.exe",
+		             PortOccupant.imageNameFromTasklist(List.of("\"node.exe\",\"18892\",\"Console\",\"1\",\"1.234 K\"")),
+		             "the first quoted field is the image name");
+		assertEquals("dsh",
+		             PortOccupant.imageNameFromTasklist(List.of("信息: 没有运行的任务匹配指定标准。", "\"dsh\",\"42\"")),
+		             "a notice is translated, so only the shape of the row says it is not one");
+		assertNull(PortOccupant.imageNameFromTasklist(List.of("信息: 没有运行的任务匹配指定标准。")));
+		assertNull(PortOccupant.imageNameFromTasklist(List.of()));
 	}
 }
