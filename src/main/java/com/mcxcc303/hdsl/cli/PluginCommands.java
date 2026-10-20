@@ -23,12 +23,15 @@ import com.mcxcc303.hdsl.harness.DshPreset;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.plugin.DshBuildScripts;
+import com.mcxcc303.hdsl.plugin.DshInstalledPlugins;
 import com.mcxcc303.hdsl.plugin.DshLocalPlugins;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
+import com.mcxcc303.hdsl.plugin.DshPluginVersions;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -38,6 +41,57 @@ import java.util.List;
 public final class PluginCommands {
 
 	private PluginCommands() {
+	}
+
+	/**
+	 * Runs the `plugin list` command
+	 */
+	static int listPlugins(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
+		String id = invocation.option("id");
+		DshInstance instance = InstanceStore.find(id);
+		if (instance == null) {
+			err.println("error: instance " + id + " does not exist");
+			return 1;
+		}
+
+		List<DshInstalledPlugins.Installed> plugins = DshInstalledPlugins.of(instance);
+		if (plugins.isEmpty()) {
+			out.println("(no plugins)");
+			return 0;
+		}
+
+		boolean bundles = invocation.flag("show-bundles");
+		List<String> headers = new ArrayList<>(List.of("PACKAGE", "VERSION", "DECLARED", "DSH", "FIT", "STATE"));
+		if (bundles) {
+			headers.add("BUNDLES");
+		}
+		headers.add("PATH");
+		DshTable table = new DshTable(headers.toArray(new String[0]));
+
+		for (DshInstalledPlugins.Installed plugin : plugins) {
+			List<String> cells = new ArrayList<>();
+			cells.add(plugin.name());
+			cells.add(plugin.version() == null ? "-" : plugin.version());
+			cells.add(plugin.declared());
+			cells.add(plugin.requirements().isEmpty() ? "-" : plugin.requirements());
+			cells.add(fitOf(plugin.fit()));
+			cells.add(plugin.state().text());
+			if (bundles) {
+				cells.add(plugin.rows().isEmpty() ? "-" : String.join(", ", plugin.rows()));
+			}
+			cells.add(plugin.path());
+			table.row(cells.toArray(new String[0]));
+		}
+		table.print(out);
+		return 0;
+	}
+
+	private static String fitOf(DshPluginVersions.Fit fit) {
+		return switch (fit) {
+			case FITS -> "ok";
+			case NOT_FITS -> "no";
+			case UNCLAIMED -> "-";
+		};
 	}
 
 	/**

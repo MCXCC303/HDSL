@@ -149,6 +149,10 @@ final class Commands {
 			            InstanceCommands::testLaunch),
 
 			// Plugins.
+			new Command("plugin", "list", "list the plugins an instance's profile holds",
+			            List.of(required("id", "id", "the instance"),
+			                    flag("show-bundles", "show the loader rows each plugin's bundle inserts")),
+			            PluginCommands::listPlugins),
 			new Command("plugin", "install", "install a plugin into an instance's profile",
 			            List.of(required("id", "id", "the instance"),
 			                    required("spec", "spec", "the plugin, by name, version or local path")),
