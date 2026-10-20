@@ -250,27 +250,39 @@ public final class DshPluginBundle {
 		return path;
 	}
 
-	/// Reads a package's version from its directory.
-	///
-	/// @param directory the package directory
-	/// @return the version, or `null` when the directory holds no readable manifest
-	private static @Nullable String versionOf(Path directory) {
+	/**
+	 * Reads a package's manifest.
+	 *
+	 * @param directory the package directory
+	 * @return the manifest, or `null` when the directory holds no readable one
+	 */
+	public static @Nullable JsonObject readManifest(Path directory) {
 		Path manifest = directory.resolve("package.json");
 		if (!Files.isRegularFile(manifest)) {
 			return null;
 		}
 		try {
 			JsonElement parsed = JsonParser.parseString(Files.readString(manifest));
-			if (!parsed.isJsonObject()) {
-				return null;
-			}
-			JsonObject object = parsed.getAsJsonObject();
-			JsonElement version = object.get("version");
-			return version == null || version.isJsonNull() ? null : version.getAsString();
+			return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
 		} catch (IOException | RuntimeException e) {
-			LOG.warning("Could not read the version of " + directory, e);
+			LOG.warning("Could not read the manifest of " + directory, e);
 			return null;
 		}
+	}
+
+	/**
+	 * Reads a package's version from its directory.
+	 *
+	 * @param directory the package directory
+	 * @return the version, or `null` when the directory holds no readable manifest
+	 */
+	private static @Nullable String versionOf(Path directory) {
+		JsonObject manifest = readManifest(directory);
+		if (manifest == null) {
+			return null;
+		}
+		JsonElement version = manifest.get("version");
+		return version == null || version.isJsonNull() ? null : version.getAsString();
 	}
 
 	/// Returns the names of the plugins a pack carries.

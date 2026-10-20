@@ -167,19 +167,37 @@ public final class DshPluginRequirements {
 		return Map.copyOf(versions);
 	}
 
-	/// Reports whether a plugin fits the versions an instance holds.
-	///
-	/// @param peerDependencies the plugin's peer dependencies, or `null`
-	/// @param coreVersions     the versions of the harness's packages the instance has
-	/// @return whether every requirement that can be judged is satisfied
-	public static boolean fits(@Nullable JsonObject peerDependencies, Map<String, String> coreVersions) {
+	/**
+	 * Returns what a manifest requires of the harness's own packages.
+	 * <p>
+	 * The harness's own packages are the ones under `@deepseek-ai/`.
+	 *
+	 * @param peerDependencies the manifest's peer dependencies, or `null`
+	 * @return the requirements, empty when the manifest names none
+	 */
+	public static JsonObject coreRequirements(@Nullable JsonObject peerDependencies) {
+		JsonObject requirements = new JsonObject();
 		if (peerDependencies == null) {
-			return true;
+			return requirements;
 		}
 		for (Map.Entry<String, JsonElement> entry : peerDependencies.entrySet()) {
 			if (!entry.getKey().startsWith(CORE_PREFIX) || !entry.getValue().isJsonPrimitive()) {
 				continue;
 			}
+			requirements.add(entry.getKey(), entry.getValue());
+		}
+		return requirements;
+	}
+
+	/**
+	 * Reports whether a plugin fits the versions an instance holds.
+	 *
+	 * @param peerDependencies the plugin's peer dependencies, or `null`
+	 * @param coreVersions     the versions of the harness's packages the instance has
+	 * @return whether every requirement that can be judged is satisfied
+	 */
+	public static boolean fits(@Nullable JsonObject peerDependencies, Map<String, String> coreVersions) {
+		for (Map.Entry<String, JsonElement> entry : coreRequirements(peerDependencies).entrySet()) {
 			String held = coreVersions.get(entry.getKey());
 			if (held == null) {
 				// A package the instance does not have says nothing about whether the
@@ -451,11 +469,13 @@ public final class DshPluginRequirements {
 		       : within(version, release(named[0], named[1], named[2]), upperBound(false, count, named));
 	}
 
-	/// Reports whether a comparator names no version at all.
-	///
-	/// @param text the comparator
-	/// @return whether it is `*`, `x` or `X`
-	private static boolean isWildcard(String text) {
+	/**
+	 * Reports whether a comparator names no version at all.
+	 *
+	 * @param text the comparator
+	 * @return whether it is `*`, `x` or `X`
+	 */
+	public static boolean isWildcard(String text) {
 		return text.equals("*") || text.equals("x") || text.equals("X");
 	}
 
