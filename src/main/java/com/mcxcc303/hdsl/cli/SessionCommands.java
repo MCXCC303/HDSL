@@ -97,12 +97,14 @@ public final class SessionCommands {
 		}
 	}
 
-	/// Runs the `session list` command: the sessions stored in an instance's home.
-	///
-	/// @param invocation the parsed invocation
-	/// @param out        the stream for normal output
-	/// @param err        the stream for error output
-	/// @return the process exit code
+	/**
+	 * Runs the `session list` command
+	 *
+	 * @param invocation the parsed invocation
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 */
 	static int listSessions(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -110,14 +112,21 @@ public final class SessionCommands {
 			err.println("error: instance " + id + " does not exist");
 			return 1;
 		}
+		DshTable table = new DshTable("SESSION_ID", "FORMAT_VERSION", "SIZE", "STATUS", "LABEL");
 		try {
 			List<DshSession> sessions = DshSessions.list(instance.homeDirectory());
-			out.println(sessions.size() + " session(s) in " + instance.id());
 			for (DshSession session : sessions) {
-				out.println("  " + session.id() + "  v" + session.formatVersion() + "  " +
-				            DshSessions.formatSize(session.sizeBytes()) + (session.locked() ? "  [locked]" : "") +
-				            "  " + session.label());
+//				out.println("  " + session.id() + "  v" + session.formatVersion() + "  " +
+//				            DshSessions.formatSize(session.sizeBytes()) + (session.locked() ? "  [locked]" : "") +
+//				            "  " + session.label());
+				table.row(session.id(),
+				          "v" + session.formatVersion(),
+				          DshSessions.formatSize(session.sizeBytes()),
+				          session.locked() ? "locked" : "-",
+				          session.label());
 			}
+			table.print(out);
+			out.println("\n" + sessions.size() + " session(s) in " + instance.id());
 			return 0;
 		} catch (DshException e) {
 			err.println("error: " + e.getMessage());

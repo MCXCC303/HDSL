@@ -47,10 +47,15 @@ public final class NodeCommands {
 	}
 
 	static int listNodeVersions(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
+		DshTable table = new DshTable("VERSION", "LABLE", "STATUS");
 		for (NodeRelease release : NodeRuntimeManager.fetchReleases(NodeSource.of(invocation.option("source")))) {
-			out.println(release.version() + (release.isLts() ? "\t" + release.label() : "") +
-			            (release.isSupported() ? "" : "\tunsupported"));
+//			out.println(release.version() + (release.isLts() ? "\t" + release.label() : "") +
+//			            (release.isSupported() ? "" : "\tunsupported"));
+			table.row(release.version(),
+			          release.isLts() ? release.label() : "-",
+			          release.isSupported() ? "supported" : "unsupported");
 		}
+		table.print(out);
 		return 0;
 	}
 
