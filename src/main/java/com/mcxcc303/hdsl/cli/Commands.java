@@ -151,7 +151,8 @@ final class Commands {
 			// Plugins.
 			new Command("plugin", "list", "list the plugins an instance's profile holds",
 			            List.of(required("id", "id", "the instance"),
-			                    flag("show-bundles", "show the loader rows each plugin's bundle inserts")),
+			                    flag("show-bundles", "show the loader rows each plugin's bundle inserts"),
+			                    flag("show-dsh", "show dsh internal plugin version requirements")),
 			            PluginCommands::listPlugins),
 			new Command("plugin", "install", "install a plugin into an instance's profile",
 			            List.of(required("id", "id", "the instance"),

@@ -22,11 +22,7 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.harness.DshPreset;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceStore;
-import com.mcxcc303.hdsl.plugin.DshBuildScripts;
-import com.mcxcc303.hdsl.plugin.DshInstalledPlugins;
-import com.mcxcc303.hdsl.plugin.DshLocalPlugins;
-import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
-import com.mcxcc303.hdsl.plugin.DshPluginVersions;
+import com.mcxcc303.hdsl.plugin.*;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.PrintStream;
@@ -61,9 +57,13 @@ public final class PluginCommands {
 		}
 
 		boolean bundles = invocation.flag("show-bundles");
-		List<String> headers = new ArrayList<>(List.of("PACKAGE", "VERSION", "DECLARED", "DSH", "FIT", "STATE"));
+		boolean dsh_status = invocation.flag("show-dsh");
+		List<String> headers = new ArrayList<>(List.of("PACKAGE", "VERSION", "DECLARED", "FIT", "STATE"));
 		if (bundles) {
 			headers.add("BUNDLES");
+		}
+		if (dsh_status) {
+			headers.add("DSH");
 		}
 		headers.add("PATH");
 		DshTable table = new DshTable(headers.toArray(new String[0]));
@@ -73,7 +73,9 @@ public final class PluginCommands {
 			cells.add(plugin.name());
 			cells.add(plugin.version() == null ? "-" : plugin.version());
 			cells.add(plugin.declared());
-			cells.add(plugin.requirements().isEmpty() ? "-" : plugin.requirements());
+			if (dsh_status) {
+				cells.add(plugin.requirements().isEmpty() ? "-" : plugin.requirements());
+			}
 			cells.add(fitOf(plugin.fit()));
 			cells.add(plugin.state().text());
 			if (bundles) {
