@@ -45,18 +45,10 @@ import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
@@ -78,13 +70,6 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 public final class PackMarketPage extends StackPane implements DecoratorPage, Refreshable {
 	/// How many results a page holds.
 	private static final int PAGE_SIZE = 24;
-	/// The avatars already fetched, by address.
-	///
-	/// Kept for the life of the page and shared by every cell: a list of three packs by one author
-	/// must not be three requests, and a cell scrolled off and back must not be a fourth. `null` is
-	/// not stored — a failed fetch is simply not remembered, so the next row that wants it tries
-	/// again rather than being stuck with the network's bad minute.
-	private static final Map<String, Image> ICONS = new ConcurrentHashMap<>();
 	/// Every pack the index listed.
 	private final ObservableList<DshPackMarket.Entry> all = FXCollections.observableArrayList();
 	/// The packs on the page being shown.
@@ -159,42 +144,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		StackPane pane = new StackPane(label);
 		pane.setPadding(new Insets(20));
 		return pane;
-	}
-
-	/// Fetches an avatar and hands it over on the interface thread.
-	///
-	/// @param url      the address
-	/// @param onLoaded what to do with it
-	private static void loadIcon(String url, Consumer<Image> onLoaded) {
-		CompletableFuture.supplyAsync(() -> {
-			try {
-				HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-				                                 .timeout(Duration.ofSeconds(15))
-				                                 .GET()
-				                                 .build();
-				try (HttpClient client = HttpClient.newBuilder()
-				                                   .connectTimeout(Duration.ofSeconds(10))
-				                                   .followRedirects(HttpClient.Redirect.NORMAL)
-				                                   .build()) {
-					HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-					if (response.statusCode() < 200 || response.statusCode() >= 300) {
-						return null;
-					}
-					Image image = new Image(new ByteArrayInputStream(response.body()));
-					return image.isError() || image.getWidth() <= 0 ? null : image;
-				}
-			} catch (IOException | InterruptedException | RuntimeException e) {
-				if (e instanceof InterruptedException) {
-					Thread.currentThread().interrupt();
-				}
-				return null;
-			}
-		}, Schedulers.io()).thenAccept(image -> Platform.runLater(() -> {
-			if (image != null) {
-				ICONS.put(url, image);
-				onLoaded.accept(image);
-			}
-		}));
 	}
 
 	/// Writes a size the way a person reads one.
@@ -517,11 +466,11 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 			icon.setImage(null);
 			String url = entry.iconUrl();
 			if (url != null) {
-				Image cached = ICONS.get(url);
+				Image cached = RemoteIconLoader.cached(url);
 				if (cached != null) {
 					icon.setImage(cached);
 				} else {
-					loadIcon(url, loaded -> {
+					RemoteIconLoader.load(url, loaded -> {
 						// The cell may have been reused while the fetch was in flight, and a picture
 						// of the wrong pack is worse than none.
 						if (getItem() == entry) {
