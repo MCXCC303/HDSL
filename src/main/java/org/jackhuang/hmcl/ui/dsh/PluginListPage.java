@@ -27,6 +27,7 @@ import com.mcxcc303.hdsl.plugin.DshLocalPlugins;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import com.mcxcc303.hdsl.plugin.DshPluginPatch;
 import com.mcxcc303.hdsl.plugin.DshPluginSources;
+import com.mcxcc303.hdsl.plugin.PluginIcons;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -34,6 +35,7 @@ import javafx.scene.Node;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Skin;
+import javafx.scene.image.Image;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
@@ -115,10 +117,16 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 				List<String> bundles = DshPluginInstaller.readBundles(home, profile);
 				Set<String> disabled = DshPluginPatch.disabledIds(home, profile);
 				Map<String, List<String>> inserted = new LinkedHashMap<>();
+				Map<String, Image> icons = new LinkedHashMap<>();
+				Path packages = DshPluginPatch.profileDirectory(home, profile).resolve("node_modules");
 				for (String name : dependencies.keySet()) {
 					inserted.put(name, DshPluginPatch.insertedIds(home, profile, name));
+					Image icon = iconOf(packages.resolve(name));
+					if (icon != null) {
+						icons.put(name, icon);
+					}
 				}
-				return new Loaded(dependencies, bundles, disabled, inserted);
+				return new Loaded(dependencies, bundles, disabled, inserted, icons);
 			} catch (DshException e) {
 				throw new CompletionException(e);
 			}
@@ -142,10 +150,31 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 				List<String> own = loaded.inserted().getOrDefault(entry.getKey(), List.of());
 				boolean active = loaded.bundles().contains(entry.getKey());
 				boolean disabled = own.stream().anyMatch(loaded.disabled()::contains);
-				rows.add(new PluginRow(entry.getKey(), entry.getValue(), active, active && !own.isEmpty(), disabled));
+				rows.add(new PluginRow(entry.getKey(), entry.getValue(), active, active && !own.isEmpty(), disabled,
+				                           loaded.icons().get(entry.getKey())));
 			}
 			getItems().setAll(rows);
 		}));
+	}
+
+	/**
+	 * Reads the picture a package declares for itself.
+	 *
+	 * @param packageDirectory the package directory
+	 * @return the picture, or {@code null} when the package declares none that can be shown
+	 */
+	private static @Nullable Image iconOf(Path packageDirectory) {
+		Path file = PluginIcons.iconFile(packageDirectory);
+		if (file == null) {
+			return null;
+		}
+		try {
+			Image image = FXUtils.loadImage(file, 32, 32, true, true);
+			return image.isError() || image.getWidth() <= 0 ? null : image;
+		} catch (Exception e) {
+			LOG.warning("Could not read the icon of " + packageDirectory, e);
+			return null;
+		}
 	}
 
 	/// Removes the given plugins after confirmation.
@@ -385,14 +414,19 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}
 	}
 
-	/// One installed plugin.
-	///
-	/// @param name       the package name
-	/// @param version    the declared version range
-	/// @param active     whether the package is an active bundle
-	/// @param toggleable whether its own loader rows can be switched
-	/// @param disabled   whether the profile's patch layer switches it off
-	public record PluginRow(String name, String version, boolean active, boolean toggleable, boolean disabled) {
+	/**
+	 * One installed plugin.
+	 *
+	 * @param name       the package name
+	 * @param version    the declared version range
+	 * @param active     whether the package is an active bundle
+	 * @param toggleable whether its own loader rows can be switched
+	 * @param disabled   whether the profile's patch layer switches it off
+	 * @param icon       the picture the package declares, or {@code null} when it declares none
+	 *                  that can be read
+	 */
+	public record PluginRow(String name, String version, boolean active, boolean toggleable, boolean disabled,
+	                        @Nullable Image icon) {
 		/// Returns whether the plugin is running.
 		///
 		/// @return whether it is an active bundle the patch layer does not disable
@@ -401,14 +435,18 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}
 	}
 
-	/// The loaded dependency map, bundle list, patch state and insert rows.
-	///
-	/// @param dependencies the declared dependencies
-	/// @param bundles      the profile's active bundles
-	/// @param disabled     the row ids the profile's patch layer disables
-	/// @param inserted     each package's own loader row ids
+	/**
+	 * The loaded dependency map, bundle list, patch state and insert rows.
+	 *
+	 * @param dependencies the declared dependencies
+	 * @param bundles      the profile's active bundles
+	 * @param disabled     the row ids the profile's patch layer disables
+	 * @param inserted     each package's own loader row ids
+	 * @param icons        each package's own picture, by package name
+	 */
 	private record Loaded(@Unmodifiable Map<String, String> dependencies, @Unmodifiable List<String> bundles,
-	                      @Unmodifiable Set<String> disabled, @Unmodifiable Map<String, List<String>> inserted) {
+	                      @Unmodifiable Set<String> disabled, @Unmodifiable Map<String, List<String>> inserted,
+	                      @Unmodifiable Map<String, Image> icons) {
 	}
 
 	/// The page's skin: a toolbar above the plugin list.
@@ -495,8 +533,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		@Override
 		protected void updateControl(@Nullable PluginRow row, boolean empty) {
 			if (empty || row == null) {
+				// A cell that has scrolled past its last plugin returns to the launcher's own
+				// mark rather than keeping the picture of the plugin it held.
+				icon.setImage(DshInstanceIcon.COMMAND.load());
 				return;
 			}
+
+			icon.setImage(row.icon() != null ? row.icon() : DshInstanceIcon.COMMAND.load());
 
 			active.setSelected(row.enabled());
 			active.setDisable(!row.toggleable());

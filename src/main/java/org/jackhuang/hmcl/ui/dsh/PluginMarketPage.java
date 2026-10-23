@@ -38,11 +38,13 @@ import javafx.geometry.Pos;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.PageAware;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
@@ -594,6 +596,14 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 		/// The plugin's name, description and tags.
 		private final TwoLineListItem content = new TwoLineListItem();
 
+		/**
+		 * The repository owner's picture.
+		 *
+		 * <p>The catalogue carries no icon of the plugin's own, so the owner's picture stands in
+		 * for one.
+		 */
+		private final ImageContainer icon = new ImageContainer(32);
+
 		/// Creates the cell.
 		///
 		/// @param listView the list it belongs to
@@ -612,8 +622,30 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 		@Override
 		protected void updateControl(@Nullable Catalog.Plugin plugin, boolean empty) {
 			if (empty || plugin == null) {
+				// A cell that has scrolled past its last plugin must not keep the picture of
+				// the plugin it held.
+				icon.setImage(null);
 				return;
 			}
+			// Cleared first: a cell that has scrolled from one plugin to another must not wear
+			// the previous author's face while the new one is being fetched.
+			icon.setImage(null);
+			String url = plugin.ownerAvatarUrl();
+			if (url != null) {
+				Image cached = RemoteIconLoader.cached(url);
+				if (cached != null) {
+					icon.setImage(cached);
+				} else {
+					RemoteIconLoader.load(url, loaded -> {
+						// The cell may have been reused while the fetch was in flight, and a
+						// picture of the wrong plugin is worse than none.
+						if (getItem() == plugin) {
+							icon.setImage(loaded);
+						}
+					});
+				}
+			}
+
 			content.setTitle(plugin.name());
 			content.setSubtitle(plugin.localizedDescription() == null ? plugin.owner() : plugin.localizedDescription());
 			// A cell is reused for whatever scrolls into it, so what it said before
@@ -622,18 +654,13 @@ public final class PluginMarketPage extends StackPane implements Refreshable, Pa
 			content.addTags(List.of(plugin.category(), plugin.owner()));
 			content.addTag(plugin.sourceKind());
 
-			// The original's row: content that grows to fill it, a hand cursor because the whole
-			// row is pressable, and the surface the list's cards wear. There is no icon here,
-			// because the catalogue publishes none — a made-up one would be a picture of nothing.
-			// Nor is there an arrow at the end: the row is pressable in its entirety, and the
-			// original's mod rows have nothing there either. It was carried over from a list whose
-			// rows led somewhere else and read as a button that was not one.
+			// The original's mod rows carry no arrow at the end, so this row does not either.
 			HBox row = new HBox(8);
 			row.setPadding(new Insets(8));
 			row.setAlignment(Pos.CENTER_LEFT);
 			row.setCursor(Cursor.HAND);
 			HBox.setHgrow(content, Priority.ALWAYS);
-			row.getChildren().add(content);
+			row.getChildren().addAll(icon, content);
 			getContainer().getChildren().setAll(row);
 			if (!getContainer().getStyleClass().contains("card-no-padding")) {
 				getContainer().getStyleClass().add("card-no-padding");

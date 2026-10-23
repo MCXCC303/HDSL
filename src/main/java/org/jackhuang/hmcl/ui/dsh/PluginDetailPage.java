@@ -21,7 +21,6 @@ import com.jfoenix.controls.JFXButton;
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
-import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.plugin.Catalog;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
@@ -30,7 +29,7 @@ import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
-import javafx.scene.control.Label;
+import javafx.scene.image.Image;
 import javafx.scene.layout.*;
 import javafx.stage.DirectoryChooser;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
@@ -120,15 +119,23 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
 		card.getStyleClass().add("card");
 		card.setPadding(new Insets(10));
 
+		// The picture is the owner's, the same one the market list shows.
 		StackPane icon = new StackPane();
 		icon.getStyleClass().add("installer-item-image");
-		Node mark = DshInstanceIcon.FABRIC.load() == null ? new Label() : new ImageContainer(32);
-		if (mark instanceof ImageContainer container) {
-			container.setImage(DshInstanceIcon.FABRIC.load());
-		}
-		icon.getChildren().add(mark);
+		ImageContainer picture = new ImageContainer(32);
+		icon.getChildren().add(picture);
 		icon.setPadding(new Insets(0, 10, 0, 0));
 		card.setLeft(icon);
+
+		String avatar = plugin.ownerAvatarUrl();
+		if (avatar != null) {
+			Image cached = RemoteIconLoader.cached(avatar);
+			if (cached != null) {
+				picture.setImage(cached);
+			} else {
+				RemoteIconLoader.load(avatar, picture::setImage);
+			}
+		}
 
 		TwoLineListItem content = new TwoLineListItem();
 		content.setTitle(plugin.name());

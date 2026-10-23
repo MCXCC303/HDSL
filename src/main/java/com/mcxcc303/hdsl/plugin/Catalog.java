@@ -98,6 +98,21 @@ public record Catalog(@Nullable String updated, List<Plugin> plugins, List<Strin
 			return name;
 		}
 
+		/**
+		 * Returns where the repository owner's picture is.
+		 *
+		 * <p>The catalogue lists GitHub repositories, and GitHub serves the owner's picture at a
+		 * fixed address.
+		 *
+		 * @return the address, or {@code null} when the entry names no owner
+		 */
+		public @Nullable String ownerAvatarUrl() {
+			if (owner == null || owner.isBlank()) {
+				return null;
+			}
+			return "https://github.com/" + owner.trim() + ".png?size=64";
+		}
+
 		/// Returns the description in the language the launcher is showing.
 		///
 		/// @return the description, or `null` when the catalogue has none
