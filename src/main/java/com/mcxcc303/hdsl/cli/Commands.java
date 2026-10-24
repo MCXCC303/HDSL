@@ -114,7 +114,8 @@ final class Commands {
 			            List.of(), (invocation, out, err) -> DshDoctor.report(out)),
 
 			// Instances.
-			new Command("instance", "create", "create an instance, and give it the harness version to run",
+			// TODO: `instance create` unifies
+			new Command("instance", "create", "create a complete dsh instance",
 			            List.of(required("id", "id", "the instance's name"),
 			                    required("dsh-version", "version", "the DeepSeek Harness version to run"),
 			                    optional("profile", "name", "the profile to boot (default: web)"),

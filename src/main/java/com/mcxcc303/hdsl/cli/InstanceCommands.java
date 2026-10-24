@@ -143,8 +143,15 @@ public final class InstanceCommands {
 		                                                 customHome,
 		                                                 List.of(),
 		                                                 Map.of());
-		out.println("Created instance " + instance.id() + " (dsh " + instance.version() + ", profile " +
-		            instance.profile() + ", home " + instance.homeDirectory() + ")");
+		out.println("Installing DeepSeek Harness " + instance.version() + " into instance " + instance.id() + "...");
+
+		// This is a testing measure, may introduce some weird problem
+		// interruptions now leave instance incomplete
+		HarnessInstaller.install(instance, out::println);
+		out.println("Instance " + instance.id() + " successfully installed DeepSeek Harness " + version);
+		// TODO: some possible post process
+
+		out.println("Successfully created instance " + instance.id());
 		return 0;
 	}
 
