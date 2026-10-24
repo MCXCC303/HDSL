@@ -388,15 +388,17 @@ public final class InstanceCommands {
 			specs.add(local || declared.isBlank() ? entry.getKey() : entry.getKey() + "@" + declared);
 		}
 
-		out.println("Moving " + instance.id() + " from " + instance.version() + " to " + version);
-		HarnessInstaller.install(instance, version, out::println);
-		DshInstanceManager.update(instance.withVersion(version));
+		InstanceLocks.withLock(instance, "upgraded", () -> {
+			out.println("Moving " + instance.id() + " from " + instance.version() + " to " + version);
+			HarnessInstaller.install(instance, version, out::println);
+			DshInstanceManager.update(instance.withVersion(version));
 
-		if (!specs.isEmpty()) {
-			out.println("Reinstalling " + specs.size() + " plugin(s)");
-			DshInstance moved = InstanceStore.find(instance.id());
-			DshPluginInstaller.installSpecs(moved, specs, out::println);
-		}
+			if (!specs.isEmpty()) {
+				out.println("Reinstalling " + specs.size() + " plugin(s)");
+				DshInstance moved = InstanceStore.find(instance.id());
+				DshPluginInstaller.installSpecs(moved, specs, out::println);
+			}
+		});
 		out.println("Instance " + instance.id() + " now records " + version);
 		return 0;
 	}
