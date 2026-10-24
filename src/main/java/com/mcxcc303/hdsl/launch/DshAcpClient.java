@@ -23,6 +23,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
+import com.mcxcc303.hdsl.harness.HarnessInstaller;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
@@ -33,7 +34,6 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.*;
@@ -122,11 +122,8 @@ public final class DshAcpClient implements AutoCloseable {
 	/// @throws DshException when the runtime or version is unavailable
 	private static List<String> commandFor(DshInstance instance) throws DshException {
 		DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
+		HarnessInstaller.requireInstalled(instance);
 		Path script = instance.dshEntryPoint();
-		if (!Files.isRegularFile(script)) {
-			throw new DshException(
-					"Instance " + instance.id() + " has no DeepSeek Harness of its own; " + script + " is missing");
-		}
 		return List.of(runtime.node().toString(), script.toString(), "--profile", "acp");
 	}
 

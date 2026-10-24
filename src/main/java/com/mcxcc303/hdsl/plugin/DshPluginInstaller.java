@@ -23,6 +23,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.harness.HarnessInstaller;
 import com.mcxcc303.hdsl.harness.DshPreset;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.launch.DshEnvironment;
@@ -292,14 +293,8 @@ public final class DshPluginInstaller {
 	                                     List<String> args,
 	                                     List<String> packages,
 	                                     @Nullable Consumer<String> onLine) throws DshException {
+		HarnessInstaller.requireInstalled(instance);
 		Path script = instance.dshEntryPoint();
-		if (!Files.isRegularFile(script)) {
-			throw new DshException(
-					"Instance " + instance.id() + " has no DeepSeek Harness of its own; " + script + " is missing");
-		}
-		if (!Files.isRegularFile(script)) {
-			throw new DshException("The installed version is incomplete: " + script + " is missing");
-		}
 
 		List<String> command = new ArrayList<>();
 		command.add(runtime.node().toString());
