@@ -36,30 +36,40 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests the lock that keeps two operations from rewriting one instance's directory at once.
-///
-/// Installing, removing and renaming all rewrite the directory, and the launcher's task executor
-/// will run two of them on different threads if a person asks while the first is still going. What
-/// is being checked here is the contract the three of them share, not each one's own work.
+/**
+ * Pins the lock that keeps two operations from rewriting one instance's directory at once.
+ */
 class InstanceLocksTest {
-	/// A temporary directory standing in for the folder instances live in.
 	@TempDir
 	private Path root;
 
-	/// Two instances in it.
 	private DshInstance[] pair() throws DshException, IOException {
 		DshInstance[] made = new DshInstance[2];
 		for (int i = 0; i < made.length; i++) {
 			Path directory = root.resolve("instance-" + i);
 			Files.createDirectories(directory);
-			made[i] = new DshInstance("instance-" + i, "0.2.0-rc.2", "web", root.toString(), null,
-			                         DshHomeMode.ISOLATED, null, List.of(), Map.of(),
-			                         "default", null, null, 0, 0L, directory.toString());
+			made[i] = new DshInstance("instance-" + i,
+			                          "0.2.0-rc.2",
+			                          "web",
+			                          root.toString(),
+			                          null,
+			                          DshHomeMode.ISOLATED,
+			                          null,
+			                          List.of(),
+			                          Map.of(),
+			                          "default",
+			                          null,
+			                          null,
+			                          0,
+			                          0L,
+			                          directory.toString());
 		}
 		return made;
 	}
 
-	/// Asks another thread for the lock, so the same-thread reentrancy does not hide the refusal.
+	/**
+	 * Asks for the lock from another thread, so the owner thread's reentrancy cannot hide the refusal.
+	 */
 	private static DshException refusalFromAnotherThread(DshInstance instance, String what) throws Exception {
 		ExecutorService pool = Executors.newSingleThreadExecutor();
 		try {
@@ -71,7 +81,6 @@ class InstanceLocksTest {
 		}
 	}
 
-	/// One operation at a time on one instance: a second is refused, and says what is holding it.
 	@Test
 	void aSecondOperationIsRefused() throws Exception {
 		DshInstance instance = pair()[0];
@@ -86,8 +95,6 @@ class InstanceLocksTest {
 		}
 	}
 
-	/// Another instance is not in the way. The key is the directory, not the id, and two instances
-	/// have two directories.
 	@Test
 	void anotherInstanceIsNotInTheWay() throws Exception {
 		DshInstance[] instances = pair();
@@ -100,9 +107,6 @@ class InstanceLocksTest {
 		}
 	}
 
-	/// The release happens however the operation ended. These operations throw — an install fails on
-	/// pnpm, a removal on a file in use, a rename on a destination that exists — and a lock that
-	/// outlived the throw would refuse every later operation on that instance for ever.
 	@Test
 	void theLockIsGivenBackWhenTheOperationFails() throws Exception {
 		DshInstance instance = pair()[0];
@@ -113,12 +117,14 @@ class InstanceLocksTest {
 		InstanceLocks.release(instance);
 	}
 
-	/// A separate JVM is what a CLI command is. The lock has to refuse it too, not only another
-	/// thread in the GUI.
+	/**
+	 * A separate JVM is what a CLI command is; the file lock has to refuse it too.
+	 */
 	@Test
 	void anotherProcessIsRefused() throws Exception {
 		DshInstance instance = pair()[0];
-		Path java = Path.of(System.getProperty("java.home"), "bin",
+		Path java = Path.of(System.getProperty("java.home"),
+		                    "bin",
 		                    OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? "java.exe" : "java");
 		String classpath = System.getProperty("java.class.path");
 		Assumptions.assumeTrue(Files.isRegularFile(java), "no java executable to start: " + java);
@@ -126,10 +132,12 @@ class InstanceLocksTest {
 
 		InstanceLocks.acquire(instance, "installed into");
 		try {
-			Process process = new ProcessBuilder(java.toString(), "-cp", classpath,
+			Process process = new ProcessBuilder(java.toString(),
+			                                     "-cp",
+			                                     classpath,
 			                                     InstanceLockProbe.class.getName(),
-			                                     instance.instanceDirectory().toString())
-					.redirectErrorStream(true).start();
+			                                     instance.instanceDirectory().toString()).redirectErrorStream(true)
+			                                                                             .start();
 			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
 			assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the child did not exit");
 			assertEquals(0, process.exitValue(), output);
@@ -139,8 +147,6 @@ class InstanceLocksTest {
 		}
 	}
 
-	/// The lock is reentrant for the thread that holds it: an upgrade holds it once while the
-	/// install and the record update it calls each take it again.
 	@Test
 	void theLockIsReentrantForItsOwner() throws Exception {
 		DshInstance instance = pair()[0];
@@ -152,17 +158,24 @@ class InstanceLocksTest {
 		InstanceLocks.release(instance);
 	}
 
-	/// Two copies of one instance — the same manifest read out of two folders, which is what an
-	/// instance directory that was copied by hand gives — are the same directory to the lock, so
-	/// they cannot be worked on at once even though their ids differ.
 	@Test
 	void twoCopiesOfOneInstanceShareTheLock() throws Exception {
 		DshInstance[] instances = pair();
-		// A different id, naming the other one's directory: what a hand-copied instance manifest
-		// looks like.
-		DshInstance copy = new DshInstance("a-copy", "0.2.0-rc.2", "web", root.toString(), null,
-		                                   DshHomeMode.ISOLATED, null, List.of(), Map.of(),
-		                                   "default", null, null, 0, 0L,
+		// A different id, naming the other one's directory: what a hand-copied instance manifest looks like.
+		DshInstance copy = new DshInstance("a-copy",
+		                                   "0.2.0-rc.2",
+		                                   "web",
+		                                   root.toString(),
+		                                   null,
+		                                   DshHomeMode.ISOLATED,
+		                                   null,
+		                                   List.of(),
+		                                   Map.of(),
+		                                   "default",
+		                                   null,
+		                                   null,
+		                                   0,
+		                                   0L,
 		                                   instances[1].instanceDirectory().toString());
 		assertNotEquals(instances[1].id(), copy.id());
 

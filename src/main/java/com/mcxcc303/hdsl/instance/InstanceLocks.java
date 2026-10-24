@@ -32,62 +32,44 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HexFormat;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// One operation at a time on an instance's own directory.
-///
-/// Installing, removing, renaming and updating all rewrite that directory, and none of them can be
-/// left to overlap another: an install rebuilds dsh/, a removal deletes it, a rename moves it, and
-/// the pair of any two of those leaves an instance whose directory is half of each. A user can ask
-/// for two of them at once, and the launcher's task executor will run them on different threads.
-///
-/// The lock is a file lock, not only a map entry. The CLI runs before the launcher takes
-/// LauncherLock, so a CLI command and the GUI can operate on one instance at the same time. The
-/// file is kept outside the instance directory: on Windows an open handle prevents the directory
-/// from being renamed or removed, which is exactly what some of these operations do. Its name is a
-/// hash of the directory's path, so a rename does not move the lock with it; a rename takes the
-/// old and the new name together.
-///
-/// The key is the **directory**, not the id, because the directory is what is being mutated and it
-/// is what two callers would collide on: two ids can name the same folder if an instance manifest
-/// was copied, and the id stops being meaningful the moment a rename is under way.
+/**
+ * Serializes the operations that change an instance directory.
+ *
+ * <p>A lock is held in a process-wide map for this JVM's threads and in a lock file outside the
+ * directory for other processes, so the GUI and a CLI command cannot change the same instance
+ * directory at the same time. Acquisition does not wait; the refusal names the operation that holds
+ * the lock.
+ *
+ * <p>A lock belongs to the thread that took it and is reentrant for that thread; a release from
+ * another thread is ignored.
+ */
 @NotNullByDefault
 public final class InstanceLocks {
-	/// The directory, beside the instance, that holds the lock files.
 	private static final String LOCK_DIRECTORY = ".hdsl-locks";
 
-	/// What each held directory is being, so that the refusal can say what is in the way rather
-	/// than what the refused caller would have liked to do.
 	private static final Map<String, Held> HELD = new ConcurrentHashMap<>();
 
 	private InstanceLocks() {
 	}
 
-	/// Takes the lock on an instance's directory.
-	///
-	/// @param instance the instance
-	/// @param what     what the caller is about to do, said in the refusal
-	/// @throws DshException when the instance's directory cannot be resolved, or another operation
-	///                       already holds it
+	/**
+	 * Takes the lock on the instance's directory.
+	 *
+	 * @param what what the caller is about to do, said in the refusal
+	 * @throws DshException when the directory cannot be resolved or another operation holds it
+	 */
 	public static void acquire(DshInstance instance, String what) throws DshException {
 		acquireKey(keyOf(instance), instance.id(), what);
 	}
 
-	/// Gives the lock on an instance's directory back.
-	///
-	/// Never throws: it runs out of a finally, where an exception would replace the one that is
-	/// on its way out. A lock that could not be given back is worth a line in the log and nothing
-	/// more.
-	///
-	/// @param instance the instance
+	/**
+	 * Gives the lock back. Never throws.
+	 */
 	public static void release(DshInstance instance) {
 		try {
 			releaseKey(keyOf(instance));
@@ -96,19 +78,13 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// Runs something with an instance's directory held.
-	///
-	/// The point of the wrapper rather than two calls is that the release is in a finally, which
-	/// is what makes it impossible for a path that throws somewhere in the middle to leave an
-	/// instance locked for ever.
-	///
-	/// The lock is reentrant for the thread that holds it: an upgrade takes it once and the
-	/// install and the record update it calls take it again, each releasing only its own depth.
-	///
-	/// @param instance the instance
-	/// @param what     what is about to be done, said in a refusal
-	/// @param action   what to do
-	/// @throws DshException when another operation holds the lock, or the action fails
+	/**
+	 * Runs the action with the instance's directory held, releasing it in a finally. The lock is
+	 * reentrant for the thread that holds it.
+	 *
+	 * @param what what is about to be done, said in a refusal
+	 * @throws DshException when another operation holds the lock, or the action fails
+	 */
 	public static void withLock(DshInstance instance, String what, ThrowingRunnable action) throws DshException {
 		String key = acquireKey(keyOf(instance), instance.id(), what);
 		try {
@@ -118,16 +94,13 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// Runs something with the directories of several instances held.
-	///
-	/// The keys are taken in sorted order, so two renames that name each other's destination cannot
-	/// deadlock. A rename passes the old and the new directory: another process can otherwise take
-	/// the destination between the move and the manifest write.
-	///
-	/// @param instances the instances whose directories to hold
-	/// @param what      what is about to be done, said in a refusal
-	/// @param action    what to do
-	/// @throws DshException when another operation holds one of the locks, or the action fails
+	/**
+	 * Runs the action with several instance directories held. A rename passes the old and the new; the
+	 * keys are taken in sorted order so two renames cannot deadlock.
+	 *
+	 * @param what what is about to be done, said in a refusal
+	 * @throws DshException when another operation holds one of the locks, or the action fails
+	 */
 	public static <T> T withLocks(List<DshInstance> instances, String what, ThrowingSupplier<T> action)
 	throws DshException {
 		List<Target> targets = new ArrayList<>();
@@ -160,7 +133,6 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// Takes the lock for one directory key.
 	private static String acquireKey(String key, String label, String what) throws DshException {
 		synchronized (HELD) {
 			Held held = HELD.get(key);
@@ -169,8 +141,8 @@ public final class InstanceLocks {
 					held.depth++;
 					return key;
 				}
-				throw new DshException("Instance " + label + " is being " + held.what +
-				                       " right now; wait for it to finish");
+				throw new DshException(
+						"Instance " + label + " is being " + held.what + " right now; wait for it to finish");
 			}
 
 			Path lockFile = lockFile(key);
@@ -203,7 +175,6 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// Gives the lock for one directory key back.
 	private static void releaseKey(String key) {
 		synchronized (HELD) {
 			Held held = HELD.get(key);
@@ -222,7 +193,6 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// Closes a channel and its lock, reporting but never throwing.
 	private static void close(@Nullable FileChannel channel, @Nullable FileLock lock) {
 		if (lock != null) {
 			try {
@@ -240,21 +210,22 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// The refusal for a lock another operation holds.
 	private static DshException busy(String label, String what) {
 		return new DshException("Instance " + label + " is being " + what + " right now; wait for it to finish");
 	}
 
-	/// The key an instance's operations are held under.
-	///
-	/// Windows paths are case-insensitive, so the key is lower-cased there; two callers naming the
-	/// same directory with different casing must not get two locks.
+	/**
+	 * The key an instance's operations are held under: its directory, lower-cased on Windows
+	 */
 	private static String keyOf(DshInstance instance) throws DshException {
 		String key = instance.instanceDirectory().toAbsolutePath().normalize().toString();
 		return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? key.toLowerCase(Locale.ROOT) : key;
 	}
 
-	/// The lock file for a key, beside the instance directory.
+	/**
+	 * The lock file for a key. Kept beside the instance: on Windows an open handle inside the
+	 * instance would block the rename or removal the lock protects.
+	 */
 	private static Path lockFile(String key) {
 		Path directory = Path.of(key);
 		Path parent = directory.getParent();
@@ -264,7 +235,6 @@ public final class InstanceLocks {
 		return parent.resolve(LOCK_DIRECTORY).resolve(hash(key) + ".lock");
 	}
 
-	/// A short, collision-resistant file name for a path.
 	private static String hash(String key) {
 		try {
 			byte[] digest = MessageDigest.getInstance("SHA-256").digest(key.getBytes(StandardCharsets.UTF_8));
@@ -274,7 +244,6 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// What is held for one key.
 	private static final class Held {
 		private final String what;
 		private final FileChannel channel;
@@ -290,26 +259,32 @@ public final class InstanceLocks {
 		}
 	}
 
-	/// A directory and the label used when it is busy.
-	private record Target(String key, String label) {
-	}
+	private record Target(String key, String label) {}
 
-	/// What is run with an instance's directory held.
+	/**
+	 * What is run with an instance's directory held.
+	 */
 	@FunctionalInterface
 	public interface ThrowingSupplier<T> {
-		/// Runs it.
-		///
-		/// @return the result
-		/// @throws DshException when it fails
+		/**
+		 * Runs it.
+		 *
+		 * @return the result
+		 * @throws DshException when it fails
+		 */
 		T get() throws DshException;
 	}
 
-	/// What is run with an instance's directory held.
+	/**
+	 * What is run with an instance's directory held.
+	 */
 	@FunctionalInterface
 	public interface ThrowingRunnable {
-		/// Runs it.
-		///
-		/// @throws DshException when it fails
+		/**
+		 * Runs it.
+		 *
+		 * @throws DshException when it fails
+		 */
 		void run() throws DshException;
 	}
 }

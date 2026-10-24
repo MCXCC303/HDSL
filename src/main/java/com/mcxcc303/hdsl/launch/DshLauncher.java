@@ -289,11 +289,6 @@ public final class DshLauncher {
 	                              @Nullable DshAccount account,
 	                              @Nullable DshAccountRoute.Prepared prepared) throws DshException {
 		DshNodeRuntime runtime = resolveRuntime(instance);
-		// The instance runs its own copy, so there is nothing to look up: either
-		// its copy is there or the instance is not ready to run. The installer
-		// says which of the several ways that can be true it found — never
-		// installed, never finished, or installed into links that point at a
-		// directory which has since been renamed away.
 		HarnessInstaller.requireInstalled(instance);
 		Path script = instance.dshEntryPoint();
 

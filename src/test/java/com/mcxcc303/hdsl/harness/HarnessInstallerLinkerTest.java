@@ -27,14 +27,18 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Windows installs no links, because an absolute junction names the path it was made at and any
-/// rename above it breaks; everywhere else keeps the shared layout, where the relative links pnpm
-/// makes there already survive a rename.
+/**
+ * Pins that only Windows installs with the {@code hoisted} linker.
+ */
 class HarnessInstallerLinkerTest {
 	@Test
 	void onlyWindowsInstallsWithoutLinks() {
-		DshNodeRuntime runtime = new DshNodeRuntime(Path.of("node"), "24.11.1", Path.of("npm"), null,
-		                                          Path.of("pnpm"), "12.14.0");
+		DshNodeRuntime runtime = new DshNodeRuntime(Path.of("node"),
+		                                            "24.11.1",
+		                                            Path.of("npm"),
+		                                            null,
+		                                            Path.of("pnpm"),
+		                                            "12.14.0");
 		List<String> command = HarnessInstaller.buildInstallCommand(runtime, Path.of("project"));
 
 		boolean linked = command.contains("--config.node-linker=hoisted");

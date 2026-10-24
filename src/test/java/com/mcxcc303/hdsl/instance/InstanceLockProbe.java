@@ -23,18 +23,30 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-/// Tries to take an instance lock in a separate process.
-///
-/// The child is what makes the test cross-process rather than another thread in the same JVM.
+/**
+ * Tries to take an instance lock in a separate process, so the test is not only another thread.
+ */
 public final class InstanceLockProbe {
 	private InstanceLockProbe() {
 	}
 
 	public static void main(String[] args) throws Exception {
 		Path directory = Path.of(args[0]);
-		DshInstance instance = new DshInstance("probe", "0.2.0-rc.2", "web", directory.getParent().toString(), null,
-		                                      DshHomeMode.ISOLATED, null, List.of(), Map.of(),
-		                                      "default", null, null, 0, 0L, directory.toString());
+		DshInstance instance = new DshInstance("probe",
+		                                       "0.2.0-rc.2",
+		                                       "web",
+		                                       directory.getParent().toString(),
+		                                       null,
+		                                       DshHomeMode.ISOLATED,
+		                                       null,
+		                                       List.of(),
+		                                       Map.of(),
+		                                       "default",
+		                                       null,
+		                                       null,
+		                                       0,
+		                                       0L,
+		                                       directory.toString());
 		try {
 			InstanceLocks.acquire(instance, "probed");
 			InstanceLocks.release(instance);
