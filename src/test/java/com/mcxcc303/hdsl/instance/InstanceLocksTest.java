@@ -18,10 +18,13 @@
 package com.mcxcc303.hdsl.instance;
 
 import com.mcxcc303.hdsl.core.DshException;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -108,6 +111,32 @@ class InstanceLocksTest {
 		}));
 		assertDoesNotThrow(() -> InstanceLocks.acquire(instance, "installed into"));
 		InstanceLocks.release(instance);
+	}
+
+	/// A separate JVM is what a CLI command is. The lock has to refuse it too, not only another
+	/// thread in the GUI.
+	@Test
+	void anotherProcessIsRefused() throws Exception {
+		DshInstance instance = pair()[0];
+		Path java = Path.of(System.getProperty("java.home"), "bin",
+		                    OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? "java.exe" : "java");
+		String classpath = System.getProperty("java.class.path");
+		Assumptions.assumeTrue(Files.isRegularFile(java), "no java executable to start: " + java);
+		Assumptions.assumeTrue(classpath.length() < 30000, "classpath too long for a child process on Windows");
+
+		InstanceLocks.acquire(instance, "installed into");
+		try {
+			Process process = new ProcessBuilder(java.toString(), "-cp", classpath,
+			                                     InstanceLockProbe.class.getName(),
+			                                     instance.instanceDirectory().toString())
+					.redirectErrorStream(true).start();
+			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+			assertTrue(process.waitFor(60, TimeUnit.SECONDS), "the child did not exit");
+			assertEquals(0, process.exitValue(), output);
+			assertTrue(output.contains("REFUSED"), output);
+		} finally {
+			InstanceLocks.release(instance);
+		}
 	}
 
 	/// The lock is reentrant for the thread that holds it: an upgrade holds it once while the
