@@ -168,16 +168,12 @@ public final class DshFiles {
 		}
 	}
 
-	/// Reports whether an entry is a link of some kind rather than a directory.
-	///
-	/// Public because this is the answer to a question asked outside a removal too, and it is not
-	/// the one [Files#isSymbolicLink] gives: measured, that one answers `false` for a **junction**
-	/// — which is the form a package manager falls back to on a Windows that refuses symbolic
-	/// links — so a caller testing for "a link" with it silently never matches the very links it
-	/// was written to recognise.
-	///
-	/// @param path the entry
-	/// @return whether it must be deleted rather than entered
+	/**
+	 * Whether an entry is a link of some kind, including a junction (which
+	 * {@link Files#isSymbolicLink} answers {@code false} for).
+	 *
+	 * <p>Also {@code true} when the entry cannot be read: nothing unreadable may be walked into.
+	 */
 	public static boolean isReparsePoint(Path path) {
 		try {
 			BasicFileAttributes attributes = Files.readAttributes(path,

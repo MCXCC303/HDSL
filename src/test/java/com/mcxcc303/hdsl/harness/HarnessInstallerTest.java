@@ -24,10 +24,10 @@ import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -42,40 +42,40 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests what tells a finished install from one that is not, and what an instance says when it
-/// has no harness to run.
-///
-/// Both answers were wrong in the same way before. The install was staged in a directory that was
-/// renamed into place, which broke every **absolute** link pnpm had just made —junctions, which is
-/// what pnpm falls back to wherever Windows refuses it a symbolic link —and left an instance whose
-/// entry script was unreachable while the tree around it looked complete. And the one sentence that
-/// reported it could not tell that apart from never having installed anything, so the person reading
-/// it was left guessing. What is installed is now a marker that says an install is outstanding, and
-/// what is wrong is a question asked of the disk.
+/**
+ * Pins what counts as an installed harness, what an instance says when it has none, and the
+ * install-failure paths.
+ */
 class HarnessInstallerTest {
-	/// A temporary directory standing in for an instance directory.
 	@TempDir
 	private Path root;
 
-	/// An instance in it, named rather than pointed at, so its own directory is the one under test.
 	private DshInstance instance() throws DshException, IOException {
 		Path directory = root.resolve("an-instance");
 		Files.createDirectories(directory);
-		return new DshInstance("an-instance", "0.2.0-rc.2", "web", root.toString(), null,
-		                      DshHomeMode.ISOLATED, null, List.of(), Map.of(),
-		                      "default", null, null, 0, 0L, directory.toString());
+		return new DshInstance("an-instance",
+		                       "0.2.0-rc.2",
+		                       "web",
+		                       root.toString(),
+		                       null,
+		                       DshHomeMode.ISOLATED,
+		                       null,
+		                       List.of(),
+		                       Map.of(),
+		                       "default",
+		                       null,
+		                       null,
+		                       0,
+		                       0L,
+		                       directory.toString());
 	}
 
-	/// Writes the entry script, so that the instance looks installed.
 	private void writeEntryPoint(DshInstance instance) throws IOException, DshException {
 		Path script = instance.dshEntryPoint();
 		Files.createDirectories(script.getParent());
 		Files.writeString(script, "");
 	}
 
-	// ---- what counts as installed ------------------------------------------------
-
-	/// An instance with its harness in place is installed.
 	@Test
 	void installedWhenTheEntryScriptIsThere() throws Exception {
 		DshInstance instance = instance();
@@ -86,8 +86,6 @@ class HarnessInstallerTest {
 		assertDoesNotThrow(() -> HarnessInstaller.requireInstalled(instance));
 	}
 
-	/// An instance that never had anything installed is not, and says so in words that are not the
-	/// ones it uses for a broken one.
 	@Test
 	void notInstalledWhenNothingIsThere() throws Exception {
 		DshInstance instance = instance();
@@ -98,9 +96,6 @@ class HarnessInstallerTest {
 		assertTrue(reason.contains("nothing is installed in"), reason);
 	}
 
-	/// An install killed halfway leaves the marker behind, and the entry script it had **already
-	/// linked** is not enough to call the instance installed: pnpm puts the package into
-	/// `node_modules` while it links, long before the build scripts finish.
 	@Test
 	void notInstalledWhileAnInstallIsOutstanding() throws Exception {
 		DshInstance instance = instance();
@@ -114,9 +109,6 @@ class HarnessInstallerTest {
 		assertTrue(reason.contains("unfinished"), reason);
 	}
 
-	/// The marker is a **file**, and the directory an older build staged into has the same stem.
-	/// Asking for it without `NOFOLLOW_LINKS` would let that directory pass for one, and leave an
-	/// instance reporting "not installed" for ever.
 	@Test
 	void aStagingDirectoryIsNotAMarker() throws Exception {
 		DshInstance instance = instance();
@@ -126,8 +118,6 @@ class HarnessInstallerTest {
 		assertFalse(HarnessInstaller.isInstalled(instance));
 	}
 
-	/// Whatever sits at the marker's name is an outstanding install —a leftover file and a leftover
-	/// directory must not differ, since neither may leave an instance looking installed.
 	@Test
 	void theMarkerIsWhateverSitsAtItsName() throws Exception {
 		DshInstance instance = instance();
@@ -138,16 +128,6 @@ class HarnessInstallerTest {
 		assertFalse(HarnessInstaller.isInstalled(instance));
 	}
 
-	// ---- the failure this whole change is about ---------------------------------
-
-	/// The tree is complete-looking, the install that wrote it finished, and the package inside it
-	/// is a link to a directory that is not there. Renaming the install directory left exactly
-	/// this, and it must not be reported as "never installed".
-	///
-	/// The link is made as a junction on Windows, because that is what pnpm falls back to when
-	/// Windows refuses it a symbolic link, and with a symlink elsewhere. The test asks
-	/// [DshFiles#isReparsePoint] rather than [Files#isSymbolicLink] because a junction answers
-	/// false to the latter, and a junction is the form this is actually about.
 	@Test
 	void aDanglingPackageLinkIsNamedAsBroken() throws Exception {
 		DshInstance instance = instance();
@@ -168,15 +148,16 @@ class HarnessInstallerTest {
 		assertThrows(DshException.class, () -> HarnessInstaller.requireInstalled(instance));
 	}
 
-	/// Renaming an instance is the **same** hazard under another name. This builds it: a package
-	/// link pointing, by absolute path, at a directory *inside* the tree - so moving the tree
-	/// leaves the link naming a path that is no longer there.
 	@Test
 	void aTreeRenamedAwayLeavesItsLinksPointingAtNothing() throws Exception {
 		DshInstance instance = instance();
 
-		Path real = instance.dshDirectory().resolve(".pnpm").resolve("dsh@0.2.0-rc.2").resolve("node_modules")
-		                                                     .resolve("@deepseek-ai").resolve("dsh");
+		Path real = instance.dshDirectory()
+		                    .resolve(".pnpm")
+		                    .resolve("dsh@0.2.0-rc.2")
+		                    .resolve("node_modules")
+		                    .resolve("@deepseek-ai")
+		                    .resolve("dsh");
 		Files.createDirectories(real.resolve("lib"));
 		Files.writeString(real.resolve("lib").resolve("bin.js"), "");
 
@@ -195,16 +176,21 @@ class HarnessInstallerTest {
 		assertTrue(reason.contains("Reinstall"), reason);
 	}
 
-	/// Makes the link pnpm makes: a junction on Windows, a symlink elsewhere.
-	///
-	/// Packages are skipped when the machine refuses the link rather than silently passing: a test
-	/// that returns before its first assertion is not a test of the thing it names.
+	/**
+	 * Makes the link pnpm makes: a junction on Windows, a symbolic link elsewhere.
+	 *
+	 * <p>The test is skipped when the machine refuses the link, rather than returning before its
+	 * assertions.
+	 */
 	private void link(Path link, Path target) throws Exception {
 		Files.createDirectories(link.getParent());
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-			Process process = new ProcessBuilder("cmd.exe", "/c", "mklink", "/J",
-			                                     link.toString(), target.toAbsolutePath().toString())
-					.redirectErrorStream(true).start();
+			Process process = new ProcessBuilder("cmd.exe",
+			                                     "/c",
+			                                     "mklink",
+			                                     "/J",
+			                                     link.toString(),
+			                                     target.toAbsolutePath().toString()).redirectErrorStream(true).start();
 			try (var reader = process.inputReader()) {
 				while (reader.readLine() != null) {
 					// Drain, so the process is not left blocked on a full pipe.
@@ -220,10 +206,6 @@ class HarnessInstallerTest {
 		}
 	}
 
-	// ---- the marker and the tree --------------------------------------------------
-
-	/// Discarding a partial install removes the tree and the marker, so the instance reads as never
-	/// installed and a reinstall starts from nothing.
 	@Test
 	void discardingAPartialInstallClearsBoth() throws Exception {
 		DshInstance instance = instance();
@@ -238,8 +220,6 @@ class HarnessInstallerTest {
 		assertFalse(HarnessInstaller.isInstalled(instance));
 	}
 
-	/// Discarding nothing does nothing. The instance was installed, the marker was never written,
-	/// and a removal that ran anyway would be the one that breaks it.
 	@Test
 	void discardingAFinishedInstallLeavesItAlone() throws Exception {
 		DshInstance instance = instance();
@@ -251,9 +231,6 @@ class HarnessInstallerTest {
 		assertTrue(HarnessInstaller.isInstalled(instance));
 	}
 
-	/// The install no longer renames anything: the only directory it makes under the instance is the
-	/// one the instance runs from. A staging directory is what the rename needed, and it is what
-	/// broke the links.
 	@Test
 	void theInstallMakesNoStagingDirectory() throws Exception {
 		DshInstance instance = instance();
@@ -265,24 +242,22 @@ class HarnessInstallerTest {
 		}
 	}
 
-	/// Asks another thread to install, so the lock is taken by a different owner.
+	/**
+	 * Asks for the lock from another thread, so the owner thread's reentrancy cannot hide the refusal.
+	 */
 	private static DshException refusalFromAnotherThread(DshInstance instance) throws Exception {
 		ExecutorService pool = Executors.newSingleThreadExecutor();
 		try {
 			Future<DshException> future = pool.submit(() -> assertThrows(DshException.class,
-			                                                             () -> HarnessInstaller.install(
-				                                                             instance, instance.version(), null)));
+			                                                             () -> HarnessInstaller.install(instance,
+			                                                                                            instance.version(),
+			                                                                                            null)));
 			return future.get(30, TimeUnit.SECONDS);
 		} finally {
 			pool.shutdownNow();
 		}
 	}
 
-	// ---- one install at a time ----------------------------------------------------
-
-	/// A second install into one instance would delete the directory the first is writing into and
-	/// clear its marker. The second caller may be another thread in the GUI, or a CLI process; the
-	/// file lock covers both, so the refusal is asked of another thread here.
 	@Test
 	void theSecondInstallIsRefusedWhileTheFirstRuns() throws Exception {
 		DshInstance instance = instance();
@@ -296,12 +271,6 @@ class HarnessInstallerTest {
 		}
 	}
 
-	/// A refusal must not **steal** the guard. The caller that is turned away never acquired
-	/// anything, so it must leave the key as it found it —dropping it on the way out would hand the
-	/// next caller a lock nobody holds.
-	///
-	/// (The other half —that an install which *did* acquire the key gives it back however it ends —	/// is the `finally` in `install`. It is not driven here, because making an acquired install fail
-	/// means either the network or a filesystem that says no.)
 	@Test
 	void aRefusalLeavesTheGuardAsItFoundIt() throws Exception {
 		DshInstance instance = instance();
@@ -316,23 +285,20 @@ class HarnessInstallerTest {
 		InstanceLocks.release(instance);
 	}
 
-	// ---- when the install fails --------------------------------------------------
-	/// A runtime whose every tool is a path nothing is at, so that an install fails where it would
-	/// fail on a toolchain that cannot start: no network, no registry, no real pnpm.
-	///
-	/// The paths have to be ones that are *not* on `PATH`. `Path.of("pnpm")` names the real pnpm
-	/// to the process launcher, which then installs for real, in this machine's registry.
+	/**
+	 * A runtime whose tools do not exist, so an install fails without a registry or a real pnpm.
+	 *
+	 * <p>The names must not be on {@code PATH}; {@code Path.of("pnpm")} would run the real one.
+	 */
 	private static DshNodeRuntime absentTools(@Nullable String pnpmVersion) {
-		return new DshNodeRuntime(Path.of("no-such-node"), "24.11.1", Path.of("no-such-npm"), null,
-		                          Path.of("no-such-pnpm"), pnpmVersion);
+		return new DshNodeRuntime(Path.of("no-such-node"),
+		                          "24.11.1",
+		                          Path.of("no-such-npm"),
+		                          null,
+		                          Path.of("no-such-pnpm"),
+		                          pnpmVersion);
 	}
 
-	/// A failed install puts the tree that was there back.
-	///
-	/// This is the reason the tree is moved aside rather than deleted, and it is the one part of
-	/// the install that an end-to-end run cannot be relied on to keep testing: the failure it needs
-	/// is a real pnpm failing, which means a registry and a network. A runtime that cannot start
-	/// fails identically and needs neither.
 	@Test
 	void aFailedInstallPutsTheTreeThatWasThereBack() throws Exception {
 		DshInstance instance = instance();
@@ -341,8 +307,10 @@ class HarnessInstallerTest {
 		Files.writeString(entry, "the tree that was there");
 
 		DshException failure = assertThrows(DshException.class,
-		                                   () -> HarnessInstaller.install(instance, instance.version(), null,
-		                                                                          absentTools(null)));
+		                                    () -> HarnessInstaller.install(instance,
+		                                                                   instance.version(),
+		                                                                   null,
+		                                                                   absentTools(null)));
 		assertTrue(failure.getMessage().contains("Failed to run pnpm"), failure.getMessage());
 
 		// Back where it was, contents and all: a rename, so a junction naming the final path
@@ -357,8 +325,6 @@ class HarnessInstallerTest {
 		InstanceLocks.release(instance);
 	}
 
-	/// A failed install over an instance that had nothing installed leaves nothing behind, and does
-	/// not report a tree it never had.
 	@Test
 	void aFailedInstallOverNothingLeavesNothing() throws Exception {
 		DshInstance instance = instance();
@@ -371,14 +337,14 @@ class HarnessInstallerTest {
 		assertFalse(HarnessInstaller.isInstalled(instance));
 	}
 
-	// ---- how the install command is put together ----------------------------
-	/// The build scripts are allowed whichever way the tree is put together. Without them the
-	/// install finishes looking complete and fails the first time the spawn helper is used, and
-	/// this flag is the whole reason it does not.
 	@Test
 	void theBuildScriptsAreAllowed() {
-		DshNodeRuntime runtime = new DshNodeRuntime(Path.of("node"), "24.11.1", Path.of("npm"), null,
-		                                          Path.of("pnpm"), "12.14.0");
+		DshNodeRuntime runtime = new DshNodeRuntime(Path.of("node"),
+		                                            "24.11.1",
+		                                            Path.of("npm"),
+		                                            null,
+		                                            Path.of("pnpm"),
+		                                            "12.14.0");
 		List<String> command = HarnessInstaller.buildInstallCommand(runtime, Path.of("project"));
 
 		assertTrue(command.contains("--config.dangerously-allow-all-builds=true"), command.toString());
