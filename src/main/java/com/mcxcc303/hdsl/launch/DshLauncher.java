@@ -20,6 +20,7 @@ package com.mcxcc303.hdsl.launch;
 import com.mcxcc303.hdsl.account.*;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.harness.DshSurface;
+import com.mcxcc303.hdsl.harness.HarnessInstaller;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshPorts;
@@ -289,12 +290,12 @@ public final class DshLauncher {
 	                              @Nullable DshAccountRoute.Prepared prepared) throws DshException {
 		DshNodeRuntime runtime = resolveRuntime(instance);
 		// The instance runs its own copy, so there is nothing to look up: either
-		// its copy is there or the instance is not ready to run.
+		// its copy is there or the instance is not ready to run. The installer
+		// says which of the several ways that can be true it found — never
+		// installed, never finished, or installed into links that point at a
+		// directory which has since been renamed away.
+		HarnessInstaller.requireInstalled(instance);
 		Path script = instance.dshEntryPoint();
-		if (!Files.isRegularFile(script)) {
-			throw new DshException(
-					"Instance " + instance.id() + " has no DeepSeek Harness of its own; " + script + " is missing");
-		}
 
 		Path workspace = instance.workspacePath();
 		try {
