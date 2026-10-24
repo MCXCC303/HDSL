@@ -33,11 +33,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -254,10 +250,12 @@ public final class DshInstanceManager {
 	/// @param instance the instance to persist
 	/// @throws DshException when the manifest cannot be written
 	public static void update(DshInstance instance) throws DshException {
-		if (!Files.isDirectory(instance.instanceDirectory())) {
-			throw new DshException("Instance " + instance.id() + " does not exist");
-		}
-		InstanceStore.write(instance);
+		InstanceLocks.withLock(instance, "updated", () -> {
+			if (!Files.isDirectory(instance.instanceDirectory())) {
+				throw new DshException("Instance " + instance.id() + " does not exist");
+			}
+			InstanceStore.write(instance);
+		});
 		fireChanged();
 	}
 
@@ -297,19 +295,22 @@ public final class DshInstanceManager {
 		// another machine — therefore cannot turn "remove this instance" into a
 		// deletion somewhere the user never pointed the launcher at.
 
-		if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
-			LOG.info("Stopping instance " + id + " before removing it");
-			DshProcessManager.stop(id);
-		}
+		// An install or a rename rewrites this directory; removal takes the same lock.
+		InstanceLocks.withLock(instance, "removed", () -> {
+			if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
+				LOG.info("Stopping instance " + id + " before removing it");
+				DshProcessManager.stop(id);
+			}
 
-		try {
-			DshFiles.deleteTree(directory);
-		} catch (IOException e) {
-			throw new DshException(
-					"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
-		}
-		LOG.info("Removed instance " + id);
-		fireChanged();
+			try {
+				DshFiles.deleteTree(directory);
+			} catch (IOException e) {
+				throw new DshException(
+						"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
+			}
+			LOG.info("Removed instance " + id);
+			fireChanged();
+		});
 	}
 
 	/// Reports whether an instance id is already taken.
@@ -350,56 +351,58 @@ public final class DshInstanceManager {
 			throw new DshException("Cannot rename instance \"" + id + "\" while it is running or stopping");
 		}
 
-		DshInstance renamed = existing.withId(normalized);
 		// The instance's own directory, wherever it is: an instance in a folder
 		// the user added moves inside that folder, and one in the folder the
 		// launcher owns never leaves it.
 		Path oldDirectory = existing.instanceDirectory();
 		Path newDirectory = oldDirectory.resolveSibling(DshPaths.segment(normalized, "instance id"));
-		renamed = renamed.withDirectory(newDirectory);
+		DshInstance renamed = existing.withId(normalized).withDirectory(newDirectory);
 
-		boolean moved = false;
-		if (Files.isDirectory(oldDirectory)) {
-			// Nothing at the destination is removed to make room for the move. The
-			// destination is a sibling inside a folder of the launcher's — which for an
-			// instance in a folder the user added is a directory they own, and may be
-			// their own directory under the new name rather than an instance's. Renaming
-			// over it would delete what is there, tree and all, with nothing said: the
-			// name is refused instead, and the folder is named so it can be moved aside.
-			if (Files.exists(newDirectory, LinkOption.NOFOLLOW_LINKS)) {
-				throw new DshException(
-						"Cannot rename \"" + id + "\" to \"" + normalized + "\": " + newDirectory + " already exists");
-			}
-			try {
-				Files.move(oldDirectory, newDirectory);
-				moved = true;
-			} catch (IOException e) {
-				throw new DshException("Failed to move " + oldDirectory + ": " + e.getMessage(), e);
-			}
-		}
-
-		try {
-			InstanceStore.write(renamed);
-			// A plugin installed from a file the instance holds is recorded by that file's
-			// path, and every later operation on the profile resolves the path again — so a
-			// rename that left those records alone would stop the instance installing or
-			// removing any plugin at all. They move with the files they name.
-			DshLocalPluginPaths.relocate(renamed, oldDirectory, newDirectory);
-		} catch (DshException e) {
-			// Put the directory back rather than leaving the home orphaned under
-			// a name no instance answers to.
-			if (moved) {
+		return InstanceLocks.withLocks(List.of(existing, renamed), "renamed", () -> {
+			boolean moved = false;
+			if (Files.isDirectory(oldDirectory)) {
+				// Nothing at the destination is removed to make room for the move. The
+				// destination is a sibling inside a folder of the launcher's — which for an
+				// instance in a folder the user added is a directory they own, and may be
+				// their own directory under the new name rather than an instance's. Renaming
+				// over it would delete what is there, tree and all, with nothing said: the
+				// name is refused instead, and the folder is named so it can be moved aside.
+				if (Files.exists(newDirectory, LinkOption.NOFOLLOW_LINKS)) {
+					throw new DshException(
+							"Cannot rename \"" + id + "\" to \"" + normalized + "\": " + newDirectory +
+							" already exists");
+				}
 				try {
-					Files.move(newDirectory, oldDirectory);
-				} catch (IOException rollback) {
-					LOG.warning("Failed to undo the rename of " + id, rollback);
+					Files.move(oldDirectory, newDirectory);
+					moved = true;
+				} catch (IOException e) {
+					throw new DshException("Failed to move " + oldDirectory + ": " + e.getMessage(), e);
 				}
 			}
-			throw e;
-		}
 
-		fireChanged();
-		return renamed;
+			try {
+				InstanceStore.write(renamed);
+				// A plugin installed from a file the instance holds is recorded by that file's
+				// path, and every later operation on the profile resolves the path again — so a
+				// rename that left those records alone would stop the instance installing or
+				// removing any plugin at all. They move with the files they name.
+				DshLocalPluginPaths.relocate(renamed, oldDirectory, newDirectory);
+			} catch (DshException e) {
+				// Put the directory back rather than leaving the home orphaned under
+				// a name no instance answers to.
+				if (moved) {
+					try {
+						Files.move(newDirectory, oldDirectory);
+					} catch (IOException rollback) {
+						LOG.warning("Failed to undo the rename of " + id, rollback);
+					}
+				}
+				throw e;
+			}
+
+			fireChanged();
+			return renamed;
+		});
 	}
 
 	/// Copies an instance into a new one, its configuration and all.
