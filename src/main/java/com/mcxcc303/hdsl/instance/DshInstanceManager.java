@@ -254,10 +254,12 @@ public final class DshInstanceManager {
 	/// @param instance the instance to persist
 	/// @throws DshException when the manifest cannot be written
 	public static void update(DshInstance instance) throws DshException {
-		if (!Files.isDirectory(instance.instanceDirectory())) {
-			throw new DshException("Instance " + instance.id() + " does not exist");
-		}
-		InstanceStore.write(instance);
+		InstanceLocks.withLock(instance, "updated", () -> {
+			if (!Files.isDirectory(instance.instanceDirectory())) {
+				throw new DshException("Instance " + instance.id() + " does not exist");
+			}
+			InstanceStore.write(instance);
+		});
 		fireChanged();
 	}
 
@@ -297,19 +299,23 @@ public final class DshInstanceManager {
 		// another machine — therefore cannot turn "remove this instance" into a
 		// deletion somewhere the user never pointed the launcher at.
 
-		if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
-			LOG.info("Stopping instance " + id + " before removing it");
-			DshProcessManager.stop(id);
-		}
+		// An install or a rename rewriting this directory while it is being deleted leaves an
+		// instance that is neither there nor gone, so the removal takes the same lock they do.
+		InstanceLocks.withLock(instance, "removed", () -> {
+			if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
+				LOG.info("Stopping instance " + id + " before removing it");
+				DshProcessManager.stop(id);
+			}
 
-		try {
-			DshFiles.deleteTree(directory);
-		} catch (IOException e) {
-			throw new DshException(
-					"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
-		}
-		LOG.info("Removed instance " + id);
-		fireChanged();
+			try {
+				DshFiles.deleteTree(directory);
+			} catch (IOException e) {
+				throw new DshException(
+						"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
+			}
+			LOG.info("Removed instance " + id);
+			fireChanged();
+		});
 	}
 
 	/// Reports whether an instance id is already taken.
@@ -350,15 +356,15 @@ public final class DshInstanceManager {
 			throw new DshException("Cannot rename instance \"" + id + "\" while it is running or stopping");
 		}
 
-		DshInstance renamed = existing.withId(normalized);
 		// The instance's own directory, wherever it is: an instance in a folder
 		// the user added moves inside that folder, and one in the folder the
 		// launcher owns never leaves it.
 		Path oldDirectory = existing.instanceDirectory();
 		Path newDirectory = oldDirectory.resolveSibling(DshPaths.segment(normalized, "instance id"));
-		renamed = renamed.withDirectory(newDirectory);
+		DshInstance renamed = existing.withId(normalized).withDirectory(newDirectory);
 
-		boolean moved = false;
+		return InstanceLocks.withLocks(List.of(existing, renamed), "renamed", () -> {
+			boolean moved = false;
 		if (Files.isDirectory(oldDirectory)) {
 			// Nothing at the destination is removed to make room for the move. The
 			// destination is a sibling inside a folder of the launcher's — which for an
@@ -398,8 +404,9 @@ public final class DshInstanceManager {
 			throw e;
 		}
 
-		fireChanged();
-		return renamed;
+			fireChanged();
+			return renamed;
+		});
 	}
 
 	/// Copies an instance into a new one, its configuration and all.

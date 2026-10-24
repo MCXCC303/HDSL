@@ -5,6 +5,7 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.harness.HarnessInstaller;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceManager;
+import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.task.TaskExecutor;
@@ -67,12 +68,14 @@ public final class DshInstanceUpgradeService {
 		Task<Void> task = Task.runAsync(title, () -> {
 			LOG.info("Installing DeepSeek Harness " + version + " for " + instance.id());
 
-			HarnessInstaller.install(instance, version, progress::accept);
-			DshInstanceManager.update(withVersion(instance, version));
+			InstanceLocks.withLock(instance, "upgraded", () -> {
+				HarnessInstaller.install(instance, version, progress::accept);
+				DshInstanceManager.update(withVersion(instance, version));
 
-			if (!specs.isEmpty()) {
-				DshPluginInstaller.installSpecs(withVersion(instance, version), specs, progress::accept);
-			}
+				if (!specs.isEmpty()) {
+					DshPluginInstaller.installSpecs(withVersion(instance, version), specs, progress::accept);
+				}
+			});
 
 			LOG.info("Instance " + instance.id() + " now runs DeepSeek Harness " + version);
 		});
