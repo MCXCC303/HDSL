@@ -67,7 +67,7 @@ HDSL 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特的操作
 | 项目 | 要求 |
 |---|---|
 | 运行时 | **Java 21**（构建与运行） |
-| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
+| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，**pnpm ≥ 10.9** |
 
 ## 构建
 
@@ -94,6 +94,28 @@ gradlew.bat run
 ```bash
 ./gradlew makeExecutable
 ./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png dist
+```
+
+## 命令行工具
+
+HDSL 由 CLI 与 GUI 两部分组成，在 Linux / MacOS 平台安装后可以直接使用以下命令运行 HDSL CLI：
+
+```shell
+hdsl --version # 查看 HDSL 版本
+hdsl -h        # 查看命令帮助
+hdsl doctor    # 查看诊断信息
+
+hdsl           # 无参数时默认启动 HDSL GUI
+```
+
+而在 Windows 中，HDSL 的 exe 可执行文件本身也是一个 `.jar` 格式的文件，可通过 `java -jar .\hdsl.exe <COMMANDS>` 来运行 CLI 命令：
+
+```powershell
+java -jar .\hdsl.exe --version
+java -jar .\hdsl.exe -h
+java -jar .\hdsl.exe doctor
+
+.\hdsl.exe # 启动 HDSL GUI
 ```
 
 ## 参与贡献
