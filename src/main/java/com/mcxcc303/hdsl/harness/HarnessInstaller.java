@@ -337,7 +337,7 @@ public final class HarnessInstaller {
 						LOG.info("Removed the partial install for " + instance.id());
 					}
 					clearInstalling(instance);
-				} catch (IOException | DshException e) {
+				} catch (IOException | DshException | RuntimeException e) {
 					LOG.warning("Could not remove the partial install for " + instance.id(), e);
 				}
 			});
@@ -596,6 +596,10 @@ public final class HarnessInstaller {
 			throw new DshException("Failed to move the staged install into " + target, e);
 		}
 
+		// A marker can arrive with an instance copied from Windows. The staged install does not
+		// write one, so clear it after a successful move instead of leaving the instance
+		// permanently "unfinished" on this platform.
+		clearInstalling(instance);
 		LOG.info("Installed DSH " + version + " for " + instance.id() + " into " + target);
 	}
 
@@ -636,7 +640,7 @@ public final class HarnessInstaller {
 					hadPrevious = true;
 				}
 			}
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
 			// Only a tree that was not already being installed can be put back by the marker's
 			// absence. When one was, leaving the marker in place keeps the failure visible.
 			if (!wasInstalling) {
