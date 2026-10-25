@@ -30,8 +30,6 @@ DeepSeek Harness 通过 npm 发布、以 `dsh web` 启动。HDSL 把这些步骤
 
 目前 HDSL 通过高度定制化启动策略，支持启动各种 DSH 版本，从最古老的 v0.0.1-rc.1 到最新的任何 DSH 版本。
 
-> 截至 2026 年 10 月 12 日，HDSL 对 DeepSeek Harness v0.2.1 的管理表现依然出色。
-
 HDSL 致力于提供与 HMCL 类似的高质量、高兼容性、用户友好的使用体验，无论是新手小白还是开发人员，HDSL 都能发挥出色的体验。
 
 <img height="400" alt="screenshot_20260924_192002" src="https://github.com/user-attachments/assets/d7d7e37d-63f1-4234-8208-ea2f6b6242a6" />
@@ -66,8 +64,8 @@ HDSL 复刻了来自 HMCL 的皮肤与账户系统，并融入了独特的操作
 
 | 项目 | 要求 |
 |---|---|
-| 运行时 | **Java 21**（构建与运行） |
-| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，以及用于插件管理的 **pnpm** |
+| HDSL GUI & CLI | **Java 21** |
+| DeepSeek Harness | **Node.js `^22.19.0 \|\| >=24.0.0`**，**pnpm >= 10.9** |
 
 ## 构建
 
@@ -94,6 +92,28 @@ gradlew.bat run
 ```bash
 ./gradlew makeExecutable
 ./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png dist
+```
+
+## 命令行工具
+
+HDSL 由 CLI 与 GUI 两部分组成，在 Linux / MacOS 平台可以通过运行对应平台的可执行文件运行 HDSL CLI：
+
+```shell
+/path/to/hdsl --version # 查看 HDSL 版本
+/path/to/hdsl -h        # 查看命令帮助
+/path/to/hdsl doctor    # 查看诊断信息
+
+/path/to/hdsl           # 无参数时默认启动 HDSL GUI
+```
+
+而在 Windows 中，HDSL 的 exe 可执行文件本身也是一个 `.jar` 格式的文件，可通过 `java -jar .\hdsl.exe <COMMANDS>` 来运行 CLI 命令：
+
+```powershell
+java -jar .\hdsl.exe --version
+java -jar .\hdsl.exe -h
+java -jar .\hdsl.exe doctor
+
+.\hdsl.exe # 启动 HDSL GUI
 ```
 
 ## 参与贡献

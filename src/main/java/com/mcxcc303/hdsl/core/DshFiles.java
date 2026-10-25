@@ -104,7 +104,7 @@ public final class DshFiles {
 		try {
 			deleteTree(root);
 			return true;
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
 			Logger.LOG.warning("Failed to remove " + root, e);
 			return false;
 		}
@@ -168,11 +168,13 @@ public final class DshFiles {
 		}
 	}
 
-	/// Reports whether an entry is a link of some kind rather than a directory.
-	///
-	/// @param path the entry
-	/// @return whether it must be deleted rather than entered
-	private static boolean isReparsePoint(Path path) {
+	/**
+	 * Whether an entry is a link of some kind, including a junction (which
+	 * {@link Files#isSymbolicLink} answers {@code false} for).
+	 *
+	 * <p>Also {@code true} when the entry cannot be read: nothing unreadable may be walked into.
+	 */
+	public static boolean isReparsePoint(Path path) {
 		try {
 			BasicFileAttributes attributes = Files.readAttributes(path,
 			                                                      BasicFileAttributes.class,

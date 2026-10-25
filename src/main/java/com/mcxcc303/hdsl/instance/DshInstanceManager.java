@@ -33,11 +33,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.file.FileAlreadyExistsException;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -254,62 +250,44 @@ public final class DshInstanceManager {
 	/// @param instance the instance to persist
 	/// @throws DshException when the manifest cannot be written
 	public static void update(DshInstance instance) throws DshException {
-		if (!Files.isDirectory(instance.instanceDirectory())) {
-			throw new DshException("Instance " + instance.id() + " does not exist");
-		}
-		InstanceStore.write(instance);
+		InstanceLocks.withLock(instance, "updated", () -> {
+			if (!Files.isDirectory(instance.instanceDirectory())) {
+				throw new DshException("Instance " + instance.id() + " does not exist");
+			}
+			InstanceStore.write(instance);
+		});
 		fireChanged();
 	}
 
-	/// Removes an instance and, in isolated mode, everything it owns.
-	///
-	/// A shared or custom home is never deleted: other instances, or the user's
-	/// own `dsh` installation, may still depend on it.
-	///
-	/// An instance that is running is stopped first, and the removal waits for
-	/// it to exit. Windows will not remove a file that another process is
-	/// executing or has open, and an instance that is up is holding its own copy
-	/// of DeepSeek Harness and its own home open — so removing one that is
-	/// running either fails halfway, leaving a folder that can neither be
-	/// started nor removed, or succeeds against a live server whose files are
-	/// disappearing underneath it. Removing an instance is an instruction about
-	/// the instance, and an instance that is running is still that instance.
-	///
-	/// What is left when the removal still fails is named: "could not remove the
-	/// instance" and "could not remove
-	/// `…/instances/e2e1/dsh/node_modules/x/native.node` because another process
-	/// has it open" are different answers to the person reading them, and only
-	/// the second one says what to do next.
-	///
-	/// @param id the instance id
-	/// @throws DshException when the instance does not exist or cannot be removed
+	/**
+	 * Removes an instance, including its isolated home.
+	 *
+	 * @param id the instance id
+	 * @throws DshException when the instance does not exist or cannot be removed
+	 */
 	public static void delete(String id) throws DshException {
 		DshInstance instance = InstanceStore.find(id);
-		if (instance == null) {
-			throw new DshException("Instance " + id + " does not exist");
-		}
+		if (instance == null) throw new DshException("Instance " + id + " does not exist");
+
 		Path directory = instance.instanceDirectory();
-		// What is deleted is `<a folder the launcher lists>/<id>` and nothing
-		// else, by construction rather than by a check here: [#read] stamps the
-		// folder it read an instance from onto what it returns, and [#create]
-		// refuses to make one anywhere but in a folder of the launcher's. A
-		// manifest that names some other directory — hand-edited, or copied from
-		// another machine — therefore cannot turn "remove this instance" into a
-		// deletion somewhere the user never pointed the launcher at.
 
-		if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
-			LOG.info("Stopping instance " + id + " before removing it");
-			DshProcessManager.stop(id);
-		}
+		// installation/rename/remove write-touch this directory, take this lock
+		InstanceLocks.withLock(instance, "removed", () -> {
+			// A running instance may hold files under the instance directory
+			if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
+				LOG.info("Stopping instance " + id + " before removing it");
+				DshProcessManager.stop(id);
+			}
 
-		try {
-			DshFiles.deleteTree(directory);
-		} catch (IOException e) {
-			throw new DshException(
-					"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
-		}
-		LOG.info("Removed instance " + id);
-		fireChanged();
+			try {
+				DshFiles.deleteTree(directory);
+			} catch (IOException e) {
+				throw new DshException(
+						"Failed to remove " + directory + (e.getMessage() == null ? "" : ": " + e.getMessage()), e);
+			}
+			LOG.info("Removed instance " + id);
+			fireChanged();
+		});
 	}
 
 	/// Reports whether an instance id is already taken.
@@ -320,86 +298,69 @@ public final class DshInstanceManager {
 		return InstanceStore.find(id) != null;
 	}
 
-	/// Renames an instance.
-	///
-	/// The instance's own directory — the runtime it holds, the plugin files it keeps, and
-	/// an isolated home if it has one — is named after the instance and moves with it. A
-	/// home the instance shares, or one the user chose, lives elsewhere and is left alone —
-	/// but it still records the instance's own files, so what it recorded moves too.
-	///
-	/// @param id    the current id
-	/// @param newId the new id
-	/// @return the renamed instance
-	/// @throws DshException when either id is unusable or the move fails
+	/**
+	 * Renames an instance.
+	 * <p>
+	 * Moves instance dir to the new id's name. <br>
+	 * The instance has to be stopped first.
+	 *
+	 * @param id    the current id
+	 * @param newId the new id
+	 * @return the renamed instance
+	 * @throws DshException when the rename is refused or the directory cannot be moved
+	 */
 	public static DshInstance rename(String id, String newId) throws DshException {
 		DshInstance existing = InstanceStore.find(id);
-		if (existing == null) {
-			throw new DshException("Instance " + id + " does not exist");
-		}
-		String normalized = newId == null ? "" : newId.trim();
-		if (normalized.isEmpty()) {
-			throw new DshException("An instance needs a name");
-		}
-		if (normalized.equals(id)) {
-			return existing;
-		}
-		if (exists(normalized)) {
-			throw new DshException("Instance " + normalized + " already exists");
-		}
+		if (existing == null) throw new DshException("Instance " + id + " does not exist");
+
+		String normalized = newId.trim();
+		if (normalized.isEmpty()) throw new DshException("An instance needs a name");
+		if (normalized.equals(id)) return existing;
+		if (exists(normalized)) throw new DshException("Instance " + normalized + " already exists");
+
 		if (DshProcessManager.stateOf(id) != DshProcessManager.LaunchState.STOPPED) {
 			throw new DshException("Cannot rename instance \"" + id + "\" while it is running or stopping");
 		}
 
-		DshInstance renamed = existing.withId(normalized);
-		// The instance's own directory, wherever it is: an instance in a folder
-		// the user added moves inside that folder, and one in the folder the
-		// launcher owns never leaves it.
+		// an instance in a folder added by the user stays in that folder
 		Path oldDirectory = existing.instanceDirectory();
 		Path newDirectory = oldDirectory.resolveSibling(DshPaths.segment(normalized, "instance id"));
-		renamed = renamed.withDirectory(newDirectory);
+		DshInstance renamed = existing.withId(normalized).withDirectory(newDirectory);
 
-		boolean moved = false;
-		if (Files.isDirectory(oldDirectory)) {
-			// Nothing at the destination is removed to make room for the move. The
-			// destination is a sibling inside a folder of the launcher's — which for an
-			// instance in a folder the user added is a directory they own, and may be
-			// their own directory under the new name rather than an instance's. Renaming
-			// over it would delete what is there, tree and all, with nothing said: the
-			// name is refused instead, and the folder is named so it can be moved aside.
-			if (Files.exists(newDirectory, LinkOption.NOFOLLOW_LINKS)) {
-				throw new DshException(
-						"Cannot rename \"" + id + "\" to \"" + normalized + "\": " + newDirectory + " already exists");
-			}
-			try {
-				Files.move(oldDirectory, newDirectory);
-				moved = true;
-			} catch (IOException e) {
-				throw new DshException("Failed to move " + oldDirectory + ": " + e.getMessage(), e);
-			}
-		}
-
-		try {
-			InstanceStore.write(renamed);
-			// A plugin installed from a file the instance holds is recorded by that file's
-			// path, and every later operation on the profile resolves the path again — so a
-			// rename that left those records alone would stop the instance installing or
-			// removing any plugin at all. They move with the files they name.
-			DshLocalPluginPaths.relocate(renamed, oldDirectory, newDirectory);
-		} catch (DshException e) {
-			// Put the directory back rather than leaving the home orphaned under
-			// a name no instance answers to.
-			if (moved) {
+		return InstanceLocks.withLocks(List.of(existing, renamed), "renamed", () -> {
+			boolean moved = false;
+			if (Files.isDirectory(oldDirectory)) {
+				// The destination may be user's directory, refuse to overwrite
+				if (Files.exists(newDirectory, LinkOption.NOFOLLOW_LINKS)) {
+					throw new DshException("Cannot rename \"" + id + "\" to \"" + normalized + "\": " + newDirectory +
+					                       " already exists");
+				}
 				try {
-					Files.move(newDirectory, oldDirectory);
-				} catch (IOException rollback) {
-					LOG.warning("Failed to undo the rename of " + id, rollback);
+					Files.move(oldDirectory, newDirectory);
+					moved = true;
+				} catch (IOException e) {
+					throw new DshException("Failed to move " + oldDirectory + ": " + e.getMessage(), e);
 				}
 			}
-			throw e;
-		}
 
-		fireChanged();
-		return renamed;
+			try {
+				InstanceStore.write(renamed);
+				// Local plugin entries store paths under the instance; relocate them after the move.
+				DshLocalPluginPaths.relocate(renamed, oldDirectory, newDirectory);
+			} catch (DshException e) { // Put the directory back
+				if (moved) {
+					try {
+						Files.move(newDirectory, oldDirectory);
+					} catch (IOException rollback) {
+						LOG.warning("Failed to undo the rename of " + id, rollback);
+					}
+				}
+				throw e;
+			}
+
+			fireChanged();
+			return renamed;
+		});
 	}
 
 	/// Copies an instance into a new one, its configuration and all.
