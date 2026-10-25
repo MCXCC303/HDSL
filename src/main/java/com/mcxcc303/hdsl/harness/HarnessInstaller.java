@@ -326,12 +326,15 @@ public final class HarnessInstaller {
 	public static void discardPartial(DshInstance instance) {
 		try {
 			boolean installing = isInstalling(instance);
-			clearInstalling(instance);
 			Path target = instance.dshDirectory();
+			// Delete the tree before the marker. The marker is what makes an interrupted install
+			// visible, so clearing it first would leave a half-built tree that looks installed if
+			// the deletion then failed or the launcher was killed.
 			if (installing && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
 				DshFiles.deleteTree(target);
 				LOG.info("Removed the partial install for " + instance.id());
 			}
+			clearInstalling(instance);
 		} catch (IOException | DshException e) {
 			LOG.warning("Could not remove the partial install for " + instance.id(), e);
 		}
@@ -593,6 +596,10 @@ public final class HarnessInstaller {
 	                                   Path target,
 	                                   @Nullable Consumer<String> onLine) throws DshException {
 		Path aside = setAsideDirectory(instance);
+		// A marker that was already there says the tree at target is the remains of an install
+		// that never finished. It is not a working harness, so it must not be put back if this
+		// attempt fails: restoring it would clear the marker over a tree that only looks installed.
+		boolean wasInstalling = isInstalling(instance);
 
 		// The marker goes down before anything is deleted or moved, so a launcher killed while it
 		// clears the old tree still says an install is outstanding.
@@ -602,14 +609,22 @@ public final class HarnessInstaller {
 		try {
 			DshFiles.deleteTreeQuietly(aside);
 			if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
-				// Moved rather than deleted: restoring it is a rename, and absolute links inside it
-				// still name this path.
-				Files.move(target, aside);
-				hadPrevious = true;
+				if (wasInstalling) {
+					DshFiles.deleteTree(target);
+				} else {
+					// Moved rather than deleted: restoring it is a rename, and absolute links inside it
+					// still name this path.
+					Files.move(target, aside);
+					hadPrevious = true;
+				}
 			}
 		} catch (IOException e) {
-			clearInstalling(instance);
-			throw new DshException("Failed to move " + target + " aside to " + aside, e);
+			// Only a tree that was not already being installed can be put back by the marker's
+			// absence. When one was, leaving the marker in place keeps the failure visible.
+			if (!wasInstalling) {
+				clearInstalling(instance);
+			}
+			throw new DshException("Failed to prepare " + target + " for install", e);
 		}
 
 		try {

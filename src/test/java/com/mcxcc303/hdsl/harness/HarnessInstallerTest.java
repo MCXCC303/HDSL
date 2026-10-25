@@ -325,6 +325,27 @@ class HarnessInstallerTest {
 		InstanceLocks.release(instance);
 	}
 
+	/**
+	 * A retry over an install that never finished must not treat the half-built tree as the
+	 * previous runtime. Restoring it on failure would clear the marker and leave an instance
+	 * that looks installed while its tree is still incomplete.
+	 */
+	@Test
+	void aRetryOverAnUnfinishedInstallDoesNotRestoreThePartialTree() throws Exception {
+		DshInstance instance = instance();
+		writeEntryPoint(instance);
+		Files.writeString(HarnessInstaller.pendingMarker(instance), "");
+		Files.writeString(instance.dshDirectory().resolve("partial-tree"), "not a runtime");
+
+		assertThrows(DshException.class,
+		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(null)));
+
+		assertFalse(Files.exists(instance.dshDirectory()));
+		assertFalse(HarnessInstaller.isInstalling(instance));
+		assertFalse(HarnessInstaller.isInstalled(instance));
+		assertFalse(Files.exists(HarnessInstaller.setAsideDirectory(instance)));
+	}
+
 	@Test
 	void aFailedInstallOverNothingLeavesNothing() throws Exception {
 		DshInstance instance = instance();
