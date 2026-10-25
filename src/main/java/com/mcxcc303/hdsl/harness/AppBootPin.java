@@ -67,30 +67,25 @@ public final class AppBootPin {
 	private AppBootPin() {
 	}
 
-	/// Holds an instance's boot library to a different release.
-	///
-	/// The pairing is not a preference — the two are published together, and a
-	/// release whose libraries disagree with it fails at import rather than
-	/// degrading — so this is written only when someone asked for it, and the
-	/// caller warns first.
-	///
-	/// The choice belongs to the instance, because the runtime it changes belongs
-	/// to the instance: it is installed into the instance's own copy and reaches
-	/// nothing else.
-	///
-	/// @param instance the instance to change
-	/// @param appBoot  the boot library version to hold it to
-	/// @throws DshException when the manifest cannot be written or pnpm fails
+	/**
+	 * Holds an instance's boot library to a different release.
+	 *
+	 * @param instance the instance to change
+	 * @param appBoot  the boot library version to hold it to
+	 * @throws DshException when the manifest cannot be written or pnpm fails
+	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot) throws DshException {
 		overrideAppBoot(instance, appBoot, null);
 	}
 
-	/// Holds an instance's copy to a boot library version, reporting the HarnessInstaller.install.
-	///
-	/// @param instance the instance to change
-	/// @param appBoot  the boot library version to hold it to
-	/// @param onLine   receives the package manager's output, or `null`
-	/// @throws DshException when the manifest cannot be written or pnpm fails
+	/**
+	 * Holds an instance's copy to a boot library version, reporting the HarnessInstaller.install.
+	 *
+	 * @param instance the instance to change
+	 * @param appBoot  the boot library version to hold it to
+	 * @param onLine   receives the package manager's output, or `null`
+	 * @throws DshException when the manifest cannot be written or pnpm fails
+	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot, @Nullable Consumer<String> onLine)
 	throws DshException {
 		Path target = instance.dshDirectory();

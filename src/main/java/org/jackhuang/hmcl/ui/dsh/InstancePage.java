@@ -26,7 +26,6 @@ import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.instance.DshPorts;
 import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshInstanceTerminal;
-import com.mcxcc303.hdsl.launch.DshProcess;
 import com.mcxcc303.hdsl.launch.DshProcessManager;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
@@ -67,78 +66,53 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Shows one instance and manages what is installed into its profile.
-///
-/// The plugins tab is the counterpart of the install wizard: the wizard adds
-/// packages, this removes them. It shows both the declared dependencies and
-/// whether each is an active bundle, because a package can be installed yet sit
-/// outside `dsh.profile.bundles` — which is exactly what happens when a
-/// reconciling `dsh plugin` run fails part way.
+/**
+ * Shows one instance and manages what is installed into its profile.
+ */
 @NotNullByDefault
 public final class InstancePage extends DecoratorAnimatedPage implements DecoratorPage, PageAware, Refreshable {
-	/// The instance being shown.
 	private final DshInstance instance;
 
-	/// The page state published to the window decorator.
+	// The page state published to the window decorator.
 	private final ReadOnlyObjectWrapper<State> state;
 
-	/// The tab strip driving the content pane.
 	private final TabHeader tab;
-
-	/// The settings tab.
 	private final TabHeader.Tab<InstanceSettingsPage> settingsTab = new TabHeader.Tab<>("dshInstanceSettings");
-
-	/// The components tab: what this instance runs, and what can be installed into it.
 	private final TabHeader.Tab<InstanceInstallersPage> installersTab = new TabHeader.Tab<>("dshInstanceInstallers");
-
-	/// The sessions tab: the workspaces its conversations were recorded in.
 	private final TabHeader.Tab<WorkspaceListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
-
-	/// The plugins tab.
 	private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
-
-	/// The skill packs tab: the instructions the agent can be given here.
 	private final TabHeader.Tab<SkillListPage> skillsTab = new TabHeader.Tab<>("dshInstanceSkills");
-
-	/// The details tab.
 	private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
 
-	/// The animated content pane shared by the tabs.
+	// The animated content pane shared by the tabs.
 	private final TransitionPane transitionPane = new TransitionPane();
 
-	/// The sidebar entry that starts or stops this instance.
-	///
-	/// It is kept rather than built in place because its label is the
-	/// instance's state: an instance that is up is stopped from here, and an
-	/// entry that still offered to start one would be offering a second server.
+	// 'Test Launch' item (with stop/stopping status)
 	private final AdvancedListItem launchItem = new AdvancedListItem();
 
-	/// Watches the instance's state while it is not simply idle.
+	// Loading animation
 	private final Timeline ticker;
 
-	/// The plugin list, rebuilt on every refresh.
+	// rebuilt on every refresh
 	private final ComponentList pluginList = new ComponentList();
-
-	/// The status line above the plugin list.
 	private final Label pluginStatus = new Label();
 
-	/// Creates the page for an instance, opening its first tab.
-	///
-	/// @param instance the instance to show
+	/**
+	 * @param instance the instance to show
+	 */
 	public InstancePage(DshInstance instance) {
 		this(instance, null);
 	}
 
-	/// Creates the page for an instance.
-	///
-	/// @param instance   the instance to show
-	/// @param initialTab the tab to open: `settings`, `installers`, `plugins`,
-	///                   `skills`, `sessions` or `details`, or `null` for the first
+	/**
+	 * Creates the page for an instance.
+	 *
+	 * @param instance   the instance to show
+	 * @param initialTab the tab to open: `settings`, `installers`, `plugins`,
+	 *                   `skills`, `sessions` or `details`, or `null` for the first
+	 */
 	public InstancePage(DshInstance instance, @Nullable String initialTab) {
 		this.instance = instance;
-		// The original titles this page with the page's name and the instance's,
-		// not with the instance alone: the window says where you are as well as
-		// what you are looking at.
 		this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("instance.manage.manage.title", instance.id())));
 
 		settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
@@ -147,12 +121,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
 		skillsTab.setNodeSupplier(() -> new SkillListPage(instance));
 		detailsTab.setNodeSupplier(this::buildDetailsTab);
-		// Every tab the sidebar offers has to be in this list. A tab that is not
-		// is one the selection model cannot find: selecting it falls back to
-		// setting the selected *item* alone, which leaves the selected index and
-		// the tabs' own selected flags behind — and the next request for the tab
-		// whose index that was is then refused as a selection of what is already
-		// selected, while the page it asked for is shown anyway.
+
+		// keep this tab
 		tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, skillsTab, sessionsTab, detailsTab);
 		TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
 			case "installers" -> installersTab;
@@ -165,19 +135,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		tab.select(initial, false);
 
 		AdvancedListBox sideBar = new AdvancedListBox()
-				// Each entry carries the mark of the tab it opens and the solid
-				// version of it for when that tab is the one being shown, which is
-				// how the original's sidebar says where the page is. An entry
-				// given only one mark keeps that mark either way, so the icon set
-				// has to have a solid version — the folder copy and the tune have
-				// none, and the original leaves those alone for the same reason.
 				.addNavigationDrawerTab(tab,
 				                        settingsTab,
 				                        i18n("instance.manage.manage"),
 				                        SVG.SETTINGS,
 				                        SVG.SETTINGS_FILL)
-				// The original puts what can be installed straight after the
-				// instance's own settings, and everything installed after that.
 				.addNavigationDrawerTab(tab,
 				                        installersTab,
 				                        i18n("settings.tabs.installers"),
@@ -188,56 +150,49 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 				                        i18n("dsh.instance.plugins"),
 				                        SVG.EXTENSION,
 				                        SVG.EXTENSION_FILL)
-				// The original marks its resource packs with the texture mark, and a skill
-				// pack is the same kind of thing: a folder of files that changes how the
-				// harness behaves. It has no solid version either, which the original allows
-				// for the same reason.
-				.addNavigationDrawerTab(tab, skillsTab, i18n("dsh.instance.skills"), SVG.TEXTURE)
-				// The folder-with-a-copy mark has no solid version in the icon set,
-				// so this entry would keep one mark either way. The pair the
-				// original uses for a pack of things is the one to take instead.
+				.addNavigationDrawerTab(tab,
+				                        skillsTab,
+				                        i18n("dsh.instance.skills"),
+				                        SVG.TEXTURE)
 				.addNavigationDrawerTab(tab,
 				                        sessionsTab,
 				                        i18n("dsh.instance.sessions"),
 				                        SVG.PACKAGE2,
 				                        SVG.PACKAGE2_FILL)
-				.addNavigationDrawerTab(tab, detailsTab, i18n("dsh.instance.details"), SVG.INFO, SVG.INFO_FILL);
+				.addNavigationDrawerTab(tab,
+				                        detailsTab,
+				                        i18n("dsh.instance.details"),
+				                        SVG.INFO,
+				                        SVG.INFO_FILL);
 
-		// The actions are a second box rather than a category inside the first.
-		// HMCL splits them the same way, and the split is why there is no
-		// divider: a category draws one, a separate box sits on its own.
-		// The launch entry is the box's own kind of item, so it sits where the
-		// original's test-launch entry sits; only its label and its mark are
-		// ours to change as the instance starts and stops.
 		launchItem.getStyleClass().add("navigation-drawer-item");
 		launchItem.setOnAction(event -> testLaunch());
 
-		AdvancedListBox actions = new AdvancedListBox().add(launchItem)
-		                                               .addNavigationDrawerItem(i18n("settings.game.exploration"),
-		                                                                        SVG.FOLDER_OPEN,
-		                                                                        null,
-		                                                                        item -> item.setOnAction(event -> showBrowsePopup(
-				                                                                        item)))
-		                                               .addNavigationDrawerItem(i18n("settings.game.management"),
-		                                                                        SVG.MENU,
-		                                                                        null,
-		                                                                        item -> item.setOnAction(event -> showManagePopup(
-				                                                                        item)));
+		AdvancedListBox actions = new AdvancedListBox()
+				.add(launchItem)
+				.addNavigationDrawerItem(i18n("settings.game.exploration"),
+				                         SVG.FOLDER_OPEN,
+				                         null,
+				                         item -> item.setOnAction(
+						                         event -> showBrowsePopup(item))
+				                        )
+				.addNavigationDrawerItem(i18n("settings.game.management"),
+				                         SVG.MENU,
+				                         null,
+				                         item -> item.setOnAction(
+						                         event -> showManagePopup(item))
+				                        );
 		actions.getStyleClass().add("advanced-list-box-clear-padding");
 
 		FXUtils.setLimitWidth(sideBar, 200);
 		FXUtils.setLimitHeight(actions, 40 * 3 + 12 * 2);
-		// The navigation box takes the room so the actions settle at the bottom.
-		// Its maximum height has to be lifted first: a control sized to its
-		// content will not grow just because the box asks it to.
+
 		sideBar.setMaxHeight(Double.MAX_VALUE);
 		VBox.setVgrow(sideBar, Priority.ALWAYS);
 
 		setLeft(sideBar, actions);
 		setCenter(transitionPane);
 
-		// The instance can start, become ready and stop on its own, so what this
-		// entry offers has to follow it rather than the page being reopened.
 		ticker = new Timeline(new KeyFrame(Duration.seconds(1), event -> refreshLaunchItem()));
 		ticker.setCycleCount(Animation.INDEFINITE);
 		ticker.play();
@@ -263,7 +218,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	/// @return the key, or empty when the instance is not running or its harness printed none
 	private static Optional<String> launchToken(DshInstance instance) {
 		return DshProcessManager.findRunning(instance).flatMap(DshProcessManager.Running::webUrl)
-		                         .flatMap(DshPorts::launchToken);
+		                        .flatMap(DshPorts::launchToken);
 	}
 
 	/// Draws the sidebar entry from the instance's state.

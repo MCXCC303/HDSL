@@ -32,7 +32,6 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
-import org.jackhuang.hmcl.ui.SVGContainer;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -80,14 +79,6 @@ public final class InstallerListItem extends StackPane {
 	/// @param name the component's name
 	public InstallerListItem(@Nullable Image icon, String name) {
 		this(icon == null ? null : new ImageView(icon), name);
-	}
-
-	/// Creates a row whose icon is one of the launcher's marks.
-	///
-	/// @param icon the mark, or `null` for none
-	/// @param name the component's name
-	public InstallerListItem(@Nullable SVG icon, String name) {
-		this(icon == null ? null : new SVGContainer(icon, 32), name);
 	}
 
 	/// Creates a row.
@@ -174,16 +165,9 @@ public final class InstallerListItem extends StackPane {
 		return status;
 	}
 
-	/// Sets what the change button does, and shows it.
-	///
-	/// @param action  the action, or `null` to hide the button
-	/// @param tooltip what the button does, for the pointer
-	/// Makes the row itself do what its version button does.
-	///
-	/// A row that looks pressable and is not is worse than one that does not look
-	/// pressable: the original's lists act on the row, and the button at its end is
-	/// the same action with a tooltip.
-	/// @param action  the action, or `null` for a row that does nothing
+	/**
+	 * @param action the action, or `null` for a row that does nothing
+	 */
 	public void setOnActivate(@Nullable Runnable action) {
 		activate = action;
 		if (rippler != null) {
@@ -195,6 +179,12 @@ public final class InstallerListItem extends StackPane {
 		}
 	}
 
+	/**
+	 * Sets what the change button does, and shows it.
+	 *
+	 * @param action  the action, or `null` to hide the button
+	 * @param tooltip what the button does, for the pointer
+	 */
 	public void setOnChange(@Nullable Runnable action, String tooltip) {
 		this.changeAction = action;
 		change.setVisible(action != null);

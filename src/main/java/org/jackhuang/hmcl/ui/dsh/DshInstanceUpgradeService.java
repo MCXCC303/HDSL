@@ -40,26 +40,32 @@ public final class DshInstanceUpgradeService {
 	private DshInstanceUpgradeService() {
 	}
 
-	/// Starts the upgrade, showing its progress in a dialog.
-	///
-	/// @param instance the instance to move
-	/// @param version  the version to move it to
-	/// @param onDone   run when the upgrade finishes, or `null`
-	public static void upgrade(DshInstance instance, String version, @Nullable Runnable onDone) {
-		// Read before anything changes: this is what the profile holds now, and
-		// the manifest it is read from is rewritten by the install that follows.
+	/**
+	 * Installs a version and then the instance's plugins, showing the progress in a dialog.
+	 *
+	 * @param instance     the instance to install into
+	 * @param version      the version to install
+	 * @param title        the task's name
+	 * @param failureTitle the title of the dialog shown when the install fails
+	 * @param onDone       run when the install finishes, or `null`
+	 */
+	private static void install(DshInstance instance,
+	                            String version,
+	                            String title,
+	                            String failureTitle,
+	                            @Nullable Runnable onDone) {
 		List<String> specs;
 		try {
 			specs = specsOf(instance);
 		} catch (DshException e) {
-			Controllers.dialog(e.getMessage(), i18n("dsh.instance.upgrade.failed"), MessageType.ERROR);
+			Controllers.dialog(e.getMessage(), failureTitle, MessageType.ERROR);
 			return;
 		}
 
 		DshInstallProgress progress = new DshInstallProgress();
 
-		Task<Void> task = Task.runAsync(i18n("dsh.instance.upgrade", version), () -> {
-			LOG.info("Moving instance " + instance.id() + " to DeepSeek Harness " + version);
+		Task<Void> task = Task.runAsync(title, () -> {
+			LOG.info("Installing DeepSeek Harness " + version + " for " + instance.id());
 
 			HarnessInstaller.install(instance, version, progress::accept);
 			DshInstanceManager.update(withVersion(instance, version));
@@ -84,9 +90,9 @@ public final class DshInstanceUpgradeService {
 				FXUtils.runInFX(() -> {
 					if (!success) {
 						Exception failure = stopped.getException();
-						LOG.warning("Could not move instance " + instance.id() + " to " + version, failure);
-						Controllers.dialog(failure == null ? i18n("dsh.instance.upgrade.failed") : failure.getMessage(),
-						                   i18n("dsh.instance.upgrade.failed"),
+						LOG.warning("Could not install DeepSeek Harness " + version + " for " + instance.id(), failure);
+						Controllers.dialog(failure == null ? failureTitle : failure.getMessage(),
+						                   failureTitle,
 						                   MessageType.ERROR);
 					} else if (onDone != null) {
 						onDone.run();
@@ -98,6 +104,23 @@ public final class DshInstanceUpgradeService {
 		pane.setExecutor(executor, true);
 		Controllers.dialog(pane);
 		executor.start();
+	}
+
+	public static void reinstall(DshInstance instance, @Nullable Runnable onDone) {
+		install(instance,
+		        instance.version(),
+		        i18n("dsh.install.reinstall"),
+		        i18n("dsh.instance.reinstall.failed"),
+		        onDone);
+	}
+
+
+	public static void upgrade(DshInstance instance, String version, @Nullable Runnable onDone) {
+		install(instance,
+		        version,
+		        i18n("dsh.instance.upgrade", version),
+		        i18n("dsh.instance.upgrade.failed"),
+		        onDone);
 	}
 
 	/// Returns a copy of an instance recording a different version.

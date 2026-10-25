@@ -50,19 +50,9 @@ import java.util.Map;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The instance's components, and what can be done to each of them.
-///
-/// The original's installer list, kept to what this launcher installs into an
-/// instance: the DeepSeek Harness it runs, the boot library that runtime is
-/// paired with, and the marketplace plugin. The original's page also offers a
-/// local-file install and a row per loader; neither has a counterpart here — a
-/// runtime is not loaded from a file, and the plugins beyond the marketplace are
-/// the marketplace's own business.
-///
-/// The version of the runtime is changed from here rather than from the instance's
-/// settings, which is where the original keeps it too: choosing a version is
-/// installing something, not adjusting a preference, and it is the one change on
-/// this page that reinstalls the instance's plugins afterwards.
+/**
+ * The instance's components page, includes dsh/appboot and custom marketplace plugins
+ */
 @NotNullByDefault
 public final class InstanceInstallersPage extends ListPageBase<InstallerListItem> implements Refreshable, PageAware {
 	/// The instance whose components are listed.
@@ -168,24 +158,17 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		refresh();
 	}
 
-	/// Builds the row for the DeepSeek Harness the instance runs.
-	///
-	/// @return the row
+	// Builds the rows.
 	private InstallerListItem versionRow() {
 		InstallerListItem row = new InstallerListItem(DshInstanceIcon.DSH_APPLICATION.load(),
 		                                              i18n("dsh.install.version.name"));
 		row.statusProperty().set(instance.version());
 		row.setOnActivate(() -> Controllers.navigate(new VersionPickerPage(instance)));
-		row.setOnChange(() -> Controllers.navigate(new VersionPickerPage(instance)), i18n("dsh.instance.upgrade.hint"));
+		row.setOnChange(this::confirmReinstallDsh, i18n("dsh.instance.reinstall.hint"));
 		return row;
 	}
 
-	/// Builds the row for the boot library the runtime is paired with.
-	///
-	/// @return the row
 	private InstallerListItem appBootRow() {
-		// The mark is white or black and the row's surface follows the theme, so
-		// the picture follows it too — the same pairing the create page uses.
 		ImageView mark = new ImageView();
 		mark.imageProperty()
 		    .bind(Bindings.createObjectBinding(InstanceInstallersPage::appBootMark, Themes.darkModeProperty()));
@@ -193,27 +176,16 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		InstallerListItem row = new InstallerListItem(mark, i18n("dsh.install.app_boot"));
 
 		String appBoot = AppBootPin.readAppBoot(instance);
-		if (appBoot == null || appBoot.equals(instance.version())) {
-			// Nothing pinned, or pinned to the version the runtime itself is:
-			// both are the pairing, which is what "matched" says.
-			row.statusProperty().set(i18n("dsh.install.app_boot.matched", instance.version()));
-		} else {
-			row.statusProperty().set(i18n("dsh.install.app_boot.chosen", appBoot));
-		}
+		Runnable reinstallRun = () -> confirmReinstallAppBoot(appBoot != null ? appBoot : instance.version());
 
+		row.statusProperty().set(appBoot != null ? appBoot : instance.version());
 		row.setOnActivate(this::chooseAppBoot);
-		row.setOnChange(this::chooseAppBoot, i18n("dsh.install.app_boot"));
+		row.setOnChange(reinstallRun, i18n("dsh.install.app_boot.reinstall.hint"));
 		return row;
 	}
 
-	/// Builds the row for the marketplace plugin.
-	///
-	/// @return the row
 	private InstallerListItem marketRow() {
 		DshPreset market = marketPreset();
-		// The marketplace leads with the mark of the loader it stands in for, and
-		// the create page's card carries that same picture; a row that showed
-		// something else would be describing a different thing.
 		InstallerListItem row = new InstallerListItem(DshInstanceIcon.FABRIC.load(),
 		                                              market == null ? "dsh-market" : market.name());
 
@@ -221,13 +193,12 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		row.statusProperty().set(installed == null ? i18n("install.installer.not_installed") : installed);
 
 		if (market != null) {
-			// The button offers the versions rather than installing whatever the
-			// catalogue last saw: that is what the original's version button does,
-			// and the page it opens is where the version is chosen.
 			Runnable versions = () -> Controllers.navigate(new PluginDetailPage(catalogueEntry(market), instance));
 			row.setOnActivate(versions);
-			row.setOnChange(versions, i18n("download.install"));
-			row.setOnRemove(installed == null ? null : () -> removeMarket(market), i18n("dsh.instance.plugins.remove"));
+			row.setOnChange(installed == null ? null : () -> confirmReinstallMarket(market),
+			                i18n("dsh.install.market.reinstall.hint"));
+			row.setOnRemove(installed == null ? null : () -> confirmRemoveMarket(market),
+			                i18n("dsh.instance.plugins.remove"));
 		}
 		return row;
 	}
@@ -247,49 +218,67 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		}
 	}
 
-	/// Asks which boot library version this instance should be held to.
 	private void chooseAppBoot() {
 		Controllers.getDecorator().startWizard(new AppBootWizardProvider(instance.version(), chosen -> {
-			// The chooser reports the launcher's own version as `null`, because
-			// a wizard that runs inside another one has no instance to pin it to.
 			String appBoot = chosen == null ? instance.version() : chosen;
 			String current = AppBootPin.readAppBoot(instance);
 			String from = current == null || current.isBlank() ? instance.version() : current;
 			if (from.equals(appBoot)) {
+				confirmReinstallAppBoot(appBoot);
 				return;
 			}
-			Controllers.confirm(i18n("dsh.install.app_boot.change.confirm", from, appBoot),
-			                    i18n("dsh.install.app_boot"),
-			                    () -> ProgressDialog.run(i18n("dsh.install.app_boot"),
-			                                             progress -> AppBootPin.overrideAppBoot(instance,
-			                                                                                    appBoot,
-			                                                                                    progress::accept),
-			                                             this::refresh),
-			                    null);
+			confirmChangeAppBoot(from, appBoot);
 		}), i18n("dsh.install.app_boot"));
 	}
 
-	/// Installs the marketplace into the instance's profile.
-	///
-	/// @param market the preset to install
-	private void installMarket(DshPreset market) {
-		PluginInstalls.run(instance,
-		                   progress -> DshPluginInstaller.install(instance, List.of(market), progress::accept),
-		                   this::refresh);
+	private void confirmReinstallDsh() {
+		Controllers.confirm(
+				i18n("dsh.instance.reinstall.confirm", instance.id()),
+				i18n("dsh.install.reinstall"),
+				() -> DshInstanceUpgradeService.reinstall(instance, this::refresh),
+				null);
 	}
 
-	/// Removes the marketplace from the instance's profile.
-	///
-	/// @param market the preset to remove
-	private void removeMarket(DshPreset market) {
-		Controllers.confirm(i18n("dsh.instance.plugins.remove.confirm", market.spec()),
-		                    i18n("dsh.instance.plugins.remove"),
-		                    () -> ProgressDialog.run(i18n("dsh.instance.plugins.remove"),
-		                                             progress -> DshPluginInstaller.remove(instance,
-		                                                                                   market.spec(),
-		                                                                                   progress::accept),
-		                                             this::refresh),
-		                    null);
+	private void confirmReinstallAppBoot(String currentAppBoot) {
+		Controllers.confirm(
+				i18n("dsh.install.app_boot.reinstall.confirm", currentAppBoot),
+				i18n("dsh.install.reinstall"),
+				() -> ProgressDialog.run(i18n("dsh.install.reinstall"),
+				                         progress -> AppBootPin.overrideAppBoot(instance, currentAppBoot, progress),
+				                         this::refresh),
+				null);
+	}
+
+	private void confirmReinstallMarket(DshPreset market) {
+		Controllers.confirm(
+				i18n("dsh.install.market.reinstall.confirm", market.name(), installedVersion(market)),
+				i18n("dsh.install.reinstall"),
+				() -> PluginInstalls.run(instance,
+				                         progress -> DshPluginInstaller.installSpecs(instance,
+				                                                                     List.of(market.spec()),
+				                                                                     progress),
+				                         this::refresh),
+				null);
+	}
+
+	private void confirmChangeAppBoot(String from, String to) {
+		Controllers.confirm(
+				i18n("dsh.install.app_boot.change.confirm", from, to),
+				i18n("dsh.install.app_boot"),
+				() -> ProgressDialog.run(i18n("dsh.install.app_boot"),
+				                         progress -> AppBootPin.overrideAppBoot(instance, to, progress),
+				                         this::refresh),
+				null);
+	}
+
+	private void confirmRemoveMarket(DshPreset market) {
+		Controllers.confirm(
+				i18n("dsh.instance.plugins.remove.confirm", market.spec()),
+				i18n("dsh.instance.plugins.remove"),
+				() -> ProgressDialog.run(i18n("dsh.instance.plugins.remove"),
+				                         progress -> DshPluginInstaller.remove(instance, market.spec(), progress),
+				                         this::refresh),
+				null);
 	}
 
 	/// The page's skin: the toolbar every list page has, over this page's rows.
