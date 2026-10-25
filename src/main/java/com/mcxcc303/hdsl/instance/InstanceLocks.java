@@ -38,15 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Serializes the operations that change an instance directory.
- *
- * <p>A lock is held in a process-wide map for this JVM's threads and in a lock file outside the
- * directory for other processes, so the GUI and a CLI command cannot change the same instance
- * directory at the same time. Acquisition does not wait; the refusal names the operation that holds
- * the lock.
- *
- * <p>A lock belongs to the thread that took it and is reentrant for that thread; a release from
- * another thread is ignored.
+ * Serializes the launcher's lifecycle operations on an instance directory across threads and launcher processes.
  */
 @NotNullByDefault
 public final class InstanceLocks {
@@ -54,8 +46,7 @@ public final class InstanceLocks {
 
 	private static final Map<String, Held> HELD = new ConcurrentHashMap<>();
 
-	private InstanceLocks() {
-	}
+	private InstanceLocks() {}
 
 	/**
 	 * Takes the lock on the instance's directory.
@@ -68,7 +59,7 @@ public final class InstanceLocks {
 	}
 
 	/**
-	 * Gives the lock back. Never throws.
+	 * Releases the instance lock.
 	 */
 	public static void release(DshInstance instance) {
 		try {
@@ -79,8 +70,7 @@ public final class InstanceLocks {
 	}
 
 	/**
-	 * Runs the action with the instance's directory held, releasing it in a finally. The lock is
-	 * reentrant for the thread that holds it.
+	 * Runs the action while holding the instance's directory lock.
 	 *
 	 * @param what what is about to be done, said in a refusal
 	 * @throws DshException when another operation holds the lock, or the action fails
@@ -95,8 +85,7 @@ public final class InstanceLocks {
 	}
 
 	/**
-	 * Runs the action with several instance directories held. A rename passes the old and the new; the
-	 * keys are taken in sorted order so two renames cannot deadlock.
+	 * Runs the action while holding several instance directory locks.
 	 *
 	 * @param what what is about to be done, said in a refusal
 	 * @throws DshException when another operation holds one of the locks, or the action fails
@@ -113,12 +102,11 @@ public final class InstanceLocks {
 					break;
 				}
 			}
-			if (!known) {
-				targets.add(new Target(key, instance.id()));
-			}
+			if (!known) targets.add(new Target(key, instance.id()));
 		}
-		targets.sort(Comparator.comparing(Target::key));
 
+		// Sorted acquisition keeps the lock order stable.
+		targets.sort(Comparator.comparing(Target::key));
 		List<String> acquired = new ArrayList<>();
 		try {
 			for (Target target : targets) {
@@ -137,6 +125,7 @@ public final class InstanceLocks {
 		synchronized (HELD) {
 			Held held = HELD.get(key);
 			if (held != null) {
+				// Reentrant for the thread that already owns the lock.
 				if (held.owner == Thread.currentThread()) {
 					held.depth++;
 					return key;
@@ -156,7 +145,7 @@ public final class InstanceLocks {
 			FileLock lock = null;
 			try {
 				channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-				lock = channel.tryLock();
+				lock = channel.tryLock(); // a lock held by another process is reported as busy
 			} catch (OverlappingFileLockException e) {
 				close(channel, null);
 				throw busy(label, what);
@@ -164,6 +153,7 @@ public final class InstanceLocks {
 				close(channel, null);
 				throw new DshException("Failed to lock " + lockFile, e);
 			}
+
 			if (lock == null) {
 				close(channel, null);
 				throw busy(label, what);
@@ -178,16 +168,14 @@ public final class InstanceLocks {
 	private static void releaseKey(String key) {
 		synchronized (HELD) {
 			Held held = HELD.get(key);
-			if (held == null) {
-				return;
-			}
+			if (held == null) return;
+
 			if (held.owner != Thread.currentThread()) {
 				LOG.warning("A lock held by another thread was not released: " + key);
 				return;
 			}
-			if (--held.depth > 0) {
-				return;
-			}
+			if (--held.depth > 0) return;
+
 			HELD.remove(key);
 			close(held.channel, held.lock);
 		}

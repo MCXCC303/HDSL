@@ -322,16 +322,12 @@ class HarnessInstallerTest {
 		// Nothing left over that would make the next call think an install is still going.
 		assertFalse(HarnessInstaller.isInstalling(instance));
 		assertFalse(Files.exists(HarnessInstaller.setAsideDirectory(instance)));
-		// The lock is given up on the way out, however the install ended.
+
+		// The lock is given up on the way out, however the installation ended.
 		assertDoesNotThrow(() -> InstanceLocks.acquire(instance, "installed into"));
 		InstanceLocks.release(instance);
 	}
 
-	/**
-	 * A retry over an install that never finished must not treat the half-built tree as the
-	 * previous runtime. Restoring it on failure would clear the marker and leave an instance
-	 * that looks installed while its tree is still incomplete.
-	 */
 	@Test
 	void aRetryOverAnUnfinishedInstallDoesNotRestoreThePartialTree() throws Exception {
 		Assumptions.assumeTrue(OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS,
@@ -348,8 +344,6 @@ class HarnessInstallerTest {
 		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(null)));
 
 		assertFalse(Files.exists(instance.dshDirectory()));
-		// The marker stays: the instance is still unfinished, so it cannot be reported as
-		// installed. The tree that was there is kept for a later attempt or manual recovery.
 		assertTrue(HarnessInstaller.isInstalling(instance));
 		assertFalse(HarnessInstaller.isInstalled(instance));
 		assertEquals("the old tree", Files.readString(previous.resolve("old-tree")));
