@@ -6,12 +6,10 @@ build/
 out/
 dist/
 
-# Working notes, verification captures and references. Not part of the product: the plan is a
-# scratch pad, the screenshots are evidence for one review, the reference images belong to HMCL.
+# Working notes, verification captures and references. Not part of the product
 .dev/
 .verify/
-# Everything under docs/ stays out of the product except the plugin guide, which is written
-# for other people rather than for this desk.
+# Unnecessary notes
 docs/*
 !docs/plugin-guide/
 
@@ -19,3 +17,10 @@ docs/*
 *.jar
 !lib/JFoenix.jar
 !gradle/wrapper/*.jar
+
+# Local patches, including possible failure products
+patches/
+*.patch
+*.diff
+*.rej
+*.orig
