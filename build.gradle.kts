@@ -1,12 +1,3 @@
-// HDSL — a DeepSeek Harness launcher built on HMCL's JavaFX UI kit.
-//
-// The presentation layer (window chrome, component library, animations, theme
-// engine, image pipeline, async task engine, i18n) is transplanted from HMCL
-// and kept under its original `org.jackhuang.hmcl.*` package names, so that the
-// original copyright notices stay intact as GPLv3 requires. Everything that
-// launched Minecraft has been removed; the domain layer is HDSL's own and lives
-// under `com.mcxcc303.hdsl.*`, which is what tells the two apart.
-
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.jackhuang.hmcl.gradle.pack.CreateDeb
 import org.jackhuang.hmcl.gradle.pack.ReleaseType
@@ -22,45 +13,27 @@ plugins {
 
 group = "org.jackhuang.hmcl"
 
-// The version a build with no tag to stand on carries. A release takes its version from the
-// tag, `-PreleaseVersion=1.2.3`; a build whose own commit is tagged takes the tag's version; a
-// build past a tag carries that tag's version, how many commits past it stands, and the commit
-// it came from, `0.2.0+r42+g1a613c5`, so a package built here is never mistaken for one a tag
-// published and two builds of one commit are one version. Only a repository with no tags at all
-// falls back to this.
+// Version precedence: releaseVersion >> tag on HEAD >> <tag>+r<commits>+g<sha>
 val untaggedVersion = "0.1.0"
 
-// Runs git in the repository and returns its trimmed output, or null when git is
-// missing, the directory is not a repository, or the command fails. The version below
-// asks git once, at configuration time, so the answer is baked into the jar's manifest
-// and the running launcher never needs git.
+// Trim git output
 fun git(vararg arguments: String): String? = try {
-    val process = ProcessBuilder(listOf("git", *arguments))
-        .directory(projectDir)
-        .redirectErrorStream(true)
-        .start()
+    val process = ProcessBuilder(listOf("git", *arguments)).directory(projectDir).redirectErrorStream(true).start()
     val output = process.inputStream.bufferedReader().use { it.readText() }.trim()
     if (process.waitFor() == 0 && output.isNotEmpty()) output else null
-} catch (exception: Exception) {
+} catch (_: Exception) {
     null
 }
 
-// A release is the build that was handed the tag's version. A build of a commit that is
-// itself tagged is that tag's version too. Everything else is a git build, and names the
-// nearest tag it stands on — read from git, not from a constant — so a build seven commits
-// past `v0.2.0` says `0.2.0+...` and not the version this file happened to be written at.
 val releaseVersion = (findProperty("releaseVersion") as String?)?.takeIf { it.isNotBlank() }
-val taggedVersion = releaseVersion
-    ?: git("describe", "--tags", "--exact-match", "HEAD")?.removePrefix("v")
+val taggedVersion = releaseVersion ?: git("describe", "--tags", "--exact-match", "HEAD")?.removePrefix("v")
+
 version = taggedVersion ?: run {
     val sha = git("rev-parse", "--short=7", "HEAD")
     val tag = git("describe", "--tags", "--abbrev=0", "HEAD")
     val base = tag?.removePrefix("v") ?: untaggedVersion
-    // How many commits this build stands past that tag. It is what tells two test builds apart
-    // when the tag alone does not: the count only grows as the branch does, so a later build
-    // always sorts after an earlier one. A repository with no tag at all counts every commit,
-    // which keeps the same promise.
     val commits = git("rev-list", "--count", tag?.let { "$it..HEAD" } ?: "HEAD")
+
     when {
         sha != null && commits != null -> "$base+r$commits+g$sha"
         sha != null -> "$base+g$sha"
@@ -69,7 +42,6 @@ version = taggedVersion ?: run {
 }
 
 application {
-    // HDSL application entry point.
     mainClass = "org.jackhuang.hmcl.Main"
 }
 
@@ -77,45 +49,36 @@ repositories {
     mavenCentral()
     maven(url = "https://jitpack.io")
 
-    // HMCL patches a handful of JFoenix classes with vendored sources that
-    // shadow this jar at compile time; the rest of the library (converters,
-    // unchecked skins, ...) still comes from here.
     flatDir {
         name = "libs"
         dirs = setOf(rootProject.file("lib"))
     }
 }
 
-// --------------------------------------------------------------- JavaFX ------
-// HDSL runs on Windows, Linux and macOS. JavaFX must match the JDK that runs
-// Gradle: the 21.x line supports JDK 17–22, the 25 line is required from JDK 23
-// on. This mirrors HMCL's own JavaFXPlatform.CLASSIC/MODERN split without
-// carrying its buildSrc plugin.
+/* JavaFX */
 val javafxPlatform: String = (findProperty("javafxPlatform") as String?) ?: run {
     val os = System.getProperty("os.name").lowercase()
     val arch = System.getProperty("os.arch").lowercase()
     val isMac = os.contains("mac") || os.contains("darwin") || os.contains("osx")
-    // No `require` that the host is Linux or macOS: Windows is a host this build
-    // packages for, and the `when` below is what tells hosts apart — its `else`
-    // is the one place that names every platform the build knows.
     when {
         os.contains("windows") -> when (arch) {
-            // OpenJFX publishes no win-aarch64 build; Windows on ARM runs the
-            // x64 one under its emulation, which is what HMCL's own Windows
-            // ARM64 users run too. The classifier is the same either way.
+            // Currently no win-aarch64 build is published
             "x86_64", "amd64", "aarch64", "arm64" -> "win"
             else -> error("Unsupported Windows architecture: $arch")
         }
+
         isMac && (arch == "aarch64" || arch == "arm64") -> "mac-aarch64"
         isMac -> when (arch) {
             "x86_64", "amd64" -> "mac"
             else -> error("Unsupported macOS architecture: $arch")
         }
+
         os.contains("linux") -> when (arch) {
             "aarch64", "arm64" -> "linux-aarch64"
             "x86_64", "amd64" -> "linux"
             else -> error("Unsupported Linux architecture: $arch")
         }
+
         else -> error("HDSL supports Windows, Linux and macOS (detected os.name=$os)")
     }
 }
@@ -124,14 +87,13 @@ val javafxVersion: String = (findProperty("javafxVersion") as String?) ?: run {
     val feature = System.getProperty("java.specification.version").substringBefore('.').toInt()
     when {
         feature >= 23 -> "25"
-        // The 21.0.8 line publishes no linux-aarch64 build; 21.0.1 is the one
-        // of that line that does, and it is the version HMCL itself pins there.
+        // 21.0.8 publishes no linux-aarch64 build
         javafxPlatform == "linux-aarch64" -> "21.0.1"
         else -> "21.0.8"
     }
 }
 
-// ---------------------------------------------------------- dependencies -----
+/* dependencies */
 dependencies {
     implementation("libs:JFoenix")
 
@@ -169,64 +131,26 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform {
-        // The tests that reach outside the JVM — the ones that run pnpm, npm or a child of their
-        // own — are left out here. A machine without the tool skips them in silence, so a green
-        // suite says less than it looks like it says, and a machine with it pays about a third of
-        // the suite's time for them. They run where somebody asks for them: `./gradlew test -Pexternal`,
-        // which is what the release workflow does.
-        if (!project.hasProperty("external")) {
-            excludeTags("external")
-        }
+        // CI perform -Pexternal everytime
+        if (!project.hasProperty("external")) excludeTags("external")
+
     }
     testLogging {
-        events("passed", "failed", "skipped")
-        showStandardStreams = true
-        // The full form, so a failure's message and stack are in the log the
-        // runner keeps, and not only in the report it holds at a local path.
-        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
-        showCauses = true
+        events("failed")
+        info.events("failed", "skipped")
+        debug.events("passed", "failed", "skipped")
         showStackTraces = true
     }
-    // A bound on every test, so a machine that cannot run one fails in minutes instead of holding the
-    // runner. The toolkit tests are bounded apart from this, in `FxToolkit`: a class initialiser that
-    // never returns is a place no JUnit bound reaches. The name matters —
-    // `junit.jupiter.execution.timeout.default` is the key JUnit reads, and `…method.default` is not a
-    // key at all, which is a bound nobody reads.
-    systemProperty("junit.jupiter.execution.timeout.default", "120s")
-    systemProperty("junit.jupiter.execution.timeout.threaddump.enabled", "true")
-    // The launcher keeps its state in one per-user home, and a test that writes
-    // settings must not write into the one the user is running. Tests get a home
-    // of their own inside the build tree, which is also what makes them able to
-    // assert on what was persisted.
+
+    // Tests write settings into build/test-home
     systemProperty("hdsl.home", layout.buildDirectory.dir("test-home").get().asFile.absolutePath)
-    // A bound on every test and every lifecycle method, so a test that has been
-    // left waiting on something wedged fails, with the stack it is waiting on,
-    // rather than holding the build. The name is JUnit's own —
-    // `junit.jupiter.execution.timeout.default`, as `org.junit.jupiter.engine.
-    // Constants` spells it. The key that used to stand here,
-    // `junit.jupiter.execution.timeout.method.default`, is not one JUnit reads,
-    // and a setting nobody reads is ignored in silence: a runner whose toolkit
-    // never came up held a build for seventy-six minutes with nothing in the
-    // log to say why. `TestBoundsTest` pins both halves of that.
-    //
-    // No test is legitimately slow. The longest one starts a child and has it
-    // say it is ready in about twenty seconds, on every runner measured:
-    // 21.2 s on windows-latest, 20.7 s on macos-latest, 20.4 s on ubuntu-latest.
     systemProperty("junit.jupiter.execution.timeout.default", "120s")
-    // And the stacks of everything running when a bound is reached, which is the
-    // part that names a cause: a wedged toolkit is a thread parked in native
-    // startup, and without this the log says only that a test timed out.
     systemProperty("junit.jupiter.execution.timeout.threaddump.enabled", "true")
 }
 
-// --------------------------------------------------------------- resources ---
-// HMCL generates this list at build time. HDSL does the same, so the
-// language picker can never drift from the .properties files actually shipped.
-//
-// Registered through `tasks.register` rather than the `by tasks.registering`
-// delegate: Gradle 9.6 deprecated the delegate, and 9.7 rejects it as an
-// error while compiling the script.
+/* resources */
 val generateLanguageList = tasks.register("generateLanguageList") {
+    description = ""
     val langDir = layout.projectDirectory.dir("src/main/resources/assets/lang")
     val outputDir = layout.buildDirectory.dir("generated/languageList")
 
@@ -252,16 +176,14 @@ sourceSets.main {
     resources.srcDir(generateLanguageList)
 }
 
-// ------------------------------------------------------------- toolchain -----
+/* toolchain */
 java {
-    // HDSL requires JDK 21+. We do not pin a toolchain so the build works
-    // with whichever >= 21 JDK the developer has active (Arch: `archlinux-java`).
+    // JDK 21+
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
 }
 
-// JavaFX internals used by the transplanted UI kit (skins, prism, glass).
-// Kept identical to HMCL's build so the ported code compiles unchanged.
+// JavaFX (same as HMCL)
 val addExports = listOf(
     "java.base/java.lang",
     "java.base/java.lang.reflect",
@@ -286,9 +208,7 @@ val addExports = listOf(
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
-    // Report every error instead of stopping at the default 100. During the
-    // port this is what proves that all remaining errors live in the known
-    // cut-point files.
+    // Report error instead of stopping at the default 100.
     options.compilerArgs.addAll(listOf("-Xmaxerrs", "10000"))
 }
 
@@ -297,12 +217,7 @@ tasks.named<JavaExec>("run") {
     systemProperty("hdsl.version.override", project.version.toString())
 }
 
-// The same thing as `run`, on a home of its own, for developing beside a launcher that is already
-// open. `run` writes into the real home: it takes the lock that keeps one launcher to one home, so
-// it cannot be started while the installed launcher is running, and debugging a settings page
-// rewrites the settings its user works with. This one gets a home inside the build tree, the way
-// the tests do — so the two are two launchers, each with its own settings, instances and lock —
-// and `-PdebugHome=<path>` points it at another home, the real one included.
+// -PdebugHome=<path> overrides the directory
 tasks.register<JavaExec>("debug-run") {
     group = "application"
     description = "Runs the launcher from the build tree, with a home of its own."
@@ -310,35 +225,26 @@ tasks.register<JavaExec>("debug-run") {
     classpath = sourceSets["main"].runtimeClasspath
     jvmArgs(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
     systemProperty("hdsl.version.override", project.version.toString())
-    systemProperty("hdsl.home", (findProperty("debugHome") as String?)
-            ?: layout.buildDirectory.dir("debug-home").get().asFile.absolutePath)
+    systemProperty(
+        "hdsl.home",
+        (findProperty("debugHome") as String?) ?: layout.buildDirectory.dir("debug-home").get().asFile.absolutePath
+    )
 }
 
-// The application plugin is used for its `run` task only. Its distribution
-// tasks would try to package the jar this build disables, and the launcher
-// ships a self-executing .sh, a .deb and a launch4j-wrapped .exe instead, so
-// they are switched off rather than taught to agree about the shadow jar.
 tasks.named("distZip") { enabled = false }
 tasks.named("distTar") { enabled = false }
 tasks.named("startScripts") { enabled = false }
 tasks.named("installDist") { enabled = false }
 
-// ------------------------------------------------------------------ fat jar --
-// This is what every package is made of: the self-executing `.sh` is the stub with this jar
-// appended, the `.deb` carries it, and launch4j wraps it into the Windows executable. It is an
-// ingredient rather than an artifact of its own, because OpenJFX ships a jar per platform and this
-// one carries the platform its build host resolved — publishing it would publish a launcher that
-// opens on one platform only, which is what a release asset must never be.
+/* fat jar */
 tasks.named<Jar>("jar") {
     enabled = false
 }
 
 tasks.named<ShadowJar>("shadowJar") {
-    archiveBaseName.set("hdsl")   // was rootProject.name = "HDSL"
+    archiveBaseName.set("hdsl")
     archiveClassifier.set("")
     mergeServiceFiles()
-    // Dependency signatures do not survive merging, and a stale one makes the
-    // JVM refuse to start.
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/INDEX.LIST")
     manifest {
         attributes(
@@ -349,42 +255,21 @@ tasks.named<ShadowJar>("shadowJar") {
     }
 }
 
-// ----------------------------------------------------------- the executable --
-// The Windows artifact is what the .sh is on Linux: one file that is the whole
-// launcher. launch4j wraps the fat jar into a small executable that looks for
-// a Java 21+ runtime and hands the jar to it, and the build works from any
-// platform — launch4j carries the tool it needs for each one.
+/* Artifacts */
 val artifactName: String = "hdsl-${project.version}"
 
+// Windows
 launch4j {
     mainClassName = "org.jackhuang.hmcl.Main"
-    // The fat jar, not the (disabled) plain one.
     setJarTask(tasks.named("shadowJar"))
     headerType = "gui"
     outfile = "$artifactName.exe"
-    // Four sizes in one file — 32, 64, 128 and 256 — packed as PNG images, which
-    // is what Windows has read directly since Vista, and what the launcher's own
-    // icon.png, icon@2x, icon@4x and icon@8x already are. The file is built from
-    // those four by hand rather than regenerated by a script at build time: it is
-    // checked in, the four sources change about once a year, and a generator
-    // would put a second language into a build that has exactly one. A 256-pixel
-    // image does not fit the byte the format reserves for the width, and the
-    // value it specifies instead — zero — is what the 256 entry carries.
+    // including 32/64/128/256 px PNG entries
     icon = "${projectDir}/packaging/hdsl.ico"
-    // The jar is inside the executable, so there is no library directory to
-    // fill beside it.
     copyConfigurable = files()
-    // 21, the same line the .sh stub demands, enforced before the jar runs:
-    // a JVM too old to read it only ever shows this message. launch4j wants the
-    // version dotted out in full (the plugin normalizes its own default the
-    // same way), and the stub compares missing parts as zero, so 21.0.0
-    // accepts every 21.x release and nothing older.
     jreMinVersion = "21.0.0"
     requires64Bit = true
-    // A JRE is enough; the launcher manages its own Node runtimes.
     requiresJdk = false
-    // The working directory is left as the caller had it, the same as the .sh
-    // stub leaves it: the launcher's data lives per-user, not beside it.
     chdir = ""
     errTitle = "Hello DeepSeek! Launcher"
     downloadUrl = "https://adoptium.net/temurin/releases/?os=windows"
@@ -395,9 +280,7 @@ launch4j {
     copyright = "GPLv3 with additional terms; see LICENSE"
 }
 
-// -------------------------------------------------------------- packaging ----
-// Produce the same two Linux artifacts HMCL ships: a self-executing `.sh`
-// (shell stub with the jar appended) and a `.deb` carrying it.
+// two Linux artifacts: a self-executing `.sh` and `.deb`
 val makeExecutable = tasks.register("makeExecutable") {
     group = "distribution"
     description = "Builds the self-executing .sh launcher."
@@ -423,32 +306,22 @@ val makeExecutable = tasks.register("makeExecutable") {
     }
 }
 
+// This build produces the stable channel only.
 val makeDeb = tasks.register("makeDeb", CreateDeb::class) {
     group = "distribution"
     description = "Builds the Debian package."
     dependsOn(makeExecutable)
 
     version.set(project.version.toString())
-    // A build from this repository is a release build: the stable channel is the
-    // package a tag publishes, and the nightly channel is for builds that are not
-    // one. Both can be installed side by side, which is what the channel names are
-    // for.
     releaseType.set(ReleaseType.STABLE)
     launcherClassName.set("org.jackhuang.hmcl.Main")
     appShFile.set(layout.buildDirectory.file("libs/$artifactName.sh"))
-    // The eight-times icon rather than the thirty-two pixel one: it is what the
-    // desktops that scale an icon up for a launcher grid will use.
     iconFile.set(layout.projectDirectory.file("src/main/resources/assets/img/icon@8x.png"))
+
     homepage.set("https://github.com/MCXCC303/HDSL")
     outputFile.set(layout.buildDirectory.file("libs/${artifactName}.deb"))
 }
 
-// Publishes the executable launch4j built beside the other artifacts, with a
-// checksum the way the Linux packages carry theirs.
-//
-// launch4j writes into its own `build/launch4j` directory, so the copy is what
-// puts the Windows artifact where the Linux ones already are — `build/libs`,
-// the one directory a release takes everything from.
 val makeWindowsExecutable = tasks.register("makeWindowsExecutable") {
     group = "distribution"
     description = "Publishes the Windows executable and its checksum."
@@ -463,16 +336,13 @@ val makeWindowsExecutable = tasks.register("makeWindowsExecutable") {
 
     doLast {
         val source = built.get().asFile
-        if (!source.isFile) {
-            throw GradleException("launch4j did not produce ${source}")
-        }
+        if (!source.isFile) throw GradleException("launch4j did not produce $source")
+
         val destination = target.get().asFile
         destination.parentFile.mkdirs()
         source.copyTo(destination, overwrite = true)
 
-        // The fully-qualified `java.security.MessageDigest` does not work in a
-        // Kotlin DSL script: `java` resolves to the JavaPluginExtension
-        // accessor here, so the digest comes in through an import instead.
+        // `java.security.MessageDigest` cannot be fully qualified here
         val digest = MessageDigest.getInstance("SHA-256")
         destination.inputStream().use { input ->
             val buffer = ByteArray(1 shl 16)
@@ -483,21 +353,13 @@ val makeWindowsExecutable = tasks.register("makeWindowsExecutable") {
             }
         }
         checksum.get().asFile.writeText(
-            digest.digest().joinToString(separator = "") { "%02x".format(it) }
-                    + "  " + destination.name + "\n"
-        )
+            digest.digest()
+                .joinToString(separator = "") { "%02x".format(it) } + "  " + destination.name + "\n")
         logger.lifecycle("Built ${destination.name} (${destination.length() / 1024 / 1024} MiB)")
     }
 }
 
 tasks.named("build") {
     dependsOn(makeExecutable, makeDeb)
-    // launch4j picks its tool set for the *host*, and only a Windows build has
-    // any use for the wrapper: the JavaFX inside the exe is the host's, so one
-    // built on Linux carries Linux natives and runs nowhere. Asking for it
-    // explicitly still works, and on linux-aarch64 — where the tool set the
-    // plugin carries cannot run at all — the default `build` no longer fails.
-    if (javafxPlatform == "win") {
-        dependsOn(makeWindowsExecutable)
-    }
+    if (javafxPlatform == "win") dependsOn(makeWindowsExecutable)
 }

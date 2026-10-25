@@ -1,19 +1,6 @@
 name: Release
 
-# A tag is the release: pushing one builds the Windows, Linux and macOS packages and publishes them.
-#
-# It is created as a draft before anything is built, so that the three platforms build beside each
-# other instead of one behind another: `gh release upload` needs a release to upload into, and that
-# is the only thing that ever made the order matter. The note job at the end writes the note and
-# turns the draft into a release, so a run that fails on the way leaves a draft behind rather than a
-# release missing half its packages.
-#
-# A manual run (`workflow_dispatch`) is a dry run of the same pipeline: everything is built,
-# packaged, summed and turned into a release note, and the note is printed — but no release is
-# created, nothing is uploaded and nothing is published. What decides that is the event, not an
-# input: every step that writes to a release runs on `push` only, so a dispatch cannot publish
-# even if it is asked to. That is the point of the dry run — the whole flow runs somewhere other
-# than a tag, so the tag is not the first time these steps run together.
+# `workflow_dispatch`: builds, packages and verifies same files as a tag run EXCEPT writes to a release.
 on:
   push:
     tags:
@@ -30,708 +17,536 @@ permissions:
 
 jobs:
 
-  # The release is created before anything is built, and as a draft. That is what lets the three
-  # platforms build beside each other: `gh release upload` fails on a tag with no release behind it,
-  # so while this job's work was done by the Linux job, every other platform had to wait for that job
-  # to finish before it could even start — which is the only thing the order was ever for. A draft is
-  # not public, so what waits for the platforms now is the note job that publishes it.
-  #
-  # This job runs on a manual run too, and does nothing there: a job that is skipped takes the jobs
-  # that `needs` it down with it, and the three platform jobs would never start.
   release-draft:
-
     runs-on: ubuntu-latest
-
     timeout-minutes: 10
 
     steps:
-    - name: Work out the version
-      shell: bash
-      env:
-        DISPATCHED_VERSION: ${{ inputs.version }}
-      run: |
-        # The version the run is for: the tag it was pushed as, or — for a manual run — the one it
-        # was given. A manual run is a dry run, and what keeps it from publishing is the event
-        # rather than an input, so this step is the only place the two differ before the build.
-        if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-          VERSION="${DISPATCHED_VERSION}"
-          echo "Dry run: building ${VERSION}, publishing nothing"
-        else
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Releasing ${VERSION}"
-        fi
-        # The version ends up in file names, in the `.deb`'s control file and in `-PreleaseVersion`,
-        # so its shape is checked here rather than discovered by a build that writes `hdsl-.exe`.
-        printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
-          || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
-        # A pre-release part — anything after the first `-`, which is semver's own spelling for one —
-        # makes this a pre-release rather than a release. GitHub keeps those out of `releases/latest`,
-        # so the download page and anything reading that endpoint stay on the stable release while the
-        # snapshot's assets remain reachable by tag for whoever is testing it.
-        case "${VERSION}" in
-          *-*) PRERELEASE=--prerelease ;;
-          *)   PRERELEASE= ;;
-        esac
-        {
-          echo "VERSION=${VERSION}"
-          echo "TAG=v${VERSION}"
-          echo "PRERELEASE=${PRERELEASE}"
-        } >> "${GITHUB_ENV}"
+      - name: Work out the version
+        shell: bash
+        env:
+          DISPATCHED_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${DISPATCHED_VERSION}"
+            echo "Dry run: building ${VERSION}, publishing nothing"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Releasing ${VERSION}"
+          fi
+          
+          printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
+            || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
+          
+          case "${VERSION}" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          
+          {
+            echo "VERSION=${VERSION}"
+            echo "TAG=v${VERSION}"
+            echo "PRERELEASE=${PRERELEASE}"
+          } >> "${GITHUB_ENV}"
 
-    - name: Create the release as a draft
-      if: github.event_name == 'push'
-      run: |
-        # A re-run of a release reaches this step with the draft already there, and `gh release
-        # create` fails on a release that exists — which would fail the run before it built anything.
-        # What is there is left as it is; every upload replaces what it carries anyway.
-        if gh release view "${TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-          echo "The release ${TAG} is already there; leaving it as it is."
-          exit 0
-        fi
-        # The draft is what the platforms upload into. The note it carries is the one a release goes
-        # public with only if the note job never gets to write the real one, and a draft is readable
-        # by nobody but the repository, so the placeholder costs nothing while it waits.
-        # `--repo` here and not only in the check above: this job has no checkout, so a `gh` that is
-        # left to work out which repository it is in looks for `.git`, finds none, and fails with
-        # "not a git repository" — which is what the first tag after this job was written did.
-        gh release create "${TAG}" \
-          --repo "${{ github.repository }}" \
-          --target "${{ github.sha }}" \
-          ${PRERELEASE} \
-          --draft \
-          --title "HDSL ${VERSION}" \
-          --notes "The packages are being uploaded; the table with every checksum is written once they are all in place."
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create the release as a draft
+        if: github.event_name == 'push'
+        run: |
+          if gh release view "${TAG}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "The release ${TAG} is already there; leaving it as it is."
+            exit 0
+          fi
+          
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            ${PRERELEASE} \
+            --draft \
+            --title "HDSL ${VERSION}" \
+            --notes "The packages are being uploaded; the table with every checksum is written once they are all in place."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # The Windows artifacts are built by a Windows runner, because the executable
-  # has to be built with the platform's own JavaFX natives inside it, and this job
-  # uploads them into the release itself rather than handing them to another job as
-  # an artifact.
-  #
-  # `needs: release-draft` is what makes that upload safe: `gh release upload` fails on a tag with
-  # no release behind it. It is the draft and not another platform's job, so this build starts as
-  # soon as the release exists and runs beside the Linux and macOS ones instead of behind them.
   release-windows:
-
     needs: release-draft
-
     runs-on: windows-latest
 
-    # A bound on the job, the way `build.yml` bounds each of its steps: a runner
-    # that cannot get through this reports inside the hour instead of holding the
-    # release for the runner's six-hour default.
     timeout-minutes: 45
 
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Set up JDK 21
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'temurin'
-        java-version: '21'
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v5
-      with:
-        cache-cleanup: never
-    - name: Set up Node 22
-      # The lifecycle tests start instances through the system Node; the range
-      # the launcher accepts (^22.19.0 || >=24.0.0) is what the runner has to
-      # hold for them to run rather than skip.
-      uses: actions/setup-node@v5
-      with:
-        node-version: '22'
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-cleanup: never
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Set up pnpm
+        run: |
+          npm install --global pnpm@11.24.0
+          pnpm --version
 
-    - name: Work out the version
-      shell: bash
-      env:
-        DISPATCHED_VERSION: ${{ inputs.version }}
-      run: |
-        # The version the run is for: the tag it was pushed as, or — for a manual run — the one it
-        # was given. A manual run is a dry run, and what keeps it from publishing is the event
-        # rather than an input, so this step is the only place the two differ before the build.
-        if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-          VERSION="${DISPATCHED_VERSION}"
-          echo "Dry run: building ${VERSION}, publishing nothing"
-        else
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Releasing ${VERSION}"
-        fi
-        # The version ends up in file names, in the `.deb`'s control file and in `-PreleaseVersion`,
-        # so its shape is checked here rather than discovered by a build that writes `hdsl-.exe`.
-        printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
-          || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
-        # A pre-release part — anything after the first `-`, which is semver's own spelling for one —
-        # makes this a pre-release rather than a release. GitHub keeps those out of `releases/latest`,
-        # so the download page and anything reading that endpoint stay on the stable release while the
-        # snapshot's assets remain reachable by tag for whoever is testing it.
-        case "${VERSION}" in
-          *-*) PRERELEASE=--prerelease ;;
-          *)   PRERELEASE= ;;
-        esac
-        {
-          echo "VERSION=${VERSION}"
-          echo "TAG=v${VERSION}"
-          echo "PRERELEASE=${PRERELEASE}"
-        } >> "${GITHUB_ENV}"
+      - name: Work out the version
+        shell: bash
+        env:
+          DISPATCHED_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${DISPATCHED_VERSION}"
+            echo "Dry run: building ${VERSION}, publishing nothing"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Releasing ${VERSION}"
+          fi
+          
+          printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
+            || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
+          
+          case "${VERSION}" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          
+          {
+            echo "VERSION=${VERSION}"
+            echo "TAG=v${VERSION}"
+            echo "PRERELEASE=${PRERELEASE}"
+          } >> "${GITHUB_ENV}"
 
-    - name: Build with Gradle
-      # PowerShell runs nothing from the working directory without its path,
-      # which is what the backslash is for; the runner's own desktop session
-      # is what the JavaFX tests run under.
-      #
-      # The version travels as an environment variable rather than as
-      # `-PreleaseVersion=…`, and that is not a style choice: the wrapper hands the command line to
-      # `gradlew.ps1` through `%*` (gradlew.bat:55), and `-PreleaseVersion=0.2.1-rc.2` reached Gradle
-      # split into `-PreleaseVersion=0` and `.2.1-rc.2` — which Gradle read as a task named
-      # `.2.1-rc.2` and refused, twelve seconds into a release. Nothing splits an environment
-      # variable, and Gradle reads `ORG_GRADLE_PROJECT_releaseVersion` as the same project property
-      # the build file asks for.
-      env:
-        ORG_GRADLE_PROJECT_releaseVersion: ${{ env.VERSION }}
-      run: .\gradlew.bat clean build --no-daemon --parallel
-      timeout-minutes: 30
-    # The executable is the whole of the Windows release. A plain jar used to travel beside it, and
-    # it was built here too — which is exactly why it should not have: it carried the Windows JavaFX,
-    # so what it was is a package that opens on one platform, published among packages that each open
-    # on their own. `java -jar` was never a second way to run this launcher either; it is the form the
-    # packages are made of. Whoever wants a jar can build one on the machine they are on.
-    - name: Collect the Windows packages
-      shell: bash
-      run: |
-        # The `.sha256` is written by the build, beside the executable it sums.
-        mkdir -p dist
-        cp "build/libs/hdsl-${VERSION}.exe" "build/libs/hdsl-${VERSION}.exe.sha256" dist/
-        ls -l dist
+      - name: Build with Gradle
+        # `-Pexternal` runs the tests that need the Node and pnpm set up above.
+        env:
+          ORG_GRADLE_PROJECT_releaseVersion: ${{ env.VERSION }}
+        run: .\gradlew.bat clean build -Pexternal --no-daemon --parallel
+        timeout-minutes: 30
+      - name: Collect the Windows packages
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "build/libs/hdsl-${VERSION}.exe" "build/libs/hdsl-${VERSION}.exe.sha256" dist/
+          ls -l dist
 
-    - name: Verify the Windows packages (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      shell: bash
-      run: |
-        # What the upload below would send, checked the way the release needs it: every file there,
-        # and every sum beside it matching. On a tag a missing file fails `gh release upload`, after
-        # the build has been paid for; here it fails a step that costs seconds.
-        for file in "dist/hdsl-${VERSION}.exe" "dist/hdsl-${VERSION}.exe.sha256"; do
-          [ -s "${file}" ] || { echo "error: ${file} was not built" >&2; exit 1; }
-        done
-        ( cd dist && sha256sum -c --quiet "hdsl-${VERSION}.exe.sha256" )
+      - name: Verify the Windows packages (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          for file in "dist/hdsl-${VERSION}.exe" "dist/hdsl-${VERSION}.exe.sha256"; do
+            [ -s "${file}" ] || { echo "error: ${file} was not built" >&2; exit 1; }
+          done
+          ( cd dist && sha256sum -c --quiet "hdsl-${VERSION}.exe.sha256" )
 
-    # A dry run keeps what it built, so it can be looked at — and tried — without a release to
-    # download it from. These are workflow artifacts, not release assets: nothing is published.
-    - name: Keep the checksums for the note (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/upload-artifact@v7
-      with:
-        name: dry-run-checksums-windows
-        path: dist/*.sha256
-        if-no-files-found: error
-        retention-days: 7
+      - name: Keep the checksums for the note (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-checksums-windows
+          path: dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+      - name: Keep the packages for inspection (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-windows
+          path: dist/
+          retention-days: 7
 
-    - name: Keep the packages for inspection (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/upload-artifact@v7
-      with:
-        name: dry-run-windows
-        path: dist/
-        retention-days: 7
+      - name: Upload the Windows packages
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          gh release upload "${TAG}" \
+            --repo "${{ github.repository }}" \
+            "dist/hdsl-${VERSION}.exe" \
+            "dist/hdsl-${VERSION}.exe.sha256" \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # `--clobber` for the reason the macOS job gives below: a re-run of this job
-    # replaces what the previous attempt uploaded rather than failing on it.
-    #
-    # Only a tag publishes; a manual run stops before this step.
-    - name: Upload the Windows packages
-      if: github.event_name == 'push'
-      shell: bash
-      run: |
-        gh release upload "${TAG}" \
-          --repo "${{ github.repository }}" \
-          "dist/hdsl-${VERSION}.exe" \
-          "dist/hdsl-${VERSION}.exe.sha256" \
-          --clobber
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # The Linux packages — the tar.zst, the AppImage, the `.deb`, the `.sh` and the Arch package — are
-  # built here, under xvfb, because JavaFX needs a display even to run the tests. This job created the
-  # release once; creating it is the draft job's work now, so this is one of three that upload into it.
+  # JavaFX needs a display for the tests
   release-linux:
-
     needs: release-draft
-
     runs-on: ubuntu-latest
 
     timeout-minutes: 45
 
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Set up JDK 21
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'temurin'
-        java-version: '21'
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v5
-      with:
-        cache-cleanup: never
-    - name: Set up Node 22
-      # The lifecycle tests start instances through the system Node; the range
-      # the launcher accepts (^22.19.0 || >=24.0.0) is what the runner has to
-      # hold for them to run rather than skip.
-      uses: actions/setup-node@v5
-      with:
-        node-version: '22'
-    - name: Install test dependencies
-      # JavaFX needs GTK even under xvfb; without it the toolkit wedges and the
-      # tests hang rather than fail. The t64 name is the one newer Ubuntu uses.
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y xvfb libgtk-3-0t64 libgl1 || sudo apt-get install -y xvfb libgtk-3-0 libgl1
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-cleanup: never
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Set up pnpm
+        run: |
+          npm install --global pnpm@11.24.0
+          pnpm --version
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgtk-3-0t64 libgl1 || sudo apt-get install -y xvfb libgtk-3-0 libgl1
 
-    # The version comes from the tag, not from the build file: a release that
-    # disagrees with its tag is worse than one that cannot be built. The build
-    # file's own version is what a plain `./gradlew build` produces.
-    - name: Work out the version
-      shell: bash
-      env:
-        DISPATCHED_VERSION: ${{ inputs.version }}
-      run: |
-        # The version the run is for: the tag it was pushed as, or — for a manual run — the one it
-        # was given. A manual run is a dry run, and what keeps it from publishing is the event
-        # rather than an input, so this step is the only place the two differ before the build.
-        if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-          VERSION="${DISPATCHED_VERSION}"
-          echo "Dry run: building ${VERSION}, publishing nothing"
-        else
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Releasing ${VERSION}"
-        fi
-        # The version ends up in file names, in the `.deb`'s control file and in `-PreleaseVersion`,
-        # so its shape is checked here rather than discovered by a build that writes `hdsl-.exe`.
-        printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
-          || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
-        # A pre-release part — anything after the first `-`, which is semver's own spelling for one —
-        # makes this a pre-release rather than a release. GitHub keeps those out of `releases/latest`,
-        # so the download page and anything reading that endpoint stay on the stable release while the
-        # snapshot's assets remain reachable by tag for whoever is testing it.
-        case "${VERSION}" in
-          *-*) PRERELEASE=--prerelease ;;
-          *)   PRERELEASE= ;;
-        esac
-        {
-          echo "VERSION=${VERSION}"
-          echo "TAG=v${VERSION}"
-          echo "PRERELEASE=${PRERELEASE}"
-        } >> "${GITHUB_ENV}"
+      - name: Work out the version
+        shell: bash
+        env:
+          DISPATCHED_VERSION: ${{ inputs.version }}
+        run: |
+          # Tag: the tag without `v`; manual run: the `version` input.
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${DISPATCHED_VERSION}"
+            echo "Dry run: building ${VERSION}, publishing nothing"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Releasing ${VERSION}"
+          fi
+          
+          printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
+            || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
+          
+          case "${VERSION}" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          
+          {
+            echo "VERSION=${VERSION}"
+            echo "TAG=v${VERSION}"
+            echo "PRERELEASE=${PRERELEASE}"
+          } >> "${GITHUB_ENV}"
 
-    - name: Build with Gradle
-      run: xvfb-run --auto-servernum ./gradlew clean build --no-daemon --parallel
-      env:
-        # The version, by the same spelling as the Windows job: see the note there for why it is an
-        # environment variable rather than `-PreleaseVersion=…`.
-        ORG_GRADLE_PROJECT_releaseVersion: ${{ env.VERSION }}
-        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
-      timeout-minutes: 30
-    # appimagetool is an AppImage itself; the released one is used rather than a
-    # distribution package so the packages are built by the same tool everywhere.
-    - name: Fetch appimagetool
-      run: |
-        curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
-          https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-        chmod +x "$RUNNER_TEMP/appimagetool"
-        echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> $GITHUB_ENV
+      - name: Build with Gradle
+        run: xvfb-run --auto-servernum ./gradlew clean build -Pexternal --no-daemon --parallel
+        env:
+          ORG_GRADLE_PROJECT_releaseVersion: ${{ env.VERSION }}
+          JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+        timeout-minutes: 30
+      - name: Fetch appimagetool
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$RUNNER_TEMP/appimagetool"
+          echo "APPIMAGETOOL=$RUNNER_TEMP/appimagetool" >> $GITHUB_ENV
 
-    - name: Build the Linux packages
-      run: |
-        set -o pipefail
-        # `dist/`, not `build/libs`: `build/` belongs to Gradle and any rebuild empties it, which is
-        # how a release's artifacts came to vanish between being built and being uploaded.
-        log="$RUNNER_TEMP/linux-packages.log"
-        ./packaging/linux-packages.sh \
-          "${{ env.VERSION }}" \
-          "build/libs/hdsl-${{ env.VERSION }}.sh" \
-          "src/main/resources/assets/img/icon@8x.png" \
-          dist | tee "${log}"
-        # The Arch package's name is read back from the script rather than rebuilt here: it is the
-        # version pacman is given, and for a pre-release that differs from the tag's.
-        arch_path="$(sed -n 's/^arch package: //p' "${log}")"
-        [ -n "${arch_path}" ] || { echo "error: the packaging script named no Arch package" >&2; exit 1; }
-        echo "ARCH_PKG=$(basename "${arch_path}")" >> $GITHUB_ENV
-        # The two Gradle writes go beside them, so one directory holds the whole release.
-        cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
+      - name: Build the Linux packages
+        run: |
+          set -o pipefail
+          
+          log="$RUNNER_TEMP/linux-packages.log"
+          ./packaging/linux-packages.sh \
+            "${{ env.VERSION }}" \
+            "build/libs/hdsl-${{ env.VERSION }}.sh" \
+            "src/main/resources/assets/img/icon@8x.png" \
+            dist | tee "${log}"
+          
+          arch_path="$(sed -n 's/^arch package: //p' "${log}")"
+          [ -n "${arch_path}" ] || { echo "error: the packaging script named no Arch package" >&2; exit 1; }
+          echo "ARCH_PKG=$(basename "${arch_path}")" >> $GITHUB_ENV
+          cp "build/libs/hdsl-${{ env.VERSION }}.sh" "build/libs/hdsl-${{ env.VERSION }}.deb" dist/
 
-    # The note a release goes public with is written by the `release-note` job below, once every
-    # asset — and every `.sha256` beside it — is in the draft. Nothing is written here because
-    # nothing here can see the whole release: Gradle's two artifacts are summed a step after this
-    # point, and the macOS and Windows packages arrive from jobs that run beside this one.
+      - name: Sum the Gradle artifacts
+        run: |
+          for artifact in "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh"; do
+            ( cd dist && sha256sum "${artifact}" > "${artifact}.sha256" )
+          done
+          # A dry run has no release for the note job to read
+          echo "${ARCH_PKG}" > dist/arch-package.txt
 
-    - name: Sum the Gradle artifacts
-      run: |
-        # The two files Gradle wrote are the ones the packaging script does not build, so their sums
-        # are written here, one per artifact as everywhere else, and uploaded with the release: the
-        # note is written later, from the release's own `.sha256` assets.
-        for artifact in "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh"; do
-          ( cd dist && sha256sum "${artifact}" > "${artifact}.sha256" )
-        done
-        # The note job reads the Arch package's name from the release on a tagged run; a dry run has
-        # no release to read, so the name this job read back from the script is written down beside
-        # the artifacts and travels to the note job as one of them.
-        echo "${ARCH_PKG}" > dist/arch-package.txt
+      - name: Verify the Linux packages (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          for file in \
+            "dist/hdsl-${VERSION}-linux-x64.tar.zst" "dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256" \
+            "dist/${ARCH_PKG}" "dist/${ARCH_PKG}.sha256" \
+            "dist/HDSL-${VERSION}-x86_64.AppImage" "dist/HDSL-${VERSION}-x86_64.AppImage.sha256" \
+            "dist/hdsl-${VERSION}.deb" "dist/hdsl-${VERSION}.deb.sha256" \
+            "dist/hdsl-${VERSION}.sh" "dist/hdsl-${VERSION}.sh.sha256" ; do
+            [ -s "${file}" ] || { echo "error: ${file} was not built" >&2; exit 1; }
+          done
+          ( cd dist && sha256sum -c --quiet ./*.sha256 )
 
-    - name: Verify the Linux packages (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        # The list `gh release upload` below names, checked before it is needed: every package is
-        # there and every `.sha256` matches the file beside it, so a build that came up short stops
-        # here, naming the file, rather than inside an upload that names ten of them.
-        for file in \
-          "dist/hdsl-${VERSION}-linux-x64.tar.zst" "dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256" \
-          "dist/${ARCH_PKG}" "dist/${ARCH_PKG}.sha256" \
-          "dist/HDSL-${VERSION}-x86_64.AppImage" "dist/HDSL-${VERSION}-x86_64.AppImage.sha256" \
-          "dist/hdsl-${VERSION}.deb" "dist/hdsl-${VERSION}.deb.sha256" \
-          "dist/hdsl-${VERSION}.sh" "dist/hdsl-${VERSION}.sh.sha256" ; do
-          [ -s "${file}" ] || { echo "error: ${file} was not built" >&2; exit 1; }
-        done
-        ( cd dist && sha256sum -c --quiet ./*.sha256 )
+      - name: Keep the checksums for the note (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-checksums-linux
+          path: |
+            dist/*.sha256
+            dist/arch-package.txt
+          if-no-files-found: error
+          retention-days: 7
 
-    - name: Keep the checksums for the note (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/upload-artifact@v7
-      with:
-        name: dry-run-checksums-linux
-        path: |
-          dist/*.sha256
-          dist/arch-package.txt
-        if-no-files-found: error
-        retention-days: 7
+      - name: Keep the packages for inspection (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-linux
+          path: dist/
+          retention-days: 7
 
-    - name: Keep the packages for inspection (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/upload-artifact@v7
-      with:
-        name: dry-run-linux
-        path: dist/
-        retention-days: 7
+      # tag-release publish
+      - name: Upload the Linux packages
+        if: github.event_name == 'push'
+        run: |
+          gh release upload "${TAG}" \
+            --repo "${{ github.repository }}" \
+            dist/hdsl-${VERSION}-linux-x64.tar.zst \
+            dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256 \
+            "dist/${ARCH_PKG}" \
+            "dist/${ARCH_PKG}.sha256" \
+            dist/HDSL-${VERSION}-x86_64.AppImage \
+            dist/HDSL-${VERSION}-x86_64.AppImage.sha256 \
+            dist/hdsl-${VERSION}.deb \
+            dist/hdsl-${VERSION}.deb.sha256 \
+            dist/hdsl-${VERSION}.sh \
+            dist/hdsl-${VERSION}.sh.sha256 \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # Only a tag publishes. A manual run is a dry run that stops at the verification above.
-    - name: Upload the Linux packages
-      if: github.event_name == 'push'
-      run: |
-        # `gh release upload` fails the whole step over one path that does not exist, so the list is
-        # exactly what this job built and nothing more: the Arch package's name is read back and checked
-        # a step above, and an AppImage that was not built fails the fetch it depends on rather than
-        # this. The Windows and macOS assets are uploaded by the jobs that build them, which is why none
-        # of them is named here. `--clobber` so that a re-run replaces what the previous attempt
-        # uploaded, the way those jobs do.
-        gh release upload "${TAG}" \
-          --repo "${{ github.repository }}" \
-          dist/hdsl-${VERSION}-linux-x64.tar.zst \
-          dist/hdsl-${VERSION}-linux-x64.tar.zst.sha256 \
-          "dist/${ARCH_PKG}" \
-          "dist/${ARCH_PKG}.sha256" \
-          dist/HDSL-${VERSION}-x86_64.AppImage \
-          dist/HDSL-${VERSION}-x86_64.AppImage.sha256 \
-          dist/hdsl-${VERSION}.deb \
-          dist/hdsl-${VERSION}.deb.sha256 \
-          dist/hdsl-${VERSION}.sh \
-          dist/hdsl-${VERSION}.sh.sha256 \
-          --clobber
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # The macOS bundle embeds the host's JavaFX platform, so it is built where
-  # it runs rather than beside the Linux packages — once per Mac arch, with
-  # macos-latest covering Apple Silicon and macos-26-intel covering Intel.
-  #
-  # `needs: release-draft` and nothing else. The draft the uploads go into exists before this job
-  # starts, so it waits for no platform in front of it — which is what it did with no `needs` at all,
-  # and what made that a race: a Mac that finished before the release had been created had nothing to
-  # upload into, and the release would have gone out without its macOS packages.
   release-mac:
-
     needs: release-draft
 
     strategy:
       matrix:
-        os: [macos-latest, macos-26-intel]
+        os: [ macos-latest, macos-26-intel ]
 
     runs-on: ${{ matrix.os }}
 
     timeout-minutes: 45
 
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Set up JDK 21
-      uses: actions/setup-java@v5
-      with:
-        distribution: 'temurin'
-        java-version: '21'
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v5
-      with:
-        cache-cleanup: never
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-cleanup: never
+      - name: Set up Node 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Set up pnpm
+        run: |
+          npm install --global pnpm@11.24.0
+          pnpm --version
 
-    - name: Work out the version
-      shell: bash
-      env:
-        DISPATCHED_VERSION: ${{ inputs.version }}
-      run: |
-        # The version the run is for: the tag it was pushed as, or — for a manual run — the one it
-        # was given. A manual run is a dry run, and what keeps it from publishing is the event
-        # rather than an input, so this step is the only place the two differ before the build.
-        if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-          VERSION="${DISPATCHED_VERSION}"
-          echo "Dry run: building ${VERSION}, publishing nothing"
-        else
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Releasing ${VERSION}"
-        fi
-        # The version ends up in file names, in the `.deb`'s control file and in `-PreleaseVersion`,
-        # so its shape is checked here rather than discovered by a build that writes `hdsl-.exe`.
-        printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
-          || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
-        # A pre-release part — anything after the first `-`, which is semver's own spelling for one —
-        # makes this a pre-release rather than a release. GitHub keeps those out of `releases/latest`,
-        # so the download page and anything reading that endpoint stay on the stable release while the
-        # snapshot's assets remain reachable by tag for whoever is testing it.
-        case "${VERSION}" in
-          *-*) PRERELEASE=--prerelease ;;
-          *)   PRERELEASE= ;;
-        esac
-        {
-          echo "VERSION=${VERSION}"
-          echo "TAG=v${VERSION}"
-          echo "PRERELEASE=${PRERELEASE}"
-        } >> "${GITHUB_ENV}"
+      - name: Work out the version
+        shell: bash
+        env:
+          DISPATCHED_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${DISPATCHED_VERSION}"
+            echo "Dry run: building ${VERSION}, publishing nothing"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Releasing ${VERSION}"
+          fi
+          
+          printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
+            || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
+          
+          case "${VERSION}" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          
+          {
+            echo "VERSION=${VERSION}"
+            echo "TAG=v${VERSION}"
+            echo "PRERELEASE=${PRERELEASE}"
+          } >> "${GITHUB_ENV}"
 
-    - name: Build with Gradle
-      run: ./gradlew clean build --no-daemon --parallel
-      env:
-        # The version, by the same spelling as the Windows job: see the note there for why it is an
-        # environment variable rather than `-PreleaseVersion=…`.
-        ORG_GRADLE_PROJECT_releaseVersion: ${{ env.VERSION }}
-        JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
-      timeout-minutes: 30
+      - name: Build with Gradle
+        run: ./gradlew clean build -Pexternal --no-daemon --parallel
+        env:
+          ORG_GRADLE_PROJECT_releaseVersion: ${{ env.VERSION }}
+          JAVA_TOOL_OPTIONS: -Djava.awt.headless=true
+        timeout-minutes: 30
 
-    - name: Build the macOS packages
-      run: |
-        # `dist/`, not `build/libs`, for the same reason the Linux side uses it: the
-        # release note reads every artifact's checksum from one directory, and the
-        # macOS packages belong in it beside the rest.
-        ./packaging/mac-packages.sh \
-          "${{ env.VERSION }}" \
-          "build/libs/hdsl-${{ env.VERSION }}.sh" \
-          "src/main/resources/assets/img/icon@8x.png" \
-          dist
+      - name: Build the macOS packages
+        run: |
+          # `dist/` holds every artifact; the note reads the sums from there.
+          ./packaging/mac-packages.sh \
+            "${{ env.VERSION }}" \
+            "build/libs/hdsl-${{ env.VERSION }}.sh" \
+            "src/main/resources/assets/img/icon@8x.png" \
+            dist
 
-    - name: Verify the macOS packages (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        # One arch per runner — macos-latest is Apple Silicon and macos-26-intel is Intel — so what
-        # this checks is the pair the runner built, whichever arch that was.
-        for file in dist/HDSL-${VERSION}-*.dmg dist/HDSL-${VERSION}-*.zip; do
-          [ -s "${file}" ] || { echo "error: ${file} was not built" >&2; exit 1; }
-          [ -s "${file}.sha256" ] || { echo "error: ${file}.sha256 was not built" >&2; exit 1; }
-        done
-        # `shasum` rather than `sha256sum`: the packaging script writes the sums with whichever the
-        # machine has, and this is the one macOS always has.
-        for sum in dist/HDSL-${VERSION}-*.sha256; do
-          ( cd dist && shasum -a 256 -c "$(basename "${sum}")" )
-        done
+      - name: Verify the macOS packages (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          for file in dist/HDSL-${VERSION}-*.dmg dist/HDSL-${VERSION}-*.zip; do
+            [ -s "${file}" ] || { echo "error: ${file} was not built" >&2; exit 1; }
+            [ -s "${file}.sha256" ] || { echo "error: ${file}.sha256 was not built" >&2; exit 1; }
+          done
+          # on macOS there may no `sha256sum` exists
+          for sum in dist/HDSL-${VERSION}-*.sha256; do
+            ( cd dist && shasum -a 256 -c "$(basename "${sum}")" )
+          done
 
-    - name: Keep the checksums for the note (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/upload-artifact@v7
-      with:
-        name: dry-run-checksums-${{ matrix.os }}
-        path: dist/*.sha256
-        if-no-files-found: error
-        retention-days: 7
+      - name: Keep the checksums for the note (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-checksums-${{ matrix.os }}
+          path: dist/*.sha256
+          if-no-files-found: error
+          retention-days: 7
 
-    - name: Keep the packages for inspection (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/upload-artifact@v7
-      with:
-        name: dry-run-${{ matrix.os }}
-        path: dist/
-        retention-days: 7
+      - name: Keep the packages for inspection (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: dry-run-${{ matrix.os }}
+          path: dist/
+          retention-days: 7
 
-    # Only a tag publishes; a manual run stops before this step.
-    - name: Upload the macOS packages
-      if: github.event_name == 'push'
-      run: |
-        gh release upload "${TAG}" \
-          --repo "${{ github.repository }}" \
-          dist/HDSL-${{ env.VERSION }}-*.dmg \
-          dist/HDSL-${{ env.VERSION }}-*.dmg.sha256 \
-          dist/HDSL-${{ env.VERSION }}-*.zip \
-          dist/HDSL-${{ env.VERSION }}-*.zip.sha256 \
-          --clobber
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload the macOS packages
+        if: github.event_name == 'push'
+        run: |
+          gh release upload "${TAG}" \
+            --repo "${{ github.repository }}" \
+            dist/HDSL-${{ env.VERSION }}-*.dmg \
+            dist/HDSL-${{ env.VERSION }}-*.dmg.sha256 \
+            dist/HDSL-${{ env.VERSION }}-*.zip \
+            dist/HDSL-${{ env.VERSION }}-*.zip.sha256 \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # The note a release goes public with cannot be written while the release is being built: Gradle's
-  # two artifacts are summed one step after the Linux job would write it, and the macOS and Windows
-  # packages are built and uploaded by jobs of their own. So it is written here, once every asset —
-  # and every `.sha256` beside it — is in the draft, and this job is what publishes the draft: the
-  # note and the release go public together, or the release stays a draft for whoever looks next.
-  #
-  # A row with no checksum to read is an artifact the runner did not build, which is the only thing
-  # `pending` means here; `needs` and `always()` are what make that true for a Mac or a Windows runner
-  # that failed without costing the Linux packages their table. Every uploading job is named in
-  # `needs` for that reason — a job left out of it would have its assets arrive after the table was
-  # written, and a checksum that was correct when it was read is not one that is correct now. The
-  # draft job is named with them, since the release read here is the one that job created.
-  #
-  # The checksums are read out of a release rather than out of a tree, so every `gh` call names the
-  # repository instead of leaving `gh` to look for `.git` to work out which one is meant.
-  #
-  # The changelog is the one thing here that is read out of a tree — `scripts/changelog.py` writes it,
-  # and the tags it ranges over are git's — so the job checks the repository out, at full depth: the
-  # range starts at an earlier tag, and a shallow clone carries neither it nor the commits between.
-  #
-  # A dry run has no release to read, so the checksums come from what the three build jobs kept
-  # instead, and the note is printed rather than edited into a release.
   release-note:
-
-    needs: [release-draft, release-linux, release-mac, release-windows]
+    needs: [ release-draft, release-linux, release-mac, release-windows ]
     if: always() && needs.release-linux.result == 'success'
-
     runs-on: ubuntu-latest
-
     timeout-minutes: 15
 
     steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - name: Work out the version
-      shell: bash
-      env:
-        DISPATCHED_VERSION: ${{ inputs.version }}
-      run: |
-        # The version the run is for: the tag it was pushed as, or — for a manual run — the one it
-        # was given. A manual run is a dry run, and what keeps it from publishing is the event
-        # rather than an input, so this step is the only place the two differ before the build.
-        if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-          VERSION="${DISPATCHED_VERSION}"
-          echo "Dry run: building ${VERSION}, publishing nothing"
-        else
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Releasing ${VERSION}"
-        fi
-        # The version ends up in file names, in the `.deb`'s control file and in `-PreleaseVersion`,
-        # so its shape is checked here rather than discovered by a build that writes `hdsl-.exe`.
-        printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
-          || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
-        # A pre-release part — anything after the first `-`, which is semver's own spelling for one —
-        # makes this a pre-release rather than a release. GitHub keeps those out of `releases/latest`,
-        # so the download page and anything reading that endpoint stay on the stable release while the
-        # snapshot's assets remain reachable by tag for whoever is testing it.
-        case "${VERSION}" in
-          *-*) PRERELEASE=--prerelease ;;
-          *)   PRERELEASE= ;;
-        esac
-        {
-          echo "VERSION=${VERSION}"
-          echo "TAG=v${VERSION}"
-          echo "PRERELEASE=${PRERELEASE}"
-        } >> "${GITHUB_ENV}"
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Work out the version
+        shell: bash
+        env:
+          DISPATCHED_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            VERSION="${DISPATCHED_VERSION}"
+            echo "Dry run: building ${VERSION}, publishing nothing"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+            echo "Releasing ${VERSION}"
+          fi
+          
+          printf '%s' "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$' \
+            || { echo "error: '${VERSION}' is not a version this workflow can build" >&2; exit 1; }
+          
+          case "${VERSION}" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          
+          {
+            echo "VERSION=${VERSION}"
+            echo "TAG=v${VERSION}"
+            echo "PRERELEASE=${PRERELEASE}"
+          } >> "${GITHUB_ENV}"
 
-    - name: Read the checksums the release carries
-      if: github.event_name == 'push'
-      run: |
-        mkdir -p sums
-        gh release download "${TAG}" --repo "${{ github.repository }}" \
-          --dir sums --pattern '*.sha256' --clobber
-        ls -l sums
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Read the checksums the release carries
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p sums
+          gh release download "${TAG}" --repo "${{ github.repository }}" \
+            --dir sums --pattern '*.sha256' --clobber
+          ls -l sums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # A dry run has no release to read, so the checksums come from what the three build jobs kept:
-    # the same files, under the same names, that a release would have carried. The note below is
-    # written from them exactly as it is written from a release's own assets — the row a missing
-    # artifact leaves as `pending` included, which is one of the things this job is here to catch.
-    - name: Read the checksums the dry run built
-      if: github.event_name == 'workflow_dispatch'
-      uses: actions/download-artifact@v7
-      with:
-        pattern: dry-run-checksums-*
-        path: sums
-        merge-multiple: true
+      # A dry run has no release
+      - name: Read the checksums the dry run built
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/download-artifact@v7
+        with:
+          pattern: dry-run-checksums-*
+          path: sums
+          merge-multiple: true
 
-    - name: List what was read (dry run)
-      if: github.event_name == 'workflow_dispatch'
-      run: ls -l sums
+      - name: List what was read (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        run: ls -l sums
 
-    - name: Write the release note
-      run: |
-        # The Arch package's name is read from the release rather than rebuilt from the tag: it carries
-        # the version pacman is given, and for a pre-release that differs from the tag's. A dry run has
-        # no release, so it reads the name the Linux job wrote down from the same script.
-        arch_pkg=""
-        if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
-          arch_pkg="$(gh release view "${TAG}" --repo "${{ github.repository }}" --json assets \
-            --jq '.assets[].name | select(endswith(".pkg.tar.zst"))' | head -1)"
-        elif [ -f sums/arch-package.txt ]; then
-          arch_pkg="$(cat sums/arch-package.txt)"
-        fi
-        note=RELEASE_NOTE
-        echo "HDSL ${VERSION} — DeepSeek Harness launcher for Windows, Linux and macOS." >> "${note}"
-        echo "" >> "${note}"
-        if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
-          echo "**Dry run** — written by a manual run of the release workflow. Nothing was published," >> "${note}"
-          echo "and the links below point at a release that does not exist." >> "${note}"
+      # a pre-release's pacman version differs from the tag's (no dash/minus char)
+      - name: Write the release note
+        run: |
+          arch_pkg=""
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            arch_pkg="$(gh release view "${TAG}" --repo "${{ github.repository }}" --json assets \
+              --jq '.assets[].name | select(endswith(".pkg.tar.zst"))' | head -1)"
+          elif [ -f sums/arch-package.txt ]; then
+            arch_pkg="$(cat sums/arch-package.txt)"
+          fi
+          note=RELEASE_NOTE
+          echo "HDSL ${VERSION} — DeepSeek Harness launcher for Windows, Linux and macOS." >> "${note}"
           echo "" >> "${note}"
-        fi
-        if [ -n "${PRERELEASE}" ]; then
-          echo "This is a **pre-release**: it is not the latest release, and nothing asking for the" >> "${note}"
-          echo "latest version will be offered it." >> "${note}"
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "**Dry run** — written by a manual run of the release workflow. Nothing was published," >> "${note}"
+            echo "and the links below point at a release that does not exist." >> "${note}"
+            echo "" >> "${note}"
+          fi
+          if [ -n "${PRERELEASE}" ]; then
+            echo "This is a **pre-release**: it is not the latest release, and nothing asking for the" >> "${note}"
+            echo "latest version will be offered it." >> "${note}"
+            echo "" >> "${note}"
+          fi
+          echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> "${note}"
+          echo "macOS users take the .dmg or .zip; the standalone .sh below is the Linux build." >> "${note}"
+          echo "Windows users take the .exe, which needs Java 21 installed." >> "${note}"
           echo "" >> "${note}"
-        fi
-        echo "Requires a Java 21 or newer runtime (no JVM is bundled), the same as the \`.deb\` declares." >> "${note}"
-        echo "macOS users take the .dmg or .zip; the standalone .sh below is the Linux build." >> "${note}"
-        echo "Windows users take the .exe, which needs Java 21 installed." >> "${note}"
-        echo "" >> "${note}"
-        # The changelog goes above the table: what changed, then what to download. The commits are
-        # read from the last tag to this release — for a dry run there is no tag yet, so the range is
-        # the last tag on the branch, which is the same thing read the other way round. A changelog
-        # nobody can generate is worse than none, so a failure here is not made fatal: the note still
-        # carries the files and their digests. It is not swallowed either: a run that wrote a note
-        # without its changelog is what went unnoticed once, and a step that cannot say it failed is
-        # a step nobody can fix.
-        if ! python3 scripts/changelog.py --tag "${TAG}" --repo "${{ github.repository }}" >> "${note}"; then
-          echo "::warning::the changelog could not be written; the note goes out without one"
-        fi
-        echo "" >> "${note}"
-        echo "| File | SHA-256 |" >> "${note}"
-        echo "| --- | --- |" >> "${note}"
-        # The Arch package is listed like the others. It is not the tar.zst under another name:
-        # `pacman -U` reads `.PKGINFO` out of the archive, so only a real pacman package installs,
-        # and the portable tar.zst is for unpacking anywhere.
-        for file in "hdsl-${VERSION}-linux-x64.tar.zst" "${arch_pkg}" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "hdsl-${VERSION}.exe" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
-          [ -n "${file}" ] || continue
-          echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${file}) | \`$(cut -d' ' -f1 < "sums/${file}.sha256" 2>/dev/null || echo pending)\` |" >> "${note}"
-        done
-        cat "${note}"
-        # And in the run's own summary, which is where a dry run is read. The note is markdown and
-        # the summary renders it: what changed and what to download, one page rather than one job and
-        # one step to open. On a tag the note is the release's own as well, so the summary is the
-        # run's record of what it published.
-        cat "${note}" >> "${GITHUB_STEP_SUMMARY}"
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+          if ! python3 scripts/changelog.py --tag "${TAG}" --repo "${{ github.repository }}" >> "${note}"; then
+            echo "::warning::the changelog could not be written; the note goes out without one"
+          fi
+          echo "" >> "${note}"
+          echo "| File | SHA-256 |" >> "${note}"
+          echo "| --- | --- |" >> "${note}"
+          
+          for file in "hdsl-${VERSION}-linux-x64.tar.zst" "${arch_pkg}" "HDSL-${VERSION}-x86_64.AppImage" "hdsl-${VERSION}.deb" "hdsl-${VERSION}.sh" "hdsl-${VERSION}.exe" "HDSL-${VERSION}-aarch64.dmg" "HDSL-${VERSION}-aarch64.zip" "HDSL-${VERSION}-x64.dmg" "HDSL-${VERSION}-x64.zip"; do
+            [ -n "${file}" ] || continue
+            echo "| [${file}](https://github.com/${{ github.repository }}/releases/download/${TAG}/${file}) | \`$(cut -d' ' -f1 < "sums/${file}.sha256" 2>/dev/null || echo pending)\` |" >> "${note}"
+          done
+          cat "${note}"
+          
+          cat "${note}" >> "${GITHUB_STEP_SUMMARY}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # Only a tag publishes: a dry run has already printed the note it would have written. Publishing
-    # is the last thing a release gets — the note goes in and the draft stops being one in a single
-    # command, so a release is never public with a note that is still being written.
-    - name: Publish the draft with the note that was written
-      if: github.event_name == 'push'
-      run: gh release edit "${TAG}" --repo "${{ github.repository }}" --notes-file RELEASE_NOTE --draft=false
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the draft with the note that was written
+        if: github.event_name == 'push'
+        run: gh release edit "${TAG}" --repo "${{ github.repository }}" --notes-file RELEASE_NOTE --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
