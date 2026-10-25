@@ -104,7 +104,7 @@ public final class DshFiles {
 		try {
 			deleteTree(root);
 			return true;
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
 			Logger.LOG.warning("Failed to remove " + root, e);
 			return false;
 		}
