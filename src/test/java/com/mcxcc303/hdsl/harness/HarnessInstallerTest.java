@@ -301,6 +301,8 @@ class HarnessInstallerTest {
 
 	@Test
 	void aFailedInstallPutsTheTreeThatWasThereBack() throws Exception {
+		Assumptions.assumeTrue(OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS,
+		                       "the in-place install and its rollback are Windows-only");
 		DshInstance instance = instance();
 		writeEntryPoint(instance);
 		Path entry = instance.dshDirectory().resolve("node_modules/@deepseek-ai/dsh/lib/bin.js");
@@ -332,18 +334,48 @@ class HarnessInstallerTest {
 	 */
 	@Test
 	void aRetryOverAnUnfinishedInstallDoesNotRestoreThePartialTree() throws Exception {
+		Assumptions.assumeTrue(OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS,
+		                       "the marker and its in-place recovery are Windows-only");
 		DshInstance instance = instance();
 		writeEntryPoint(instance);
 		Files.writeString(HarnessInstaller.pendingMarker(instance), "");
 		Files.writeString(instance.dshDirectory().resolve("partial-tree"), "not a runtime");
+		Path previous = HarnessInstaller.setAsideDirectory(instance);
+		Files.createDirectories(previous);
+		Files.writeString(previous.resolve("old-tree"), "the old tree");
 
 		assertThrows(DshException.class,
 		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(null)));
 
 		assertFalse(Files.exists(instance.dshDirectory()));
-		assertFalse(HarnessInstaller.isInstalling(instance));
+		// The marker stays: the instance is still unfinished, so it cannot be reported as
+		// installed. The tree that was there is kept for a later attempt or manual recovery.
+		assertTrue(HarnessInstaller.isInstalling(instance));
 		assertFalse(HarnessInstaller.isInstalled(instance));
-		assertFalse(Files.exists(HarnessInstaller.setAsideDirectory(instance)));
+		assertEquals("the old tree", Files.readString(previous.resolve("old-tree")));
+
+		Path recovered;
+		try (var entries = Files.list(instance.instanceDirectory())) {
+			recovered = entries.filter(path -> path.getFileName().toString().startsWith("dsh.previous."))
+			                   .findFirst()
+			                   .orElseThrow();
+		}
+		assertEquals("not a runtime", Files.readString(recovered.resolve("partial-tree")));
+	}
+
+	@Test
+	void installingIntoAnInstanceThatWasDeletedIsRefused() throws Exception {
+		DshInstance instance = instance();
+		DshFiles.deleteTree(instance.instanceDirectory());
+
+		DshException refusal = assertThrows(DshException.class,
+		                                    () -> HarnessInstaller.install(instance,
+		                                                                   instance.version(),
+		                                                                   null,
+		                                                                   absentTools(null)));
+
+		assertTrue(refusal.getMessage().contains("no longer exists"), refusal.getMessage());
+		assertFalse(Files.exists(instance.instanceDirectory()));
 	}
 
 	@Test

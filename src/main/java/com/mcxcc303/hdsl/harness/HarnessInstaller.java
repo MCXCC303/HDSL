@@ -325,18 +325,24 @@ public final class HarnessInstaller {
 	 */
 	public static void discardPartial(DshInstance instance) {
 		try {
-			boolean installing = isInstalling(instance);
-			Path target = instance.dshDirectory();
-			// Delete the tree before the marker. The marker is what makes an interrupted install
-			// visible, so clearing it first would leave a half-built tree that looks installed if
-			// the deletion then failed or the launcher was killed.
-			if (installing && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-				DshFiles.deleteTree(target);
-				LOG.info("Removed the partial install for " + instance.id());
-			}
-			clearInstalling(instance);
-		} catch (IOException | DshException e) {
-			LOG.warning("Could not remove the partial install for " + instance.id(), e);
+			InstanceLocks.withLock(instance, "cleared", () -> {
+				try {
+					boolean installing = isInstalling(instance);
+					Path target = instance.dshDirectory();
+					// Delete the tree before the marker. The marker is what makes an interrupted
+					// install visible, so clearing it first would leave a half-built tree that looks
+					// installed if the deletion then failed or the launcher was killed.
+					if (installing && Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+						DshFiles.deleteTree(target);
+						LOG.info("Removed the partial install for " + instance.id());
+					}
+					clearInstalling(instance);
+				} catch (IOException | DshException e) {
+					LOG.warning("Could not remove the partial install for " + instance.id(), e);
+				}
+			});
+		} catch (DshException e) {
+			LOG.warning("Could not lock the instance to remove its partial install: " + instance.id(), e);
 		}
 	}
 
@@ -512,6 +518,9 @@ public final class HarnessInstaller {
 		// Take the lock before the runtime is looked at: a caller turned away should hear that the
 		// instance is busy, not that its own runtime is missing a tool.
 		InstanceLocks.withLock(instance, "installed into", () -> {
+			if (!Files.isDirectory(instance.instanceDirectory(), LinkOption.NOFOLLOW_LINKS)) {
+				throw new DshException("Instance " + instance.id() + " no longer exists");
+			}
 			DshNodeRuntime runtime = detected != null ? detected : requireRuntime();
 			if (!runtime.canManagePlugins()) {
 				throw new DshException("pnpm was not found on PATH; installing DeepSeek Harness requires it");
@@ -597,9 +606,12 @@ public final class HarnessInstaller {
 	                                   @Nullable Consumer<String> onLine) throws DshException {
 		Path aside = setAsideDirectory(instance);
 		// A marker that was already there says the tree at target is the remains of an install
-		// that never finished. It is not a working harness, so it must not be put back if this
-		// attempt fails: restoring it would clear the marker over a tree that only looks installed.
+		// that never finished. It is not a runtime to trust, but it may still be the only copy of
+		// the old harness (the marker is written before the old tree is moved aside). Keep every
+		// tree that was here before this attempt, and leave the marker in place if this attempt
+		// fails: a half-built tree must never be reported as installed.
 		boolean wasInstalling = isInstalling(instance);
+		List<Path> recoveries = new ArrayList<>();
 
 		// The marker goes down before anything is deleted or moved, so a launcher killed while it
 		// clears the old tree still says an install is outstanding.
@@ -607,11 +619,17 @@ public final class HarnessInstaller {
 
 		boolean hadPrevious = false;
 		try {
-			DshFiles.deleteTreeQuietly(aside);
-			if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
-				if (wasInstalling) {
-					DshFiles.deleteTree(target);
-				} else {
+			if (wasInstalling) {
+				// Move the tree out of the way, but keep it. The old dsh.previous is left alone:
+				// it may be the only working copy from the install that left the marker.
+				if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
+					Path recovered = instance.instanceDirectory().resolve("dsh.previous." + System.nanoTime());
+					Files.move(target, recovered);
+					recoveries.add(recovered);
+				}
+			} else {
+				DshFiles.deleteTreeQuietly(aside);
+				if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
 					// Moved rather than deleted: restoring it is a rename, and absolute links inside it
 					// still name this path.
 					Files.move(target, aside);
@@ -659,21 +677,51 @@ public final class HarnessInstaller {
 				throw new DshException("pnpm reported success but " + bin + " is missing");
 			}
 		} catch (DshException | IOException | RuntimeException e) {
-			// Whatever failed, the tree is not a runtime; discard it and put the old one back.
-			discardPartial(instance);
 			DshException failure = e instanceof DshException dsh
 			                       ? dsh
 			                       : new DshException(
 					                       "Failed to install " + version + " for " + instance.id() + ": " + e, e);
+			if (wasInstalling) {
+				// The marker stays: this instance is still unfinished. Remove only the tree this
+				// attempt had just started; keep every tree that was here before it.
+				try {
+					DshFiles.deleteTreeQuietly(target);
+				} catch (RuntimeException cleanupFailure) {
+					LOG.warning("Could not remove the failed install in " + target, cleanupFailure);
+				}
+				List<String> kept = new ArrayList<>();
+				if (Files.exists(aside, LinkOption.NOFOLLOW_LINKS)) {
+					kept.add(aside.toString());
+				}
+				for (Path recovery : recoveries) {
+					kept.add(recovery.toString());
+				}
+				if (!kept.isEmpty()) {
+					failure = new DshException(failure.getMessage() + "\nThe unfinished harness was kept at " +
+					                           String.join(", ", kept) + "; it is not reported as installed.",
+					                           failure);
+				}
+				throw failure;
+			}
+
+			// The tree that was there was not itself being installed, so it is a runtime to put
+			// back. Discard the half-built one first, then rename the old tree into place.
+			discardPartial(instance);
 			if (hadPrevious && !restore(aside, target)) {
-				failure.addSuppressed(new DshException(
-						"The DeepSeek Harness that was there has been kept in " + aside +
-						" and has to be moved back by hand"));
+				failure = new DshException(failure.getMessage() + "\nThe DeepSeek Harness that was there has been " +
+				                           "kept in " + aside + " and has to be moved back by hand", failure);
 			}
 			throw failure;
 		}
 
-		DshFiles.deleteTreeQuietly(aside);
+		try {
+			DshFiles.deleteTreeQuietly(aside);
+			for (Path recovery : recoveries) {
+				DshFiles.deleteTreeQuietly(recovery);
+			}
+		} catch (RuntimeException cleanupFailure) {
+			LOG.warning("Could not remove the old harness copies of " + instance.id(), cleanupFailure);
+		}
 		clearInstalling(instance);
 		LOG.info("Installed DSH " + version + " for " + instance.id() + " into " + target);
 	}
