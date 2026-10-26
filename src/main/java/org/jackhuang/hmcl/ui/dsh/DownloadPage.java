@@ -159,27 +159,17 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		                                                                       i18n("dsh.download.instance"),
 		                                                                       SVG.STADIA_CONTROLLER,
 		                                                                       SVG.STADIA_CONTROLLER_FILL)
-		                                               // A pack is a **new game**, not content for one: it brings a whole profile with it,
-		                                               // and the original files it in this category rather than the next one — second,
-		                                               // directly under the version list, with the package icon. Putting it under 游戏内容
-		                                               // beside the plugins was my own arrangement, and the wrong one: installing a pack is
-		                                               // the other way of getting an instance, which is what this category is about.
 		                                               .addNavigationDrawerTab(tab,
 		                                                                       packTab,
 		                                                                       i18n("dsh.download.packs"),
 		                                                                       SVG.PACKAGE2,
 		                                                                       SVG.PACKAGE2_FILL)
-		                                               // The community's plugins are content, not a game: the original
-		                                               // files its mods under the second category.
 		                                               .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
 		                                               .addNavigationDrawerTab(tab,
 		                                                                       marketTab,
 		                                                                       i18n("dsh.download.plugins"),
 		                                                                       SVG.EXTENSION,
 		                                                                       SVG.EXTENSION_FILL)
-		                                               // The texture mark, which is what the original gives its resource packs and
-		                                               // what the instance page's own skills entry wears: a skill pack and a
-		                                               // resource pack are the same kind of thing.
 		                                               .addNavigationDrawerTab(tab,
 		                                                                       skillsTab,
 		                                                                       i18n("dsh.download.skills"),
