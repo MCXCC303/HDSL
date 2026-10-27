@@ -1,4 +1,5 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.jackhuang.hmcl.gradle.pack.CreateDeb
 import org.jackhuang.hmcl.gradle.pack.ReleaseType
 
@@ -133,10 +134,12 @@ tasks.test {
     useJUnitPlatform {
         // CI perform -Pexternal everytime
         if (!project.hasProperty("external")) excludeTags("external")
-
+        // all type of l10n key-missing Test
+        if (!project.hasProperty("all-locales")) excludeTags("all-locales")
     }
     testLogging {
         events("failed")
+        exceptionFormat = TestExceptionFormat.FULL
         info.events("failed", "skipped")
         debug.events("passed", "failed", "skipped")
         showStackTraces = true
