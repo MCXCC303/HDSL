@@ -34,23 +34,11 @@ import java.util.List;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// A profile's own patch layer, edited by lines.
-///
-/// A profile is composed from its bundles' layers and then from this file, and a plugin listed in
-/// `dsh.profile.bundles` is applied **by that bundle's layer**. A pack that also inserts the same
-/// plugin applies it twice, and a plugin that claims a route on the way up cannot be applied twice:
-/// the profile then fails to load at all, with `webserver: duplicate exact route "…"` — which is how
-/// one pack in the market came to be unlaunchable, and it is not obvious from the pack's contents,
-/// because both halves look reasonable on their own.
-///
-/// So an insert that a bundle already applies is taken out. **An entry that carries configuration is
-/// left alone and reported instead**: dropping it would drop the settings with it, and moving them
-/// onto a row that targets the bundle's own id is a rewrite this does not do.
-///
-/// The other edit here is [`putProvider`][#putProvider], which is how an account's supplier reaches
-/// the harness. Both are edits of a file that is the person's and that the harness itself rewrites,
-/// so both are line edits: comments, `!!js` expressions, indentation and the file's own key order
-/// all survive, and nothing outside the block being written is re-emitted.
+/**
+ * Line-level edits to a profile's own patch layer.
+ *
+ * <p>Comments, {@code !!js} expressions, indentation and key order survive an edit.
+ */
 @NotNullByDefault
 public final class DshProfilePatch {
 	private DshProfilePatch() {
@@ -63,9 +51,8 @@ public final class DshProfilePatch {
 	/// @return the entry ids left alone because they carry configuration, never `null`
 	/// @throws DshException when the file cannot be read or written
 	public static List<String> dropRedundantInserts(Path patch, List<String> bundles) throws DshException {
-		if (bundles.isEmpty() || !Files.isRegularFile(patch)) {
-			return List.of();
-		}
+		if (bundles.isEmpty() || !Files.isRegularFile(patch)) return List.of();
+
 		String text;
 		try {
 			text = Files.readString(patch, StandardCharsets.UTF_8);
@@ -131,25 +118,18 @@ public final class DshProfilePatch {
 		return new Edit(String.join("\n", kept), changed, List.copyOf(withConfiguration));
 	}
 
-	/// Gives an entry one more provider route, under its `config.providers` mapping.
-	///
-	/// This is where an account's supplier goes, and why it goes into this file rather than into a
-	/// `--patch` overlay is argued in [DshAccountRoute]. What matters here is only the shape: the
-	/// route has to land **inside the entry the configuration editor edits**, at
-	/// `config.providers.<route>`, because a patch entry's `config` is replaced rather than merged —
-	/// a second entry for the same id would take the person's own suppliers away instead of adding
-	/// one.
-	///
-	/// The entry written is the **last** one with this id, which is the entry the harness's editor
-	/// edits (`findLastIndex` over the document's items) and therefore the one that wins the
-	/// composition. Every other byte of the file is left where it is.
-	///
-	/// @param patch the profile's patch layer
-	/// @param entry the loader entry that holds the supplier routes
-	/// @param route the route's name
-	/// @param block the route's settings, one level in from the route's own key
-	/// @return what the pass produced
-	/// @throws DshException when the file cannot be read or written
+	/**
+	 * Applies the result of {@link #putProvider(String, String, String, String)} to the profile's patch layer.<br>
+	 * Creates the file if the profile doesn't have one, and the file is untouched if the text is unchanged
+	 *
+	 * @param patch the profile's patch layer
+	 * @param entry the loader entry that holds the supplier routes
+	 * @param route the route's name
+	 * @param block the route's settings, one level in from the route's own key
+	 * @return the edit that was applied
+	 * @throws DshException the file cannot be read or written, or the edit is refused
+	 *                      (see {@link #putProvider(String, String, String, String)})
+	 */
 	public static Edit putProvider(Path patch, String entry, String route, String block) throws DshException {
 		String text = read(patch);
 		Edit edit = putProvider(text, entry, route, block);
@@ -160,17 +140,16 @@ public final class DshProfilePatch {
 		return edit;
 	}
 
-	/// Returns the patch with one provider route set, and whether anything changed.
-	///
-	/// The text form is what is tested, and it is the whole operation: writing the file is the two
-	/// lines around this call.
-	///
-	/// @param text  the patch
-	/// @param entry the loader entry that holds the supplier routes
-	/// @param route the route's name
-	/// @param block the route's settings, one level in from the route's own key
-	/// @return what the pass produced
-	/// @throws DshException when the entry is written in a shape this will not rewrite
+	/**
+	 * Puts the given provider route into the last entry with the given id, under {@code config.providers}.
+	 *
+	 * @param text  the patch
+	 * @param entry the id of the entry to write into
+	 * @param route the route's name
+	 * @param block the route's settings as YAML (2 spaces' tab)
+	 * @return the patched text and whether it changed
+	 * @throws DshException when the entry's {@code config} or {@code providers} is written inline with settings
+	 */
 	public static Edit putProvider(String text, String entry, String route, String block) throws DshException {
 		List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
 		int item = lastEntryItem(lines, entry);
@@ -190,23 +169,18 @@ public final class DshProfilePatch {
 		}
 
 		String configLine = contentOf(lines.get(config));
-		if (!configLine.equals("config:") && !isEmptyMapping(configLine, "config")) {
-			// A `config` written inline carries settings this will not parse and re-emit, and writing
-			// a second entry for the same id would take them away rather than add to them. Saying so
-			// is better than either: the launch stops with a sentence about the line to rewrite, and
-			// the person's suppliers stay theirs.
+		if (!configLine.equals("config:") && !isNullOrEmptyMapping(configLine, "config")) {
 			throw new DshException(
 					"The entry " + entry + " has its config written inline (" + contentOf(lines.get(config)) +
 					"); the providers of a supplier cannot be added" +
 					" to it. Write that entry's config as a block, or launch on a profile that has" +
 					" no such entry.");
 		}
-		int configIndent = indentOf(lines.get(config));
-		if (!configLine.equals("config:")) {
-			lines.set(config, pad(configIndent) + "config:");
-		}
-		int configEnd = blockEnd(lines, config + 1, end, configIndent);
 
+		int configIndent = indentOf(lines.get(config));
+		if (!configLine.equals("config:")) lines.set(config, pad(configIndent) + "config:");
+
+		int configEnd = blockEnd(lines, config + 1, end, configIndent);
 		int providers = keyDeeperThan(lines, config + 1, configEnd, "providers", configIndent);
 		if (providers < 0) {
 			int child = childIndent(lines, config + 1, configEnd, configIndent);
@@ -217,24 +191,24 @@ public final class DshProfilePatch {
 		}
 
 		String providersLine = contentOf(lines.get(providers));
-		if (!providersLine.equals("providers:") && !isEmptyMapping(providersLine, "providers")) {
+		if (!providersLine.equals("providers:") && !isNullOrEmptyMapping(providersLine, "providers")) {
 			throw new DshException(
 					"The entry " + entry + " has its providers written inline (" + contentOf(lines.get(providers)) +
 					"); a supplier cannot be added to it. Write" +
 					" that mapping as a block, or launch on a profile that has no such entry.");
 		}
-		int providersIndent = indentOf(lines.get(providers));
-		if (!providersLine.equals("providers:")) {
-			lines.set(providers, pad(providersIndent) + "providers:");
-		}
-		int providersEnd = blockEnd(lines, providers + 1, end, providersIndent);
 
+		int providersIndent = indentOf(lines.get(providers));
+		if (!providersLine.equals("providers:")) lines.set(providers, pad(providersIndent) + "providers:");
+
+		int providersEnd = blockEnd(lines, providers + 1, end, providersIndent);
 		int existing = routeKey(lines, providers + 1, providersEnd, route, providersIndent);
 		if (existing < 0) {
 			int child = childIndent(lines, providers + 1, providersEnd, providersIndent);
 			lines.addAll(beforeBlanks(lines, providersEnd), routeLines(route, block, child, step(lines, item, body)));
 			return changed(lines, text);
 		}
+
 		int routeIndent = indentOf(lines.get(existing));
 		int routeEnd = beforeBlanks(lines, blockEnd(lines, existing + 1, providersEnd, routeIndent));
 		lines.subList(existing, routeEnd).clear();
@@ -333,14 +307,16 @@ public final class DshProfilePatch {
 		return new Edit(updated, !updated.equals(text), List.of());
 	}
 
-	/// Reports whether a line is a key whose value is an empty mapping.
-	///
-	/// @param content the line without its indentation
-	/// @param key     the key
-	/// @return whether it is `key: {}`
-	private static boolean isEmptyMapping(String content, String key) {
+	/**
+	 * Reports whether a line's value is an empty mapping or YAML {@code null}.
+	 *
+	 * @param content the line without its indentation
+	 * @param key     the key
+	 * @return whether the value is {@code {}}, {@code { }}, {@code null} or {@code ~}
+	 */
+	private static boolean isNullOrEmptyMapping(String content, String key) {
 		String value = content.substring(key.length() + 1).trim();
-		return value.equals("{}") || value.equals("{ }");
+		return value.equals("{}") || value.equals("{ }") || value.equals("null") || value.equals("~");
 	}
 
 	/// Returns the last entry with an id, as a line index, or `-1`.
@@ -697,11 +673,9 @@ public final class DshProfilePatch {
 		return trimmed;
 	}
 
-	/// What one pass over a patch produced.
-	///
-	/// @param text              the patch without the redundant inserts
-	/// @param changed           whether anything was taken out
-	/// @param withConfiguration the entries left alone because they carry configuration
-	public record Edit(String text, boolean changed, List<String> withConfiguration) {
-	}
+	/**
+	 * @param text    patch after the edit
+	 * @param changed whether the text differs
+	 */
+	public record Edit(String text, boolean changed, List<String> withConfiguration) {}
 }
