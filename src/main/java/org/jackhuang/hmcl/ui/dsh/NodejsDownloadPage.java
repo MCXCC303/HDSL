@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.ui.dsh;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.Semver;
 import com.mcxcc303.hdsl.runtime.NodeRelease;
 import com.mcxcc303.hdsl.runtime.NodeRuntimeManager;
 import javafx.beans.property.ReadOnlyObjectProperty;
@@ -266,14 +267,35 @@ public final class NodejsDownloadPage extends VBox implements DecoratorPage {
 		}
 
 		private void updateRelease(ReleaseRow row) {
-			NodeRelease release = row.release();
-
 			content.getTags().clear();
 			mark.getChildren().clear();
 
+			NodeRelease release = row.release();
+			String version = release.version();
 			boolean lts = release.isLts();
-			SVGContainer icon = (lts ? SVG.RELEASE_CIRCLE : SVG.BETA_CIRCLE).createIcon(24);
-			icon.getStyleClass().addAll("addon-channel-icon", lts ? "release" : "beta");
+
+			Semver semver = Semver.parse(version);
+			boolean isAlpha =
+					semver != null && semver.prerelease() != null && "alpha".equalsIgnoreCase(semver.prerelease()
+					                                                                                .getFirst());
+			// 这段判断alpha的逻辑看着非常离谱，一般来说这里只会出现release格式的semver
+			// 但是10.29 03:00 GMT nodejs 27.0.0.0-alpha.0.0.0确实是被发出来了
+			// 我也不知道为什么，不管怎么样还是留着吧
+			SVG i;
+			String style;
+			if (lts) {
+				i = SVG.RELEASE_CIRCLE;
+				style = "release";
+			} else if (isAlpha) {
+				i = SVG.ALPHA_CIRCLE;
+				style = "alpha";
+			} else {
+				i = SVG.BETA_CIRCLE;
+				style = "beta";
+			}
+			SVGContainer icon = i.createIcon(24);
+			icon.getStyleClass().addAll("addon-channel-icon", style);
+
 			mark.getChildren().setAll(icon);
 			mark.setPadding(new Insets(0, 8, 0, 0));
 			mark.setMinWidth(24);
