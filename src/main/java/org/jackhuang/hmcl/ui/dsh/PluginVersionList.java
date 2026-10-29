@@ -35,11 +35,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.*;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
@@ -52,11 +48,7 @@ import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.Consumer;
@@ -70,48 +62,22 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  */
 @NotNullByDefault
 public final class PluginVersionList extends VBox {
-	// The package whose versions the registry lists, or null when the catalogue names a repository
 	private final @Nullable String packageName;
-
-	// The one version to list when there is no package, or null
 	private final @Nullable String pinnedVersion;
-
-	// The name a profile records the install under, or null when the caller names the version in force
 	private final @Nullable String profileKey;
-
-	// What clicking a version does
 	private final Consumer<String> onChoose;
-
-	// What the button drawn beside a version does
 	private final Consumer<String> onInstall;
-
 	private final ObservableList<Row> rows = FXCollections.observableArrayList();
-
 	private final JFXListView<Row> listView = new JFXListView<>();
-
-	// The groups that are open, keyed by harness version, with "" for the group of versions that named none
 	private final Set<String> opened = new LinkedHashSet<>();
-
 	private final SpinnerPane spinner = new SpinnerPane();
 
-	// The groups the document arranged into, in the order they are drawn
 	private List<DshPluginVersions.Group> groups = List.of();
-
-	// The versions as the document described them, for a document that could not be read
 	private List<DshPluginVersions.Published> ungrouped = List.of();
-
-	// The harness version the groups were built for, or null when there was none
 	private @Nullable String harnessVersion;
-
-	// The harness packages that version holds, or null when they could not be read
 	private @Nullable Map<String, String> harnessCore;
-
-	// The version in force, or null
 	private @Nullable String installed;
-
 	private boolean busy;
-
-	// The first load may answer from the copy the launcher already has; a later one asks again
 	private boolean loadedOnce;
 
 	/**
@@ -166,9 +132,8 @@ public final class PluginVersionList extends VBox {
 	 * @param current  the version already in force, or null to read the instance's profile
 	 */
 	public void refresh(@Nullable DshInstance instance, @Nullable String against, @Nullable String current) {
-		if (busy) {
-			return;
-		}
+		if (busy) return;
+
 		busy = true;
 		spinner.setLoading(true);
 
@@ -185,11 +150,10 @@ public final class PluginVersionList extends VBox {
 					fromDocument = !published.isEmpty();
 				}
 				if (published.isEmpty()) {
-					// No document: the flat list, so a registry that cannot be read still shows which versions there are.
-					// Read with the instance's own runtime when it has one: a managed Node need not be on PATH.
 					try {
-						DshNodeRuntime runtime = instance == null ? DshNodeRuntime.detect().orElse(null)
-						                                          : DshLauncher.resolveRuntime(instance);
+						DshNodeRuntime runtime = instance == null
+						                         ? DshNodeRuntime.detect().orElse(null)
+						                         : DshLauncher.resolveRuntime(instance);
 						for (String version : ReleaseQueries.fetchPackageVersions(runtime, packageName)) {
 							published.add(new DshPluginVersions.Published(version,
 							                                              DshPluginVersions.channelOf(version, null),
@@ -210,13 +174,10 @@ public final class PluginVersionList extends VBox {
 			}
 
 			String judged = against != null ? against : instance == null ? null : instance.version();
-			// An instance's packages are read from its installation; a harness that is not installed yet is asked of the registry.
 			Map<String, String> core = instance != null
 			                           ? DshPluginRequirements.coreVersions(instance)
 			                           : judged == null ? null : DshPluginRequirements.coreVersionsOf(judged);
-			if (fromDocument) {
-				grouped = DshPluginVersions.group(published, judged);
-			}
+			if (fromDocument) grouped = DshPluginVersions.group(published, judged);
 
 			String held = current;
 			if (held == null && instance != null && profileKey != null) {
@@ -241,14 +202,14 @@ public final class PluginVersionList extends VBox {
 						i18n("dsh.versions.load_failed") + (cause == null ? "" : ": " + cause.getMessage()));
 				return;
 			}
+
 			installed = loaded.held();
 			groups = loaded.groups();
 			ungrouped = loaded.versions();
 			harnessVersion = loaded.harnessVersion();
 			harnessCore = loaded.harnessCore();
-			// The recommended group starts open; a group somebody opened stays open across a refresh.
-			if (!groups.isEmpty() && groups.get(0).recommended()) {
-				opened.add(groups.get(0).harnessVersion() == null ? "" : groups.get(0).harnessVersion());
+			if (!groups.isEmpty() && groups.getFirst().recommended()) {
+				opened.add(groups.getFirst().harnessVersion() == null ? "" : groups.getFirst().harnessVersion());
 			}
 			render();
 		}));
@@ -267,10 +228,10 @@ public final class PluginVersionList extends VBox {
 				String key = group.harnessVersion() == null ? "" : group.harnessVersion();
 				boolean open = opened.contains(key);
 				drawn.add(new HeadingRow(key, headingOf(group), group.versions().size(), open));
-				if (open) {
-					for (DshPluginVersions.Published version : group.versions()) {
-						drawn.add(new VersionRow(version, fitOf(version), version.version().equals(installed)));
-					}
+				if (!open) continue;
+
+				for (DshPluginVersions.Published version : group.versions()) {
+					drawn.add(new VersionRow(version, fitOf(version), version.version().equals(installed)));
 				}
 			}
 		}
@@ -293,9 +254,7 @@ public final class PluginVersionList extends VBox {
 	 * @param key the group's key
 	 */
 	private void toggleGroup(String key) {
-		if (!opened.remove(key)) {
-			opened.add(key);
-		}
+		if (!opened.remove(key)) opened.add(key);
 		render();
 	}
 
@@ -306,9 +265,8 @@ public final class PluginVersionList extends VBox {
 	 * @return the heading
 	 */
 	private static String headingOf(DshPluginVersions.Group group) {
-		if (group.recommended()) {
-			return i18n("dsh.market.recommend", group.harnessVersion());
-		}
+		if (group.recommended()) return i18n("dsh.market.recommend", group.harnessVersion());
+
 		return group.harnessVersion() == null
 		       ? i18n("dsh.market.group.unclaimed")
 		       : i18n("dsh.market.group", group.harnessVersion());
@@ -374,8 +332,7 @@ public final class PluginVersionList extends VBox {
 	}
 
 	// A heading, or a version under one
-	private sealed interface Row permits HeadingRow, VersionRow {
-	}
+	private sealed interface Row permits HeadingRow, VersionRow {}
 
 	/**
 	 * What one load read.
@@ -389,8 +346,7 @@ public final class PluginVersionList extends VBox {
 	 */
 	private record Loaded(List<DshPluginVersions.Published> versions, List<DshPluginVersions.Group> groups,
 	                      @Nullable String harnessVersion, @Nullable Map<String, String> harnessCore,
-	                      @Nullable String held) {
-	}
+	                      @Nullable String held) {}
 
 	/**
 	 * A group's heading, which opens and closes it.
@@ -400,8 +356,7 @@ public final class PluginVersionList extends VBox {
 	 * @param count how many versions are under it
 	 * @param open  whether they are shown
 	 */
-	private record HeadingRow(String key, String title, int count, boolean open) implements Row {
-	}
+	private record HeadingRow(String key, String title, int count, boolean open) implements Row {}
 
 	/**
 	 * One version.
@@ -411,20 +366,13 @@ public final class PluginVersionList extends VBox {
 	 * @param current   whether it is the version in force
 	 */
 	private record VersionRow(DshPluginVersions.Published published, DshPluginVersions.Fit fit,
-	                          boolean current) implements Row {
-	}
+	                          boolean current) implements Row {}
 
 	// One row: a heading, or a version.
-	// Built on the cell the other lists here use, so a row's own click is wired to the rippler.
 	private final class RowCell extends MDListCell<Row> {
-		// The version and its state
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		// The channel's mark
 		private final StackPane mark = new StackPane();
-
-		// The button that takes this version
-		private final JFXButton install = FXUtils.newToggleButton4(SVG.DOWNLOAD);
+		private final JFXButton installButton = FXUtils.newToggleButton4(SVG.DOWNLOAD);
 
 		RowCell(JFXListView<Row> listView) {
 			super(listView);
@@ -436,21 +384,18 @@ public final class PluginVersionList extends VBox {
 					onChoose.accept(version.published().version());
 				}
 			});
-			FXUtils.installFastTooltip(install, i18n("download.install"));
-			install.setOnAction(event -> {
+
+			FXUtils.installFastTooltip(installButton, i18n("download.install"));
+			installButton.setOnAction(event -> {
 				Row item = getItem();
-				if (item instanceof VersionRow version) {
-					onInstall.accept(version.published().version());
-				}
+				if (item instanceof VersionRow version) onInstall.accept(version.published().version());
 				event.consume();
 			});
 		}
 
 		@Override
 		protected void updateControl(@Nullable Row row, boolean empty) {
-			if (empty || row == null) {
-				return;
-			}
+			if (empty || row == null) return;
 			if (row instanceof HeadingRow heading) {
 				updateHeading(heading);
 			} else if (row instanceof VersionRow version) {
@@ -465,12 +410,18 @@ public final class PluginVersionList extends VBox {
 		 */
 		private void updateHeading(HeadingRow heading) {
 			Label title = new Label(heading.title());
-			Label count = new Label(Integer.toString(heading.count()));
+
+			Region spacer = new Region();
+			HBox.setHgrow(spacer, Priority.ALWAYS);
+
+			Label count = new Label(i18n("dsh.market.version_count", Integer.toString(heading.count())));
 			count.getStyleClass().add("subtitle-label");
+
 			SVG chevron = heading.open() ? SVG.KEYBOARD_ARROW_UP : SVG.KEYBOARD_ARROW_DOWN;
-			HBox line = new HBox(6, title, count, chevron.createIcon(18));
+			HBox line = new HBox(10, title, spacer, count, chevron.createIcon(18));
 			line.setAlignment(Pos.CENTER_LEFT);
 			line.setPadding(new Insets(8, 8, 4, 8));
+
 			getContainer().getChildren().setAll(line);
 		}
 
@@ -482,7 +433,6 @@ public final class PluginVersionList extends VBox {
 		private void updateVersion(VersionRow version) {
 			DshPluginVersions.Published published = version.published();
 
-			// The cell is reused, so everything the row held before must go.
 			content.getTags().clear();
 			mark.getChildren().clear();
 			SVG channel = channelMark(published.channel());
@@ -492,19 +442,13 @@ public final class PluginVersionList extends VBox {
 				mark.getChildren().setAll(icon);
 			}
 			mark.setPadding(new Insets(0, 8, 0, 0));
-			// A row without a mark still leaves the room for one, so the names line up down the list.
 			mark.setMinWidth(24);
 
 			content.setTitle(published.version());
-			// `null` rather than an empty string: a version the registry gave no date for is drawn as one line, and an empty second line is a gap under every row of it
 			content.setSubtitle(published.published() == null ? null : I18n.formatDateTime(published.published()));
 			content.addTag(i18n(channelKey(published.channel())));
-			if (version.fit() == DshPluginVersions.Fit.NOT_FITS) {
-				content.addTag(i18n("dsh.market.not_fitting"));
-			}
-			if (version.current()) {
-				content.addTag(i18n("dsh.instance.upgrade.current"));
-			}
+			if (version.fit() == DshPluginVersions.Fit.NOT_FITS) content.addTag(i18n("dsh.market.not_fitting"));
+			if (version.current()) content.addTag(i18n("dsh.instance.upgrade.current"));
 
 			HBox left = new HBox(mark, content);
 			left.setAlignment(Pos.CENTER_LEFT);
@@ -513,9 +457,11 @@ public final class PluginVersionList extends VBox {
 			BorderPane row = new BorderPane();
 			row.setPadding(new Insets(8));
 			row.setLeft(left);
-			HBox right = new HBox(install);
+
+			HBox right = new HBox(installButton);
 			right.setAlignment(Pos.CENTER_RIGHT);
 			row.setRight(right);
+
 			getContainer().getChildren().setAll(row);
 		}
 	}
