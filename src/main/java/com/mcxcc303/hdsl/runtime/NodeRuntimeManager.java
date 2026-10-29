@@ -54,6 +54,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
+import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Installs and enumerates the Node.js runtimes HDSL owns.
@@ -250,16 +251,15 @@ public final class NodeRuntimeManager {
 		return releases;
 	}
 
-	/// Installs a Node release into its own directory.
-	///
-	/// The archive is downloaded and unpacked into a staging directory first, so
-	/// an interrupted install can never be mistaken for a usable runtime.
-	///
-	/// @param version the version to install, with or without a leading `v`
-	/// @param source  where to fetch the archive from
-	/// @param onStage receives a short progress description, or `null`
-	/// @return the installed runtime
-	/// @throws DshException when the download or extraction fails
+	/**
+	 * Installs a Node release
+	 *
+	 * @param version the version to install, with or without a leading `v`
+	 * @param source  where to fetch the archive from
+	 * @param onStage receives a short progress description, or `null`
+	 * @return the installed runtime
+	 * @throws DshException when the download or extraction fails
+	 */
 	public static NodeRuntime install(String version, NodeSource source, @Nullable Consumer<String> onStage)
 	throws DshException {
 		String normalized = version.trim();
@@ -267,7 +267,7 @@ public final class NodeRuntimeManager {
 			normalized = normalized.substring(1);
 		}
 		if (findInstalled(normalized) != null) {
-			throw new DshException("Node.js " + normalized + " is already installed");
+			throw new DshException(i18n("dsh.node.download.already_installed", normalized));
 		}
 
 		String platform = platformTag();
@@ -285,7 +285,6 @@ public final class NodeRuntimeManager {
 		}
 
 		String url = source.archiveUrl(normalized, fileName);
-
 		try {
 			stage(onStage, "Downloading " + fileName);
 			download(url, archive, onStage);
@@ -298,8 +297,6 @@ public final class NodeRuntimeManager {
 			throw new DshException("Failed to install Node.js " + normalized + ": " + e.getMessage(), e);
 		}
 
-		// The archive contains a single top-level directory; move its contents up
-		// so the runtime directory is the distribution root.
 		Path unpacked = staging.resolve("node-v" + normalized + "-" + platform);
 		if (!Files.isDirectory(unpacked)) {
 			deleteQuietly(staging);
@@ -322,7 +319,6 @@ public final class NodeRuntimeManager {
 		}
 
 		provisionPnpm(runtime, onStage);
-
 		LOG.info("Installed Node.js " + normalized + " into " + target);
 		return runtime;
 	}

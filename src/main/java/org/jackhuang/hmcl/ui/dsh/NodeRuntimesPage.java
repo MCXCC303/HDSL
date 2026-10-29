@@ -50,7 +50,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
-import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -113,32 +112,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			// view's content to this very list, and HMCL fills its page the same
 			// way.
 			getItems().setAll(rows);
-		}));
-	}
-
-	/// Installs a published version.
-	///
-	/// @param version the version to install
-	private void install(String version) {
-		setLoading(true);
-		CompletableFuture.runAsync(() -> {
-			try {
-				NodeRuntimeManager.install(version,
-				                           settings().nodeSourceProperty().get(),
-				                           line -> LOG.info("[node] " + line));
-			} catch (DshException e) {
-				throw new CompletionException(e);
-			}
-		}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-			setLoading(false);
-			if (throwable != null) {
-				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-				                  ? throwable.getCause()
-				                  : throwable;
-				LOG.warning("Failed to install Node.js", cause);
-				Controllers.dialog(cause.getMessage(), i18n("dsh.node.install_failed"), MessageType.ERROR);
-			}
-			refresh();
 		}));
 	}
 
@@ -249,11 +222,8 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 	}
 
-	/// The page's skin: a toolbar above the runtime list.
+	// toolbar above the runtime list.
 	private static final class NodeRuntimesPageSkin extends ToolbarListPageSkin<NodeRow, NodeRuntimesPage> {
-		/// Creates the skin.
-		///
-		/// @param control the page
 		NodeRuntimesPageSkin(NodeRuntimesPage control) {
 			super(control);
 		}
@@ -264,7 +234,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			toolbar.add(createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh));
 			toolbar.add(createToolbarButton2(i18n("dsh.node.download"),
 			                                 SVG.DOWNLOAD,
-			                                 () -> Controllers.dialog(new NodeDownloadDialog(page::refresh))));
+			                                 () -> Controllers.navigate(new NodejsDownloadPage(page::refresh))));
 			toolbar.add(createToolbarButton2(i18n("dsh.node.add"), SVG.ADD, page::addLocal));
 			return toolbar;
 		}
