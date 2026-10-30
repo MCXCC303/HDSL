@@ -24,6 +24,7 @@ import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
+import com.mcxcc303.hdsl.core.Semver;
 import com.mcxcc303.hdsl.harness.VersionOrder;
 import kala.compress.archivers.ArchiveEntry;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
@@ -42,14 +43,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
+import java.time.LocalDate;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -183,39 +181,77 @@ public final class NodeRuntimeManager {
 		return null;
 	}
 
-	/// Fetches the published Node releases that have a build for this platform.
-	///
-	/// @param source where to read the index from
-	/// @return the available releases, newest first
-	/// @throws DshException when the index cannot be read
+	private static @Nullable LocalDate asDate(JsonObject obj, String key) {
+		String dateStr = asString(obj, key);
+		if (dateStr.isEmpty()) return null;
+		return LocalDate.parse(dateStr);
+	}
+
+	public static Map<String, NodeSchedule> fetchSchedule() {
+		String scheduleUrl = "https://raw.githubusercontent.com/nodejs/Release/main/schedule.json";
+		JsonElement scheduleParsed;
+
+		try {
+			scheduleParsed = JsonParser.parseString(NetworkUtils.doGet(scheduleUrl));
+		} catch (IOException | RuntimeException e) {
+			LOG.warning("Failed to fetch lifetime schedule from " + scheduleUrl);
+			return Map.of();
+		}
+		if (scheduleParsed == null || !scheduleParsed.isJsonObject()) return Map.of();
+
+		Map<String, NodeSchedule> schedules = new HashMap<>();
+		JsonObject scheduleObj = scheduleParsed.getAsJsonObject();
+		String version;
+		for (Map.Entry<String, JsonElement> entry : scheduleObj.entrySet()) {
+			if (!entry.getValue().isJsonObject()) continue;
+
+			JsonObject value = entry.getValue().getAsJsonObject();
+			String codename = asString(value, "codename");
+			Semver ver = Semver.parse(entry.getKey());
+			if (ver != null) {
+				if (ver.major() == 0) {
+					version = "0." + ver.minor();
+				} else {
+					version = String.valueOf(ver.major());
+				}
+				schedules.putIfAbsent(version,
+				                      new NodeSchedule(asDate(value, "alpha"),
+				                                       asDate(value, "start"),
+				                                       asDate(value, "lts"),
+				                                       asDate(value, "maintenance"),
+				                                       asDate(value, "end"),
+				                                       codename));
+			}
+		}
+		return schedules;
+	}
+
+	/**
+	 * Fetches the published Node releases that have a build for this platform.
+	 *
+	 * @param source where to read the index from
+	 * @return the available releases, newest first
+	 * @throws DshException when the index cannot be read
+	 */
 	public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
 		String platform = platformTag();
 		String indexFile = indexTag(platform);
 
-		// The chosen source first, then the other one. A source is a host, and a host can be
-		// unreachable for reasons that have nothing to do with the source being wrong — a route, a
-		// blocked address family, a moment of downtime — while the other one answers in
-		// milliseconds. Trying the other costs nothing when the first works, which is why the order
-		// still says which one was asked for.
 		List<NodeSource> candidates = new ArrayList<>();
 		candidates.add(source);
 		for (NodeSource other : NodeSource.values()) {
-			if (other != source) {
-				candidates.add(other);
-			}
+			if (other != source) candidates.add(other);
 		}
 
 		JsonElement parsed = null;
 		List<String> failures = new ArrayList<>();
 		for (NodeSource candidate : candidates) {
-			String url = candidate.indexUrl();
+			String versionUrl = candidate.indexUrl();
 			try {
-				parsed = JsonParser.parseString(NetworkUtils.doGet(URI.create(url)));
+				parsed = JsonParser.parseString(NetworkUtils.doGet(versionUrl));
 				break;
 			} catch (IOException | RuntimeException e) {
-				// Which host failed is the one thing that says whether this is a route problem or
-				// something about the index, so every address that was tried is reported.
-				failures.add(url + " (" + e.getMessage() + ")");
+				failures.add(versionUrl + " (" + e.getMessage() + ")");
 			}
 		}
 		if (parsed == null) {
@@ -225,26 +261,36 @@ public final class NodeRuntimeManager {
 			throw new DshException("The Node.js release index had an unexpected shape");
 		}
 
+		Map<String, NodeSchedule> scheduleMap = fetchSchedule();
 		List<NodeRelease> releases = new ArrayList<>();
 		JsonArray array = parsed.getAsJsonArray();
 		for (JsonElement element : array) {
-			if (!element.isJsonObject()) {
-				continue;
-			}
+			if (!element.isJsonObject()) continue;
+
 			JsonObject object = element.getAsJsonObject();
 			String version = asString(object, "version");
-			if (version == null || !version.startsWith("v")) {
-				continue;
+			if (!version.startsWith("v")) continue;
+			if (!hasPlatform(object, indexFile)) continue;
+
+			Semver releaseVer = Semver.parse(version);
+			String familyVer;
+			if (releaseVer == null) continue;
+			if (releaseVer.major() == 0) {
+				familyVer = "0." + releaseVer.minor();
+			} else {
+				familyVer = String.valueOf(releaseVer.major());
 			}
-			if (!hasPlatform(object, indexFile)) {
-				continue;
-			}
+
 			String lts = null;
 			JsonElement ltsElement = object.get("lts");
 			if (ltsElement != null && ltsElement.isJsonPrimitive() && ltsElement.getAsJsonPrimitive().isString()) {
 				lts = ltsElement.getAsString();
 			}
-			releases.add(new NodeRelease(version.substring(1), lts, asString(object, "date")));
+
+			releases.add(new NodeRelease(version.substring(1),
+			                             lts,
+			                             asString(object, "date"),
+			                             scheduleMap.get(familyVer)));
 		}
 
 		releases.sort(Comparator.comparing(NodeRelease::version, VersionOrder::compareVersions).reversed());
@@ -517,8 +563,7 @@ public final class NodeRuntimeManager {
 				throw new IOException("HTTP " + status + " for " + url);
 			}
 			long total = connection.getContentLengthLong();
-			try (InputStream in = connection.getInputStream();
-			     OutputStream out = Files.newOutputStream(target)) {
+			try (InputStream in = connection.getInputStream(); OutputStream out = Files.newOutputStream(target)) {
 				byte[] buffer = new byte[1 << 16];
 				long copied = 0;
 				int read;
@@ -576,8 +621,7 @@ public final class NodeRuntimeManager {
 	private static void extractTarXz(Path archive, Path target) throws IOException {
 		Path tarFile = Files.createTempFile("hdsl-node", ".tar");
 		try {
-			try (InputStream in = Files.newInputStream(archive);
-			     XZInputStream xz = new XZInputStream(in)) {
+			try (InputStream in = Files.newInputStream(archive); XZInputStream xz = new XZInputStream(in)) {
 				Files.copy(xz, tarFile, StandardCopyOption.REPLACE_EXISTING);
 			}
 			try (TarFileTree tree = TarFileTree.open(tarFile)) {
