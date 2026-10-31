@@ -33,6 +33,7 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -40,6 +41,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -109,6 +111,8 @@ public final class DshProcess {
 	/// window is opened while the process is running and appends as lines
 	/// arrive, so it needs the list to grow under it.
 	private final CircularArrayList<LogLine> windowLogs = new CircularArrayList<>();
+	/// Who is watching the output as it arrives, for the live log window.
+	private final List<Consumer<LogLine>> logListeners = new CopyOnWriteArrayList<>();
 	private final Object logLock = new Object();
 	private volatile State state = State.STARTING;
 	private volatile @Nullable URI webUrl;
@@ -140,8 +144,10 @@ public final class DshProcess {
 		}
 
 		appendLog("$ " + plan.commandLine());
-		this.process.pumpInputStream(line -> onOutput(line, false));
-		this.process.pumpErrorStream(line -> onOutput(line, true));
+		// Node writes UTF-8. Decoding it with the console's own charset works on an
+		// English Windows and turns every Chinese line into mojibake on a Chinese one.
+		this.process.pumpInputStream(line -> onOutput(line, false), StandardCharsets.UTF_8);
+		this.process.pumpErrorStream(line -> onOutput(line, true), StandardCharsets.UTF_8);
 
 		// What another launcher needs in order to see this instance the way this one does, written
 		// down before the harness has said a word: the pid is the fact, and the address joins it as
@@ -316,6 +322,33 @@ public final class DshProcess {
 		return windowLogs;
 	}
 
+	/// Starts following the output, with the lines that arrived before the caller did.
+	///
+	/// The snapshot and the subscription are taken under one lock, so a line that arrives
+	/// while a window is opening is either in the snapshot or delivered to the listener,
+	/// never both and never neither. The listener is called on the stream-pump thread and
+	/// must not block; a user interface must re-post onto its own thread.
+	///
+	/// @param listener the listener
+	/// @return the lines already collected and the way to stop following
+	public LogFeed followLogs(Consumer<LogLine> listener) {
+		if (listener == null) {
+			throw new NullPointerException("listener");
+		}
+		synchronized (logLock) {
+			List<LogLine> initial = List.copyOf(windowLogs);
+			logListeners.add(listener);
+			return new LogFeed(initial, () -> logListeners.remove(listener));
+		}
+	}
+
+	/// What a follower was given: the lines before it, and how to stop.
+	///
+	/// @param initial     the lines collected before the subscription
+	/// @param unsubscribe stops the subscription; safe to call more than once
+	public record LogFeed(List<LogLine> initial, Runnable unsubscribe) {
+	}
+
 	/// Returns the underlying managed process.
 	///
 	/// Exposed so HMCL's log window can be reused as-is: it needs only a process
@@ -405,9 +438,25 @@ public final class DshProcess {
 	/// @param line  the text
 	/// @param error whether it arrived on stderr
 	private void onOutput(String line, boolean error) {
-		appendLog(line);
+		LogLine entry = new LogLine(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO);
+		List<Consumer<LogLine>> listeners;
 		synchronized (logLock) {
-			windowLogs.add(new LogLine(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO));
+			logLines.addLast(line);
+			while (logLines.size() > MAX_LOG_LINES) {
+				logLines.removeFirst();
+			}
+			windowLogs.add(entry);
+			while (windowLogs.size() > MAX_LOG_LINES) {
+				windowLogs.removeFirst();
+			}
+			listeners = List.copyOf(logListeners);
+		}
+		for (Consumer<LogLine> listener : listeners) {
+			try {
+				listener.accept(entry);
+			} catch (RuntimeException e) {
+				LOG.warning("Log listener failed", e);
+			}
 		}
 		if (plan.surface().isWeb() && webUrl == null) {
 			detectReadiness(line);

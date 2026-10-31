@@ -43,6 +43,7 @@ import org.jackhuang.hmcl.ui.LogLine;
 import org.jackhuang.hmcl.ui.LogWindow;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.util.CircularArrayList;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.platform.Platform;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -410,7 +411,15 @@ public final class DshCrashDialog extends Stage {
 		log.setDisable(process == null);
 		log.setOnAction(event -> {
 			if (process != null) {
-				new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id()).show();
+				LogWindow window = new LogWindow(process.managedProcess(),
+				                                 new CircularArrayList<>(),
+				                                 process.instance().id(),
+				                                 process::stop);
+				DshProcess.LogFeed feed = process.followLogs(
+						line -> javafx.application.Platform.runLater(() -> window.logLine(line)));
+				window.logLines(feed.initial());
+				window.setOnHidden(hidden -> feed.unsubscribe().run());
+				window.show();
 			}
 		});
 		FXUtils.installFastTooltip(log, i18n("dsh.crash.view_log"));

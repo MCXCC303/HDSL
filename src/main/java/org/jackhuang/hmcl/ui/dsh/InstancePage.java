@@ -26,6 +26,7 @@ import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.instance.DshPorts;
 import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshInstanceTerminal;
+import com.mcxcc303.hdsl.launch.DshProcess;
 import com.mcxcc303.hdsl.launch.DshProcessManager;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
@@ -434,16 +435,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		FXUtils.showFileInExplorer(directory);
 	}
 
-	/// Opens the folder DeepSeek Harness writes its diagnostics to.
+	/// Opens the running instance's live output, or its diagnostics folder when it is stopped.
 	///
-	/// Not the launcher's own log folder, which is where this used to point: the
-	/// launcher writes its log to the terminal it was started from, so that
-	/// folder does not exist and the entry only ever reported that it could not
-	/// be opened. The harness writes a report under its own home when a start-up
-	/// audit fails, which is the thing worth reading when an instance will not
-	/// run — so that is what this opens, and it says so when there is nothing
-	/// there yet rather than opening somewhere else.
+	/// A running instance has a process this launcher holds, and that process has the output
+	/// the log window is for. When it is not running there is no live feed; the harness writes
+	/// a report under its own home when a start-up audit fails, which is the thing worth reading
+	/// when an instance will not run, so that is what is opened then.
 	private void openLogs() {
+		DshProcess process = DshProcessManager.find(instance.id()).orElse(null);
+		if (process != null) {
+			DshLaunchService.openLogWindow(process);
+			return;
+		}
 		Path logs = homeChild("logs");
 		if (logs == null || !Files.isDirectory(logs)) {
 			Controllers.dialog(i18n("dsh.instance.logs.none"), i18n("dsh.instance.open_logs"), MessageType.WARNING);
