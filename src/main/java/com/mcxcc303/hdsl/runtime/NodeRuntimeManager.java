@@ -47,6 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
@@ -55,33 +56,23 @@ import java.util.stream.Stream;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Installs and enumerates the Node.js runtimes HDSL owns.
-///
-/// This mirrors HMCL's Java runtime management: instead of depending on
-/// whatever the distribution ships, the launcher can fetch a specific Node
-/// release into `runtimes/<version>/` and pin an instance to it. That matters
-/// because DeepSeek Harness declares `engines.node` as `^22.19.0 || >=24.0.0`.
-///
-/// Runtimes come from the official `nodejs.org` distribution, so extraction has
-/// to reproduce the archive faithfully — including the symlinks that make
-/// `bin/npm` and `bin/npx` work on Linux. The Windows distribution is a `.zip`
-/// with the executables in the archive's root directory and no symlinks at all,
-/// which is the same difference the platform tag and the extraction path below
-/// carry.
+/**
+ * Installs and enumerates the Node.js runtimes HDSL owns.
+ */
 @NotNullByDefault
 public final class NodeRuntimeManager {
-	/// The pnpm major DeepSeek Harness is written against.
+	// Corepack would take the newest pnpm; the harness is written against 11.
 	private static final String PNPM_MAJOR = "11";
 
 	private NodeRuntimeManager() {
 	}
 
-	/// The Node distribution index listing every published release.
-	/// The download base for a specific release.
-	/// Returns the platform tag used in Node distribution file names.
-	///
-	/// @return `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `darwin-x64` or `darwin-arm64`
-	/// @throws DshException when the current system has no Node build
+	/**
+	 * Returns the platform tag used in Node distribution file names.
+	 *
+	 * @return `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `darwin-x64` or `darwin-arm64`
+	 * @throws DshException when the current system has no Node build
+	 */
 	public static String platformTag() throws DshException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
 			return switch (Architecture.SYSTEM_ARCH) {
@@ -99,17 +90,12 @@ public final class NodeRuntimeManager {
 		};
 	}
 
-	/// Returns the entry the release index lists for a platform tag.
-	///
-	/// Three platforms spell one build three ways, and only the file name uses the tag
-	/// [#platformTag] answers with: the index lists the Linux builds bare (`linux-x64`),
-	/// the Windows ones per packaging (`win-x64-zip`, `win-x64-7z`) and the macOS ones as
-	/// `osx-x64-tar` and `osx-arm64-tar` while the archives themselves are named
-	/// `darwin-x64` and `darwin-arm64`. Filtering the release list therefore has to ask
-	/// with the index's spelling rather than with the archive's.
-	///
-	/// @param platform the tag from [NodeRuntimeManager#platformTag]
-	/// @return the name to look for in the index `files` array
+	/**
+	 * Returns the entry the release index lists for a platform tag.
+	 *
+	 * @param platform the tag from [NodeRuntimeManager#platformTag]
+	 * @return the name to look for in the index `files` array
+	 */
 	static String indexTag(String platform) {
 		return switch (platform) {
 			case "darwin-x64" -> "osx-x64-tar";
@@ -120,14 +106,6 @@ public final class NodeRuntimeManager {
 		};
 	}
 
-	/// Returns the archive extension Node publishes for this system, dot included.
-	///
-	/// Linux builds ship as `.tar.xz`, macOS builds as `.tar.gz` and Windows builds as
-	/// `.zip` — the one platform whose distribution is not a tarball at all. The mirror
-	/// keeps the same layout, so the extension is a property of the system rather than of
-	/// the source, and [#extractArchive] follows the same choice.
-	///
-	/// @return `.tar.xz`, `.tar.gz` or `.zip`
 	static String archiveExtension() {
 		return switch (OperatingSystem.CURRENT_OS) {
 			case MACOS -> ".tar.gz";
@@ -136,18 +114,13 @@ public final class NodeRuntimeManager {
 		};
 	}
 
-	/// Returns the archive file name for a version and platform tag.
-	///
-	/// @param version  the version without its leading `v`
-	/// @param platform the tag from [NodeRuntimeManager#platformTag]
-	/// @return e.g. `node-v22.19.0-darwin-arm64.tar.gz`
 	static String archiveFileName(String version, String platform) {
 		return "node-v" + version + "-" + platform + archiveExtension();
 	}
 
-	/// Lists the Node runtimes installed under [DshPaths#RUNTIMES].
-	///
-	/// @return the installed runtimes, newest first
+	/**
+	 * Lists the Node runtimes installed under [DshPaths#RUNTIMES], newest first.
+	 */
 	public static List<NodeRuntime> listInstalled() {
 		List<NodeRuntime> runtimes = new ArrayList<>();
 		Path root = DshPaths.RUNTIMES;
@@ -168,10 +141,6 @@ public final class NodeRuntimeManager {
 		return runtimes;
 	}
 
-	/// Finds an installed Node runtime by version.
-	///
-	/// @param version the version string
-	/// @return the runtime, or `null` when it is not installed
 	public static @Nullable NodeRuntime findInstalled(String version) {
 		for (NodeRuntime runtime : listInstalled()) {
 			if (runtime.version().equals(version)) {
@@ -184,9 +153,20 @@ public final class NodeRuntimeManager {
 	private static @Nullable LocalDate asDate(JsonObject obj, String key) {
 		String dateStr = asString(obj, key);
 		if (dateStr.isEmpty()) return null;
-		return LocalDate.parse(dateStr);
+		try {
+			return LocalDate.parse(dateStr);
+		} catch (DateTimeParseException e) {
+			LOG.warning("Unable to parse " + key + " to schedule date: " + dateStr);
+			return null;
+		}
 	}
 
+	/**
+	 * Reads the release schedule the Node.js project publishes.<br>
+	 * The key is the major version, or `major.minor` for 0.x releases.
+	 *
+	 * @return the schedule by release line
+	 */
 	public static Map<String, NodeSchedule> fetchSchedule() {
 		String scheduleUrl = "https://raw.githubusercontent.com/nodejs/Release/main/schedule.json";
 		JsonElement scheduleParsed;
@@ -214,13 +194,13 @@ public final class NodeRuntimeManager {
 				} else {
 					version = String.valueOf(ver.major());
 				}
-				schedules.putIfAbsent(version,
-				                      new NodeSchedule(asDate(value, "alpha"),
-				                                       asDate(value, "start"),
-				                                       asDate(value, "lts"),
-				                                       asDate(value, "maintenance"),
-				                                       asDate(value, "end"),
-				                                       codename));
+				schedules.put(version,
+				              new NodeSchedule(asDate(value, "alpha"),
+				                               asDate(value, "start"),
+				                               asDate(value, "lts"),
+				                               asDate(value, "maintenance"),
+				                               asDate(value, "end"),
+				                               codename));
 			}
 		}
 		return schedules;
@@ -369,37 +349,21 @@ public final class NodeRuntimeManager {
 		return runtime;
 	}
 
-	/// Installs the pnpm a managed runtime needs to run DeepSeek Harness.
-	///
-	/// A Node distribution carries corepack but no `pnpm` binary, and corepack
-	/// left to itself picks the newest pnpm — while DeepSeek Harness is written
-	/// against pnpm 11, down to how that major reports blocked dependency
-	/// scripts. The major is therefore pinned here so a profile behaves the same
-	/// on a managed runtime as on the system one.
-	///
-	/// A failure is reported but does not fail the install: the runtime is
-	/// usable without pnpm, and the plugin installer explains what is missing.
-	///
-	/// On Windows `npm` is `npm.cmd`, which the JVM starts through
-	/// `cmd.exe` — the same interpreter the file itself asks for — so the
-	/// command stays a program and its arguments all the way down.
-	///
-	/// @param runtime the freshly installed runtime
-	/// @param onStage receives progress lines, or `null`
+	/**
+	 * Installs the pnpm a managed runtime needs to run DeepSeek Harness.
+	 *
+	 * @param runtime the freshly installed runtime
+	 * @param onStage receives progress lines, or `null`
+	 */
 	private static void provisionPnpm(NodeRuntime runtime, @Nullable Consumer<String> onStage) {
 		Path npm = NodeRuntime.npmIn(runtime.directory());
 		if (!Files.isRegularFile(npm)) {
 			stage(onStage, "npm is missing, so pnpm was not installed");
 			return;
 		}
-
 		stage(onStage, "Installing pnpm " + PNPM_MAJOR + ".x");
-		List<String> command = List.of(npm.toString(), "install", "--global", "pnpm@" + PNPM_MAJOR);
 
-		// The directory npm's shims live in, ahead of everything else, so a
-		// pnpm installed here is found before whatever the system has. That
-		// directory is `bin` on Linux and the distribution root on Windows,
-		// which is exactly where npm's entry point already is.
+		List<String> command = List.of(npm.toString(), "install", "--global", "pnpm@" + PNPM_MAJOR);
 		String shimDirectory = npm.getParent().toString();
 
 		ProcessBuilder builder = new ProcessBuilder(command);
@@ -427,18 +391,10 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/// Reads the version of a Node installation in a directory.
-	///
-	/// The version is asked of the binary rather than parsed from the directory
-	/// name, because a directory the user chose has no naming contract.
-	///
-	/// @param directory the directory holding the platform's node executable
-	/// @return the version, or `null` when there is no usable node there
 	public static @Nullable String versionOfDirectory(Path directory) {
 		Path node = NodeRuntime.nodeIn(directory);
-		if (!Files.isExecutable(node)) {
-			return null;
-		}
+		if (!Files.isExecutable(node)) return null;
+
 		try {
 			Process process = new ProcessBuilder(node.toString(), "--version").redirectErrorStream(true).start();
 			String output;
@@ -457,17 +413,6 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/// Adopts a Node installation the user already has.
-	///
-	/// The directory is copied into the managed runtimes rather than referenced
-	/// in place, so an instance pinned to it does not depend on where the
-	/// installation happened to live — the same reasoning behind HMCL copying a
-	/// chosen Java home into its own store.
-	///
-	/// @param source  the directory holding the platform's node executable
-	/// @param version the version the directory reports
-	/// @return the managed runtime
-	/// @throws DshException when the directory is unusable or already managed
 	public static NodeRuntime adopt(Path source, String version) throws DshException {
 		if (findInstalled(version) != null) {
 			throw new DshException("Node.js " + version + " is already managed");
@@ -493,11 +438,6 @@ public final class NodeRuntimeManager {
 		return runtime;
 	}
 
-	/// Copies a directory tree.
-	///
-	/// @param source      the directory to copy
-	/// @param destination the destination
-	/// @throws IOException when the copy fails
 	private static void copyTree(Path source, Path destination) throws IOException {
 		Files.createDirectories(destination);
 		try (var paths = Files.walk(source)) {
@@ -507,12 +447,7 @@ public final class NodeRuntimeManager {
 				if (Files.isDirectory(path)) {
 					Files.createDirectories(target);
 				} else if (Files.isSymbolicLink(path)) {
-					// Preserve links: a Node distribution links npm and npx into
-					// lib/node_modules, and copying the targets would break them.
-					// A link cannot be made where the filesystem or the
-					// privileges refuse one — which is the Windows case — so the
-					// link's target is copied instead: what a link pointed at is
-					// a better stand-in than nothing at all.
+					// Preserve symlinks to npm/npx; where the filesystem refuses one, copy its target.
 					try {
 						Files.createSymbolicLink(target, Files.readSymbolicLink(path));
 					} catch (IOException | UnsupportedOperationException e) {
@@ -525,19 +460,11 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/// Removes an installed Node runtime.
-	///
-	/// @param version the version to remove
-	/// @throws DshException when the runtime is not installed or cannot be removed
 	public static void uninstall(String version) throws DshException {
 		NodeRuntime runtime = findInstalled(version);
-		if (runtime == null) {
-			throw new DshException("Node.js " + version + " is not installed");
-		}
+		if (runtime == null) throw new DshException("Node.js " + version + " is not installed");
+
 		try {
-			// A Node distribution holds npm's own tree and, once pnpm has been
-			// provisioned into it, a second package manager's: read-only entries
-			// and junctions among them. See [DshFiles].
 			DshFiles.deleteTree(runtime.directory());
 		} catch (IOException e) {
 			throw new DshException(
@@ -547,21 +474,14 @@ public final class NodeRuntimeManager {
 		LOG.info("Removed Node.js " + version);
 	}
 
-	/// Streams a URL to a file, reporting progress.
-	///
-	/// @param url     the download URL
-	/// @param target  the destination file
-	/// @param onStage receives progress descriptions, or `null`
-	/// @throws IOException when the transfer fails
 	private static void download(String url, Path target, @Nullable Consumer<String> onStage) throws IOException {
 		HttpURLConnection connection = NetworkUtils.createHttpConnection(url);
 		connection.setInstanceFollowRedirects(true);
 		try {
 			connection.connect();
 			int status = connection.getResponseCode();
-			if (status / 100 != 2) {
-				throw new IOException("HTTP " + status + " for " + url);
-			}
+			if (status / 100 != 2) throw new IOException("HTTP " + status + " for " + url);
+
 			long total = connection.getContentLengthLong();
 			try (InputStream in = connection.getInputStream(); OutputStream out = Files.newOutputStream(target)) {
 				byte[] buffer = new byte[1 << 16];
@@ -585,15 +505,9 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/// Unpacks a Node distribution archive into a directory, preserving symlinks.
-	///
-	/// Linux builds ship as `.tar.xz`, macOS builds as `.tar.gz` and Windows builds as
-	/// `.zip`. The tarballs carry the same top-level layout, symlinks that make `bin/npm`
-	/// and `bin/npx` work included; the zip does not, and is unpacked by [#extractZip].
-	///
-	/// @param archive the `.tar.xz`, `.tar.gz` or `.zip` file
-	/// @param target  the directory to unpack into
-	/// @throws IOException when decompression or extraction fails
+	/**
+	 * Unpacks a Node distribution archive into a directory, preserving symlinks.
+	 */
 	private static void extractArchive(Path archive, Path target) throws IOException {
 		String name = archive.getFileName().toString().toLowerCase(Locale.ROOT);
 		if (name.endsWith(".zip")) {
@@ -609,15 +523,6 @@ public final class NodeRuntimeManager {
 		extractTarXz(archive, target);
 	}
 
-	/// Unpacks a `.tar.xz` archive into a directory, preserving symlinks.
-	///
-	/// Recreating symlinks matters: the Node distribution reaches `npm` and
-	/// `npx` through links into `lib/node_modules`, so a naive extraction that
-	/// materialised them as copies would leave a subtly broken runtime.
-	///
-	/// @param archive the `.tar.xz` file
-	/// @param target  the directory to unpack into
-	/// @throws IOException when decompression or extraction fails
 	private static void extractTarXz(Path archive, Path target) throws IOException {
 		Path tarFile = Files.createTempFile("hdsl-node", ".tar");
 		try {
@@ -632,31 +537,12 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/// Unpacks a `.zip` archive into a directory.
-	///
-	/// The Windows Node distribution is a zip: executables in the archive's
-	/// root, no symlinks, no permission bits worth keeping. The same walker
-	/// unpacks it, because the zip entries that do carry a link or an exec bit
-	/// — a zip made on Linux, say — answer the same questions the tar one does.
-	///
-	/// @param archive the `.zip` file
-	/// @param target  the directory to unpack into
-	/// @throws IOException when extraction fails
 	private static void extractZip(Path archive, Path target) throws IOException {
 		try (ZipFileTree tree = CompressingUtils.openZipTree(archive)) {
 			extract(tree, tree.getRoot(), target, target);
 		}
 	}
 
-	/// Recursively unpacks one directory of an archive tree.
-	///
-	/// @param tree   the archive being read
-	/// @param dir    the directory to unpack
-	/// @param target the destination directory
-	/// @param root   the directory the whole archive is unpacked into
-	/// @param <R>    the reader type
-	/// @param <E>    the entry type
-	/// @throws IOException when an entry cannot be written
 	private static <R, E extends ArchiveEntry> void extract(ArchiveFileTree<R, E> tree,
 	                                                        ArchiveFileTree.Dir<E> dir,
 	                                                        Path target,
@@ -667,19 +553,13 @@ public final class NodeRuntimeManager {
 			if (tree.isLink(archiveEntry)) {
 				Files.deleteIfExists(destination);
 				Path link = Path.of(tree.getLink(archiveEntry));
-				// A link is recreated only when it stays inside what is being unpacked: the
-				// target travels in the archive, so `node-v22/bin/npm -> /etc/passwd` is a link
-				// this launcher would otherwise create and then read through, and the archive
-				// says where it points. One that leaves is not unpacked at all.
+				// Reject links that escape the extraction root.
 				if (!link.isAbsolute() && target.resolve(link).normalize().startsWith(root)) {
 					try {
 						Files.createSymbolicLink(destination, link);
 						continue;
 					} catch (IOException | UnsupportedOperationException e) {
-						// A symlink the filesystem refuses is copied as the file it
-						// points at instead: the zip of the Windows distribution has
-						// none, but one made elsewhere might, and refusing to unpack
-						// over it would fail an install that could have succeeded.
+						// A link the filesystem refuses is extracted as a plain file.
 					}
 				} else {
 					LOG.warning(
@@ -701,31 +581,17 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/// Reports a progress stage when a consumer is attached.
-	///
-	/// @param onStage the consumer, or `null`
-	/// @param message the message
 	private static void stage(@Nullable Consumer<String> onStage, String message) {
 		if (onStage != null) {
 			onStage.accept(message);
 		}
 	}
 
-	/// Reads a string field from a JSON object.
-	///
-	/// @param object the object
-	/// @param name   the field name
-	/// @return the string value, or an empty string when absent
 	private static String asString(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		return element != null && element.isJsonPrimitive() ? element.getAsString() : "";
 	}
 
-	/// Reports whether a release publishes a build for a platform.
-	///
-	/// @param object   the release object
-	/// @param platform the index entry, e.g. `linux-x64`, `win-x64-zip` or `osx-arm64-tar`
-	/// @return whether the `files` array contains the entry
 	private static boolean hasPlatform(JsonObject object, String platform) {
 		JsonElement files = object.get("files");
 		if (files == null || !files.isJsonArray()) {
@@ -739,13 +605,6 @@ public final class NodeRuntimeManager {
 		return false;
 	}
 
-	/// Deletes a path, ignoring failures and absence.
-	///
-	/// Both shapes are handled by [DshFiles#deleteTree], which removes a file as
-	/// readily as a directory and is what makes a Node distribution — npm's own
-	/// tree, with its read-only entries and its junctions — removable on Windows.
-	///
-	/// @param path the path to remove
 	private static void deleteQuietly(Path path) {
 		DshFiles.deleteTreeQuietly(path);
 	}

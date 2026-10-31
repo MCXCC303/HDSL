@@ -33,3 +33,7 @@
 .addon-channel-icon.release .svg {
     -fx-fill: #1bd96a;
 }
+
+.addon-channel-icon.eol .svg {
+    -fx-fill: #848484;
+}
