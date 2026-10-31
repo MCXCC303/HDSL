@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.launch.DshProcess;
 import javafx.geometry.Insets;
@@ -43,6 +44,7 @@ import org.jackhuang.hmcl.ui.LogLine;
 import org.jackhuang.hmcl.ui.LogWindow;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.util.CircularArrayList;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jackhuang.hmcl.util.platform.Platform;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -410,7 +412,15 @@ public final class DshCrashDialog extends Stage {
 		log.setDisable(process == null);
 		log.setOnAction(event -> {
 			if (process != null) {
-				new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id()).show();
+				LogWindow window = new LogWindow(process.managedProcess(),
+				                                 new CircularArrayList<>(),
+				                                 process.instance().id(),
+				                                 process::stop);
+				DshProcess.LogFeed feed = process.followLogs(
+						line -> javafx.application.Platform.runLater(() -> window.logLine(line)));
+				window.logLines(feed.initial());
+				window.setOnHidden(hidden -> feed.unsubscribe().run());
+				window.show();
 			}
 		});
 		FXUtils.installFastTooltip(log, i18n("dsh.crash.view_log"));
@@ -482,6 +492,8 @@ public final class DshCrashDialog extends Stage {
 			                                                               .format(LocalDateTime.now()) + ".txt");
 			Files.createDirectories(target.getParent());
 			Files.writeString(target, text.toString(), StandardCharsets.UTF_8);
+			// The report carries the process output, including the readiness line's token.
+			DshFiles.restrictToCurrentUser(target);
 			Controllers.dialog(i18n("settings.launcher.launcher_log.export.success", target.toString()),
 			                   i18n("message.success"),
 			                   MessageType.INFO);

@@ -24,6 +24,7 @@ import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import org.jackhuang.hmcl.ui.LogLine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
@@ -67,7 +69,11 @@ class DshProcessLifecycleTest {
 				const args = process.argv.slice(2);
 				const index = args.indexOf('--port');
 				const port = index >= 0 ? args[index + 1] : '0';
+				console.log('中文日志');
 				console.log('dsh web: http://127.0.0.1:' + port + '/?token=lifecycle-stub');
+				if (process.env.DSH_TEST_TICK) {
+				  setInterval(() => console.log('live-tick'), 100);
+				}
 				// Drain when the test says so rather than after a delay: a delay is a race the
 				// test can lose on a busy machine, and what the test is about is the window
 				// between being asked to stop and being gone.
@@ -82,6 +88,24 @@ class DshProcessLifecycleTest {
 				// running keeps the test's own JVM from finishing, and a suite that
 				// never finishes is worse than one that fails.
 				setTimeout(() => process.exit(0), 60000);
+				setInterval(() => {}, 1000);
+				""");
+	}
+
+	/// Writes a browser surface that starts a long-lived child and reports its pid.
+	///
+	/// @param instance the instance to install it into
+	private static void installChildSurface(DshInstance instance) throws Exception {
+		Path script = instance.dshEntryPoint();
+		Files.createDirectories(script.getParent());
+		Files.writeString(script, """
+				const { spawn } = require('child_process');
+				const fs = require('fs');
+				const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+				fs.writeFileSync(process.env.DSH_TEST_CHILD_PID_FILE, String(child.pid));
+				const index = process.argv.indexOf('--port');
+				const port = index >= 0 ? process.argv[index + 1] : '0';
+				console.log('dsh web: http://127.0.0.1:' + port + '/?token=child-stub');
 				setInterval(() => {}, 1000);
 				""");
 	}
@@ -134,6 +158,14 @@ class DshProcessLifecycleTest {
 	///
 	/// @return the instance
 	private DshInstance makeInstance() throws Exception {
+		return makeInstance(Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString()));
+	}
+
+	/// Creates an instance with the environment the test stub needs.
+	///
+	/// @param environment the stub's environment
+	/// @return the instance
+	private DshInstance makeInstance(Map<String, String> environment) throws Exception {
 		// A run that failed before its cleanup leaves an instance behind, and
 		// creating one with the same id then fails — which turns one bad run into a
 		// suite that cannot pass again. Clearing the id first is what makes each run
@@ -154,7 +186,7 @@ class DshProcessLifecycleTest {
 		                                                 DshHomeMode.ISOLATED,
 		                                                 null,
 		                                                 List.of(),
-		                                                 Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString()));
+		                                                 Map.copyOf(environment));
 		// Stopping is what most of these tests do on the way out, so the stub may go as soon as it
 		// is asked. The test that is about the wait removes this again.
 		Files.writeString(drainFile(), "go");
@@ -176,6 +208,10 @@ class DshProcessLifecycleTest {
 			await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.RUNNING,
 			      "the stub surface to report ready");
 			assertTrue(process.webUrl().isPresent(), "the readiness line carries the address");
+			// Node writes UTF-8. A Windows console whose native charset is GBK must not turn
+			// this line into mojibake before it reaches the log window.
+			assertTrue(process.windowLogs().stream().anyMatch(line -> "中文日志".equals(line.getLog())),
+			           () -> "the child's UTF-8 line is missing: " + process.windowLogs());
 		} finally {
 			DshProcessManager.stop(instance.id());
 		}
@@ -238,6 +274,56 @@ class DshProcessLifecycleTest {
 		assertTrue(stopped.get(20, TimeUnit.SECONDS));
 		await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.STOPPED, "the instance to be gone");
 		assertEquals(LaunchState.STOPPED, DshProcessManager.stateOf(instance.id()));
+	}
+
+	@Test
+	void aLogFollowerGetsWhatWasThereAndWhatComesNext() throws Exception {
+		requireNode();
+		DshInstance instance = makeInstance(Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString(), "DSH_TEST_TICK", "1"));
+		DshProcess process = DshProcessManager.launch(instance);
+		List<LogLine> received = new CopyOnWriteArrayList<>();
+		try {
+			await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.RUNNING,
+			      "the stub surface to report ready");
+			DshProcess.LogFeed feed = process.followLogs(received::add);
+			try {
+				assertTrue(feed.initial().stream().anyMatch(line -> "中文日志".equals(line.getLog())),
+				           () -> "the lines before the subscription are missing: " + feed.initial());
+				await(() -> received.stream().anyMatch(line -> "live-tick".equals(line.getLog())),
+				      "a line written after the subscription");
+			} finally {
+				feed.unsubscribe().run();
+			}
+		} finally {
+			DshProcessManager.stop(instance.id());
+		}
+	}
+
+	@Test
+	@EnabledOnOs(OS.WINDOWS)
+	void stoppingAnInstanceTakesItsChildrenWithIt() throws Exception {
+		requireNode();
+		Path childPidFile = workspace.resolve("child.pid");
+		DshInstance instance = makeInstance(Map.of("DSH_TEST_CHILD_PID_FILE", childPidFile.toString()));
+		installChildSurface(instance);
+		long childPid = -1;
+		try {
+			DshProcessManager.launch(instance);
+			await(() -> Files.isRegularFile(childPidFile), "the child to announce its pid");
+			childPid = Long.parseLong(Files.readString(childPidFile).trim());
+			long pid = childPid;
+			assertTrue(ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false),
+			           "the child is running before the stop");
+
+			DshProcessManager.stop(instance.id());
+
+			await(() -> !ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false),
+			      "the child to go with its parent");
+		} finally {
+			if (childPid > 0) {
+				ProcessHandle.of(childPid).filter(ProcessHandle::isAlive).ifPresent(ProcessHandle::destroyForcibly);
+			}
+		}
 	}
 
 	@Test

@@ -81,6 +81,14 @@ public final class LogWindow extends Stage {
     private final LogWindowImpl impl;
     private final ManagedProcess gameProcess;
 
+    /// What the terminate button does.
+    ///
+    /// The original's button stops the wrapped process, which is all a game process needs. An
+    /// instance's process has descendants and a post-exit step, so its owner hands in
+    /// `DshProcess#stop` instead; the default keeps the original's behaviour for callers that
+    /// have nothing more to do.
+    private final Runnable terminateAction;
+
     /// The instance these lines came from, or `null` when they came from none.
     ///
     /// Only the name of an export uses it, and an export is a file somebody has to be able to tell
@@ -101,6 +109,19 @@ public final class LogWindow extends Stage {
     /// @param logs        the lines already collected
     /// @param instanceId  the instance the lines came from, or `null`
     public LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs, @Nullable String instanceId) {
+        this(gameProcess, logs, instanceId, null);
+    }
+
+    /// Creates the window with an explicit action for its terminate button.
+    ///
+    /// @param gameProcess     the process whose lifecycle the buttons and the title follow
+    /// @param logs            the lines already collected
+    /// @param instanceId      the instance the lines came from, or `null`
+    /// @param terminateAction what the terminate button runs, or `null` for the wrapped process's own
+    public LogWindow(ManagedProcess gameProcess,
+                     CircularArrayList<LogLine> logs,
+                     @Nullable String instanceId,
+                     @Nullable Runnable terminateAction) {
         Themes.applyNativeDarkMode(this);
 
         this.logs = logs;
@@ -116,6 +137,7 @@ public final class LogWindow extends Stage {
         }
 
         this.gameProcess = gameProcess;
+        this.terminateAction = terminateAction != null ? terminateAction : gameProcess::stop;
 
         FXUtils.addMacOSCloseWindowHandler(this, () -> !gameProcess.isRunning());
     }
@@ -222,7 +244,11 @@ public final class LogWindow extends Stage {
         }
 
         private void onTerminateGame() {
-            LogWindow.this.gameProcess.stop();
+            try {
+                LogWindow.this.terminateAction.run();
+            } catch (RuntimeException e) {
+                LOG.warning("Failed to stop the process from its log window", e);
+            }
         }
 
         private void onClear() {

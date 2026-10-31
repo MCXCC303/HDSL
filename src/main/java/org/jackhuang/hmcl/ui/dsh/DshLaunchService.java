@@ -40,6 +40,7 @@ import org.jackhuang.hmcl.ui.LogWindow;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
+import org.jackhuang.hmcl.util.CircularArrayList;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.util.function.ExceptionalRunnable;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -567,14 +568,20 @@ public final class DshLaunchService {
 
 	/// Opens HMCL's log window on a process.
 	///
-	/// The window is the original's, reused unchanged: it asks the process
-	/// whether it is running and tells it to stop, and both are things the
-	/// launcher's process already answers. Its log list is the one the process
-	/// appends to, so lines appear as the child writes them.
+	/// The window is the original's, with the live feed wired in: the process's own
+	/// DshProcess.stop is the terminate action, so its descendants and its post-exit
+	/// step are not lost, and the lines that were already collected are shown before
+	/// the subscription starts delivering new ones.
 	///
 	/// @param process the running process
-	private static void openLogWindow(DshProcess process) {
-		LogWindow window = new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id());
+	static void openLogWindow(DshProcess process) {
+		LogWindow window = new LogWindow(process.managedProcess(),
+		                                 new CircularArrayList<>(),
+		                                 process.instance().id(),
+		                                 process::stop);
+		DshProcess.LogFeed feed = process.followLogs(line -> runInFX(() -> window.logLine(line)));
+		window.logLines(feed.initial());
+		window.setOnHidden(event -> feed.unsubscribe().run());
 		window.show();
 	}
 
