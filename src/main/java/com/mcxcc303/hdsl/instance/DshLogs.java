@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.instance;
 
+import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 
 import org.jetbrains.annotations.NotNullByDefault;
@@ -85,6 +86,9 @@ public final class DshLogs {
 		Files.createDirectories(directory);
 		Path file = unused(directory.resolve(fileName(instanceId, at)));
 		Files.write(file, lines);
+		// The readiness line carries the launch token; an exported log must not inherit a
+		// group's read access on Windows.
+		DshFiles.restrictToCurrentUser(file);
 		return file;
 	}
 

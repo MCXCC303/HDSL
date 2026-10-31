@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.launch.DshProcess;
 import javafx.geometry.Insets;
@@ -491,6 +492,8 @@ public final class DshCrashDialog extends Stage {
 			                                                               .format(LocalDateTime.now()) + ".txt");
 			Files.createDirectories(target.getParent());
 			Files.writeString(target, text.toString(), StandardCharsets.UTF_8);
+			// The report carries the process output, including the readiness line's token.
+			DshFiles.restrictToCurrentUser(target);
 			Controllers.dialog(i18n("settings.launcher.launcher_log.export.success", target.toString()),
 			                   i18n("message.success"),
 			                   MessageType.INFO);

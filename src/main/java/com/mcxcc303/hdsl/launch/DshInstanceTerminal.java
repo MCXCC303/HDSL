@@ -20,6 +20,7 @@ package com.mcxcc303.hdsl.launch;
 import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.account.DshAccountRoute;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.jackhuang.hmcl.Metadata;
@@ -185,9 +186,17 @@ public final class DshInstanceTerminal {
 		                  ? OperatingSystem.NATIVE_CHARSET
 		                  : StandardCharsets.UTF_8;
 		try {
+			Files.createDirectories(directory);
+			// The script can carry the account's key. On Windows the profile directory inherits
+			// read access for local groups, so the session gets a protected ACL before anything
+			// is written into it.
+			DshFiles.restrictToCurrentUser(directory);
 			Files.createDirectories(shim.getParent());
+			DshFiles.restrictToCurrentUser(shim.getParent());
 			Files.writeString(script, scriptText(instance, account, runtime), charset);
 			Files.writeString(shim, shimText(instance, runtime), charset);
+			DshFiles.restrictToCurrentUser(script);
+			DshFiles.restrictToCurrentUser(shim);
 		} catch (IOException e) {
 			throw new DshException("Failed to write the terminal session for " + instance.id(), e);
 		}

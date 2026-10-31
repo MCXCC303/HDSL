@@ -18,12 +18,22 @@
 package com.mcxcc303.hdsl.core;
 
 import org.jackhuang.hmcl.util.logging.Logger;
+import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.IOException;
 import java.nio.file.*;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryFlag;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.DosFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
+import java.util.ArrayList;
+import java.util.EnumSet;
+import java.util.List;
 
 /// Removes a tree of files the launcher owns.
 ///
@@ -67,6 +77,65 @@ public final class DshFiles {
 	private static final long WAIT_MILLIS = 120;
 
 	private DshFiles() {
+	}
+
+	/// Gives an entry a protected ACL that names only the people who already own it.
+	///
+	/// The Windows profile directory inherits access for groups such as the local Users group, and a
+	/// terminal session's script can contain an account key while an exported log can contain the
+	/// harness's launch token. A file that inherits a group's read access therefore hands those
+	/// secrets to every member of that group. This replaces the inherited list with the owner and the
+	/// current user, and marks directory entries inheritable so files created under them stay protected.
+	///
+	/// Filesystems without an ACL view are left alone: this is the Windows-side guard, and the POSIX
+	/// permissions are a separate question.
+	///
+	/// @param path the file or directory to protect
+	/// @throws IOException when the entry or its ACL cannot be read or written
+	public static void restrictToCurrentUser(Path path) throws IOException {
+		if (OperatingSystem.CURRENT_OS != OperatingSystem.WINDOWS) {
+			return;
+		}
+		AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
+		if (acl == null) {
+			return;
+		}
+		boolean directory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
+		UserPrincipal owner = acl.getOwner();
+		UserPrincipal current = currentUser(path, owner);
+		List<AclEntry> entries = new ArrayList<>();
+		entries.add(allow(owner, directory));
+		if (!owner.equals(current)) {
+			entries.add(allow(current, directory));
+		}
+		acl.setAcl(entries);
+	}
+
+	/// Returns the principal of the user running the launcher, or the owner when it cannot be named.
+	private static UserPrincipal currentUser(Path path, UserPrincipal fallback) {
+		String name = System.getProperty("user.name");
+		if (name == null || name.isBlank()) {
+			return fallback;
+		}
+		try {
+			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
+		} catch (IOException | RuntimeException e) {
+			return fallback;
+		}
+	}
+
+	/// Builds one allow entry for an owner or the current user.
+	private static AclEntry allow(UserPrincipal principal, boolean directory) {
+		EnumSet<AclEntryPermission> permissions = EnumSet.allOf(AclEntryPermission.class);
+		EnumSet<AclEntryFlag> flags = directory
+		                              ? EnumSet.of(AclEntryFlag.FILE_INHERIT, AclEntryFlag.DIRECTORY_INHERIT)
+		                              : EnumSet.noneOf(AclEntryFlag.class);
+		return AclEntry.newBuilder()
+		               .setType(AclEntryType.ALLOW)
+		               .setPrincipal(principal)
+		               .setPermissions(permissions)
+		               .setFlags(flags)
+		               .build();
 	}
 
 	/// Removes a directory and everything under it.

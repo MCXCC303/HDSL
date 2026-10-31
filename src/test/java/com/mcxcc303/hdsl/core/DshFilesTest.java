@@ -28,6 +28,8 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
 import java.util.List;
 import java.util.Map;
 
@@ -132,6 +134,24 @@ class DshFilesTest {
 	void aPathThatIsNotThereIsNotAFailure(@TempDir Path root) throws Exception {
 		DshFiles.deleteTree(root.resolve("nothing-here"));
 		assertTrue(DshFiles.deleteTreeQuietly(root.resolve("nothing-here")));
+	}
+
+	@Test
+	void aProtectedSecretNamesOnlyItsOwningAccounts(@TempDir Path root) throws Exception {
+		Path file = Files.writeString(root.resolve("secret.txt"), "key");
+		Assumptions.assumeTrue(OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS,
+		                       "this protection is the Windows-side guard");
+		AclFileAttributeView acl = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		Assumptions.assumeTrue(acl != null, "this file store has no ACL view to protect");
+
+		DshFiles.restrictToCurrentUser(file);
+
+		AclFileAttributeView protectedAcl = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		List<?> entries = protectedAcl.getAcl();
+		assertTrue(entries.size() <= 2,
+		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
+		assertTrue(protectedAcl.getAcl().stream().allMatch(entry -> entry.type() == AclEntryType.ALLOW),
+		           "the protected list has no deny rules to reason about: " + entries);
 	}
 
 	@Test
