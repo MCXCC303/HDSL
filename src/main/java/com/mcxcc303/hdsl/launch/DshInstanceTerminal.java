@@ -166,10 +166,9 @@ public final class DshInstanceTerminal {
 		                  ? OperatingSystem.NATIVE_CHARSET
 		                  : StandardCharsets.UTF_8;
 		try {
-			Files.createDirectories(bin);
+			DshPermissions.createRestrictedDirectory(bin, DshPermissions.SECRET_DIRECTORY);
 			DshPermissions.restrict(sessions, DshPermissions.SECRET_DIRECTORY);
 			DshPermissions.restrict(session, DshPermissions.SECRET_DIRECTORY);
-			DshPermissions.restrict(bin, DshPermissions.SECRET_DIRECTORY);
 			DshPermissions.writeRestricted(script,
 			                               scriptText(instance, account, runtime),
 			                               charset,

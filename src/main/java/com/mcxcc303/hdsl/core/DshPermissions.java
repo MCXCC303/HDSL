@@ -43,10 +43,16 @@ public final class DshPermissions {
 
 	private DshPermissions() {}
 
-	/** Gives a path the specified mode. */
+	/**
+	 * Gives a path the specified mode.
+	 */
 	public static void restrict(Path path, Set<PosixFilePermission> mode) {
 		try {
 			PosixFileAttributeView view = Files.getFileAttributeView(path, PosixFileAttributeView.class);
+			if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+				return; // exclude windows and some special url
+			}
+
 			view.setPermissions(mode);
 		} catch (IOException | UnsupportedOperationException e) {
 			LOG.info("Could not restrict the permissions of " + path, e);
@@ -60,12 +66,24 @@ public final class DshPermissions {
 	 */
 	public static void createRestricted(Path file, Set<PosixFilePermission> mode) throws IOException {
 		Files.getFileAttributeView(file, PosixFileAttributeView.class);
+		if (!file.getFileSystem().supportedFileAttributeViews().contains("posix")) return;
+
 		try {
 			Files.createFile(file, PosixFilePermissions.asFileAttribute(mode));
 		} catch (FileAlreadyExistsException e) {
 			// The file is already there, and is given the mode below.
 		}
 		restrict(file, mode);
+	}
+
+	/**
+	 * Creates a permission restricted directory.
+	 *
+	 * @throws IOException when the dir cannot be created
+	 */
+	public static void createRestrictedDirectory(Path dir, Set<PosixFilePermission> mode) throws IOException {
+		Files.createDirectories(dir);
+		restrict(dir, mode);
 	}
 
 	/**
