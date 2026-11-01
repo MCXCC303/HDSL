@@ -1,3 +1,20 @@
+/*
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.jackhuang.hmcl.ui.dsh;
 
 import javafx.application.Platform;
@@ -12,71 +29,35 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Reads what a package manager prints into something worth showing.
-///
-/// The launcher does not download packages itself — npm and pnpm do — so it
-/// cannot report bytes fetched. It can report what those programs say they have
-/// done, which is where their output comes in.
-///
-/// Two shapes are read. pnpm prints a running tally:
-///
-/// ```
-/// Progress: resolved 43, reused 30, downloaded 13, added 40
-/// ```
-///
-/// which gives both a sentence and a fraction. npm prints a line per package
-/// without ever stating a total, so it gives the sentence and leaves the bar
-/// alone.
+/**
+ * Turns what a package manager prints into a progress line and fraction.
+ */
 @NotNullByDefault
 public final class DshInstallProgress {
-	/// pnpm's running tally.
 	private static final Pattern PNPM = Pattern.compile(
 			"Progress: resolved (\\d+), reused (\\d+), downloaded (\\d+), added (\\d+)");
-
-	/// npm's line for a request it answered from its cache.
 	private static final Pattern NPM_CACHE = Pattern.compile("npm http cache ");
-
-	/// npm's line for a request it made over the network.
 	private static final Pattern NPM_FETCH = Pattern.compile("npm http fetch ");
 
-	/// The line to show, which starts as the launcher's own word for work in
-	/// progress and becomes what the package manager reports.
 	private final SimpleStringProperty message = new SimpleStringProperty(i18n("message.doing"));
-
-	/// How far along the work is, or -1 while that cannot be said.
+	// -1 until the work can say how far along it is.
 	private final SimpleDoubleProperty fraction = new SimpleDoubleProperty(-1);
 
-	/// How many npm requests have been seen, from the cache and over the network.
 	private int npmSeen;
-
-	/// How many of those npm answered from its cache.
 	private int npmCached;
 
-	/// The line to show.
-	///
-	/// @return the property, which the dialog binds to
 	public ReadOnlyStringProperty messageProperty() {
 		return message;
 	}
 
-	/// How far along the work is.
-	///
-	/// @return the property, which is -1 while the fraction is unknown
 	public ReadOnlyDoubleProperty fractionProperty() {
 		return fraction;
 	}
 
-	/// Reads one line of a package manager's output.
-	///
-	/// Called from the thread running the package manager. What it produces is
-	/// shown in the dialog, and a label whose text is changed from another
-	/// thread is not laid out again — the dialog would keep showing the first
-	/// line it was given. So the line is worked out here and handed to the
-	/// interface thread to be shown.
-	///
-	/// Lines that say nothing about progress are ignored, which is most of them.
-	///
-	/// @param line the line
+	/**
+	 * Reads one line of a package manager's output, from the thread running it
+	 * The line reaches the dialog through the interface thread.
+	 */
 	public void accept(String line) {
 		Matcher pnpm = PNPM.matcher(line);
 		if (pnpm.find()) {
@@ -86,9 +67,7 @@ public final class DshInstallProgress {
 			int added = Integer.parseInt(pnpm.group(4));
 
 			show(i18n("dsh.install.progress.pnpm", added, resolved, downloaded, reused));
-			if (resolved > 0) {
-				fraction.set(Math.min(1.0, (double) added / resolved));
-			}
+			if (resolved > 0) fraction.set(Math.min(1.0, (double) added / resolved));
 			return;
 		}
 
@@ -97,19 +76,12 @@ public final class DshInstallProgress {
 		} else if (NPM_CACHE.matcher(line).find()) {
 			npmSeen++;
 			npmCached++;
-		} else {
-			return;
-		}
+		} else return;
 
-		// npm never says how many it will ask for, so there is no fraction to
-		// give; the count is still worth reading, because a run served entirely
-		// from the cache looks the same as a run that is doing nothing.
+		// npm never states a total, so there is no fraction to give.
 		show(i18n("dsh.install.progress.npm", npmSeen, npmSeen - npmCached, npmCached));
 	}
 
-	/// Shows a line, from the interface thread.
-	///
-	/// @param line the line
 	private void show(String line) {
 		Platform.runLater(() -> message.set(line));
 	}
