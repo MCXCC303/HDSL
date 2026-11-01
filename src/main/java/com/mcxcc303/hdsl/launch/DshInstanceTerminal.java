@@ -31,12 +31,17 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFileAttributeView;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -80,6 +85,12 @@ public final class DshInstanceTerminal {
 
 	/// What an environment variable may be called to be written into the script.
 	private static final Pattern NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+
+	/**
+	 * The mode a session's files and directories carry: the owner's alone. The script carries
+	 * the account's key.
+	 */
+	private static final Set<PosixFilePermission> OWNER_ONLY = PosixFilePermissions.fromString("rwx------");
 
 	/// The terminal emulators tried, most preferred first, for a Linux desktop.
 	///
@@ -161,39 +172,94 @@ public final class DshInstanceTerminal {
 		return null;
 	}
 
-	/// Writes a session's script and its dsh shim, and returns the script.
-	///
-	/// Written beside the launcher's own data and not removed when the terminal closes: the
-	/// launcher cannot tell when that happens, a session is worth being able to open again,
-	/// and a file that is rewritten on every open cannot go stale.
-	///
-	/// The batch file is written in the system's own charset rather than UTF-8, because the
-	/// Windows command interpreter reads a script in the charset of the machine and not in
-	/// the one the file was written in — a path outside the ASCII range has to travel in the
-	/// encoding the reader expects or it arrives wrong.
-	///
-	/// @param instance the instance
-	/// @param account  the account it launches with, or null
-	/// @return the script to hand the terminal
-	/// @throws DshException when it cannot be written
+	/**
+	 * Writes a session's script and its dsh shim, and returns the script.
+	 * <p>
+	 * The files are not removed: the launcher cannot tell when the terminal closes.
+	 * <p>
+	 * On Windows the batch file is written in the machine's charset rather than UTF-8. The command
+	 * interpreter reads a script in that charset, so a path outside ASCII is misread.
+	 *
+	 * @param instance the instance
+	 * @param account  the account it launches with, or null
+	 * @return the script to hand the terminal
+	 * @throws DshException when it cannot be written
+	 */
 	public static Path write(DshInstance instance, @Nullable DshAccount account) throws DshException {
-		DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
-		Path directory = directory().resolve(instance.id());
-		Path script = directory.resolve(SCRIPT);
-		Path shim = directory.resolve(BIN).resolve(SHIM);
+		return write(instance, account, DshLauncher.resolveRuntime(instance));
+	}
+
+	/**
+	 * Writes a session's script and its dsh shim, with the runtime given.
+	 *
+	 * @param instance the instance
+	 * @param account  the account it launches with, or null
+	 * @param runtime  the node runtime the instance runs on
+	 * @return the script to hand the terminal
+	 * @throws DshException when it cannot be written
+	 */
+	static Path write(DshInstance instance, @Nullable DshAccount account, DshNodeRuntime runtime) throws DshException {
+		Path sessions = directory();
+		Path session = sessions.resolve(instance.id());
+		Path bin = session.resolve(BIN);
+		Path script = session.resolve(SCRIPT);
+		Path shim = bin.resolve(SHIM);
 		Charset charset = OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
 		                  ? OperatingSystem.NATIVE_CHARSET
 		                  : StandardCharsets.UTF_8;
 		try {
-			Files.createDirectories(shim.getParent());
-			Files.writeString(script, scriptText(instance, account, runtime), charset);
-			Files.writeString(shim, shimText(instance, runtime), charset);
+			Files.createDirectories(bin);
+			restrict(sessions);
+			restrict(session);
+			restrict(bin);
+			writeRestricted(script, scriptText(instance, account, runtime), charset);
+			writeRestricted(shim, shimText(instance, runtime), charset);
 		} catch (IOException e) {
 			throw new DshException("Failed to write the terminal session for " + instance.id(), e);
 		}
 		executable(script);
 		executable(shim);
 		return script;
+	}
+
+	/**
+	 * Writes a file only its owner may read.
+	 * <p>
+	 * A new file's mode is 0700; if the file already exists, the mode stays unchanged.
+	 * Before writing an existing file, if it holds secrets, the mode is set again.
+	 *
+	 * @param file    the file
+	 * @param text    what to write into it
+	 * @param charset the charset to write it in
+	 * @throws IOException when it cannot be written
+	 */
+	private static void writeRestricted(Path file, String text, Charset charset) throws IOException {
+		if (Files.getFileAttributeView(file, PosixFileAttributeView.class) != null) {
+			try {
+				Files.createFile(file, PosixFilePermissions.asFileAttribute(OWNER_ONLY));
+			} catch (FileAlreadyExistsException e) {
+				// The file is already there, and is given the mode below.
+			}
+			restrict(file);
+		}
+		Files.writeString(file, text, charset);
+	}
+
+	/**
+	 * Makes a path reachable only by its owner, where the filesystem can express the mode.
+	 *
+	 * @param path the path
+	 */
+	private static void restrict(Path path) {
+		try {
+			PosixFileAttributeView view = Files.getFileAttributeView(path, PosixFileAttributeView.class);
+			if (view == null) {
+				return;
+			}
+			view.setPermissions(OWNER_ONLY);
+		} catch (IOException | UnsupportedOperationException e) {
+			LOG.info("Could not restrict the permissions of " + path, e);
+		}
 	}
 
 	/// Returns where sessions are written.
