@@ -41,31 +41,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The mode a session's files and directories carry.
- * <p>
- * The class is Linux-only because the mode it checks is a POSIX one.
+ * The mode a session's files and directories carry. Linux only
  */
 @EnabledOnOs(OS.LINUX)
 class DshInstanceTerminalPermissionsTest {
-	private static final Set<PosixFilePermission> OWNER_ONLY = EnumSet.of(
-			PosixFilePermission.OWNER_READ,
-			PosixFilePermission.OWNER_WRITE,
-			PosixFilePermission.OWNER_EXECUTE);
+	private static final Set<PosixFilePermission> OWNER_ONLY = EnumSet.of(PosixFilePermission.OWNER_READ,
+	                                                                      PosixFilePermission.OWNER_WRITE,
+	                                                                      PosixFilePermission.OWNER_EXECUTE);
 
-	/**
-	 * The mode a file created under the usual umask gets.
-	 */
-	private static final Set<PosixFilePermission> READABLE_BY_EVERYONE = EnumSet.of(
-			PosixFilePermission.OWNER_READ,
-			PosixFilePermission.OWNER_WRITE,
-			PosixFilePermission.GROUP_READ,
-			PosixFilePermission.OTHERS_READ);
+	private static final Set<PosixFilePermission> READABLE_BY_EVERYONE = EnumSet.of(PosixFilePermission.OWNER_READ,
+	                                                                                PosixFilePermission.OWNER_WRITE,
+	                                                                                PosixFilePermission.GROUP_READ,
+	                                                                                PosixFilePermission.OTHERS_READ);
 
 	private static final String INSTANCE_ID = "terminal-permissions";
 
-	/**
-	 * Where the instance's own files are made, one per test.
-	 */
+	/** Where the instance's own files are made, one per test. */
 	@TempDir
 	Path folder;
 
@@ -89,11 +80,14 @@ class DshInstanceTerminalPermissionsTest {
 	void theSessionDirectoriesAreReadableOnlyByTheirOwner() throws Exception {
 		write();
 
-		assertEquals(OWNER_ONLY, Files.getPosixFilePermissions(DshInstanceTerminal.directory()),
+		assertEquals(OWNER_ONLY,
+		             Files.getPosixFilePermissions(DshInstanceTerminal.getTermSessionsDir()),
 		             "the sessions directory is its owner's alone");
-		assertEquals(OWNER_ONLY, Files.getPosixFilePermissions(session()),
+		assertEquals(OWNER_ONLY,
+		             Files.getPosixFilePermissions(session()),
 		             "the session's own directory is its owner's alone");
-		assertEquals(OWNER_ONLY, Files.getPosixFilePermissions(bin()),
+		assertEquals(OWNER_ONLY,
+		             Files.getPosixFilePermissions(bin()),
 		             "the directory the shim sits in is its owner's alone");
 	}
 
@@ -106,7 +100,8 @@ class DshInstanceTerminalPermissionsTest {
 
 		write();
 
-		assertEquals(OWNER_ONLY, Files.getPosixFilePermissions(script),
+		assertEquals(OWNER_ONLY,
+		             Files.getPosixFilePermissions(script),
 		             "the file an older launcher left is tightened when the session is written again");
 	}
 
@@ -141,7 +136,7 @@ class DshInstanceTerminalPermissionsTest {
 	}
 
 	private Path session() {
-		return DshInstanceTerminal.directory().resolve(INSTANCE_ID);
+		return DshInstanceTerminal.getTermSessionsDir().resolve(INSTANCE_ID);
 	}
 
 	// The launcher's own names for the directory the shim sits in and for the shim itself.
