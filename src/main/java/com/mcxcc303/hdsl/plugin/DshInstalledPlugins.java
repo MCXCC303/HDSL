@@ -73,7 +73,8 @@ public final class DshInstalledPlugins {
 			                          stateOf(packageDirectory, bundles.contains(name), rows, disabled),
 			                          pathOf(directory, name, packageDirectory),
 			                          rows,
-			                          PluginIcons.iconFile(packageDirectory)));
+			                          PluginIcons.iconFile(packageDirectory),
+			                          PluginTitles.titleOf(packageDirectory)));
 		}
 		return List.copyOf(plugins);
 	}
@@ -189,15 +190,16 @@ public final class DshInstalledPlugins {
 	 * One plugin a profile holds.
 	 *
 	 * @param version      the installed version, or `null` when the package is not there
-	 * @param declared     what the profile declares, e.g. a range or a local path
+	 * @param declared     what the profile declares for it, such as a version range or a local path
 	 * @param requirements the harness peer requirements left after wildcards are dropped, as text
 	 * @param path         the path inside the profile, or the directory it links to
 	 * @param rows         the loader rows its bundle inserts, with the modules they mount
 	 * @param icon         the picture the package declares, or `null` when it declares none that can be read
+	 * @param title        the title the package publishes in its locales, or `null` when it publishes none
 	 */
 	public record Installed(String name, @Nullable String version, String declared, String requirements,
 	                        DshPluginVersions.Fit fit, State state, String path, List<DshPluginPatch.Row> rows,
-	                        @Nullable Path icon) {
+	                        @Nullable Path icon, @Nullable String title) {
 
 		/**
 		 * @return the ids, in the order the bundle patch writes them
@@ -213,13 +215,14 @@ public final class DshInstalledPlugins {
 		 * @return the display name
 		 */
 		public String displayName() {
+			if (title != null) return title;
 			for (DshPluginPatch.Row row : rows) {
 				if (name.equals(row.name())) return row.id();
 			}
 			for (DshPluginPatch.Row row : rows) {
 				if (row.name() != null && row.name().startsWith(name + "/")) return row.id();
 			}
-			return rows.isEmpty() ? name : rows.get(0).id();
+			return rows.isEmpty() ? name : rows.getFirst().id();
 		}
 	}
 }

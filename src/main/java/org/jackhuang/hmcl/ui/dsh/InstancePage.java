@@ -28,6 +28,7 @@ import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshInstanceTerminal;
 import com.mcxcc303.hdsl.launch.DshProcessManager;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
+import com.mcxcc303.hdsl.plugin.DshInstalledPlugins;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
@@ -54,7 +55,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -332,10 +336,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
 	}
 
-	/// Returns the instance directory, or `null` when it cannot be resolved.
-	///
-	/// @return the directory
-	private Path instanceDirectoryOrNull() {
+	private @Nullable Path instanceDirectoryOrNull() {
 		try {
 			return instance.instanceDirectory();
 		} catch (DshException e) {
@@ -343,11 +344,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}
 	}
 
-	/// Returns a directory inside the instance's home, or the home itself.
-	///
-	/// @param name the directory name, or an empty string for the home
-	/// @return the path, or `null` when the home cannot be resolved
-	private Path homeChild(String name) {
+	private @Nullable Path homeChild(String name) {
 		try {
 			Path home = instance.homeDirectory();
 			return name.isEmpty() ? home : home.resolve(name);
@@ -481,16 +478,13 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}, null);
 	}
 
-	/// Rebuilds the plugin list from the profile manifest on disk.
+	// Rebuilds the plugin list from the profile's manifest on disk.
 	private void refreshPlugins() {
 		pluginList.getContent().clear();
 
-		Map<String, String> dependencies;
-		List<String> bundles;
+		List<DshInstalledPlugins.Installed> plugins;
 		try {
-			Path home = instance.homeDirectory();
-			dependencies = DshPluginInstaller.readDependencies(home, instance.profile());
-			bundles = DshPluginInstaller.readBundles(home, instance.profile());
+			plugins = DshInstalledPlugins.of(instance);
 		} catch (DshException e) {
 			pluginStatus.setText(e.getMessage());
 			return;
@@ -499,8 +493,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		// Only the packages the user added; the in-box bundles every profile
 		// starts with are not the user's to manage.
 		int shown = 0;
-		for (Map.Entry<String, String> entry : dependencies.entrySet()) {
-			pluginList.getContent().add(buildPluginRow(entry.getKey(), entry.getValue(), bundles));
+		for (DshInstalledPlugins.Installed plugin : plugins) {
+			pluginList.getContent().add(buildPluginRow(plugin));
 			shown++;
 		}
 		if (shown == 0) {
@@ -512,23 +506,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		pluginStatus.setText(i18n("dsh.instance.plugins.count", shown));
 	}
 
-	/// Builds one installed-plugin row.
-	///
-	/// @param name    the package name
-	/// @param version the declared version range
-	/// @param bundles the profile's active bundle list
-	/// @return the row
-	private LineButton buildPluginRow(String name, String version, List<String> bundles) {
-		boolean active = bundles.contains(name);
+	private LineButton buildPluginRow(DshInstalledPlugins.Installed plugin) {
+		boolean bundle = plugin.state() == DshInstalledPlugins.State.ACTIVE ||
+		                 plugin.state() == DshInstalledPlugins.State.DISABLED;
 
 		JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE, 18);
-		remove.setOnAction(event -> removePlugin(name));
+		remove.setOnAction(event -> removePlugin(plugin.name()));
 
 		LineButton row = new LineButton();
-		row.setTitle(name);
-		row.setSubtitle(active
-		                ? i18n("dsh.instance.plugins.active", version)
-		                : i18n("dsh.instance.plugins.inactive", version));
+		row.setTitle(plugin.displayName());
+		row.setSubtitle(bundle
+		                ? i18n("dsh.instance.plugins.active", plugin.declared())
+		                : i18n("dsh.instance.plugins.inactive", plugin.declared()));
 		row.setRowTrailing(remove);
 		return row;
 	}
