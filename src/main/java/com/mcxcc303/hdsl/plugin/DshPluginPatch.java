@@ -62,72 +62,61 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /// hand-written `!!js` expression or comment survives intact.
 @NotNullByDefault
 public final class DshPluginPatch {
-	/// The profile's own patch layer, the file a toggle writes.
 	public static final String PATCH_NAME = "cordis.patch.yml";
-	/// The conventional bundle patch a package may ship without declaring it.
+
 	private static final String CONVENTIONAL_PATCH = "cordis.patch.yml";
-	/// Row ids this class is willing to write: plain unquoted YAML scalars.
 	private static final Pattern ROW_ID = Pattern.compile("^[A-Za-z0-9_.-]+$");
-	/// Matches an `insert:` key, with or without a list marker.
 	private static final Pattern INSERT_LINE = Pattern.compile("^\\s*-?\\s*insert:\\s*$");
-	/// Matches a row key that keeps an open insert block open.
 	private static final Pattern ROW_KEY = Pattern.compile("^\\s*-?\\s*(?:id|name|config):");
-	/// Captures the id of a row, with or without a list marker.
 	private static final Pattern ID_LINE = Pattern.compile("^\\s*-?\\s*id:\\s*['\"]?([^'\"\\s]+)");
-	/// Captures a top-level disable row.
+	private static final Pattern NAME_LINE = Pattern.compile("^\\s*-?\\s*name:\\s*['\"]?([^'\"\\s]+)");
 	private static final Pattern DISABLE_ROW = Pattern.compile("^- id: ([A-Za-z0-9_.-]+)\\s*$");
-	/// Matches the disabled flag that follows a disable row.
 	private static final Pattern DISABLED_NEXT = Pattern.compile("^ {2}disabled: true\\s*$");
 
-	private DshPluginPatch() {
-	}
+	private DshPluginPatch() {}
 
 	/// Matches a whole `- id: X` + `disabled: true` block for one id.
 	private static Pattern disableBlock(String id) {
 		return Pattern.compile("(?m)^- id: ['\"]?" + Pattern.quote(id) + "['\"]?\\r?\\n  disabled: true\\r?\\n");
 	}
 
-	/// Returns the profile's directory inside a home.
-	///
-	/// @param home    the `DSH_HOME`
-	/// @param profile the profile's name
-	/// @return the directory
 	public static Path profileDirectory(Path home, String profile) {
 		return home.resolve("profiles").resolve(profile);
 	}
 
-	/// Returns the file a toggle writes.
-	///
-	/// @param home    the `DSH_HOME`
-	/// @param profile the profile's name
-	/// @return the profile's own patch layer
 	public static Path patchFile(Path home, String profile) {
 		return profileDirectory(home, profile).resolve(PATCH_NAME);
 	}
 
-	/// Returns the loader entry ids a package brings into the tree.
-	///
-	/// Both the patch the package declares through `dsh.bundle.patch` and the
-	/// conventional `cordis.patch.yml` at its root are read, because the loader
-	/// probes both. Rows the package only reconfigures are deliberately left out.
-	///
-	/// @param home        the `DSH_HOME`
-	/// @param profile     the profile's name
-	/// @param packageName the package, as it is named in the profile manifest
-	/// @return the ids, or an empty list when the package inserts none
 	public static List<String> insertedIds(Path home, String profile, String packageName) {
+		return insertedRows(home, profile, packageName).stream().map(Row::id).toList();
+	}
+
+	/**
+	 * Returns the loader rows a package adds to the tree, along with their mounted modules.
+	 * <p>
+	 * Reads both the patch declared by {@code dsh.bundle.patch} and the root-level
+	 * {@code cordis.patch.yml}, since the loader checks both. <br>
+	 * Rows that only reconfigure the package are omitted.
+	 *
+	 * @param home        the {@code DSH_HOME}
+	 * @param profile     the profile name
+	 * @param packageName the package name as it appears in the profile manifest
+	 * @return the rows, or an empty list if the package adds none
+	 */
+	public static List<Row> insertedRows(Path home, String profile, String packageName) {
 		Path directory = profileDirectory(home, profile).resolve("node_modules").resolve(packageName);
-		Set<String> ids = new LinkedHashSet<>();
+		List<Row> rows = new ArrayList<>();
+		Set<String> seen = new LinkedHashSet<>();
 
 		Path declared = declaredPatch(directory);
-		if (declared != null) {
-			addInsertedIds(ids, readIfFile(declared));
-		}
+		if (declared != null) addInsertedRows(rows, seen, readIfFile(declared));
+
 		Path conventional = directory.resolve(CONVENTIONAL_PATCH);
 		if (declared == null || !declared.equals(conventional)) {
-			addInsertedIds(ids, readIfFile(conventional));
+			addInsertedRows(rows, seen, readIfFile(conventional));
 		}
-		return List.copyOf(ids);
+		return List.copyOf(rows);
 	}
 
 	/// Returns the entry ids the profile's own patch layer disables.
@@ -191,20 +180,26 @@ public final class DshPluginPatch {
 		}
 	}
 
-	/// Adds the ids one patch file inserts to a set.
-	///
-	/// @param ids  the set to add to
-	/// @param text the patch text, or `null` when there is no file
-	private static void addInsertedIds(Set<String> ids, @Nullable String text) {
-		if (text != null) {
-			ids.addAll(insertedIdsIn(text));
+	/**
+	 * Adds the rows one patch file inserts, keeping the first mention of each id.
+	 *
+	 * @param rows the rows read so far
+	 * @param seen the ids already read, from this file or the other one
+	 * @param text the patch text, or {@code null} when there is no file
+	 */
+	private static void addInsertedRows(List<Row> rows, Set<String> seen, @Nullable String text) {
+		if (text == null) return;
+
+		for (Row row : insertedRowsIn(text)) {
+			if (seen.add(row.id())) rows.add(row);
 		}
 	}
 
-	/// Reads a patch file, tolerating absence.
-	///
-	/// @param file the file
-	/// @return the text, or `null` when it is not a readable regular file
+	/**
+	 * Reads a patch file, tolerating absence.
+	 *
+	 * @return the text, or `null` when it is not a readable regular file
+	 */
 	private static @Nullable String readIfFile(Path file) {
 		if (!Files.isRegularFile(file)) {
 			return null;
@@ -217,44 +212,77 @@ public final class DshPluginPatch {
 		}
 	}
 
-	/// Reads the ids nested under `insert:` blocks.
-	///
-	/// Line-wise rather than by parsing YAML, because a bundle patch may carry
-	/// expressions and structures the loader accepts and a strict parser would
-	/// not; a row at or above the `insert:` indentation closes the block, which
-	/// is what separates a package's own rows from the neighbours it tunes.
-	///
-	/// @param text the patch text
-	/// @return the inserted ids, in order and without duplicates
+	/**
+	 * Reads the ids nested under {@code insert:} blocks.
+	 *
+	 * @param text the patch text
+	 * @return the inserted ids, in order and without duplicates
+	 */
 	static List<String> insertedIdsIn(String text) {
-		List<String> inserted = new ArrayList<>();
+		return insertedRowsIn(text).stream().map(Row::id).toList();
+	}
+
+	/**
+	 * Reads the rows nested under {@code insert:} blocks, with their mounted modules.
+	 * <p>
+	 * Parses line by line, not as YAML. <br>
+	 * loader-accepted expressions and structures are not rejected.
+	 *
+	 * @param text the patch text
+	 * @return the rows, in order and without duplicates
+	 */
+	static List<Row> insertedRowsIn(String text) {
+		List<Row> rows = new ArrayList<>();
+		Set<String> seen = new LinkedHashSet<>();
 		@Nullable Integer insertIndent = null;
+		@Nullable String id = null;
+		@Nullable String name = null;
+		int keyIndent = -1;
+
 		for (String raw : text.split("\\r?\\n", -1)) {
 			String line = raw.replaceFirst("#.*$", "");
-			if (line.trim().isEmpty()) {
-				continue;
-			}
+			if (line.trim().isEmpty()) continue;
+
 			int indent = line.length() - line.stripLeading().length();
 			if (insertIndent != null && indent <= insertIndent && !ROW_KEY.matcher(line).find()) {
 				insertIndent = null;
 			}
 			if (INSERT_LINE.matcher(line).find()) {
+				addRow(rows, seen, id, name);
+				id = null;
+				name = null;
 				insertIndent = indent;
 				continue;
 			}
-			Matcher id = ID_LINE.matcher(line);
-			if (!id.find()) {
+
+			Matcher rowId = ID_LINE.matcher(line);
+			if (!rowId.find()) {
+				if (insertIndent != null && id != null && name == null && indent == keyIndent) {
+					Matcher module = NAME_LINE.matcher(line);
+					if (module.find()) name = module.group(1);
+				}
 				continue;
 			}
+			addRow(rows, seen, id, name);
+
+			id = null;
+			name = null;
 			if (insertIndent != null && indent > insertIndent) {
-				if (!inserted.contains(id.group(1))) {
-					inserted.add(id.group(1));
-				}
+				id = rowId.group(1);
+				keyIndent = line.indexOf("id:");
 			} else {
 				insertIndent = null;
 			}
 		}
-		return inserted;
+		addRow(rows, seen, id, name);
+		return List.copyOf(rows);
+	}
+
+	/**
+	 * Adds one row, keeping the first mention of its id.
+	 */
+	private static void addRow(List<Row> rows, Set<String> seen, @Nullable String id, @Nullable String name) {
+		if (id != null && seen.add(id)) rows.add(new Row(id, name));
 	}
 
 	/// Reads the ids a patch layer disables.
@@ -371,10 +399,6 @@ public final class DshPluginPatch {
 		return endWithNewline(text) + "[]\n";
 	}
 
-	/// Returns text that ends in exactly one newline.
-	///
-	/// @param text the text
-	/// @return the text with a trailing newline
 	private static String endWithNewline(String text) {
 		return text.endsWith("\n") ? text : text + "\n";
 	}
@@ -414,4 +438,12 @@ public final class DshPluginPatch {
 			throw new DshException("Could not write " + file, e);
 		}
 	}
+
+	/**
+	 * One row a bundle patch inserts.
+	 *
+	 * @param id   the loader entry id, which is the plugin's identity in the harness
+	 * @param name the module the row mounts, or {@code null} when the row names none
+	 */
+	public record Row(String id, @Nullable String name) {}
 }
