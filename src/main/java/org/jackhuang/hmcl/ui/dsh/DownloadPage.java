@@ -63,7 +63,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
@@ -79,14 +78,13 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 	private static final String RELEASES = "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v";
 
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("download")));
-	// The name and type filters, the same bar other version lists use.
 	private final VersionFilterBar filterBar = new VersionFilterBar(this::applyFilter, this::refresh);
+
 	private final TabHeader.Tab<Node> versionsTab = new TabHeader.Tab<>("dshDownloadVersions");
 	private final TabHeader.Tab<PluginMarketPage> marketTab = new TabHeader.Tab<>("dshDownloadPlugins");
-	// Named by openPluginsFor() before the market tab is built, and handed to the page when it is.
-	private final AtomicReference<@Nullable DshInstance> marketInstance = new AtomicReference<>();
 	private final TabHeader.Tab<PackMarketPage> packTab = new TabHeader.Tab<>("dshDownloadPacks");
 	private final TabHeader.Tab<SkillMarketPage> skillsTab = new TabHeader.Tab<>("dshDownloadSkills");
+
 	private final TransitionPane tabs = new TransitionPane();
 	private final TabHeader tab;
 	private final JFXListView<DshRelease> releaseList = new JFXListView<>();
@@ -166,11 +164,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		layout.setCenter(contentPane);
 
 		versionsTab.setNodeSupplier(() -> layout);
-		marketTab.setNodeSupplier(() -> {
-			PluginMarketPage page = new PluginMarketPage();
-			page.showInstance(marketInstance.get());
-			return page;
-		});
+		marketTab.setNodeSupplier(PluginMarketPage::new);
 		packTab.setNodeSupplier(PackMarketPage::new);
 		skillsTab.setNodeSupplier(SkillMarketPage::new);
 		tab.getTabs().setAll(versionsTab, packTab, marketTab, skillsTab);
@@ -204,14 +198,13 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 	 * Opens the plugin market for an instance.
 	 *
 	 * @param instance the instance to install into, or `null` to follow the launcher's selection
-	 * @return whether the market was opened
 	 */
-	public boolean openPluginsFor(@Nullable DshInstance instance) {
-		marketInstance.set(instance);
+	public void openPluginsFor(@Nullable DshInstance instance) {
+		openTab("plugins");
 		PluginMarketPage page = marketTab.getNode();
-		// The tab is built once and reused, so an already built page is moved here.
-		page.showInstance(instance);
-		return openTab("plugins");
+		if (page != null) {
+			page.showInstance(instance);
+		}
 	}
 
 	@Override

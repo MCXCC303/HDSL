@@ -260,8 +260,8 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	/// so without this, 下载 installed into an instance the person was not looking at.
 	private void openMarket() {
 		DownloadPage page = Controllers.getDownloadPage();
-		Controllers.navigate(page);
 		page.openPluginsFor(instance);
+		Controllers.navigate(page);
 	}
 
 	/// Installs a plugin from a packed file the user chooses.

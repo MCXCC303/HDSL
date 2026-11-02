@@ -77,13 +77,12 @@ public class TabHeader extends Control implements TabControl, PageAware {
 
     public void select(Tab<?> tab, boolean playAnimation) {
         Tab<?> oldTab = getSelectionModel().getSelectedItem();
-        if (oldTab != null) {
+        if (oldTab != null && oldTab.isInitialized()) {
             if (oldTab.getNode() instanceof PageAware pageAware) {
                 pageAware.onPageHidden();
             }
         }
 
-        tab.initializeIfNeeded();
         if (tab.getNode() instanceof PageAware pageAware) {
             pageAware.onPageShown();
         }
@@ -106,7 +105,7 @@ public class TabHeader extends Control implements TabControl, PageAware {
     @Override
     public void onPageShown() {
         Tab<?> tab = getSelectionModel().getSelectedItem();
-        if (tab != null) {
+        if (tab != null && tab.isInitialized()) {
             if (tab.getNode() instanceof PageAware) {
                 ((PageAware) tab.getNode()).onPageShown();
             }
@@ -116,7 +115,7 @@ public class TabHeader extends Control implements TabControl, PageAware {
     @Override
     public void onPageHidden() {
         Tab<?> tab = getSelectionModel().getSelectedItem();
-        if (tab != null) {
+        if (tab != null && tab.isInitialized()) {
             if (tab.getNode() instanceof PageAware) {
                 ((PageAware) tab.getNode()).onPageHidden();
             }

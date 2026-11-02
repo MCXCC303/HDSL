@@ -23,6 +23,7 @@ import javafx.collections.ObservableList;
 import javafx.scene.AccessibleAttribute;
 import javafx.scene.Node;
 import javafx.scene.control.SingleSelectionModel;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
 
@@ -178,9 +179,9 @@ public interface TabControl {
         private final StringProperty id = new SimpleStringProperty(this, "id");
         private final StringProperty text = new SimpleStringProperty(this, "text");
         private final ReadOnlyBooleanWrapper selected = new ReadOnlyBooleanWrapper(this, "selected");
-        private final ObjectProperty<T> node = new SimpleObjectProperty<>(this, "node");
         private final ObjectProperty<Object> userData = new SimpleObjectProperty<>(this, "userData");
-        private Supplier<? extends T> nodeSupplier;
+        private @Nullable T node;
+        private @Nullable Supplier<? extends T> nodeSupplier;
 
         public Tab(String id) {
             setId(id);
@@ -189,10 +190,6 @@ public interface TabControl {
         public Tab(String id, String text) {
             setId(id);
             setText(text);
-        }
-
-        public Supplier<? extends T> getNodeSupplier() {
-            return nodeSupplier;
         }
 
         public void setNodeSupplier(Supplier<? extends T> nodeSupplier) {
@@ -235,16 +232,21 @@ public interface TabControl {
             this.selected.set(selected);
         }
 
-        public T getNode() {
-            return node.get();
-        }
-
-        public ObjectProperty<T> nodeProperty() {
+        /**
+         * Returns the content node, building it from the supplier on the first call.
+         *
+         * @return the content node, or {@code null} when no supplier was set
+         */
+        public @Nullable T getNode() {
+            if (node != null) {
+                return node;
+            }
+            if (nodeSupplier == null) {
+                return null;
+            }
+            node = nodeSupplier.get();
+            nodeSupplier = null;
             return node;
-        }
-
-        public void setNode(T node) {
-            this.node.set(node);
         }
 
         public Object getUserData() {
@@ -259,19 +261,13 @@ public interface TabControl {
             this.userData.set(userData);
         }
 
+        /**
+         * Reports whether the node can be fetched without building it.
+         *
+         * @return whether the supplier has already been consumed
+         */
         public boolean isInitialized() {
-            return getNode() != null;
-        }
-
-        public boolean initializeIfNeeded() {
-            if (getNode() == null) {
-                if (getNodeSupplier() == null) {
-                    return false;
-                }
-                setNode(getNodeSupplier().get());
-                return true;
-            }
-            return false;
+            return nodeSupplier == null;
         }
     }
 }
