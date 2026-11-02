@@ -45,8 +45,8 @@ import java.util.function.Consumer;
 ///
 /// ```
 /// .game-directory-list-item > .rippler-container > BorderPane { padding: 8 0 8 16 }
-/// ... > .two-line-list-item > .first-line > .title { font-size: 13 }
-/// ... > .two-line-list-item > HBox > .subtitle { font-size: 10 }
+/// ... > .two-line-list-item > .title { font-size: 13 }
+/// ... > .two-line-list-item > .subtitle { font-size: 10 }
 /// ```
 ///
 /// A row built any other way gets none of that — a plain list item carries the
