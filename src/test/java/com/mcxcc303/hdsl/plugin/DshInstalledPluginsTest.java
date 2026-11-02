@@ -27,6 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -40,6 +41,42 @@ class DshInstalledPluginsTest {
 
 	@TempDir
 	Path folder;
+
+	private static Pkg plain() {
+		return new Pkg("1.0.0", "1.0.0", null, null, List.of());
+	}
+
+	private static Pkg absent() {
+		return new Pkg("1.0.0", null, null, null, List.of());
+	}
+
+	private static Pkg withPeers(String peers) {
+		return new Pkg("1.0.0", "1.0.0", peers, null, List.of());
+	}
+
+	private static Pkg withRows(String... rows) {
+		return new Pkg("1.0.0", "1.0.0", null, null,
+		               Arrays.stream(rows).map(id -> new LoaderRow(id, null)).toList());
+	}
+
+	private static Pkg withNamedRows(LoaderRow... rows) {
+		return new Pkg("1.0.0", "1.0.0", null, null, List.of(rows));
+	}
+
+	private static Pkg withIcon() {
+		return new Pkg("1.0.0", "1.0.0", null, "icon.svg", List.of());
+	}
+
+	private static String manifest(String name, Pkg pkg) {
+		String peers = pkg.peers() == null ? "" : ",\n  \"peerDependencies\": " + pkg.peers();
+		String icon = pkg.icon() == null ? "" : ",\n  \"icon\": \"" + pkg.icon() + "\"";
+		return """
+				{
+				  "name": "%s",
+				  "version": "%s"%s%s
+				}
+				""".formatted(name, pkg.installed(), peers, icon);
+	}
 
 	@Test
 	void aDependencyThatIsNotABundleIsNotInEffect() throws Exception {
@@ -126,7 +163,47 @@ class DshInstalledPluginsTest {
 
 		DshInstalledPlugins.Installed plugin = only(instance);
 
-		assertEquals(List.of("dsh-market"), plugin.rows());
+		assertEquals(List.of("dsh-market"), plugin.rowIds());
+	}
+
+	@Test
+	void theRowThatMountsThePackageNamesThePlugin() throws Exception {
+		DshInstance instance = instance("mounted",
+		                                List.of("dshmarket"),
+		                                Map.of("dshmarket",
+		                                       withNamedRows(new LoaderRow("dashboard", "@other/dashboard"),
+		                                                     new LoaderRow("dsh-market", "dshmarket"))),
+		                                List.of());
+
+		DshInstalledPlugins.Installed plugin = only(instance);
+
+		assertEquals("dsh-market", plugin.displayName(),
+		             "the row that mounts the package names the plugin, not the first row");
+	}
+
+	@Test
+	void aPluginThatInsertsNoRowsIsNamedByItsPackageName() throws Exception {
+		DshInstance instance = instance("named-by-package", List.of(), Map.of("dsh-plain", plain()), List.of());
+
+		assertEquals("dsh-plain", only(instance).displayName());
+	}
+
+	@Test
+	void aSubpathRowNamesThePluginWhenItIsTheOnlyOne() throws Exception {
+		DshInstance instance = instance("subpath",
+		                                List.of("dsh-demo"),
+		                                Map.of("dsh-demo",
+		                                       withNamedRows(new LoaderRow("demo-preset", "dsh-demo/preset"))),
+		                                List.of());
+
+		assertEquals("demo-preset", only(instance).displayName());
+	}
+
+	@Test
+	void thePluginCarriesTheIconItDeclares() throws Exception {
+		DshInstance instance = instance("icon", List.of(), Map.of("dsh-with-icon", withIcon()), List.of());
+
+		assertNotNull(only(instance).icon());
 	}
 
 	@Test
@@ -142,22 +219,6 @@ class DshInstalledPluginsTest {
 		List<DshInstalledPlugins.Installed> plugins = DshInstalledPlugins.of(instance);
 		assertEquals(1, plugins.size(), "the fixture holds one plugin");
 		return plugins.get(0);
-	}
-
-	private static Pkg plain() {
-		return new Pkg("1.0.0", "1.0.0", null, List.of());
-	}
-
-	private static Pkg absent() {
-		return new Pkg("1.0.0", null, null, List.of());
-	}
-
-	private static Pkg withPeers(String peers) {
-		return new Pkg("1.0.0", "1.0.0", peers, List.of());
-	}
-
-	private static Pkg withRows(String... rows) {
-		return new Pkg("1.0.0", "1.0.0", null, List.of(rows));
 	}
 
 	private DshInstance instance(String id,
@@ -181,27 +242,27 @@ class DshInstalledPluginsTest {
 			            .append("\"");
 		}
 		for (String bundle : bundles) {
-			if (bundleList.length() > 0) {
+			if (!bundleList.isEmpty()) {
 				bundleList.append(",\n");
 			}
 			bundleList.append("        \"").append(bundle).append("\"");
 		}
 		Files.writeString(profile.resolve("package.json"), """
-			{
-			  "name": "dsh-profile-web",
-			  "private": true,
-			  "dependencies": {
-			%s
-			  },
-			  "dsh": {
-			    "profile": {
-			      "bundles": [
-			%s
-			      ]
-			    }
-			  }
-			}
-			""".formatted(dependencies, bundleList));
+				{
+				  "name": "dsh-profile-web",
+				  "private": true,
+				  "dependencies": {
+				%s
+				  },
+				  "dsh": {
+				    "profile": {
+				      "bundles": [
+				%s
+				      ]
+				    }
+				  }
+				}
+				""".formatted(dependencies, bundleList));
 
 		StringBuilder layer = new StringBuilder();
 		for (String row : disabled) {
@@ -219,24 +280,30 @@ class DshInstalledPluginsTest {
 			Files.writeString(packageDirectory.resolve("package.json"), manifest(entry.getKey(), pkg));
 			if (!pkg.rows().isEmpty()) {
 				StringBuilder patch = new StringBuilder("- insert:\n");
-				for (String row : pkg.rows()) {
-					patch.append("    - id: ").append(row).append("\n");
+				for (LoaderRow row : pkg.rows()) {
+					patch.append("    - id: ").append(row.id()).append("\n");
+					if (row.name() != null) {
+						patch.append("      name: '").append(row.name()).append("'\n");
+					}
 				}
 				Files.writeString(packageDirectory.resolve("cordis.patch.yml"), patch.toString());
+			}
+			if (pkg.icon() != null) {
+				Files.writeString(packageDirectory.resolve(pkg.icon()), "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
 			}
 		}
 
 		Path harness = directory.resolve("dsh").resolve("node_modules").resolve("@deepseek-ai").resolve("dsh");
 		Files.createDirectories(harness);
 		Files.writeString(harness.resolve("package.json"), """
-			{
-			  "name": "@deepseek-ai/dsh",
-			  "version": "%s",
-			  "dependencies": {
-			    "@deepseek-ai/dsh-settings": "%s"
-			  }
-			}
-			""".formatted(HARNESS, HARNESS));
+				{
+				  "name": "@deepseek-ai/dsh",
+				  "version": "%s",
+				  "dependencies": {
+				    "@deepseek-ai/dsh-settings": "%s"
+				  }
+				}
+				""".formatted(HARNESS, HARNESS));
 
 		return new DshInstance(id,
 		                       HARNESS,
@@ -255,16 +322,7 @@ class DshInstalledPluginsTest {
 		                       directory.toString());
 	}
 
-	private static String manifest(String name, Pkg pkg) {
-		String peers = pkg.peers() == null ? "" : ",\n  \"peerDependencies\": " + pkg.peers();
-		return """
-			{
-			  "name": "%s",
-			  "version": "%s"%s
-			}
-			""".formatted(name, pkg.installed(), peers);
-	}
+	private record Pkg(String declared, String installed, String peers, String icon, List<LoaderRow> rows) {}
 
-	private record Pkg(String declared, String installed, String peers, List<String> rows) {
-	}
+	private record LoaderRow(String id, String name) {}
 }
