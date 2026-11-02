@@ -25,13 +25,17 @@ import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.instance.DshPortMode;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -64,6 +68,23 @@ class DshRunningRecordTest {
 		assertEquals(Optional.of(ADDRESS), record.webUrl());
 		assertEquals(DshSurface.WEB.name(), record.surface());
 		assertTrue(record.uptime().toSeconds() >= 0);
+	}
+
+	@Test
+	@EnabledOnOs(OS.LINUX)
+	void whatIsWrittenAboutARunningProcessIsReadableOnlyByItsOwner(@TempDir Path directory) throws Exception {
+		DshInstance instance = instanceIn(directory);
+		DshRunningRecord.write(instance, ProcessHandle.current().pid(), 3567, ADDRESS, DshSurface.WEB,
+		                       began());
+
+		Path file = directory.resolve("running.json");
+		assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+		             Files.getPosixFilePermissions(file),
+		             "the address the record carries holds the token");
+		assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+		                        PosixFilePermission.OWNER_EXECUTE),
+		             Files.getPosixFilePermissions(directory),
+		             "the directory is its owner's alone");
 	}
 
 	@Test

@@ -34,16 +34,8 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The shell a terminal is opened with: what it exports, and in what order.
-///
-/// The assertions are the same on every platform and only their spelling
-/// follows the platform's own script, so the suite says the same thing
-/// wherever it runs.
 class DshInstanceTerminalTest {
-	/// Whether the scripts of this platform are the Windows ones.
 	private static final boolean WINDOWS = OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS;
-	/// How this platform separates PATH entries.
-	private static final String SEPARATOR = WINDOWS ? ";" : ":";
 	@TempDir
 	private Path home;
 
@@ -56,7 +48,7 @@ class DshInstanceTerminalTest {
 		                          null);
 	}
 
-	/// How this platform's script assigns a variable.
+	// How this platform's script assigns a variable.
 	private static String assignment(String name, String value) {
 		return WINDOWS ? "set \"" + name + "=" + value + "\"" : "export " + name + "='" + value + "'";
 	}
@@ -84,17 +76,6 @@ class DshInstanceTerminalTest {
 		assertEquals("'it'\\''s'", DshInstanceTerminal.quote("it's"), DshInstanceTerminal.quote("it's"));
 	}
 
-	/// A session on an instance that lives in a folder somebody added opens **there**.
-	///
-	/// The defect this pins: the session's `cd` named `DshPaths.instanceDirectory(id)` — the folder
-	/// the launcher owns under that name — rather than the instance's own directory. For an
-	/// instance in the folder the launcher owns the two are the same string, which is why the test
-	/// above never caught it; for one in an added folder the shell opened somewhere that was
-	/// either missing or another instance's. Measured against a real install, the `codex` instance
-	/// lives in `D:\HDSHL\1\codex` and its terminal opened in `%APPDATA%\.hdsl\instances\codex`.
-	///
-	/// The instance is built the way the manager builds one read out of an added folder: the
-	/// directory is recorded on it, and it is that record every operation resolves through.
 	@Test
 	void aSessionOnAnInstanceInAnAddedFolderOpensThere() throws Exception {
 		Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
@@ -113,14 +94,13 @@ class DshInstanceTerminalTest {
 		                                    null,
 		                                    0,
 		                                    0L).withDirectory(added);
-
 		String script = DshInstanceTerminal.scriptText(moved, null, runtime(bin));
-
 		assertTrue(script.contains(WINDOWS ? "cd /d \"" + added + "\"" : "cd '" + added + "'"), script);
 		assertFalse(script.contains(DshPaths.instanceDirectory("moved").toString()),
 		            "the session stands in the instance's own folder, not the launcher's folder of " +
 		            "the same name:\n" + script);
-		// And the shim it hands the person is the one that runs this instance's harness.
+
+		// The shim handed to the user runs this instance's harness.
 		String shim = DshInstanceTerminal.shimText(moved, runtime(bin));
 		assertTrue(shim.contains(moved.dshEntryPoint().toString()), shim);
 	}
@@ -129,23 +109,18 @@ class DshInstanceTerminalTest {
 	void theScriptStandsWhereTheInstanceStands() throws Exception {
 		Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
 		String script = DshInstanceTerminal.scriptText(instance(Map.of()), null, runtime(bin));
-
 		assertTrue(script.contains(WINDOWS
 		                           ? "cd /d \"" + DshPaths.instanceDirectory("test") + "\""
 		                           : "cd '" + DshPaths.instanceDirectory("test") + "'"), script);
 		assertTrue(script.contains(assignment("DSH_HOME", home.resolve("dsh-home").toString())), script);
-		// The instance's own tools first, and its dsh shim before even those.
-		// The PATH line is taken apart rather than looked for as a whole: what
-		// follows the instance's own entries is the machine's business — an
-		// empty inheritance, or one whose own quoting differs — so the
-		// assertion names the two entries that have to lead and lets the rest
-		// be whatever it is.
+
 		String pathAssignment = WINDOWS ? "set \"PATH=" : "export PATH='";
 		String pathLine = script.lines().filter(line -> line.startsWith(pathAssignment)).findFirst().orElse("");
 		assertFalse(pathLine.isEmpty(), script);
+
 		List<String> path = List.of(pathLine.substring(pathAssignment.length(), pathLine.length() - 1)
 		                                    .split(WINDOWS ? ";" : ":"));
-		String shim = DshInstanceTerminal.directory().resolve("test").resolve("bin").toString();
+		String shim = DshInstanceTerminal.getTermSessionsDir().resolve("test").resolve("bin").toString();
 		assertEquals(shim, path.get(0), pathLine);
 		assertEquals(bin.toString(), path.get(1), pathLine);
 		// A session with no account carries no key.
@@ -197,7 +172,7 @@ class DshInstanceTerminalTest {
 			assertTrue(command.get(command.size() - 4).equalsIgnoreCase("/d"), command.toString());
 			assertTrue(command.get(command.size() - 3).equalsIgnoreCase("/s"), command.toString());
 			assertTrue(command.get(command.size() - 2).equalsIgnoreCase("/c"), command.toString());
-			assertEquals("echo hello", command.get(command.size() - 1), command.toString());
+			assertEquals("echo hello", command.getLast(), command.toString());
 		} else {
 			assertEquals(List.of("/bin/sh", "-c", "echo hello"), command, command.toString());
 		}
