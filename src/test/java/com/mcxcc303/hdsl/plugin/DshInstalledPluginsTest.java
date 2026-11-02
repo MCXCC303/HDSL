@@ -29,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -215,10 +216,26 @@ class DshInstalledPluginsTest {
 		assertEquals("node_modules/dsh-inside", plugin.path());
 	}
 
+	@Test
+	void shouldUseTitlePublishedByPackageAsPluginDisplayName() throws Exception {
+		DshInstance instance = instance("titled", List.of(), Map.of("dsh-titled", withRows("titled-row")), List.of());
+		Path locale = instance.homeDirectory()
+		                      .resolve("profiles")
+		                      .resolve("web")
+		                      .resolve("node_modules")
+		                      .resolve("dsh-titled")
+		                      .resolve("locale");
+		Files.createDirectories(locale);
+		String body = "{\"meta\":{\"title\":\"" + "Plugin Market" + "\"}}";
+		Files.writeString(locale.resolve(Locale.getDefault().getLanguage() + ".json"), body);
+		Files.writeString(locale.resolve("en.json"), body);
+		assertEquals("Plugin Market", only(instance).displayName());
+	}
+
 	private DshInstalledPlugins.Installed only(DshInstance instance) throws Exception {
 		List<DshInstalledPlugins.Installed> plugins = DshInstalledPlugins.of(instance);
 		assertEquals(1, plugins.size(), "the fixture holds one plugin");
-		return plugins.get(0);
+		return plugins.getFirst();
 	}
 
 	private DshInstance instance(String id,
@@ -232,7 +249,7 @@ class DshInstalledPluginsTest {
 		StringBuilder dependencies = new StringBuilder();
 		StringBuilder bundleList = new StringBuilder();
 		for (Map.Entry<String, Pkg> entry : packages.entrySet()) {
-			if (dependencies.length() > 0) {
+			if (!dependencies.isEmpty()) {
 				dependencies.append(",\n");
 			}
 			dependencies.append("    \"")
