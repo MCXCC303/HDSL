@@ -73,8 +73,12 @@ public class TransitionPane extends StackPane {
             newView.setCacheHint(cacheHint);
         }
 
-        // runLater or "init" will not work
+        // Let navigation handlers finish updating the page before preparing it.
         Platform.runLater(() -> {
+            // runLater alone does not guarantee a CSS or layout pass. Keep that
+            // first-use work outside the animation's elapsed time.
+            applyCss();
+            layout();
             Animation newAnimation = transition.animate(
                     this,
                     previousNode,
