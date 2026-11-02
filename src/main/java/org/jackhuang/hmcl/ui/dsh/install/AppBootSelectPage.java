@@ -202,7 +202,6 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
 		content.getTags().clear();
 		content.addTag(i18n(paired ? "dsh.install.app_boot.paired" : "dsh.install.app_boot.departure"));
 		content.setSubtitle(i18n(paired ? "dsh.install.app_boot.hint" : "dsh.install.app_boot.departure.hint"));
-		content.setAlignment(Pos.CENTER);
 
 		// The arrow is part of the row rather than a control of its own: it says
 		// where the row leads, and a press on it is a press on the row.

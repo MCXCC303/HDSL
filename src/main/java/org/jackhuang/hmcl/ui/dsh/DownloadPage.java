@@ -313,7 +313,6 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
 			HBox row = new HBox(16, icon, content, right);
 			row.setAlignment(Pos.CENTER);
-			content.setAlignment(Pos.CENTER);
 			StackPane.setMargin(row, new Insets(10, 16, 10, 16));
 			root.getChildren().setAll(row);
 

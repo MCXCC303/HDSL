@@ -178,7 +178,6 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 			content.addTag(i18n("dsh.instance.upgrade.missing"));
 		}
 		content.setSubtitle(current ? i18n("dsh.instance.upgrade.current.hint") : i18n("dsh.instance.upgrade.hint"));
-		content.setAlignment(Pos.CENTER);
 
 		HBox row = new HBox(16, icon, content);
 		row.setAlignment(Pos.CENTER);
