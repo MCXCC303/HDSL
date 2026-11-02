@@ -37,75 +37,15 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /**
  * The plugins an instance's profile holds, and what is known about each of them.
  * <p>
- * Requirements are judged against the harness packages the instance's installation holds.
+ * Requirements are checked against the harness packages installed for the instance.
  */
 @NotNullByDefault
 public final class DshInstalledPlugins {
-
-	/**
-	 * Whether a plugin is in effect.
-	 */
-	public enum State {
-		/**
-		 * A bundle the profile loads, with none of the loader rows it inserts switched off.
-		 */
-		ACTIVE("active"),
-
-		/**
-		 * A bundle the profile loads, with at least one of the loader rows it inserts switched off.
-		 */
-		DISABLED("disabled"),
-
-		/**
-		 * A dependency the profile does not load as a bundle.
-		 */
-		INACTIVE("inactive"),
-
-		/**
-		 * The profile declares it, but the package is not installed.
-		 */
-		MISSING("missing");
-
-		private final String text;
-
-		State(String text) {
-			this.text = text;
-		}
-
-		/**
-		 * Returns the word this state is written as.
-		 */
-		public String text() {
-			return text;
-		}
-	}
-
-	/**
-	 * One plugin a profile holds.
-	 *
-	 * @param version      the installed version, or `null` when the package is not there
-	 * @param declared     what the profile declares for it, such as a version range or a local path
-	 * @param requirements the harness peer requirements left after wildcards are dropped, as text
-	 * @param path         the path inside the profile, or the directory it links to
-	 * @param rows         the loader row ids its bundle inserts
-	 */
-	public record Installed(String name,
-	                        @Nullable String version,
-	                        String declared,
-	                        String requirements,
-	                        DshPluginVersions.Fit fit,
-	                        State state,
-	                        String path,
-	                        List<String> rows) {
-	}
-
-	private DshInstalledPlugins() {
-	}
+	private DshInstalledPlugins() {}
 
 	/**
 	 * Reads the plugins an instance's profile holds.
 	 *
-	 * @param instance the instance
 	 * @return the plugins, in the order the profile declares them
 	 * @throws DshException when the profile's patch layer cannot be read
 	 */
@@ -123,7 +63,7 @@ public final class DshInstalledPlugins {
 			String name = entry.getKey();
 			Path packageDirectory = directory.resolve("node_modules").resolve(name);
 			JsonObject manifest = DshPluginBundle.readManifest(packageDirectory);
-			List<String> rows = DshPluginPatch.insertedIds(home, profile, name);
+			List<DshPluginPatch.Row> rows = DshPluginPatch.insertedRows(home, profile, name);
 			JsonObject required = requiredOf(manifest);
 			plugins.add(new Installed(name,
 			                          versionOf(manifest),
@@ -132,7 +72,8 @@ public final class DshInstalledPlugins {
 			                          fitOf(required, core),
 			                          stateOf(packageDirectory, bundles.contains(name), rows, disabled),
 			                          pathOf(directory, name, packageDirectory),
-			                          rows));
+			                          rows,
+			                          PluginIcons.iconFile(packageDirectory)));
 		}
 		return List.copyOf(plugins);
 	}
@@ -161,34 +102,26 @@ public final class DshInstalledPlugins {
 	private static String textOf(JsonObject required) {
 		StringBuilder text = new StringBuilder();
 		for (Map.Entry<String, JsonElement> entry : required.entrySet()) {
-			if (text.length() > 0) {
-				text.append(", ");
-			}
+			if (!text.isEmpty()) text.append(", ");
 			text.append(entry.getKey()).append(' ').append(entry.getValue().getAsString());
 		}
 		return text.toString();
 	}
 
 	private static DshPluginVersions.Fit fitOf(JsonObject required, Map<String, String> core) {
-		if (required.size() == 0) {
-			return DshPluginVersions.Fit.UNCLAIMED;
-		}
-		return DshPluginRequirements.fits(required, core)
-		       ? DshPluginVersions.Fit.FITS
-		       : DshPluginVersions.Fit.NOT_FITS;
+		if (required.isEmpty()) return DshPluginVersions.Fit.UNCLAIMED;
+		return DshPluginRequirements.fits(required, core) ? DshPluginVersions.Fit.FITS : DshPluginVersions.Fit.NOT_FITS;
 	}
 
-	private static State stateOf(Path packageDirectory, boolean bundle, List<String> rows, Set<String> disabled) {
-		if (!Files.isDirectory(packageDirectory)) {
-			return State.MISSING;
-		}
-		if (!bundle) {
-			return State.INACTIVE;
-		}
-		for (String row : rows) {
-			if (disabled.contains(row)) {
-				return State.DISABLED;
-			}
+	private static State stateOf(Path packageDirectory,
+	                             boolean bundle,
+	                             List<DshPluginPatch.Row> rows,
+	                             Set<String> disabled) {
+		if (!Files.isDirectory(packageDirectory)) return State.MISSING;
+		if (!bundle) return State.INACTIVE;
+
+		for (DshPluginPatch.Row row : rows) {
+			if (disabled.contains(row.id())) return State.DISABLED;
 		}
 		return State.ACTIVE;
 	}
@@ -215,5 +148,78 @@ public final class DshInstalledPlugins {
 		}
 		JsonElement version = manifest.get("version");
 		return version == null || version.isJsonNull() ? null : version.getAsString();
+	}
+
+	/**
+	 * Whether a plugin is in effect.
+	 */
+	public enum State {
+		/**
+		 * A bundle the profile loads, with all its inserted rows on.
+		 */
+		ACTIVE("active"),
+
+		/**
+		 * A bundle the profile loads, with at least one inserted row off.
+		 */
+		DISABLED("disabled"),
+
+		/**
+		 * A dependency the profile does not load as a bundle.
+		 */
+		INACTIVE("inactive"),
+
+		/**
+		 * The profile declares it, but the package is not installed.
+		 */
+		MISSING("missing");
+
+		private final String text;
+
+		State(String text) {
+			this.text = text;
+		}
+
+		public String text() {
+			return text;
+		}
+	}
+
+	/**
+	 * One plugin a profile holds.
+	 *
+	 * @param version      the installed version, or `null` when the package is not there
+	 * @param declared     what the profile declares, e.g. a range or a local path
+	 * @param requirements the harness peer requirements left after wildcards are dropped, as text
+	 * @param path         the path inside the profile, or the directory it links to
+	 * @param rows         the loader rows its bundle inserts, with the modules they mount
+	 * @param icon         the picture the package declares, or `null` when it declares none that can be read
+	 */
+	public record Installed(String name, @Nullable String version, String declared, String requirements,
+	                        DshPluginVersions.Fit fit, State state, String path, List<DshPluginPatch.Row> rows,
+	                        @Nullable Path icon) {
+
+		/**
+		 * @return the ids, in the order the bundle patch writes them
+		 */
+		public List<String> rowIds() {
+			return rows.stream().map(DshPluginPatch.Row::id).toList();
+		}
+
+		/**
+		 * The row mounting the package itself first
+		 * Then the first row, then the package name.
+		 *
+		 * @return the display name
+		 */
+		public String displayName() {
+			for (DshPluginPatch.Row row : rows) {
+				if (name.equals(row.name())) return row.id();
+			}
+			for (DshPluginPatch.Row row : rows) {
+				if (row.name() != null && row.name().startsWith(name + "/")) return row.id();
+			}
+			return rows.isEmpty() ? name : rows.get(0).id();
+		}
 	}
 }
