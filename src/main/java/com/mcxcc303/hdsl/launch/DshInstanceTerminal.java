@@ -32,12 +32,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -45,8 +41,8 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 /**
  * Opens the system's terminal on an instance, with:
  * <ol>
- * <li>the instance's home (holds some secrets, use {@link DshPermissions})</li>
- * <li>environment</li>
+ * <li>the instance's home</li>
+ * <li>environment (holds some secrets, use {@link DshPermissions})</li>
  * <li>toolchain</li>
  * </ol>
  * <p>
@@ -365,7 +361,7 @@ public final class DshInstanceTerminal {
 		if (account != null && account.carriesAKey()) {
 			environment.put(DshAccountRoute.environmentVariable(account.displayName()), account.apiKey().trim());
 		}
-		String inherited = environment.getOrDefault("PATH", System.getenv("PATH"));
+		String inherited = environment.getOrDefault("PATH", Objects.toString(System.getenv("PATH")));
 		environment.put("PATH",
 		                runtime.binDirectory() +
 		                (inherited.isBlank() ? "" : File.pathSeparator + inherited));

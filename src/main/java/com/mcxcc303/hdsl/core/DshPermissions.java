@@ -44,7 +44,7 @@ public final class DshPermissions {
 	private DshPermissions() {}
 
 	/**
-	 * Gives a path the specified mode.
+	 * Gives a path the specified mode. POSIX only.
 	 */
 	public static void restrict(Path path, Set<PosixFilePermission> mode) {
 		try {
@@ -55,17 +55,16 @@ public final class DshPermissions {
 
 			view.setPermissions(mode);
 		} catch (IOException | UnsupportedOperationException e) {
-			LOG.info("Could not restrict the permissions of " + path, e);
+			LOG.warning("Could not restrict the permissions of " + path, e);
 		}
 	}
 
 	/**
-	 * Creates a file with the mode if it is not there, and gives an existing file the mode.
+	 * Creates a file with the mode if it is not there, and gives an existing file the mode. POSIX only.
 	 *
 	 * @throws IOException when the file cannot be created
 	 */
 	public static void createRestricted(Path file, Set<PosixFilePermission> mode) throws IOException {
-		Files.getFileAttributeView(file, PosixFileAttributeView.class);
 		if (!file.getFileSystem().supportedFileAttributeViews().contains("posix")) return;
 
 		try {
@@ -77,7 +76,7 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Creates a permission restricted directory.
+	 * Creates a permission restricted directory. POSIX only.
 	 *
 	 * @throws IOException when the dir cannot be created
 	 */
@@ -87,7 +86,7 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Writes text into a file with spec mode.
+	 * Writes text into a file with spec mode. POSIX only.
 	 *
 	 * @param text    what to write into it
 	 * @param charset the charset to write it in
