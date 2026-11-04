@@ -157,11 +157,11 @@
 }
 
 .rippler-container {
-    -jfx-rippler-fill: -monet-on-surface-variant;
+    -jfx-feedback-fill: -monet-on-surface;
 }
 
-.advanced-list-item .rippler-container {
-    -jfx-rippler-fill: -monet-on-secondary-container;
+.advanced-list-item:selected .rippler-container {
+    -jfx-feedback-fill: -monet-on-secondary-container;
 }
 
 .advanced-list-item > .rippler-container > .container {
@@ -183,7 +183,7 @@
     -fx-text-alignment: justify;
 }
 
-.advanced-list-item:selected > .rippler-container > .container {
+.advanced-list-item:selected > .rippler-container {
     -fx-background-color: -monet-secondary-container-transparent-50;
 }
 
@@ -212,7 +212,7 @@
     -fx-padding: 8 0 8 16;
 }
 
-.game-directory-list-item:selected > .rippler-container > BorderPane {
+.game-directory-list-item:selected > .rippler-container {
     -fx-background-color: -monet-secondary-container-transparent-50;
 }
 
@@ -258,7 +258,7 @@
 }
 
 .iconed-item {
-    -jfx-rippler-fill: -monet-secondary-container;
+    -jfx-feedback-fill: -monet-secondary-container;
 }
 
 .iconed-item .iconed-item-container {
@@ -269,7 +269,7 @@
 }
 
 .iconed-menu-item {
-    -jfx-rippler-fill: -monet-secondary-container;
+    -jfx-feedback-fill: -monet-secondary-container;
 }
 
 .iconed-menu-item .iconed-item-container {
