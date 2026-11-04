@@ -20,7 +20,7 @@ package org.jackhuang.hmcl.ui.construct;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 import com.jfoenix.controls.JFXButton;
-import com.jfoenix.controls.JFXToggleButton;
+import com.jfoenix.controls.JFXSwitch;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
@@ -40,9 +40,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 /// launcher's otherwise — and the control shows that value and flips it. [#overriddenProperty] says
 /// only whether the value is this instance's own, which is what decides if it is stored.
 @NotNullByDefault
-public final class LineInheritableToggleButton extends LineButtonBase {
+public final class LineInheritableSwitch extends LineButtonBase {
     /// The style class applied to inheritable toggle rows.
-    private static final String DEFAULT_STYLE_CLASS = "line-inheritable-toggle-button";
+    private static final String DEFAULT_STYLE_CLASS = "line-inheritable-switch";
 
     /// The pseudo class applied while the value overrides the inherited setting.
     private static final PseudoClass PSEUDO_OVERRIDDEN = PseudoClass.getPseudoClass("overridden");
@@ -62,12 +62,12 @@ public final class LineInheritableToggleButton extends LineButtonBase {
     /// The tooltip shown on the inheritance button.
     private final Tooltip inheritTooltip;
 
-    /// The visual toggle that displays the value in force.
-    private final JFXToggleButton toggleButton;
+    /// The switch that displays the value in force.
+    private final JFXSwitch switchControl;
 
     /// Creates an inheritable boolean toggle row.
-    public LineInheritableToggleButton() {
-        this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-toggle-button");
+    public LineInheritableSwitch() {
+        this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-switch");
         // The same class the inheritable choice rows wear, so a theme that styles "this row is
         // following the launcher" reaches this row too. The dimming itself is done in `refresh()`
         // rather than by that rule: the rule keys on `.trailing-label`, and this row's value is a
@@ -99,13 +99,11 @@ public final class LineInheritableToggleButton extends LineButtonBase {
             event.consume();
         });
 
-        this.toggleButton = new JFXToggleButton();
-        toggleButton.setMouseTransparent(true);
-        toggleButton.setSize(8);
-        FXUtils.setLimitHeight(toggleButton, 30);
+        this.switchControl = new JFXSwitch();
+        switchControl.setMouseTransparent(true);
 
         setTitleTrailing(inheritButton);
-        setNode(IDX_TRAILING, toggleButton);
+        setRowTrailing(switchControl);
 
         rawValue.addListener(observable -> refresh());
         overridden.addListener(observable -> refresh());
@@ -134,11 +132,11 @@ public final class LineInheritableToggleButton extends LineButtonBase {
         inheritButton.setManaged(inheritAvailable);
         inheritTooltip.setText(inherited ? getInheritedTooltip() : getOverriddenTooltip());
 
-        toggleButton.setSelected(getRawValue());
+        switchControl.setSelected(getRawValue());
         // Following the launcher shows the launcher's answer, and the row has to look like one that
         // is showing somebody else's value: the switch is dimmed until this instance decides for
         // itself, which is what pressing the globe does.
-        toggleButton.setOpacity(inherited ? INHERIT_FAINT : 1.0);
+        switchControl.setOpacity(inherited ? INHERIT_FAINT : 1.0);
     }
 
     /// The raw value stored in this setting.

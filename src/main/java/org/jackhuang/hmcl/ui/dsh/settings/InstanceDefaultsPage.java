@@ -237,7 +237,7 @@ public final class InstanceDefaultsPage extends ScrollPane {
 			}
 		});
 
-		LineToggleButton showLogs = new LineToggleButton();
+		LineSwitch showLogs = new LineSwitch();
 		showLogs.setTitle(i18n("dsh.settings.launcher.show_logs"));
 		showLogs.selectedProperty().bindBidirectional(settings().showLogsProperty());
 
@@ -290,7 +290,7 @@ public final class InstanceDefaultsPage extends ScrollPane {
 	///
 	/// @return the assembled component list
 	private ComponentList buildDebugList() {
-		LineToggleButton debug = new LineToggleButton();
+		LineSwitch debug = new LineSwitch();
 		debug.setTitle(i18n("dsh.settings.debug.log"));
 		debug.setSubtitle(i18n("dsh.settings.debug.log.hint"));
 		debug.selectedProperty().bindBidirectional(settings().debugLogProperty());
