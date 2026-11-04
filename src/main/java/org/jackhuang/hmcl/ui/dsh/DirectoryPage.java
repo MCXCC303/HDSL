@@ -19,7 +19,7 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineFileChooserButton;
-import org.jackhuang.hmcl.ui.construct.LineToggleButton;
+import org.jackhuang.hmcl.ui.construct.LineSwitch;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.PageCloseEvent;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
@@ -52,7 +52,7 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 	private final LineFileChooserButton chooser = new LineFileChooserButton();
 
 	/// Whether to record the folder relative to the launcher's own location.
-	private final LineToggleButton relativePath = new LineToggleButton();
+	private final LineSwitch relativePath = new LineSwitch();
 
 	/// Creates the page.
 	public DirectoryPage() {

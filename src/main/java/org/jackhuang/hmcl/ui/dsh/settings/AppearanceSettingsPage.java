@@ -639,7 +639,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
 	///
 	/// @return the assembled component list
 	private ComponentList buildBackgroundLoadingList() {
-		LineToggleButton cache = new LineToggleButton();
+		LineSwitch cache = new LineSwitch();
 		cache.setTitle(i18n("launcher.background.network.cache"));
 		cache.setSelected(cachePolicy() == NetworkBackgroundImageCachePolicy.ENABLED);
 		cache.selectedProperty()
@@ -709,7 +709,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
 	///
 	/// @return the assembled component list
 	private ComponentList buildWindowList() {
-		LineToggleButton transparentTitleBar = new LineToggleButton();
+		LineSwitch transparentTitleBar = new LineSwitch();
 		transparentTitleBar.setTitle(i18n("settings.launcher.title_transparent"));
 		transparentTitleBar.setSelected(settings().titleBarTransparentProperty().get());
 		transparentTitleBar.selectedProperty().addListener((observable, oldValue, newValue) -> {
@@ -717,7 +717,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
 			settings().titleBarTransparentProperty().set(newValue);
 		});
 
-		LineToggleButton transparentWindow = new LineToggleButton();
+		LineSwitch transparentWindow = new LineSwitch();
 		transparentWindow.setTitle(i18n("settings.launcher.window_transparent"));
 		transparentWindow.setSelected(settings().windowTransparentProperty().get());
 		transparentWindow.selectedProperty().addListener((observable, oldValue, newValue) -> {
@@ -739,7 +739,7 @@ public final class AppearanceSettingsPage extends ScrollPane {
 	private ComponentList buildAnimationList() {
 		ComponentList list = new ComponentList();
 
-		LineToggleButton animations = new LineToggleButton();
+		LineSwitch animations = new LineSwitch();
 		animations.setTitle(i18n("settings.launcher.turn_off_animations"));
 		animations.setSubtitle(i18n("settings.take_effect_after_restart"));
 		// The row asks what the original asks — whether to turn the animations off — so the switch
