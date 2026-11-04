@@ -363,6 +363,7 @@ public class TwoLineListItem extends Region {
         FXUtils.showTooltipWhenTruncated(label);
         @Nullable ReadOnlyBooleanProperty truncated = FXUtils.textTruncatedProperty(label);
         if (truncated != null) {
+            RipplerContainer.enableBackgroundMouseEvents(label);
             label.setMouseTransparent(!truncated.get());
             truncated.addListener((observable, oldValue, newValue) -> {
                 label.setMouseTransparent(!newValue);
@@ -783,6 +784,7 @@ public class TwoLineListItem extends Region {
             collapsedTagCount = values.size();
             collapsedTag.setText("+" + collapsedTagCount);
             collapsedTag.setMouseTransparent(false);
+            RipplerContainer.enableBackgroundMouseEvents(collapsedTag);
             collapsedTag.getStyleClass().add("collapsed-tag");
             collapsedTag.setOnMouseEntered(event -> initializeCollapsedTooltip());
             collapsedTag.fontProperty().addListener(collapsedMetricsListener);
