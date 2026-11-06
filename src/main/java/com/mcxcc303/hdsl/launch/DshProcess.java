@@ -441,10 +441,7 @@ public final class DshProcess {
 		LogLine entry = new LogLine(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO);
 		List<Consumer<LogLine>> listeners;
 		synchronized (logLock) {
-			logLines.addLast(line);
-			while (logLines.size() > MAX_LOG_LINES) {
-				logLines.removeFirst();
-			}
+			appendLog(line);
 			windowLogs.add(entry);
 			while (windowLogs.size() > MAX_LOG_LINES) {
 				windowLogs.removeFirst();
