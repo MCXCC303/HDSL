@@ -124,7 +124,6 @@ public final class DshPermissions {
 	public static void createRestrictedDirectory(Path dir, Set<PosixFilePermission> mode) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
 			createDirectoriesRestricted(dir);
-			restrictToCurrentUser(dir);
 			return;
 		}
 		Files.createDirectories(dir);
@@ -171,8 +170,15 @@ public final class DshPermissions {
 			} catch (FileAlreadyExistsException e) {
 				// Another thread made it between the check above and this call.
 			}
-			restrictToCurrentUser(path);
+			if (!path.equals(absolute)) {
+				// Protected before the child is made, so the child cannot inherit the profile
+				// directory's group access from it.
+				restrictToCurrentUser(path);
+			}
 		}
+		// The leaf itself, and a directory that was already there: an older launcher left the
+		// profile directory's inherited group access on it.
+		restrictToCurrentUser(dir);
 	}
 
 	/**
