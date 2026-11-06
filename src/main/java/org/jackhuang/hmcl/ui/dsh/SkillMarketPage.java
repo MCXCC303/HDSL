@@ -275,6 +275,8 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
 
 		builder.addAction(i18n("mods.install"), () -> install(offering));
 		builder.addAction(i18n("dsh.skills.market.save"), () -> save(offering));
+		builder.addAction(i18n("dsh.skills.market.to_github"),
+		                  () -> Controllers.onHyperlinkAction("https://github.com/" + offering.source()));
 		builder.addCancel(null);
 		Controllers.dialog(builder.build());
 	}
