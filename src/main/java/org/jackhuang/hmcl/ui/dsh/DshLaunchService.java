@@ -570,8 +570,11 @@ public final class DshLaunchService {
 	///
 	/// The window is the original's, with the live feed wired in: the service's own
 	/// stop is the terminate action, so the process's descendants, its post-exit step
-	/// and the launcher's bookkeeping are not lost, and the lines that were already
-	/// collected are shown before the subscription starts delivering new ones.
+	/// and the launcher's bookkeeping are not lost. The lines collected before the
+	/// window opened are added first; a line the subscription delivers afterwards is
+	/// re-posted to the FX queue, which runs after this method's caller returns.
+	///
+	/// Must be called on the FX thread, as constructing and showing the window is.
 	///
 	/// @param process the running process
 	static void openLogWindow(DshProcess process) {

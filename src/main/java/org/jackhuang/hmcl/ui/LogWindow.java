@@ -244,9 +244,9 @@ public final class LogWindow extends Stage {
         }
 
         private void onTerminateGame() {
-            // The action an instance hands in stops the process and waits for it to go, which can
-            // take the whole shutdown grace. Run it off the FX thread: the button's own feedback
-            // must not wait on the process it is stopping.
+            // The action may wait for the process to go — the default one does, and an instance's
+            // stop path can take the same grace — so it is run off the FX thread: the button's own
+            // feedback must not wait on the process it is stopping.
             thread(() -> {
                 try {
                     LogWindow.this.terminateAction.run();
@@ -446,7 +446,13 @@ public final class LogWindow extends Stage {
                 exportLogsButton.setOnAction(e -> getSkinnable().onExportLogs());
 
                 JFXButton terminateButton = new JFXButton(i18n("logwindow.terminate_game"));
-                terminateButton.setOnAction(e -> getSkinnable().onTerminateGame());
+                terminateButton.setOnAction(e -> {
+                    // One request per window. The stop the instance hands in is asynchronous and
+                    // only ends with the process, which would otherwise leave the button live for
+                    // the whole shutdown grace and let a second click run the stop twice.
+                    terminateButton.setDisable(true);
+                    getSkinnable().onTerminateGame();
+                });
 
                 // HDSL launches Node processes, so the JVM jstack dump action
                 // has no meaning here and is not offered.
