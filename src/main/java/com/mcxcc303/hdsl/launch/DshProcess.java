@@ -76,6 +76,14 @@ public final class DshProcess {
 	/// Additional grace after a forced kill before the handle gives up waiting.
 	private static final Duration FORCE_GRACE = Duration.ofSeconds(2);
 
+	/// How long the pump threads are given to hand over what the child left in its pipes.
+	///
+	/// A process that has ended has not necessarily had its last line read: the reader is a
+	/// scheduling delay away from handing it over, and interrupting it instead discards the line.
+	/// The wait is bounded because a descendant that inherited the pipe would otherwise hold it
+	/// open — the same drain [DshCommand] does.
+	private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(2);
+
 	/// The readiness line for the browser surface, including its optional LAN suffix.
 	///
 	/// Three spellings are in the wild, and all three have to be read:
@@ -313,13 +321,16 @@ public final class DshProcess {
 		return Duration.between(startedAt, Instant.now());
 	}
 
-	/// Returns a snapshot of the retained log lines.
-	///
-	/// @return the log lines, oldest first
 	/// Returns the process's output in HMCL's log-window form.
-	/// @return the lines, live: the window appends to what it is given
-	public CircularArrayList<LogLine> windowLogs() {
-		return windowLogs;
+	///
+	/// A snapshot taken under the same lock the pumps write with: the buffer is not safe to walk
+	/// while a child writes, and an export that does can see the list change under it.
+	///
+	/// @return the lines, oldest first
+	public List<LogLine> windowLogs() {
+		synchronized (logLock) {
+			return List.copyOf(windowLogs);
+		}
 	}
 
 	/// Starts following the output, with the lines that arrived before the caller did.
@@ -438,23 +449,7 @@ public final class DshProcess {
 	/// @param line  the text
 	/// @param error whether it arrived on stderr
 	private void onOutput(String line, boolean error) {
-		LogLine entry = new LogLine(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO);
-		List<Consumer<LogLine>> listeners;
-		synchronized (logLock) {
-			appendLog(line);
-			windowLogs.add(entry);
-			while (windowLogs.size() > MAX_LOG_LINES) {
-				windowLogs.removeFirst();
-			}
-			listeners = List.copyOf(logListeners);
-		}
-		for (Consumer<LogLine> listener : listeners) {
-			try {
-				listener.accept(entry);
-			} catch (RuntimeException e) {
-				LOG.warning("Log listener failed", e);
-			}
-		}
+		record(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO);
 		if (plan.surface().isWeb() && webUrl == null) {
 			detectReadiness(line);
 		}
@@ -481,16 +476,42 @@ public final class DshProcess {
 		transitionTo(State.READY);
 	}
 
-	/// Appends a line to the bounded log buffer.
+	/// Records a line, in both buffers and for whoever is following the output.
 	///
-	/// @param line the text to record
-	private void appendLog(String line) {
+	/// The buffers and the listener copy are taken under one lock, so a window that opens while
+	/// a line arrives sees it in its snapshot or in its feed, never both. Listeners are called
+	/// outside the lock and one that throws does not stop the others or the pump.
+	///
+	/// @param line  the text
+	/// @param level the level it is shown at
+	private void record(String line, Log4jLevel level) {
+		LogLine entry = new LogLine(line, level);
+		List<Consumer<LogLine>> listeners;
 		synchronized (logLock) {
 			logLines.addLast(line);
 			while (logLines.size() > MAX_LOG_LINES) {
 				logLines.removeFirst();
 			}
+			windowLogs.add(entry);
+			while (windowLogs.size() > MAX_LOG_LINES) {
+				windowLogs.removeFirst();
+			}
+			listeners = List.copyOf(logListeners);
 		}
+		for (Consumer<LogLine> listener : listeners) {
+			try {
+				listener.accept(entry);
+			} catch (RuntimeException e) {
+				LOG.warning("Log listener failed", e);
+			}
+		}
+	}
+
+	/// Appends a launcher line to the bounded log buffer.
+	///
+	/// @param line the text to record
+	private void appendLog(String line) {
+		record(line, Log4jLevel.INFO);
 	}
 
 	/// Waits for the child to exit and records the outcome.
@@ -498,6 +519,14 @@ public final class DshProcess {
 		try {
 			int code = process.getProcess().waitFor();
 			exitCode = code;
+			// The child is gone, but what it wrote last may still be in the pipe. The readers are
+			// waited for before they are interrupted, so the last line — often the interesting
+			// one — reaches the live window and the crash export.
+			try {
+				process.awaitRelatedThreads(DRAIN_TIMEOUT);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
 			process.destroyRelatedThreads();
 			// The instance is not running any more, and this is the one path every ending takes —
 			// whatever the exit code, and whether or not anybody attached a state listener. The

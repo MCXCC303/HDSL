@@ -300,6 +300,30 @@ class DshProcessLifecycleTest {
 	}
 
 	@Test
+	void anUnsubscribedLogFollowerIsNotToldOfLaterLines() throws Exception {
+		requireNode();
+		DshInstance instance = makeInstance(Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString(), "DSH_TEST_TICK", "1"));
+		DshProcess process = DshProcessManager.launch(instance);
+		List<LogLine> received = new CopyOnWriteArrayList<>();
+		try {
+			await(() -> DshProcessManager.stateOf(instance.id()) == LaunchState.RUNNING,
+			      "the stub surface to report ready");
+			DshProcess.LogFeed feed = process.followLogs(received::add);
+			await(() -> received.stream().anyMatch(line -> "live-tick".equals(line.getLog())),
+			      "a live line before unsubscribing");
+			feed.unsubscribe().run();
+			// A line already in flight when unsubscribe returned may still arrive; after that the
+			// stub keeps ticking, and none of those ticks may be delivered.
+			Thread.sleep(500);
+			int settled = received.size();
+			Thread.sleep(2000);
+			assertEquals(settled, received.size(), "an unsubscribed follower is not told of later lines");
+		} finally {
+			DshProcessManager.stop(instance.id());
+		}
+	}
+
+	@Test
 	@EnabledOnOs(OS.WINDOWS)
 	void stoppingAnInstanceTakesItsChildrenWithIt() throws Exception {
 		requireNode();
