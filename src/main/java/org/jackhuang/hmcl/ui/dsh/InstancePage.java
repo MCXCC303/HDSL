@@ -28,8 +28,8 @@ import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshInstanceTerminal;
 import com.mcxcc303.hdsl.launch.DshProcessManager;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
+import com.mcxcc303.hdsl.plugin.DshInstalledPlugins;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
@@ -37,7 +37,6 @@ import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.scene.Node;
 import javafx.scene.control.Label;
-import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.util.Duration;
@@ -51,13 +50,15 @@ import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 import org.jackhuang.hmcl.ui.dsh.settings.InstanceSettingsPage;
-import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,7 +71,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  * Shows one instance and manages what is installed into its profile.
  */
 @NotNullByDefault
-public final class InstancePage extends DecoratorAnimatedPage implements DecoratorPage, PageAware, Refreshable {
+public final class InstancePage extends DecoratorAnimatedPage implements DecoratorPage, PageAware {
 	private final DshInstance instance;
 
 	// The page state published to the window decorator.
@@ -82,7 +83,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	private final TabHeader.Tab<WorkspaceListPage> sessionsTab = new TabHeader.Tab<>("dshInstanceSessions");
 	private final TabHeader.Tab<PluginListPage> pluginsTab = new TabHeader.Tab<>("dshInstancePlugins");
 	private final TabHeader.Tab<SkillListPage> skillsTab = new TabHeader.Tab<>("dshInstanceSkills");
-	private final TabHeader.Tab<ScrollPane> detailsTab = new TabHeader.Tab<>("dshInstanceDetails");
 
 	// The animated content pane shared by the tabs.
 	private final TransitionPane transitionPane = new TransitionPane();
@@ -97,9 +97,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	private final ComponentList pluginList = new ComponentList();
 	private final Label pluginStatus = new Label();
 
-	/**
-	 * @param instance the instance to show
-	 */
 	public InstancePage(DshInstance instance) {
 		this(instance, null);
 	}
@@ -120,16 +117,14 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		sessionsTab.setNodeSupplier(() -> new WorkspaceListPage(instance));
 		pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
 		skillsTab.setNodeSupplier(() -> new SkillListPage(instance));
-		detailsTab.setNodeSupplier(this::buildDetailsTab);
 
 		// keep this tab
-		tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, skillsTab, sessionsTab, detailsTab);
+		tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, skillsTab, sessionsTab);
 		TabHeader.Tab<?> initial = switch (initialTab == null ? "" : initialTab.trim().toLowerCase(Locale.ROOT)) {
 			case "installers" -> installersTab;
 			case "plugins" -> pluginsTab;
 			case "skills" -> skillsTab;
 			case "sessions" -> sessionsTab;
-			case "details" -> detailsTab;
 			default -> settingsTab;
 		};
 		tab.select(initial, false);
@@ -158,12 +153,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 				                        sessionsTab,
 				                        i18n("dsh.instance.sessions"),
 				                        SVG.PACKAGE2,
-				                        SVG.PACKAGE2_FILL)
-				.addNavigationDrawerTab(tab,
-				                        detailsTab,
-				                        i18n("dsh.instance.details"),
-				                        SVG.INFO,
-				                        SVG.INFO_FILL);
+				                        SVG.PACKAGE2_FILL);
 
 		launchItem.getStyleClass().add("navigation-drawer-item");
 		launchItem.setOnAction(event -> testLaunch());
@@ -249,59 +239,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	public void refresh() {
 		refreshPlugins();
 		refreshLaunchItem();
-	}
-
-	/// Builds the details tab.
-	///
-	/// @return the tab content
-	private ScrollPane buildDetailsTab() {
-		String runtime = instance.nodeRuntimeOrDefault();
-
-		ComponentList list = new ComponentList();
-		list.getContent().add(buildDetail(i18n("dsh.install.step.version"), instance.version()));
-		list.getContent().add(buildDetail(i18n("dsh.instance.profile"), instance.profile()));
-		list.getContent()
-		    .add(buildDetail(i18n("dsh.install.home"),
-		                     i18n("dsh.instance.home." + instance.homeMode().name().toLowerCase(Locale.ROOT))));
-		// The runtime is shown by name, not by its stored key: "system" is what
-		// the manifest holds, not what the rest of the interface calls it.
-		list.getContent()
-		    .add(buildDetail(i18n("dsh.node.title"),
-		                     DshNodeRuntime.SYSTEM.equals(runtime) ? i18n("dsh.install.node.system") : runtime));
-		list.getContent().add(buildDetail(i18n("dsh.install.workspace"), instance.workspace()));
-
-		LineButton open = new LineButton();
-		open.setTitle(i18n("dsh.instance.open_home"));
-		open.setOnAction(event -> {
-			try {
-				FXUtils.showFileInExplorer(instance.instanceDirectory());
-			} catch (DshException e) {
-				Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-			}
-		});
-		list.getContent().add(open);
-
-		// A section title above the card, as every list in the original has, and
-		// the same card-list class the settings tab uses for its spacing.
-		VBox root = new VBox(ComponentList.createComponentListTitle(i18n("settings.game.section.basic")), list);
-		root.getStyleClass().add("card-list");
-
-		ScrollPane scroll = new ScrollPane(root);
-		scroll.setFitToWidth(true);
-		FXUtils.smoothScrolling(scroll);
-		return scroll;
-	}
-
-	/// Builds one read-only detail row.
-	///
-	/// @param title the label
-	/// @param value the value
-	/// @return the row
-	private Node buildDetail(String title, String value) {
-		LineTextPane row = new LineTextPane();
-		row.setTitle(title);
-		row.setText(value == null ? "" : value);
-		return row;
 	}
 
 	/// Shows the folders this instance owns.
@@ -399,10 +336,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
 	}
 
-	/// Returns the instance directory, or `null` when it cannot be resolved.
-	///
-	/// @return the directory
-	private Path instanceDirectoryOrNull() {
+	private @Nullable Path instanceDirectoryOrNull() {
 		try {
 			return instance.instanceDirectory();
 		} catch (DshException e) {
@@ -410,11 +344,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}
 	}
 
-	/// Returns a directory inside the instance's home, or the home itself.
-	///
-	/// @param name the directory name, or an empty string for the home
-	/// @return the path, or `null` when the home cannot be resolved
-	private Path homeChild(String name) {
+	private @Nullable Path homeChild(String name) {
 		try {
 			Path home = instance.homeDirectory();
 			return name.isEmpty() ? home : home.resolve(name);
@@ -548,16 +478,13 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}, null);
 	}
 
-	/// Rebuilds the plugin list from the profile manifest on disk.
+	// Rebuilds the plugin list from the profile's manifest on disk.
 	private void refreshPlugins() {
 		pluginList.getContent().clear();
 
-		Map<String, String> dependencies;
-		List<String> bundles;
+		List<DshInstalledPlugins.Installed> plugins;
 		try {
-			Path home = instance.homeDirectory();
-			dependencies = DshPluginInstaller.readDependencies(home, instance.profile());
-			bundles = DshPluginInstaller.readBundles(home, instance.profile());
+			plugins = DshInstalledPlugins.of(instance);
 		} catch (DshException e) {
 			pluginStatus.setText(e.getMessage());
 			return;
@@ -566,8 +493,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		// Only the packages the user added; the in-box bundles every profile
 		// starts with are not the user's to manage.
 		int shown = 0;
-		for (Map.Entry<String, String> entry : dependencies.entrySet()) {
-			pluginList.getContent().add(buildPluginRow(entry.getKey(), entry.getValue(), bundles));
+		for (DshInstalledPlugins.Installed plugin : plugins) {
+			pluginList.getContent().add(buildPluginRow(plugin));
 			shown++;
 		}
 		if (shown == 0) {
@@ -579,23 +506,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		pluginStatus.setText(i18n("dsh.instance.plugins.count", shown));
 	}
 
-	/// Builds one installed-plugin row.
-	///
-	/// @param name    the package name
-	/// @param version the declared version range
-	/// @param bundles the profile's active bundle list
-	/// @return the row
-	private LineButton buildPluginRow(String name, String version, List<String> bundles) {
-		boolean active = bundles.contains(name);
+	private LineButton buildPluginRow(DshInstalledPlugins.Installed plugin) {
+		boolean bundle = plugin.state() == DshInstalledPlugins.State.ACTIVE ||
+		                 plugin.state() == DshInstalledPlugins.State.DISABLED;
 
 		JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE, 18);
-		remove.setOnAction(event -> removePlugin(name));
+		remove.setOnAction(event -> removePlugin(plugin.name()));
 
 		LineButton row = new LineButton();
-		row.setTitle(name);
-		row.setSubtitle(active
-		                ? i18n("dsh.instance.plugins.active", version)
-		                : i18n("dsh.instance.plugins.inactive", version));
+		row.setTitle(plugin.displayName());
+		row.setSubtitle(bundle
+		                ? i18n("dsh.instance.plugins.active", plugin.declared())
+		                : i18n("dsh.instance.plugins.inactive", plugin.declared()));
 		row.setRowTrailing(remove);
 		return row;
 	}

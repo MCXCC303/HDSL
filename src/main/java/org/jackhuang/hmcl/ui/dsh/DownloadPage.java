@@ -63,93 +63,39 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists the DeepSeek Harness versions that can be installed.
-///
-/// The shape is HMCL's download page: a toolbar carrying a name filter, a type
-/// filter and a refresh, above a flat list of versions. Each row states what the
-/// release is and when it was published, offers its upstream release page, and
-/// installs it.
-///
-/// Only the game section is reproduced. The original's other categories — mods,
-/// resource packs, shaders, worlds — search for content to install *into* an
-/// instance, which is a different problem and is deliberately not attempted
-/// here.
+/**
+ * The download page: a filterable list of the installable versions, and the pack, plugin and
+ * skill markets.
+ */
 @NotNullByDefault
 public final class DownloadPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
-	/// The upstream repository, where each version's release page lives.
+	// A version's upstream release page is this prefix followed by the version.
 	private static final String RELEASES = "https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v";
 
-	/// The page state published to the window decorator.
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("download")));
-
-	/// The name box and type filter, shared with the other version lists.
 	private final VersionFilterBar filterBar = new VersionFilterBar(this::applyFilter, this::refresh);
 
-	/// The tab showing the published versions.
 	private final TabHeader.Tab<Node> versionsTab = new TabHeader.Tab<>("dshDownloadVersions");
-
-	/// The tab showing the community's plugins.
 	private final TabHeader.Tab<PluginMarketPage> marketTab = new TabHeader.Tab<>("dshDownloadPlugins");
-
-	/// The instance the plugin market was last opened for.
-	///
-	/// Held by the tab rather than by the market page, because the page is built when its tab is first
-	/// shown and the instance is named before that: 下载 on an instance's plugin list navigates here
-	/// and says which instance it came from.
-	private final AtomicReference<DshInstance> marketInstance = new AtomicReference<>();
-
-	/// The tab showing the community's modpacks.
-	///
-	/// A tab of its own rather than a section of the plugin market, because the two are different
-	/// kinds of thing: a plugin is installed *into* an instance and a pack *brings* one. The
-	/// original separates them the same way, its content tab listing packs, mods and resource packs
-	/// as separate pages.
 	private final TabHeader.Tab<PackMarketPage> packTab = new TabHeader.Tab<>("dshDownloadPacks");
-
-	/// The tab showing the community's skill packs.
-	///
-	/// A skill pack is content for an instance, like a plugin, but it comes from a git
-	/// repository rather than a package registry, so it needs its own list.
 	private final TabHeader.Tab<SkillMarketPage> skillsTab = new TabHeader.Tab<>("dshDownloadSkills");
 
-	/// The pane the two tabs are shown in.
 	private final TransitionPane tabs = new TransitionPane();
-
-	/// The tab strip.
 	private final TabHeader tab;
-
-	/// The list of versions.
 	private final JFXListView<DshRelease> releaseList = new JFXListView<>();
-
-	/// What the page shows: the spinner, the list, or a notice.
-	///
-	/// The original's version list is built this way, and the reason is that a
-	/// list which is loading, empty and full are three different things to say —
-	/// swapping them with a fade is how it says which one it means.
 	private final TransitionPane contentPane = new TransitionPane();
-
-	/// The spinner shown while the registry is being read.
-	///
-	/// The original's own spinner control, because the rotation and its timing
-	/// are the interface's: a hand-drawn busy indicator would spin differently.
 	private final JFXSpinner spinner = new JFXSpinner();
-
-	/// What the page is doing.
 	private final ObjectProperty<Status> status = new SimpleObjectProperty<>(Status.LOADING);
 
-	/// Everything the last load returned, before filtering.
+	// The last successful load, before filtering.
 	private List<DshRelease> loaded = List.of();
-
-	/// Whether a load is running.
 	private boolean busy;
 
-	/// Creates the download page.
 	public DownloadPage() {
 		tab = new TabHeader(tabs);
 
@@ -178,14 +124,6 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		FXUtils.setLimitWidth(sideBar, 200);
 		setLeft(sideBar);
 
-		// The original puts the toolbar above the list rather than inside it:
-		// a BorderPane's top, carrying the `card` class and inset by ten on
-		// three sides. `card` is what makes it float — a surface-container at
-		// eighty per cent with a drop shadow — and sitting on the list instead
-		// of in it is what lets the shadow read.
-		//
-		// The list below keeps the ComponentList surface: it wraps each child in
-		// a node wearing `options-list-item`, whose rule carries `-monet-surface`.
 		StackPane pane = new StackPane();
 		pane.setPadding(new Insets(10));
 		pane.getStyleClass().add("notice-pane");
@@ -193,13 +131,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		ComponentList root = new ComponentList();
 		root.getStyleClass().add("no-padding");
 		root.getContent().add(releaseList);
-		// See the note on the instance list: the box applies this to its own wrapper.
 		ComponentList.setVgrow(releaseList, Priority.ALWAYS);
 		pane.getChildren().setAll(root);
 
-		// Nothing published at all reads differently from nothing matching what
-		// was typed, so the first is a notice and the second is the list saying
-		// so itself, as every other searchable list in the interface does.
 		StackPane placeholder = new StackPane();
 		placeholder.getStyleClass().add("notice-pane");
 		placeholder.getChildren().add(new Label(i18n("search.no_results_found")));
@@ -209,8 +143,6 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		emptyPane.getStyleClass().add("notice-pane");
 		emptyPane.getChildren().add(new Label(i18n("dsh.versions.available.empty")));
 
-		// A failed read is worth retrying, and the original says so on the page
-		// rather than in a dialog that has to be dismissed first.
 		StackPane failedPane = new StackPane();
 		failedPane.getStyleClass().add("notice-pane");
 		Label retry = new Label(i18n("download.failed.refresh"));
@@ -232,32 +164,25 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		layout.setCenter(contentPane);
 
 		versionsTab.setNodeSupplier(() -> layout);
-		marketTab.setNodeSupplier(() -> {
-			PluginMarketPage page = new PluginMarketPage();
-			// The instance the market was opened for, which is the tab's only chance to hear it: the
-			// page is built the first time the tab is shown, and clicking 下载 on an instance's plugin
-			// list is what opens it.
-			page.showInstance(marketInstance.get());
-			return page;
-		});
+		marketTab.setNodeSupplier(PluginMarketPage::new);
 		packTab.setNodeSupplier(PackMarketPage::new);
 		skillsTab.setNodeSupplier(SkillMarketPage::new);
 		tab.getTabs().setAll(versionsTab, packTab, marketTab, skillsTab);
 		tab.select(versionsTab, false);
 
 		setCenter(tabs);
-
 		releaseList.setCellFactory(view -> new ReleaseCell(this));
-
 		refresh();
 	}
 
-	/// Selects one of the page's tabs by name.
-	///
-	/// @param name the tab name: `versions` or `plugins`
-	/// @return whether a tab was selected
+	/**
+	 * Selects a tab by name.
+	 *
+	 * @param name the tab name: `versions`, `packs`, `plugins` or `skills`
+	 * @return whether a tab was selected
+	 */
 	public boolean openTab(String name) {
-		switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
+		switch (name.trim().toLowerCase(Locale.ROOT)) {
 			case "versions" -> tab.select(versionsTab, false);
 			case "packs" -> tab.select(packTab, false);
 			case "plugins" -> tab.select(marketTab, false);
@@ -269,25 +194,17 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		return true;
 	}
 
-	/// Opens the plugin market for a particular instance.
-	///
-	/// What 下载 on an instance's own plugin list means: install one **into this instance**. The
-	/// market's picker follows the launcher's selection instead, and opening an instance does not
-	/// select it — the radio button in the list does — so a person who had selected one instance and
-	/// was looking at another installed into the one they had selected and never saw it. Reported as:
-	/// installed into `0.1.7-rc.2-2`, appeared in `0.0.1-rc.5`.
-	///
-	/// @param instance the instance the market is being opened for, or `null` to leave the picker to
-	///                 the launcher's selection as before
-	/// @return whether the market was opened
-	public boolean openPluginsFor(@Nullable DshInstance instance) {
-		marketInstance.set(instance);
+	/**
+	 * Opens the plugin market for an instance.
+	 *
+	 * @param instance the instance to install into, or `null` to follow the launcher's selection
+	 */
+	public void openPluginsFor(@Nullable DshInstance instance) {
+		openTab("plugins");
 		PluginMarketPage page = marketTab.getNode();
 		if (page != null) {
-			// Already built: the tab is built once and reused, so the picker has to be moved here.
 			page.showInstance(instance);
 		}
-		return openTab("plugins");
 	}
 
 	@Override
@@ -297,9 +214,8 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
 	@Override
 	public void refresh() {
-		if (busy) {
-			return;
-		}
+		if (busy) return;
+
 		busy = true;
 		status.set(Status.LOADING);
 
@@ -325,84 +241,49 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		}));
 	}
 
-	/// Rebuilds the list from the loaded releases and the current filters.
+	// Rebuilds the list from the last load and the current filters.
 	private void applyFilter() {
 		List<DshRelease> shown = new ArrayList<>();
 		for (DshRelease release : loaded) {
-			if (filterBar.accepts(release.version())) {
-				shown.add(release);
-			}
+			if (filterBar.accepts(release.version())) shown.add(release);
 		}
 
 		releaseList.getItems().setAll(shown);
 		releaseList.refresh();
 	}
 
-	/// Builds the toolbar above the list.
-	///
-	/// @return the toolbar
 	private VersionFilterBar buildToolbar() {
 		Label nameLabel = new Label(i18n("download.name"));
-		// The bar brings its own card and padding, as the page it came from did.
 		BorderPane.setMargin(filterBar, new Insets(10, 10, 0, 10));
 		return filterBar;
 	}
 
-	/// Starts installing a version into a new instance.
-	///
-	/// Installing is creating an instance pinned to that version, which is what
-	/// the original does too: there is no such thing as a version installed
-	/// outside an instance here.
-	///
-	/// @param release the release to install
+	/**
+	 * Starts installing a version into a new instance.
+	 *
+	 * @param release the release to install
+	 */
 	private void install(DshRelease release) {
 		Controllers.getDecorator()
 		           .startWizard(new DshInstallWizardProvider(release.version()), i18n("dsh.instance.create"));
 	}
 
-	/// What a load is doing, and therefore what the page shows.
+	// What a load is doing; selects which pane contentPane shows.
 	private enum Status {
-		/// The registry is being read.
-		LOADING,
-		/// The registry answered.
-		SUCCESS,
-		/// The registry could not be read.
-		FAILED
+		LOADING, SUCCESS, FAILED
 	}
 
-	/// One row of the version list.
-	///
-	/// The shape is the original's download row: the version, a chip naming what
-	/// kind of release it is, when it was published beneath, and the two actions
-	/// on the trailing edge — the upstream release page and installing it.
 	private static final class ReleaseCell extends ListCell<DshRelease> {
-		/// The page whose action the install button runs.
 		private final DownloadPage page;
-
-		/// The version icon.
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The version, its chip and its date.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button opening the upstream release page.
 		private final JFXButton link = FXUtils.newToggleButton4(SVG.PUBLIC);
-
-		/// The button installing the version.
 		private final JFXButton install = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
-
-		/// The row's graphic, re-installed for every item.
+		// The same node is put back for every non-empty item; ListCell clears it for empty ones.
 		private final RipplerContainer graphic;
 
-		/// Creates the cell.
-		///
-		/// @param page the page the row's install action belongs to
 		ReleaseCell(DownloadPage page) {
 			this.page = page;
-			// The original's row: a stack carrying the separator, an HBox inside
-			// it, and the whole thing inside a rippler. The margin is the part
-			// that shows — ten above and below against the eight this had, which
-			// is the four pixels by which its rows were shorter.
 			StackPane root = new StackPane();
 			root.getStyleClass().add("md-list-cell");
 
@@ -415,31 +296,21 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 			FXUtils.installFastTooltip(install, i18n("download.install"));
 			link.setOnAction(event -> {
 				DshRelease release = getItem();
-				if (release != null) {
-					FXUtils.openLink(RELEASES + release.version());
-				}
+				FXUtils.openLink(RELEASES + release.version());
 			});
 			install.setOnAction(event -> {
 				DshRelease release = getItem();
-				if (release != null) {
-					page.install(release);
-				}
+				page.install(release);
 			});
 			right.getChildren().setAll(link, install);
 
-			// Sixteen between the icon, the text and the actions, centred — the
-			// original's row. Without the spacing the text sits against the icon,
-			// which reads as a tighter list than the original's.
 			HBox row = new HBox(16, icon, content, right);
 			row.setAlignment(Pos.CENTER);
-			content.setAlignment(Pos.CENTER);
 			StackPane.setMargin(row, new Insets(10, 16, 10, 16));
 			root.getChildren().setAll(row);
 
-			// The whole row opens the install page, as its arrow does — the
-			// arrow is the mark that says so, not the only place that works.
-			// The two buttons take their clicks first, so a press on either does
-			// not also open what the row would.
+			// A press on the row installs the version, so the buttons consume their own clicks
+			// otherwise clicking either of them installs as well.
 			for (Node button : new Node[]{link, install}) {
 				button.addEventFilter(MouseEvent.MOUSE_CLICKED, Event::consume);
 			}
@@ -447,7 +318,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 			RipplerContainer rippler = new RipplerContainer(root);
 			rippler.setOnMouseClicked(event -> {
 				DshRelease release = getItem();
-				if (release != null && event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 1) {
+				if (event.getButton() == MouseButton.PRIMARY && event.getClickCount() == 1) {
 					page.install(release);
 					event.consume();
 				}
@@ -462,7 +333,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		protected void updateItem(@Nullable DshRelease release, boolean empty) {
 			super.updateItem(release, empty);
 
-			if (empty || release == null) {
+			if (empty) {
 				setGraphic(null);
 				return;
 			}
@@ -473,9 +344,6 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 			content.setTitle(release.version());
 			content.getTags().clear();
 			content.addTag(i18n("download.type." + release.type().id()));
-			// The original formats a release date with the localising helper
-			// rather than a fixed pattern, so the date reads the way dates read
-			// in the interface's language.
 			content.setSubtitle(release.publishedAt() == null
 			                    ? i18n("dsh.session.unknown_time")
 			                    : I18n.formatDateTime(Instant.parse(release.publishedAt())));

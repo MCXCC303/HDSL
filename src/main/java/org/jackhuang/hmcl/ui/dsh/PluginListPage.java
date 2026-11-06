@@ -23,11 +23,7 @@ import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
-import com.mcxcc303.hdsl.plugin.DshLocalPlugins;
-import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
-import com.mcxcc303.hdsl.plugin.DshPluginPatch;
-import com.mcxcc303.hdsl.plugin.DshPluginSources;
-import com.mcxcc303.hdsl.plugin.PluginIcons;
+import com.mcxcc303.hdsl.plugin.*;
 import javafx.collections.ListChangeListener;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -49,11 +45,12 @@ import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.annotations.Unmodifiable;
 
 import java.io.File;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -96,6 +93,39 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		refresh();
 	}
 
+	/**
+	 * Reports whether the patch layer can switch the plugin off.
+	 *
+	 * <p>A switch writes {@code disabled: true} onto the rows the bundle inserts, so only a
+	 * loaded bundle with rows qualifies.
+	 *
+	 * @return whether the plugin has switchable rows
+	 */
+	private static boolean switchable(DshInstalledPlugins.Installed plugin) {
+		return !plugin.rowIds().isEmpty() &&
+		       (plugin.state() == DshInstalledPlugins.State.ACTIVE ||
+		        plugin.state() == DshInstalledPlugins.State.DISABLED);
+	}
+
+	/**
+	 * Reads the picture a package declares for itself.
+	 *
+	 * @param file the picture, or {@code null} when the package declares none
+	 * @return the picture, or {@code null} when it cannot be shown
+	 */
+	private static @Nullable Image iconOf(@Nullable Path file) {
+		if (file == null) {
+			return null;
+		}
+		try {
+			Image image = FXUtils.loadImage(file, 32, 32, true, true);
+			return image.isError() || image.getWidth() <= 0 ? null : image;
+		} catch (Exception e) {
+			LOG.warning("Could not read the icon " + file, e);
+			return null;
+		}
+	}
+
 	@Override
 	protected Skin<?> createDefaultSkin() {
 		return new PluginListPageSkin(this);
@@ -111,26 +141,11 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
 		CompletableFuture.supplyAsync(() -> {
 			try {
-				Path home = instance.homeDirectory();
-				String profile = instance.profile();
-				Map<String, String> dependencies = DshPluginInstaller.readDependencies(home, profile);
-				List<String> bundles = DshPluginInstaller.readBundles(home, profile);
-				Set<String> disabled = DshPluginPatch.disabledIds(home, profile);
-				Map<String, List<String>> inserted = new LinkedHashMap<>();
-				Map<String, Image> icons = new LinkedHashMap<>();
-				Path packages = DshPluginPatch.profileDirectory(home, profile).resolve("node_modules");
-				for (String name : dependencies.keySet()) {
-					inserted.put(name, DshPluginPatch.insertedIds(home, profile, name));
-					Image icon = iconOf(packages.resolve(name));
-					if (icon != null) {
-						icons.put(name, icon);
-					}
-				}
-				return new Loaded(dependencies, bundles, disabled, inserted, icons);
+				return DshInstalledPlugins.of(instance);
 			} catch (DshException e) {
 				throw new CompletionException(e);
 			}
-		}, Schedulers.io()).whenComplete((loaded, throwable) -> runInFX(() -> {
+		}, Schedulers.io()).whenComplete((installed, throwable) -> runInFX(() -> {
 			busy = false;
 			setLoading(false);
 			if (throwable != null) {
@@ -143,38 +158,15 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 			}
 
 			List<PluginRow> rows = new ArrayList<>();
-			for (Map.Entry<String, String> entry : loaded.dependencies().entrySet()) {
-				if (!toolbar.accepts(entry.getKey())) {
+			for (DshInstalledPlugins.Installed plugin : installed) {
+				if (!toolbar.accepts(plugin.name()) && !toolbar.accepts(plugin.displayName())) {
 					continue;
 				}
-				List<String> own = loaded.inserted().getOrDefault(entry.getKey(), List.of());
-				boolean active = loaded.bundles().contains(entry.getKey());
-				boolean disabled = own.stream().anyMatch(loaded.disabled()::contains);
-				rows.add(new PluginRow(entry.getKey(), entry.getValue(), active, active && !own.isEmpty(), disabled,
-				                           loaded.icons().get(entry.getKey())));
+				rows.add(new PluginRow(plugin.name(), plugin.displayName(), plugin.declared(), plugin.state(),
+				                       switchable(plugin), iconOf(plugin.icon())));
 			}
 			getItems().setAll(rows);
 		}));
-	}
-
-	/**
-	 * Reads the picture a package declares for itself.
-	 *
-	 * @param packageDirectory the package directory
-	 * @return the picture, or {@code null} when the package declares none that can be shown
-	 */
-	private static @Nullable Image iconOf(Path packageDirectory) {
-		Path file = PluginIcons.iconFile(packageDirectory);
-		if (file == null) {
-			return null;
-		}
-		try {
-			Image image = FXUtils.loadImage(file, 32, 32, true, true);
-			return image.isError() || image.getWidth() <= 0 ? null : image;
-		} catch (Exception e) {
-			LOG.warning("Could not read the icon of " + packageDirectory, e);
-			return null;
-		}
 	}
 
 	/// Removes the given plugins after confirmation.
@@ -210,7 +202,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	/// @param box the tick box, disabled while the write runs
 	private void toggle(PluginRow row, JFXCheckBox box) {
 		box.setDisable(true);
-		apply(List.of(row), !row.enabled());
+		apply(List.of(row), row.state() != DshInstalledPlugins.State.ACTIVE);
 	}
 
 	/// Switches the selected plugins on or off.
@@ -221,7 +213,10 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	/// @param rows    the selected rows
 	/// @param enabled whether they should run
 	private void setEnabled(Collection<PluginRow> rows, boolean enabled) {
-		List<PluginRow> targets = rows.stream().filter(row -> row.toggleable() && row.enabled() != enabled).toList();
+		DshInstalledPlugins.State wanted = enabled
+		                                   ? DshInstalledPlugins.State.DISABLED
+		                                   : DshInstalledPlugins.State.ACTIVE;
+		List<PluginRow> targets = rows.stream().filter(row -> row.switchable() && row.state() == wanted).toList();
 		if (!targets.isEmpty()) {
 			apply(targets, enabled);
 		}
@@ -260,8 +255,8 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	/// so without this, 下载 installed into an instance the person was not looking at.
 	private void openMarket() {
 		DownloadPage page = Controllers.getDownloadPage();
-		Controllers.navigate(page);
 		page.openPluginsFor(instance);
+		Controllers.navigate(page);
 	}
 
 	/// Installs a plugin from a packed file the user chooses.
@@ -417,36 +412,16 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	/**
 	 * One installed plugin.
 	 *
-	 * @param name       the package name
-	 * @param version    the declared version range
-	 * @param active     whether the package is an active bundle
-	 * @param toggleable whether its own loader rows can be switched
-	 * @param disabled   whether the profile's patch layer switches it off
-	 * @param icon       the picture the package declares, or {@code null} when it declares none
-	 *                  that can be read
+	 * @param name        the package name
+	 * @param displayName the name the plugin goes by in the harness
+	 * @param declared    the declared version range
+	 * @param state       whether the profile loads it, and whether its own rows are switched off
+	 * @param switchable  whether its own loader rows can be switched
+	 * @param icon        the picture the package declares, or {@code null} when it declares none
+	 *                    that can be read
 	 */
-	public record PluginRow(String name, String version, boolean active, boolean toggleable, boolean disabled,
-	                        @Nullable Image icon) {
-		/// Returns whether the plugin is running.
-		///
-		/// @return whether it is an active bundle the patch layer does not disable
-		public boolean enabled() {
-			return active && !disabled;
-		}
-	}
-
-	/**
-	 * The loaded dependency map, bundle list, patch state and insert rows.
-	 *
-	 * @param dependencies the declared dependencies
-	 * @param bundles      the profile's active bundles
-	 * @param disabled     the row ids the profile's patch layer disables
-	 * @param inserted     each package's own loader row ids
-	 * @param icons        each package's own picture, by package name
-	 */
-	private record Loaded(@Unmodifiable Map<String, String> dependencies, @Unmodifiable List<String> bundles,
-	                      @Unmodifiable Set<String> disabled, @Unmodifiable Map<String, List<String>> inserted,
-	                      @Unmodifiable Map<String, Image> icons) {
+	public record PluginRow(String name, String displayName, String declared, DshInstalledPlugins.State state,
+	                        boolean switchable, @Nullable Image icon) {
 	}
 
 	/// The page's skin: a toolbar above the plugin list.
@@ -530,6 +505,20 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 			getContainer().getChildren().setAll(container);
 		}
 
+		/**
+		 * Returns what the tick box says about the plugin's state.
+		 */
+		private static String stateHint(DshInstalledPlugins.State state, boolean switchable) {
+			return switch (state) {
+				case ACTIVE -> switchable
+				               ? i18n("dsh.instance.plugins.toggle.off")
+				               : i18n("dsh.instance.plugins.toggle.fixed");
+				case DISABLED -> i18n("dsh.instance.plugins.toggle.on");
+				case INACTIVE -> i18n("dsh.instance.plugins.inactive.short");
+				case MISSING -> i18n("dsh.instance.plugins.missing");
+			};
+		}
+
 		@Override
 		protected void updateControl(@Nullable PluginRow row, boolean empty) {
 			if (empty || row == null) {
@@ -541,21 +530,14 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
 			icon.setImage(row.icon() != null ? row.icon() : DshInstanceIcon.COMMAND.load());
 
-			active.setSelected(row.enabled());
-			active.setDisable(!row.toggleable());
-			FXUtils.installFastTooltip(active,
-			                           !row.active()
-			                           ? i18n("dsh.instance.plugins.inactive.short")
-			                           : !row.toggleable()
-			                             ? i18n("dsh.instance.plugins.toggle.fixed")
-			                             : row.enabled()
-			                               ? i18n("dsh.instance.plugins.toggle.off")
-			                               : i18n("dsh.instance.plugins.toggle.on"));
+			active.setSelected(row.state() == DshInstalledPlugins.State.ACTIVE);
+			active.setDisable(!row.switchable());
+			FXUtils.installFastTooltip(active, stateHint(row.state(), row.switchable()));
 
-			content.setTitle(row.name());
+			content.setTitle(row.displayName());
 			content.setSubtitle(i18n("dsh.instance.plugins.source", row.name()));
 			content.getTags().clear();
-			content.addTag(row.version());
+			content.addTag(row.declared());
 
 			info.setOnAction(event -> FXUtils.openLink("https://www.npmjs.com/package/" + row.name()));
 			remove.setOnAction(event -> page.removeSelected(List.of(row)));

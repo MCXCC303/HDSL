@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.setting;
 import com.google.gson.annotations.SerializedName;
 import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.account.DshVendor;
+import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
@@ -28,6 +29,8 @@ import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.NodeSource;
 import com.mcxcc303.hdsl.skin.DshSkinChoice;
+import javafx.scene.paint.Color;
+import javafx.scene.paint.Paint;
 import org.glavo.monetfx.ColorStyle;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.theme.BackgroundLoadPolicy;
@@ -43,9 +46,7 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -59,20 +60,16 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  */
 @NotNullByDefault
 public final class SettingsManager {
-	private SettingsManager() {
-	}
-
 	// The settings file inside the per-user HDSL home.
 	private static final Path SETTINGS_PATH = Metadata.HMCL_USER_HOME.resolve("launcher-settings.json");
-
 	// The window state file inside the per-user HDSL home.
 	private static final Path STATE_PATH = Metadata.HMCL_USER_HOME.resolve("launcher-state.json");
-
 	// The lazily created settings singleton.
 	private static @Nullable LauncherSettings launcherSettings;
-
 	// The lazily created window state singleton.
 	private static @Nullable LauncherState launcherState;
+
+	private SettingsManager() {}
 
 	/**
 	 * Returns the process-wide window state, loading it on first use.
@@ -170,7 +167,7 @@ public final class SettingsManager {
 			}
 		}
 		try {
-			return new ThemeColor(value, javafx.scene.paint.Color.web(value));
+			return new ThemeColor(value, Color.web(value));
 		} catch (IllegalArgumentException e) {
 			LOG.warning("Unknown theme colour in settings: " + stored);
 			return ThemeColor.DEFAULT;
@@ -179,7 +176,7 @@ public final class SettingsManager {
 
 	private static <E extends Enum<E>> E parseEnum(Class<E> type, String value, E fallback) {
 		try {
-			return Enum.valueOf(type, value.trim().toUpperCase(java.util.Locale.ROOT));
+			return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
 		} catch (IllegalArgumentException e) {
 			LOG.warning("Unknown " + type.getSimpleName() + " value in settings: " + value);
 			return fallback;
@@ -195,8 +192,8 @@ public final class SettingsManager {
 	 * @param paint the colour, or `null`
 	 * @return its hex form, or `null` when there is nothing to store
 	 */
-	private static @Nullable String paintToString(@Nullable javafx.scene.paint.Paint paint) {
-		if (!(paint instanceof javafx.scene.paint.Color color)) {
+	private static @Nullable String paintToString(@Nullable Paint paint) {
+		if (!(paint instanceof Color color)) {
 			return null;
 		}
 		return String.format("#%02X%02X%02X",
@@ -328,28 +325,12 @@ public final class SettingsManager {
 	/**
 	 * Makes the settings file readable only by its owner.
 	 * <p>
-	 * The file holds the accounts' API keys, and the harness keeps its own credentials in a file
-	 * with the same restriction for the same reason. A default `umask` writes it `0644`, which on a
-	 * machine with more than one person on it is a key given away — and the key is not a preference
-	 * that can be reset, it is a credential that bills somebody.
-	 * <p>
-	 * A filesystem that cannot express the mode (Windows, some mounts) fails here and is ignored:
-	 * the key still works, and refusing to save settings over an unavailable permission bit would
-	 * be trading the whole file for a hardening step.
+	 * The file holds the accounts' API keys.
 	 *
 	 * @param file the file to restrict
 	 */
 	private static void restrictPermissions(Path file) {
-		try {
-			java.nio.file.attribute.PosixFileAttributeView view = Files.getFileAttributeView(file,
-			                                                                                 java.nio.file.attribute.PosixFileAttributeView.class);
-			if (view != null) {
-				view.setPermissions(java.util.EnumSet.of(java.nio.file.attribute.PosixFilePermission.OWNER_READ,
-				                                         java.nio.file.attribute.PosixFilePermission.OWNER_WRITE));
-			}
-		} catch (IOException | UnsupportedOperationException e) {
-			LOG.info("Could not restrict the permissions of " + file, e);
-		}
+		DshPermissions.restrict(file, DshPermissions.SECRET_FILE);
 	}
 
 	/**
@@ -411,7 +392,7 @@ public final class SettingsManager {
 		private @Nullable String defaultHomeMode;
 
 		@SerializedName("gameDirectories")
-		private @Nullable java.util.List<GameDirectory> gameDirectories;
+		private @Nullable List<GameDirectory> gameDirectories;
 
 		@SerializedName("selectedGameDirectoryId")
 		private @Nullable String selectedGameDirectoryId;
@@ -440,9 +421,6 @@ public final class SettingsManager {
 		@SerializedName("backgroundFallbackType")
 		private @Nullable String backgroundFallbackType;
 
-		// Both are colours the appearance page's pickers edit, so both are settings the user
-		// can change. They are stored as a hex string, which is what a colour picker
-		// round-trips and what a settings file written by hand can say.
 		@SerializedName("customBackgroundPaint")
 		private @Nullable String customBackgroundPaint;
 
@@ -465,48 +443,14 @@ public final class SettingsManager {
 		private @Nullable String defaultLaunchArguments;
 
 		@SerializedName("accounts")
-		private @Nullable java.util.List<AccountSnapshot> accounts;
+		private @Nullable List<AccountSnapshot> accounts;
 
 		// The suppliers added by address, in the order they were added.
-		private @Nullable java.util.List<VendorSnapshot> vendors;
+		private @Nullable List<VendorSnapshot> vendors;
 
-		/**
-		 * Which account the launcher uses, by its key. Written to the snapshot because a choice with
-		 * no field here is a choice that silently reverts on the next start — the trap that lost
-		 * seventeen settings once already.
-		 */
 		@SerializedName("activeAccountKey")
 		private @Nullable String activeAccountKey;
 
-		/**
-		 * One account as it is stored.
-		 *
-		 * @param vendorId the vendor's id
-		 * @param apiKey   the key
-		 * @param baseUrl  the endpoint, for a vendor whose address is per account
-		 * @param label    what the person calls it
-		 */
-		private record AccountSnapshot(@Nullable DshAccount.AccountKind kind, String vendorId, String apiKey,
-		                               @Nullable String baseUrl, @Nullable String label, @Nullable String model,
-		                               @Nullable String skinType, @Nullable String skinModel, @Nullable String skinPath,
-		                               @Nullable String skinCapePath) {}
-
-		/**
-		 * A supplier somebody added by address.
-		 * <p>
-		 * All five fields, because all five are what the harness needs to route it: the id becomes
-		 * the route name, the address is where the calls go, the protocol is what the route
-		 * declares, and the variable is where the key is read from.
-		 */
-		private record VendorSnapshot(String id, String displayName, String apiKeyEnv, String api, String baseUrl) {}
-
-		/**
-		 * The language the interface speaks, by the name the locale helper uses.
-		 * <p>
-		 * The name rather than the locale: the helper resolves a name back to the
-		 * supported locale it stands for, which a bare language tag cannot do for every
-		 * variant it offers.
-		 */
 		@SerializedName("language")
 		private @Nullable String language;
 
@@ -517,31 +461,14 @@ public final class SettingsManager {
 		private @Nullable String nodeSource;
 
 		@SerializedName("selectedInstance")
-		private @Nullable java.util.Map<String, String> selectedInstance;
+		private @Nullable Map<String, String> selectedInstance;
 
-		/**
-		 * The single selection written by launchers that kept one for the whole
-		 * launcher rather than one per folder.
-		 * <p>
-		 * Only ever read, and only while nothing per folder has been stored: it
-		 * belonged to the folder the launcher owns.
-		 */
 		@SerializedName("selectedInstanceId")
 		private @Nullable String legacySelectedInstanceId;
 
 		@SerializedName("openBrowserOnLaunch")
 		private @Nullable Boolean openBrowserOnLaunch;
 
-		// Everything below belongs to a control that exists on one of the settings pages,
-		// and each one was written to this file by nothing at all: the snapshot is what
-		// `save()` writes and the only thing `load()` reads, so a property with no field
-		// here is a setting somebody can change, watch take effect, and lose at the next
-		// start. The rows are the ones on the general, download-source and global
-		// instance-settings tabs.
-
-		// Stored as the lowercase id the enum itself publishes, the way `nodeSource` is:
-		// Gson's enum adapter would write `MANUAL`, so a file written by the interface and
-		// one written by hand would disagree about the spelling of the same value.
 		@SerializedName("buildScriptPolicy")
 		private @Nullable String buildScriptPolicy;
 
@@ -551,8 +478,6 @@ public final class SettingsManager {
 		@SerializedName("isolationPolicy")
 		private @Nullable String isolationPolicy;
 
-		// Old releases persisted "modded" even when no policy was explicitly chosen.
-		// A separate key lets new choices survive reloads without retaining that old default.
 		@SerializedName("newInstanceIsolationPolicy")
 		private @Nullable String newInstanceIsolationPolicy;
 
@@ -569,15 +494,8 @@ public final class SettingsManager {
 		private @Nullable String postExitCommand;
 
 		@SerializedName("globalEnvironment")
-		private @Nullable java.util.Map<String, String> globalEnvironment;
+		private @Nullable Map<String, String> globalEnvironment;
 
-		/**
-		 * Every place the plugin catalogue is read from, in the order they are tried.
-		 * <p>
-		 * Absent for a launcher that has never been asked, which reads the two the
-		 * ecosystem publishes — the community address and the npm package that
-		 * carries the same document.
-		 */
 		@SerializedName("marketSource")
 		private @Nullable String marketSource;
 
@@ -643,7 +561,7 @@ public final class SettingsManager {
 			snapshot.launcherFontFamily = settings.launcherFontFamilyProperty().get();
 			snapshot.defaultNodeRuntime = settings.defaultNodeRuntimeProperty().get();
 			snapshot.defaultHomeMode = settings.defaultHomeModeProperty().get().name();
-			snapshot.gameDirectories = java.util.List.copyOf(settings.gameDirectoriesProperty().get());
+			snapshot.gameDirectories = List.copyOf(settings.gameDirectoriesProperty().get());
 			snapshot.selectedGameDirectoryId = settings.selectedGameDirectoryIdProperty().get();
 			snapshot.windowTransparent = settings.windowTransparentProperty().get();
 			snapshot.backgroundType = settings.backgroundTypeProperty().get().name();
@@ -688,19 +606,19 @@ public final class SettingsManager {
 			snapshot.language = settings.languageProperty().get().getName();
 			snapshot.animationDisabled = settings.animationDisabledProperty().get();
 			snapshot.nodeSource = settings.nodeSourceProperty().get().id();
-			snapshot.selectedInstance = new java.util.LinkedHashMap<>(settings.getSelectedInstance());
+			snapshot.selectedInstance = new LinkedHashMap<>(settings.getSelectedInstance());
 			snapshot.openBrowserOnLaunch = settings.openBrowserOnLaunchProperty().get();
 			snapshot.buildScriptPolicy = settings.buildScriptPolicy().id();
 			snapshot.launcherVisibility = settings.launcherVisibility().id();
 			snapshot.isolationPolicy = settings.isolationPolicy().id();
 			snapshot.newInstanceIsolationPolicy = settings.isolationPolicyProperty().get() == null
-			        ? DshIsolationPolicy.ALWAYS.id()
-			        : settings.isolationPolicyProperty().get().id();
+			                                      ? DshIsolationPolicy.ALWAYS.id()
+			                                      : settings.isolationPolicyProperty().get().id();
 			snapshot.showLogs = settings.showLogsProperty().get();
 			snapshot.debugLog = settings.debugLogProperty().get();
 			snapshot.preLaunchCommand = settings.preLaunchCommandProperty().get();
 			snapshot.postExitCommand = settings.postExitCommandProperty().get();
-			snapshot.globalEnvironment = new java.util.LinkedHashMap<>(settings.globalEnvironment());
+			snapshot.globalEnvironment = new LinkedHashMap<>(settings.globalEnvironment());
 			snapshot.marketSource = settings.marketSourceProperty().get();
 			snapshot.skillSource = settings.skillSourceProperty().get();
 			snapshot.packMarketUrl = settings.packMarketUrlProperty().get();
@@ -756,7 +674,7 @@ public final class SettingsManager {
 				        .set(parseEnum(DshHomeMode.class, defaultHomeMode, DshHomeMode.ISOLATED));
 			}
 			if (gameDirectories != null) {
-				settings.gameDirectoriesProperty().set(java.util.List.copyOf(gameDirectories));
+				settings.gameDirectoriesProperty().set(List.copyOf(gameDirectories));
 			}
 			if (selectedGameDirectoryId != null) {
 				settings.selectedGameDirectoryIdProperty().set(selectedGameDirectoryId);
@@ -797,13 +715,13 @@ public final class SettingsManager {
 				        .set(parseEnum(BackgroundType.class, backgroundFallbackType, BackgroundType.BUILTIN));
 			}
 			if (customBackgroundPaint != null) {
-				javafx.scene.paint.Paint paint = paintOf(customBackgroundPaint);
+				Paint paint = paintOf(customBackgroundPaint);
 				if (paint != null) {
 					settings.customBackgroundPaintProperty().set(paint);
 				}
 			}
 			if (backgroundFallbackPaint != null) {
-				javafx.scene.paint.Paint paint = paintOf(backgroundFallbackPaint);
+				Paint paint = paintOf(backgroundFallbackPaint);
 				if (paint != null) {
 					settings.backgroundFallbackPaintProperty().set(paint);
 				}
@@ -842,8 +760,8 @@ public final class SettingsManager {
 									        // a name this launcher does not know — a file written by a later
 									        // version, or one edited by hand — must not stop the whole
 									        // settings file from loading.
-									        java.util.Objects.requireNonNullElse(DshSkinChoice.Type.fromStorage(account.skinType()),
-									                                             DshSkinChoice.Type.DEFAULT),
+									        Objects.requireNonNullElse(DshSkinChoice.Type.fromStorage(account.skinType()),
+									                                   DshSkinChoice.Type.DEFAULT),
 									        DshSkinChoice.TextureModel.fromStorage(account.skinModel()),
 									        account.skinPath(),
 									        account.skinCapePath())));
@@ -899,8 +817,10 @@ public final class SettingsManager {
 				DshIsolationPolicy legacyPolicy = DshIsolationPolicy.of(isolationPolicy);
 				// Only the creation default changes. Existing instances still resolve their
 				// recorded homeMode, including GLOBAL's unchanged defaultHomeMode setting.
-				settings.isolationPolicyProperty().set(legacyPolicy == DshIsolationPolicy.WITH_PLUGINS
-				        ? DshIsolationPolicy.ALWAYS : legacyPolicy);
+				settings.isolationPolicyProperty()
+				        .set(legacyPolicy == DshIsolationPolicy.WITH_PLUGINS
+				             ? DshIsolationPolicy.ALWAYS
+				             : legacyPolicy);
 			}
 			if (showLogs != null) {
 				settings.showLogsProperty().set(showLogs);
@@ -919,7 +839,7 @@ public final class SettingsManager {
 				settings.postExitCommandProperty().set(postExitCommand);
 			}
 			if (globalEnvironment != null) {
-				settings.globalEnvironmentProperty().set(new java.util.LinkedHashMap<>(globalEnvironment));
+				settings.globalEnvironmentProperty().set(new LinkedHashMap<>(globalEnvironment));
 			}
 			if (packMarketUrl != null) {
 				settings.packMarketUrlProperty().set(packMarketUrl);
@@ -970,6 +890,28 @@ public final class SettingsManager {
 				settings.proxyPasswordProperty().set(proxyPassword);
 			}
 		}
+
+		/**
+		 * One account as it is stored.
+		 *
+		 * @param vendorId the vendor's id
+		 * @param apiKey   the key
+		 * @param baseUrl  the endpoint, for a vendor whose address is per account
+		 * @param label    what the person calls it
+		 */
+		private record AccountSnapshot(@Nullable DshAccount.AccountKind kind, String vendorId, String apiKey,
+		                               @Nullable String baseUrl, @Nullable String label, @Nullable String model,
+		                               @Nullable String skinType, @Nullable String skinModel, @Nullable String skinPath,
+		                               @Nullable String skinCapePath) {}
+
+		/**
+		 * A supplier somebody added by address.
+		 * <p>
+		 * All five fields, because all five are what the harness needs to route it: the id becomes
+		 * the route name, the address is where the calls go, the protocol is what the route
+		 * declares, and the variable is where the key is read from.
+		 */
+		private record VendorSnapshot(String id, String displayName, String apiKeyEnv, String api, String baseUrl) {}
 	}
 
 	// The serializable view of [LauncherState].

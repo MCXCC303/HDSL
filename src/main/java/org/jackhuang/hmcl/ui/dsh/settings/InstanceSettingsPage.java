@@ -244,8 +244,8 @@ public final class InstanceSettingsPage extends ScrollPane {
 	/// Builds the row about this instance's debug lines.
 	///
 	/// @return the row
-	private LineInheritableToggleButton debugLogRow() {
-		LineInheritableToggleButton row = new LineInheritableToggleButton();
+	private LineInheritableSwitch debugLogRow() {
+		LineInheritableSwitch row = new LineInheritableSwitch();
 		row.setTitle(i18n("dsh.settings.debug.log"));
 
 		Boolean own = DshInstanceSettings.debugLog(instance);
@@ -268,8 +268,8 @@ public final class InstanceSettingsPage extends ScrollPane {
 	/// Builds the row about this instance's log window.
 	///
 	/// @return the row
-	private LineInheritableToggleButton logRow() {
-		LineInheritableToggleButton row = new LineInheritableToggleButton();
+	private LineInheritableSwitch logRow() {
+		LineInheritableSwitch row = new LineInheritableSwitch();
 		row.setTitle(i18n("dsh.settings.launcher.show_logs"));
 
 		Boolean own = DshInstanceSettings.showLogs(instance);

@@ -27,6 +27,7 @@ import com.mcxcc303.hdsl.runtime.NodeSource;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.List;
 
 @NotNullByDefault
@@ -47,13 +48,31 @@ public final class NodeCommands {
 	}
 
 	static int listNodeVersions(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
-		DshTable table = new DshTable("VERSION", "LABLE", "STATUS");
+		List<String> header = new ArrayList<>(List.of("VERSION", "LABLE", "STATUS"));
+		if (invocation.flag("show-lifetime")) {
+			header.addAll(List.of("LIFE_ALPHA", "LIFE_START", "LIFE_LTS", "LIFE_MAINTENANCE", "LIFE_END"));
+		}
+		DshTable table = new DshTable(header.toArray(new String[0]));
+
 		for (NodeRelease release : NodeRuntimeManager.fetchReleases(NodeSource.of(invocation.option("source")))) {
-//			out.println(release.version() + (release.isLts() ? "\t" + release.label() : "") +
-//			            (release.isSupported() ? "" : "\tunsupported"));
-			table.row(release.version(),
-			          release.isLts() ? release.label() : "-",
-			          release.isSupported() ? "supported" : "unsupported");
+			List<String> cells = new ArrayList<>(List.of(release.version(),
+			                                             release.isLts() ? release.label() : "-",
+			                                             release.isSupported() ? "supported" : "unsupported"));
+			if (invocation.flag("show-lifetime")) {
+				if (release.schedule() == null) {
+					cells.addAll(List.of("-", "-", "-", "-", "-"));
+				} else {
+					cells.addAll(List.of(
+							release.schedule().alpha() != null ? release.schedule().alpha().toString() : "--",
+							release.schedule().start().toString(),
+							release.schedule().lts() != null ? release.schedule().lts().toString() : "--",
+							release.schedule().maintenance() != null
+							? release.schedule().maintenance().toString()
+							: "--",
+							release.schedule().end().toString()));
+				}
+			}
+			table.row(cells.toArray(new String[0]));
 		}
 		table.print(out);
 		return 0;

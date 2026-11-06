@@ -18,11 +18,15 @@
 package com.mcxcc303.hdsl.instance;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -79,6 +83,21 @@ class DshLogsTest {
 		Path file = DshLogs.write(logs, "github-test", List.of("one"), MOMENT);
 
 		assertTrue(Files.isRegularFile(file));
+	}
+
+	@Test
+	@EnabledOnOs(OS.LINUX)
+	void anExportIsReadableOnlyByItsOwner(@TempDir Path directory) throws Exception {
+		Path logs = directory.resolve("logs");
+		Path file = DshLogs.write(logs, "github-test", List.of("one"), MOMENT);
+
+		assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+		             Files.getPosixFilePermissions(file),
+		             "the export may hold the readiness token");
+		assertEquals(EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE,
+		                        PosixFilePermission.OWNER_EXECUTE),
+		             Files.getPosixFilePermissions(logs),
+		             "the directory is its owner's alone");
 	}
 
 	@Test

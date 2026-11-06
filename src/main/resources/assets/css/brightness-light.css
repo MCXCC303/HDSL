@@ -2,7 +2,7 @@
     -fx-hyperlink-fill: -monet-primary;
 }
 
-.two-line-list-item {
+.tag {
     -fixed-warning-tag-background: #F1AEB5;
 }
 
@@ -32,4 +32,8 @@
 
 .addon-channel-icon.release .svg {
     -fx-fill: #00af5c;
+}
+
+.addon-channel-icon.eol .svg {
+    -fx-fill: #676767;
 }

@@ -11,10 +11,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The repair a pack needs when it both lists a plugin as a bundle and inserts it.
-///
-/// Taken from a pack that would not start: `@michengai/dsh-im-connect` in `dsh.profile.bundles` **and**
-/// in the patch's insert list, which applies it twice and ends the profile with a duplicate route.
+/**
+ * Verifies the line edits makes to a profile's patch layer.
+ */
 class DshProfilePatchTest {
 	@TempDir
 	private Path profile;
@@ -26,7 +25,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void anInsertABundleAlreadyAppliesIsTakenOut() throws Exception {
+	void dropRedundantInserts_removesInsertOfAppliedBundle() throws Exception {
 		Path file = patch("""
 				                  # Your patch layer for this dsh profile
 				                  - insert:
@@ -37,29 +36,28 @@ class DshProfilePatchTest {
 		List<String> left = DshProfilePatch.dropRedundantInserts(file,
 		                                                         List.of("@deepseek-ai/dsh-base",
 		                                                                 "@michengai/dsh-im-connect"));
-
 		assertEquals(List.of(), left, "nothing carried configuration");
+
 		String after = Files.readString(file);
 		assertTrue(after.contains("# Your patch layer"), "the comment stays: " + after);
 		assertFalse(after.contains("dsh-im-connect"), "the duplicate insert is gone: " + after);
 	}
 
 	@Test
-	void anInsertNoBundleAppliesIsKept() throws Exception {
+	void dropRedundantInserts_keepsInsertOfPluginNoBundleApplies() throws Exception {
 		String body = """
 				- insert:
 				    - id: something-else
 				      name: 'dsh-something-else'
 				""";
 		Path file = patch(body);
-
 		DshProfilePatch.dropRedundantInserts(file, List.of("@deepseek-ai/dsh-base"));
 
 		assertEquals(body, Files.readString(file), "a plugin nothing else applies is left where it is");
 	}
 
 	@Test
-	void anInsertCarryingConfigurationIsKeptAndReported() throws Exception {
+	void dropRedundantInserts_keepsConfiguredInsertAndReportsItsId() throws Exception {
 		String body = """
 				- insert:
 				    - id: better-sidebar
@@ -68,7 +66,6 @@ class DshProfilePatchTest {
 				        css: 'body { color: red }'
 				""";
 		Path file = patch(body);
-
 		List<String> left = DshProfilePatch.dropRedundantInserts(file, List.of("dsh-better-sidebar"));
 
 		assertEquals(List.of("better-sidebar"), left, "the entry is reported by its id");
@@ -76,9 +73,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void theTextFormIsWhatAPackIsWrittenFrom() {
-		// The exporter writes a copy of this file into the archive, and a copy has to be repaired the
-		// same way — otherwise every pack made from such an instance carries the defect forward.
+	void withoutRedundantInserts_returnsTextWithoutDuplicate() {
 		String text = """
 				- insert:
 				    - id: dsh-im-connect
@@ -93,14 +88,14 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void theTextFormSaysWhenThereWasNothingToDo() {
+	void withoutRedundantInserts_reportsUnchangedWhenNothingToDrop() {
 		DshProfilePatch.Edit edit = DshProfilePatch.withoutRedundantInserts("- id: x\n", List.of("y"));
 		assertFalse(edit.changed(), "a file with nothing to repair is left as it is");
 		assertEquals("- id: x\n", edit.text());
 	}
 
 	@Test
-	void aPatchWithNoInsertsIsUntouched() throws Exception {
+	void dropRedundantInserts_leavesPatchWithoutInsertsUntouched() throws Exception {
 		String body = """
 				- id: tool-web
 				  config:
@@ -113,7 +108,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void aProviderGoesIntoTheEntryTheFileAlreadyHas() throws Exception {
+	void putProvider_addsProviderToExistingProvidersBlock() throws Exception {
 		String body = """
 				- id: llm-pi-ai
 				  name: '@deepseek-ai/dsh-llm-pi-ai'
@@ -130,8 +125,8 @@ class DshProfilePatchTest {
 		                                                        "llm-pi-ai",
 		                                                        "DeepSeek",
 		                                                        "apiKeyEnv: HDSL_LAUNCH_API_KEY_DEEPSEEK_00000000\napi: openai-completions\n");
-
 		assertTrue(edit.changed());
+
 		String after = edit.text();
 		assertTrue(after.contains("""
 				                                Mine:
@@ -145,7 +140,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void aProviderTheEntryAlreadyHasIsReplacedWhereItSits() throws Exception {
+	void putProvider_replacesProviderInPlace() throws Exception {
 		String body = """
 				- id: llm-pi-ai
 				  config:
@@ -177,7 +172,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void aProviderGoesIntoTheEntryThatHasNone() throws Exception {
+	void putProvider_createsProvidersBlockWhenMissing() throws Exception {
 		String body = """
 				- id: llm-pi-ai
 				  name: '@deepseek-ai/dsh-llm-pi-ai'
@@ -196,9 +191,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void anEntryTheFileDoesNotMentionIsAddedToTheList() throws Exception {
-		// The profile template ships an empty-list placeholder, which is not an entry: appending
-		// after it would make two top-level elements in one document.
+	void putProvider_appendsEntryWhenIdNotMentioned() throws Exception {
 		DshProfilePatch.Edit edit = DshProfilePatch.putProvider("# mine\n[]\n",
 		                                                        "llm-pi-ai",
 		                                                        "DeepSeek",
@@ -216,9 +209,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void theLastEntryForAnIdIsTheOneWritten() throws Exception {
-		// The harness's own editor finds the entry to edit with `findLastIndex`, and a later entry
-		// replaces an earlier one's whole config — so the last one is the entry that is in effect.
+	void putProvider_writesToLastEntryWithSameId() throws Exception {
 		String body = """
 				- id: llm-pi-ai
 				  config:
@@ -233,8 +224,8 @@ class DshProfilePatchTest {
 				""";
 
 		DshProfilePatch.Edit edit = DshProfilePatch.putProvider(body, "llm-pi-ai", "DeepSeek", "apiKeyEnv: NEW\n");
-
 		String after = edit.text();
+
 		assertTrue(after.contains("      First:\n        apiKeyEnv: FIRST\n"),
 		           "the entry that is not in effect is left alone: " + after);
 		assertTrue(after.indexOf("Second:") < after.indexOf("DeepSeek:"),
@@ -242,7 +233,7 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void aProviderAlreadyWrittenExactlySoChangesNothing() throws Exception {
+	void putProvider_reportsUnchangedWhenProviderIdentical() throws Exception {
 		String body = """
 				- id: llm-pi-ai
 				  config:
@@ -258,21 +249,41 @@ class DshProfilePatchTest {
 	}
 
 	@Test
-	void anInlineConfigIsRefusedRatherThanReplaced() {
-		// Rewriting it would need a YAML parser this does not have, and writing a second entry for
-		// the same id would take the person's settings away instead of adding one.
+	void putProvider_replacesNullConfigOrProvidersWithBlock() throws Exception {
+		String expected = """
+				- id: llm-pi-ai
+				  config:
+				    providers:
+				      DeepSeek:
+				        apiKeyEnv: NEW
+				""";
+
+		assertEquals(expected, DshProfilePatch.putProvider("""
+				                                                   - id: llm-pi-ai
+				                                                     config:
+				                                                       providers: null
+				                                                   """, "llm-pi-ai", "DeepSeek", "apiKeyEnv: NEW\n")
+		                                      .text());
+		assertEquals(expected,
+		             DshProfilePatch.putProvider("- id: llm-pi-ai\n  config: null\n",
+		                                         "llm-pi-ai",
+		                                         "DeepSeek",
+		                                         "apiKeyEnv: NEW\n").text());
+	}
+
+	@Test
+	void putProvider_rejectsInlineConfig() {
 		DshException refused = Assertions.assertThrows(DshException.class,
 		                                               () -> DshProfilePatch.putProvider(
 				                                               "- id: llm-pi-ai\n  config: {providers: {Mine: {}}}\n",
 				                                               "llm-pi-ai",
 				                                               "DeepSeek",
 				                                               "apiKeyEnv: NEW\n"));
-
 		assertTrue(refused.getMessage().contains("inline"), refused.getMessage());
 	}
 
 	@Test
-	void fourSpaceIndentationIsKept() throws Exception {
+	void putProvider_keepsFourSpaceIndentation() throws Exception {
 		String body = """
 				- id: llm-pi-ai
 				    config:
@@ -282,7 +293,6 @@ class DshProfilePatchTest {
 				""";
 
 		DshProfilePatch.Edit edit = DshProfilePatch.putProvider(body, "llm-pi-ai", "DeepSeek", "apiKeyEnv: NEW\n");
-
 		assertTrue(edit.text().contains("""
 				                                            DeepSeek:
 				                                                apiKeyEnv: NEW

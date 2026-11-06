@@ -167,17 +167,18 @@ public final class DshAccountRoute {
 		                                isDeepSeek(vendor, account.endpoint())));
 	}
 
-	/// Writes an account's route into the profile's own patch layer.
-	///
-	/// Nothing else in the file is touched, and a file that already says exactly this is left alone,
-	/// so a launch does not rewrite the person's file just to repeat itself.
-	///
-	/// @param home    the instance's `DSH_HOME`
-	/// @param profile the profile the instance boots
-	/// @param route   the described route
-	/// @return whether the file had to be written, which it does not when it already says this
-	/// @throws DshException when the file cannot be read or written, or holds an entry written in a
-	///                      shape this will not rewrite — see [DshProfilePatch#putProvider]
+	/**
+	 * Writes the account route into the profile's patch layer.
+	 * <p>
+	 * If the file already contains this exact entry, it is left untouched
+	 *
+	 * @param home    the instance's `DSH_HOME`
+	 * @param profile the profile the instance boots
+	 * @param route   the described route
+	 * @return true if the file was written, false if it already matched
+	 * @throws DshException if the file can't be read or written, or contains an entry
+	 *                      in a shape this method won't rewrite
+	 */
 	public static boolean apply(Path home, String profile, Prepared route) throws DshException {
 		return DshProfilePatch.putProvider(DshPluginPatch.patchFile(home, profile),
 		                                   ENTRY,
