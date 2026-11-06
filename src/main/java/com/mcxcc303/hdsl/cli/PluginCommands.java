@@ -79,7 +79,7 @@ public final class PluginCommands {
 			cells.add(fitOf(plugin.fit()));
 			cells.add(plugin.state().text());
 			if (bundles) {
-				cells.add(plugin.rows().isEmpty() ? "-" : String.join(", ", plugin.rows()));
+				cells.add(plugin.rowIds().isEmpty() ? "-" : String.join(", ", plugin.rowIds()));
 			}
 			cells.add(plugin.path());
 			table.row(cells.toArray(new String[0]));

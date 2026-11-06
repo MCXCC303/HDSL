@@ -18,7 +18,7 @@
 package com.mcxcc303.hdsl.launch;
 
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.core.DshFiles;
+import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.harness.DshSurface;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
@@ -103,10 +103,9 @@ record DshRunningRecord(long pid, int port, @Nullable String url, @Nullable Stri
 		DshRunningRecord record = new DshRunningRecord(pid, port, url == null ? null : url.toString(),
 		                                               surface.name(), startedAt);
 		try {
-			Files.createDirectories(file.getParent());
+			DshPermissions.createRestrictedDirectory(file.getParent(), DshPermissions.SECRET_DIRECTORY);
+			DshPermissions.createRestricted(file, DshPermissions.SECRET_FILE);
 			JsonUtils.writeToJsonFile(file, record);
-			// The address carries the launch token while the process is up.
-			DshFiles.restrictToCurrentUser(file);
 		} catch (IOException | RuntimeException e) {
 			LOG.warning("Could not write the running record " + file, e);
 		}

@@ -127,7 +127,7 @@ public class LineSelectButton<T extends @UnknownNullability Object> extends Line
             }));
 
             popup.showingProperty().addListener((observable, oldValue, newValue) ->
-                    ripplerContainer.getRippler().setRipplerDisabled(newValue));
+                    ripplerContainer.setPressFeedbackEnabled(!newValue));
         }
 
         if (popup.isShowing()) {

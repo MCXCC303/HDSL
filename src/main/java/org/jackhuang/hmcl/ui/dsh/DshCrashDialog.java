@@ -19,7 +19,7 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.core.DshFiles;
+import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.launch.DshProcess;
 import javafx.geometry.Insets;
@@ -456,11 +456,7 @@ public final class DshCrashDialog extends Stage {
 		}
 	}
 
-	/// Writes the failure out to a file, as the original's export button does.
-	///
-	/// The original exports a zip of the game's logs and its own diagnostics. This writes one text
-	/// file holding everything the window knows: the instance, the reason, and the whole of the
-	/// output — the tail above is what fits, and this is what somebody analysing it needs.
+	/** Writes the failure out to a file. Log files use {@link DshPermissions} to protect */
 	private void export() {
 		StringBuilder text = new StringBuilder();
 		text.append(i18n("dsh.crash.title")).append('\n');
@@ -490,10 +486,10 @@ public final class DshCrashDialog extends Stage {
 			                                     .resolve("crash-" + instance.id() + "-" +
 			                                              DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 			                                                               .format(LocalDateTime.now()) + ".txt");
-			Files.createDirectories(target.getParent());
-			Files.writeString(target, text.toString(), StandardCharsets.UTF_8);
+			DshPermissions.createRestrictedDirectory(target.getParent(), DshPermissions.SECRET_DIRECTORY);
+			DshPermissions.createRestricted(target, DshPermissions.SECRET_FILE);
 			// The report carries the process output, including the readiness line's token.
-			DshFiles.restrictToCurrentUser(target);
+			Files.writeString(target, text.toString(), StandardCharsets.UTF_8);
 			Controllers.dialog(i18n("settings.launcher.launcher_log.export.success", target.toString()),
 			                   i18n("message.success"),
 			                   MessageType.INFO);

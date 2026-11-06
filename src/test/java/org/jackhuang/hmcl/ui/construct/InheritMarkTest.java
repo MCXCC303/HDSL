@@ -67,7 +67,7 @@ class InheritMarkTest {
     @Test
     void aToggleRowFlipsTheValueItIsShowing() throws Exception {
         onFxThread(() -> {
-            LineInheritableToggleButton row = new LineInheritableToggleButton();
+            LineInheritableSwitch row = new LineInheritableSwitch();
 
             // Following the launcher: the row shows the launcher's answer, which is off here.
             row.setOverridden(false);

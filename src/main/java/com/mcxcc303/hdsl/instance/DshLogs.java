@@ -17,8 +17,8 @@
  */
 package com.mcxcc303.hdsl.instance;
 
-import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
+import com.mcxcc303.hdsl.core.DshPermissions;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -83,12 +83,10 @@ public final class DshLogs {
 	/// @throws IOException when the directory or the file cannot be written
 	static Path write(Path directory, @Nullable String instanceId, List<String> lines, LocalDateTime at)
 	throws IOException {
-		Files.createDirectories(directory);
+		DshPermissions.createRestrictedDirectory(directory, DshPermissions.SECRET_DIRECTORY);
 		Path file = unused(directory.resolve(fileName(instanceId, at)));
+		DshPermissions.createRestricted(file, DshPermissions.SECRET_FILE);
 		Files.write(file, lines);
-		// The readiness line carries the launch token; an exported log must not inherit a
-		// group's read access on Windows.
-		DshFiles.restrictToCurrentUser(file);
 		return file;
 	}
 

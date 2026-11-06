@@ -133,4 +133,55 @@ class DshPluginPatchTest {
 		assertTrue(DshPluginPatch.insertedIdsIn(text).isEmpty());
 		assertFalse(DshPluginPatch.disabledIdsIn(text).isEmpty());
 	}
+
+	@Test
+	void aRowCarriesTheModuleItMounts() {
+		String text = """
+				- insert:
+				    - id: own-row
+				      name: 'dsh-demo'
+				""";
+		List<DshPluginPatch.Row> rows = DshPluginPatch.insertedRowsIn(text);
+		assertEquals(List.of(new DshPluginPatch.Row("own-row", "dsh-demo")), rows);
+	}
+
+	@Test
+	void aModuleNamedInsideARowsConfigIsNotTheRowsModule() {
+		String text = """
+				- insert:
+				    - id: own-row
+				      name: 'dsh-demo'
+				      config:
+				        name: not-the-module
+				        nested:
+				          model:
+				            name: also-not-the-module
+				""";
+		List<DshPluginPatch.Row> rows = DshPluginPatch.insertedRowsIn(text);
+		assertEquals(List.of(new DshPluginPatch.Row("own-row", "dsh-demo")), rows);
+	}
+
+	@Test
+	void eachRowKeepsItsOwnModule() {
+		String text = """
+				- insert:
+				    - id: first
+				      name: 'dsh-demo'
+				    - id: second
+				      name: 'dsh-demo/preset'
+				""";
+		List<DshPluginPatch.Row> rows = DshPluginPatch.insertedRowsIn(text);
+		assertEquals(List.of(new DshPluginPatch.Row("first", "dsh-demo"),
+		                     new DshPluginPatch.Row("second", "dsh-demo/preset")), rows);
+	}
+
+	@Test
+	void aRowThatNamesNoModuleKeepsItsId() {
+		String text = """
+				- insert:
+				    - id: bare
+				""";
+		List<DshPluginPatch.Row> rows = DshPluginPatch.insertedRowsIn(text);
+		assertEquals(List.of(new DshPluginPatch.Row("bare", null)), rows);
+	}
 }
