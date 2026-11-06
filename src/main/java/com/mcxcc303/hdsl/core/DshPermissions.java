@@ -198,17 +198,27 @@ public final class DshPermissions {
 	private static void restrictToCurrentUser(Path path) throws IOException {
 		AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
 		if (acl == null) {
-			return; // this file store has no ACL to protect with
+			// A store with no ACL view cannot keep a secret from the people who can read the
+			// directory, so the calls that are about to write one must fail instead of leaving
+			// it open. The best-effort `restrict` catches this and logs it, as the POSIX branch
+			// does when a store has no POSIX view.
+			throw new IOException("This file store has no ACL view to protect " + path);
 		}
-		boolean directory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
-		UserPrincipal owner = acl.getOwner();
-		UserPrincipal current = currentUser(path, owner);
-		List<AclEntry> entries = new ArrayList<>();
-		entries.add(allow(owner, directory));
-		if (!owner.equals(current)) {
-			entries.add(allow(current, directory));
+		try {
+			boolean directory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
+			UserPrincipal owner = acl.getOwner();
+			UserPrincipal current = currentUser(path, owner);
+			List<AclEntry> entries = new ArrayList<>();
+			entries.add(allow(owner, directory));
+			if (!owner.equals(current)) {
+				entries.add(allow(current, directory));
+			}
+			acl.setAcl(entries);
+		} catch (RuntimeException e) {
+			// Some stores expose the view but not the ACL behind it. Callers about to write a
+			// secret catch IOException, so the failure is translated rather than escaping.
+			throw new IOException("Could not restrict the permissions of " + path, e);
 		}
-		acl.setAcl(entries);
 	}
 
 	/// Returns the principal of the user running the launcher, or the owner when it cannot be named.

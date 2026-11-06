@@ -28,11 +28,13 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.AclEntry;
 import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
 import java.util.Map;
 
@@ -129,7 +131,7 @@ class DshInstanceTerminalWindowsAclTest {
 		return bin().resolve("dsh.cmd");
 	}
 
-	/// Asserts that the path's ACL names no more than the owner and the current user, and allows.
+	/// Asserts that the path's ACL allows, and names no principal but the owner and the current user.
 	private static void assertOnlyOwningAccounts(Path path) throws Exception {
 		AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);
 		assertNotNull(view, "this test needs a file store with an ACL view to protect");
@@ -138,5 +140,24 @@ class DshInstanceTerminalWindowsAclTest {
 		             "the protected list has no deny rules to reason about: " + entries);
 		assertTrue(entries.size() <= 2,
 		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
+		UserPrincipal owner = view.getOwner();
+		UserPrincipal current = currentUser(path);
+		assertTrue(entries.stream()
+		                  .allMatch(entry -> entry.principal().equals(owner) ||
+		                                     (current != null && entry.principal().equals(current))),
+		           "every entry names the owner or the current user, nothing else: " + entries);
+	}
+
+	/// Resolves the user running the tests, or `null` when the name does not resolve.
+	private static UserPrincipal currentUser(Path path) {
+		String name = System.getProperty("user.name");
+		if (name == null || name.isBlank()) {
+			return null;
+		}
+		try {
+			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
 	}
 }

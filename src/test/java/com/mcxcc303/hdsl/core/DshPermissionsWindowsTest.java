@@ -22,16 +22,23 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.AclEntry;
 import java.nio.file.attribute.AclEntryType;
 import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -75,6 +82,21 @@ class DshPermissionsWindowsTest {
 	}
 
 	@Test
+	void aStoreWithoutAnAclViewIsNotWrittenInto() throws Exception {
+		Path archive = folder.resolve("store.zip");
+		try (FileSystem store = FileSystems.newFileSystem(archive, Map.of("create", "true"))) {
+			Path file = store.getPath("/secret.txt");
+
+			assertThrows(IOException.class,
+			             () -> DshPermissions.writeRestricted(file, "sk-secret", StandardCharsets.UTF_8,
+			                                                  DshPermissions.SECRET_FILE),
+			             "the key is not written where the platform cannot protect it");
+			assertFalse(Files.exists(file) && Files.size(file) > 0,
+			            "the key is not left behind in the archive");
+		}
+	}
+
+	@Test
 	void aDirectoryIsRestrictedAndNewEntriesInheritIt() throws Exception {
 		Path directory = folder.resolve("session");
 
@@ -87,7 +109,7 @@ class DshPermissionsWindowsTest {
 		assertOnlyOwningAccounts(entry);
 	}
 
-	/// Asserts that the path's ACL names no more than the owner and the current user, and allows.
+	/// Asserts that the path's ACL allows, and names no principal but the owner and the current user.
 	private static void assertOnlyOwningAccounts(Path path) throws Exception {
 		AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);
 		assertNotNull(view, "this test needs a file store with an ACL view to protect");
@@ -96,5 +118,26 @@ class DshPermissionsWindowsTest {
 		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
 		assertTrue(entries.stream().allMatch(entry -> entry.type() == AclEntryType.ALLOW),
 		           "the protected list has no deny rules to reason about: " + entries);
+		// The count above alone would pass an ACL naming Everyone and Users, so the principals
+		// themselves are checked.
+		UserPrincipal owner = view.getOwner();
+		UserPrincipal current = currentUser(path);
+		assertTrue(entries.stream()
+		                  .allMatch(entry -> entry.principal().equals(owner) ||
+		                                     (current != null && entry.principal().equals(current))),
+		           "every entry names the owner or the current user, nothing else: " + entries);
+	}
+
+	/// Resolves the user running the tests, or `null` when the name does not resolve.
+	private static UserPrincipal currentUser(Path path) {
+		String name = System.getProperty("user.name");
+		if (name == null || name.isBlank()) {
+			return null;
+		}
+		try {
+			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
 	}
 }
