@@ -568,17 +568,17 @@ public final class DshLaunchService {
 
 	/// Opens HMCL's log window on a process.
 	///
-	/// The window is the original's, with the live feed wired in: the process's own
-	/// DshProcess.stop is the terminate action, so its descendants and its post-exit
-	/// step are not lost, and the lines that were already collected are shown before
-	/// the subscription starts delivering new ones.
+	/// The window is the original's, with the live feed wired in: the service's own
+	/// stop is the terminate action, so the process's descendants, its post-exit step
+	/// and the launcher's bookkeeping are not lost, and the lines that were already
+	/// collected are shown before the subscription starts delivering new ones.
 	///
 	/// @param process the running process
 	static void openLogWindow(DshProcess process) {
 		LogWindow window = new LogWindow(process.managedProcess(),
 		                                 new CircularArrayList<>(),
 		                                 process.instance().id(),
-		                                 process::stop);
+		                                 () -> stop(process.instance().id(), null));
 		DshProcess.LogFeed feed = process.followLogs(line -> runInFX(() -> window.logLine(line)));
 		window.logLines(feed.initial());
 		window.setOnHidden(event -> feed.unsubscribe().run());

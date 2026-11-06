@@ -415,7 +415,7 @@ public final class DshCrashDialog extends Stage {
 				LogWindow window = new LogWindow(process.managedProcess(),
 				                                 new CircularArrayList<>(),
 				                                 process.instance().id(),
-				                                 process::stop);
+				                                 () -> DshLaunchService.stop(process.instance().id(), null));
 				DshProcess.LogFeed feed = process.followLogs(
 						line -> javafx.application.Platform.runLater(() -> window.logLine(line)));
 				window.logLines(feed.initial());
