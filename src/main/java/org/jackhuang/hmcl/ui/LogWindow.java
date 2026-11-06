@@ -244,11 +244,16 @@ public final class LogWindow extends Stage {
         }
 
         private void onTerminateGame() {
-            try {
-                LogWindow.this.terminateAction.run();
-            } catch (RuntimeException e) {
-                LOG.warning("Failed to stop the process from its log window", e);
-            }
+            // The action an instance hands in stops the process and waits for it to go, which can
+            // take the whole shutdown grace. Run it off the FX thread: the button's own feedback
+            // must not wait on the process it is stopping.
+            thread(() -> {
+                try {
+                    LogWindow.this.terminateAction.run();
+                } catch (RuntimeException e) {
+                    LOG.warning("Failed to stop the process from its log window", e);
+                }
+            });
         }
 
         private void onClear() {
