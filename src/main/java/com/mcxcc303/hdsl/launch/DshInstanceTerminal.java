@@ -162,9 +162,6 @@ public final class DshInstanceTerminal {
 		                  ? OperatingSystem.NATIVE_CHARSET
 		                  : StandardCharsets.UTF_8;
 		try {
-			// The script can carry the account's key. On Windows the profile directory inherits
-			// read access for local groups, so DshPermissions gives the session a protected ACL
-			// before anything is written into it.
 			DshPermissions.createRestrictedDirectory(bin, DshPermissions.SECRET_DIRECTORY);
 			DshPermissions.restrict(sessions, DshPermissions.SECRET_DIRECTORY);
 			DshPermissions.restrict(session, DshPermissions.SECRET_DIRECTORY);

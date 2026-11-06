@@ -74,9 +74,7 @@ class DshProcessLifecycleTest {
 				if (process.env.DSH_TEST_TICK) {
 				  setInterval(() => console.log('live-tick'), 100);
 				}
-				// Drain when the test says so rather than after a delay: a delay is a race the
-				// test can lose on a busy machine, and what the test is about is the window
-				// between being asked to stop and being gone.
+				
 				const fs = require('fs');
 				const release = process.env.DSH_TEST_DRAIN_FILE;
 				process.on('SIGTERM', () => {
@@ -84,9 +82,7 @@ class DshProcessLifecycleTest {
 				    if (!release || fs.existsSync(release)) { clearInterval(poll); process.exit(0); }
 				  }, 50);
 				});
-				// Nothing may outlive the test that started it: a stub that keeps
-				// running keeps the test's own JVM from finishing, and a suite that
-				// never finishes is worse than one that fails.
+				
 				setTimeout(() => process.exit(0), 60000);
 				setInterval(() => {}, 1000);
 				""");
@@ -161,19 +157,10 @@ class DshProcessLifecycleTest {
 		return makeInstance(Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString()));
 	}
 
-	/// Creates an instance with the environment the test stub needs.
-	///
-	/// @param environment the stub's environment
-	/// @return the instance
+	// Creates an instance with the environment the test stub needs.
 	private DshInstance makeInstance(Map<String, String> environment) throws Exception {
-		// A run that failed before its cleanup leaves an instance behind, and
-		// creating one with the same id then fails — which turns one bad run into a
-		// suite that cannot pass again. Clearing the id first is what makes each run
-		// independent of the last.
 		try {
-			if (InstanceStore.find(INSTANCE_ID) != null) {
-				DshInstanceManager.delete(INSTANCE_ID);
-			}
+			if (InstanceStore.find(INSTANCE_ID) != null) DshInstanceManager.delete(INSTANCE_ID);
 		} catch (DshException e) {
 			LOG.warning("Could not clear the instance a previous run left behind", e);
 		}
@@ -187,8 +174,6 @@ class DshProcessLifecycleTest {
 		                                                 null,
 		                                                 List.of(),
 		                                                 Map.copyOf(environment));
-		// Stopping is what most of these tests do on the way out, so the stub may go as soon as it
-		// is asked. The test that is about the wait removes this again.
 		Files.writeString(drainFile(), "go");
 		installStubSurface(instance);
 		return instance;
@@ -279,7 +264,10 @@ class DshProcessLifecycleTest {
 	@Test
 	void aLogFollowerGetsWhatWasThereAndWhatComesNext() throws Exception {
 		requireNode();
-		DshInstance instance = makeInstance(Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString(), "DSH_TEST_TICK", "1"));
+		DshInstance instance = makeInstance(Map.of("DSH_TEST_DRAIN_FILE",
+		                                           drainFile().toString(),
+		                                           "DSH_TEST_TICK",
+		                                           "1"));
 		DshProcess process = DshProcessManager.launch(instance);
 		List<LogLine> received = new CopyOnWriteArrayList<>();
 		try {

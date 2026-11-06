@@ -35,11 +35,7 @@ import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * The ACL a file that may hold a secret carries on Windows, where there is no mode.
@@ -51,6 +47,36 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DshPermissionsWindowsTest {
 	@TempDir
 	Path folder;
+
+	private static void assertOnlyOwningAccounts(Path path) throws Exception {
+		AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);
+		assertNotNull(view, "this test needs a file store with an ACL view to protect");
+		List<AclEntry> entries = view.getAcl();
+		assertTrue(entries.size() <= 2,
+		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
+		assertTrue(entries.stream().allMatch(entry -> entry.type() == AclEntryType.ALLOW),
+		           "the protected list has no deny rules to reason about: " + entries);
+		// The count above alone would pass an ACL naming Everyone and Users, so the principals
+		// themselves are checked.
+		UserPrincipal owner = view.getOwner();
+		UserPrincipal current = currentUser(path);
+		assertTrue(entries.stream()
+		                  .allMatch(entry -> entry.principal().equals(owner) ||
+		                                     (current != null && entry.principal().equals(current))),
+		           "every entry names the owner or the current user, nothing else: " + entries);
+	}
+
+	private static UserPrincipal currentUser(Path path) {
+		String name = System.getProperty("user.name");
+		if (name == null || name.isBlank()) {
+			return null;
+		}
+		try {
+			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
+		} catch (IOException | RuntimeException e) {
+			return null;
+		}
+	}
 
 	@Test
 	void anExistingFileIsRestrictedToItsOwningAccounts() throws Exception {
@@ -107,37 +133,5 @@ class DshPermissionsWindowsTest {
 		// inherited group access the directory was protected from.
 		Path entry = Files.writeString(directory.resolve("open.cmd"), "set KEY=1");
 		assertOnlyOwningAccounts(entry);
-	}
-
-	/// Asserts that the path's ACL allows, and names no principal but the owner and the current user.
-	private static void assertOnlyOwningAccounts(Path path) throws Exception {
-		AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);
-		assertNotNull(view, "this test needs a file store with an ACL view to protect");
-		List<AclEntry> entries = view.getAcl();
-		assertTrue(entries.size() <= 2,
-		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
-		assertTrue(entries.stream().allMatch(entry -> entry.type() == AclEntryType.ALLOW),
-		           "the protected list has no deny rules to reason about: " + entries);
-		// The count above alone would pass an ACL naming Everyone and Users, so the principals
-		// themselves are checked.
-		UserPrincipal owner = view.getOwner();
-		UserPrincipal current = currentUser(path);
-		assertTrue(entries.stream()
-		                  .allMatch(entry -> entry.principal().equals(owner) ||
-		                                     (current != null && entry.principal().equals(current))),
-		           "every entry names the owner or the current user, nothing else: " + entries);
-	}
-
-	/// Resolves the user running the tests, or `null` when the name does not resolve.
-	private static UserPrincipal currentUser(Path path) {
-		String name = System.getProperty("user.name");
-		if (name == null || name.isBlank()) {
-			return null;
-		}
-		try {
-			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
-		} catch (IOException | RuntimeException e) {
-			return null;
-		}
 	}
 }

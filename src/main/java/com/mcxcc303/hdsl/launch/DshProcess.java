@@ -119,7 +119,6 @@ public final class DshProcess {
 	/// window is opened while the process is running and appends as lines
 	/// arrive, so it needs the list to grow under it.
 	private final CircularArrayList<LogLine> windowLogs = new CircularArrayList<>();
-	/// Who is watching the output as it arrives, for the live log window.
 	private final List<Consumer<LogLine>> logListeners = new CopyOnWriteArrayList<>();
 	private final Object logLock = new Object();
 	private volatile State state = State.STARTING;
@@ -152,8 +151,6 @@ public final class DshProcess {
 		}
 
 		appendLog("$ " + plan.commandLine());
-		// Node writes UTF-8. Decoding it with the console's own charset works on an
-		// English Windows and turns every Chinese line into mojibake on a Chinese one.
 		this.process.pumpInputStream(line -> onOutput(line, false), StandardCharsets.UTF_8);
 		this.process.pumpErrorStream(line -> onOutput(line, true), StandardCharsets.UTF_8);
 
