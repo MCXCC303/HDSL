@@ -153,27 +153,28 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 	public DownloadPage() {
 		tab = new TabHeader(tabs);
 
-		AdvancedListBox sideBar = new AdvancedListBox().startCategory(i18n("download.new_game").toUpperCase(Locale.ROOT))
-		                                               .addNavigationDrawerTab(tab,
-		                                                                       versionsTab,
-		                                                                       i18n("dsh.download.instance"),
-		                                                                       SVG.STADIA_CONTROLLER,
-		                                                                       SVG.STADIA_CONTROLLER_FILL)
-		                                               .addNavigationDrawerTab(tab,
-		                                                                       packTab,
-		                                                                       i18n("dsh.download.packs"),
-		                                                                       SVG.PACKAGE2,
-		                                                                       SVG.PACKAGE2_FILL)
-		                                               .startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
-		                                               .addNavigationDrawerTab(tab,
-		                                                                       marketTab,
-		                                                                       i18n("dsh.download.plugins"),
-		                                                                       SVG.EXTENSION,
-		                                                                       SVG.EXTENSION_FILL)
-		                                               .addNavigationDrawerTab(tab,
-		                                                                       skillsTab,
-		                                                                       i18n("dsh.download.skills"),
-		                                                                       SVG.TEXTURE);
+		AdvancedListBox sideBar = new AdvancedListBox()
+				.startCategory(i18n("download.new_game").toUpperCase(Locale.ROOT))
+				.addNavigationDrawerTab(tab,
+				                        versionsTab,
+				                        i18n("dsh.download.instance"),
+				                        SVG.STADIA_CONTROLLER,
+				                        SVG.STADIA_CONTROLLER_FILL)
+				.addNavigationDrawerTab(tab,
+				                        packTab,
+				                        i18n("dsh.download.packs"),
+				                        SVG.PACKAGE2,
+				                        SVG.PACKAGE2_FILL)
+				.startCategory(i18n("download.content").toUpperCase(Locale.ROOT))
+				.addNavigationDrawerTab(tab,
+				                        marketTab,
+				                        i18n("dsh.download.plugins"),
+				                        SVG.EXTENSION,
+				                        SVG.EXTENSION_FILL)
+				.addNavigationDrawerTab(tab,
+				                        skillsTab,
+				                        i18n("dsh.download.skills"),
+				                        SVG.TEXTURE);
 		FXUtils.setLimitWidth(sideBar, 200);
 		setLeft(sideBar);
 
