@@ -26,15 +26,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.attribute.AclEntry;
-import java.nio.file.attribute.AclEntryFlag;
-import java.nio.file.attribute.AclEntryPermission;
-import java.nio.file.attribute.AclEntryType;
-import java.nio.file.attribute.AclFileAttributeView;
-import java.nio.file.attribute.PosixFileAttributeView;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
-import java.nio.file.attribute.UserPrincipal;
+import java.nio.file.attribute.*;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -43,13 +35,9 @@ import java.util.Set;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Gives a file or directory the specified mode.<br>
- * These files/directories may hold secrets, 0600->configFile and 0700->dir/executable is suggested.
- * <p>
- * The mode is a POSIX one. On Windows, where the filesystem has no mode, the same calls give the entry a
- * protected ACL instead: the inherited entries are replaced with the owner and the current user, so a
- * file that would otherwise inherit a local group's read access names only the accounts that own it.
- * See [#restrictToCurrentUser(Path)].
+ * Restricts file and directory access using POSIX permissions or Windows ACLs.<br>
+ * Use {@link #SECRET_FILE} (0600) for secret files and {@link #SECRET_DIRECTORY} or
+ * {@link #SECRET_EXECUTABLE} (0700) for directories and executables.
  */
 @NotNullByDefault
 public final class DshPermissions {
@@ -60,11 +48,10 @@ public final class DshPermissions {
 	private DshPermissions() {}
 
 	/**
-	 * Gives a path the specified mode. POSIX only; on Windows it gives the path a protected ACL.
+	 * Restricts an existing path's permissions. Failures are logged but do not propagate.
 	 * <p>
-	 * A failure is reported and otherwise ignored: this is also the call that tightens a directory an
-	 * earlier launcher left loose, and a caller that cannot tighten it must still not fail its own work.
-	 * Calls that are about to write a secret use the creating methods below, which do fail.
+	 * Used for best-effort tightening of existing paths; use the creating methods when
+	 * failure to restrict access must prevent further writes.
 	 */
 	public static void restrict(Path path, Set<PosixFilePermission> mode) {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
@@ -77,6 +64,7 @@ public final class DshPermissions {
 		}
 		try {
 			PosixFileAttributeView view = Files.getFileAttributeView(path, PosixFileAttributeView.class);
+			if (view == null) return;
 			if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
 				return; // exclude windows and some special url
 			}
@@ -88,10 +76,9 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Creates a file with the mode if it is not there, and gives an existing file the mode. POSIX only;
-	 * on Windows the file is created and then given a protected ACL.
+	 * Creates a file with the specified permissions, or applies them to an existing file.
 	 *
-	 * @throws IOException when the file cannot be created, or its ACL cannot be written
+	 * @throws IOException if the file cannot be created or its permissions cannot be set
 	 */
 	public static void createRestricted(Path file, Set<PosixFilePermission> mode) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
@@ -100,8 +87,6 @@ public final class DshPermissions {
 			} catch (FileAlreadyExistsException e) {
 				// The file is already there, and is given the ACL below.
 			}
-			// Written via the failing form: a secret must not be written into a file whose ACL the
-			// launcher could not replace.
 			restrictToCurrentUser(file);
 			return;
 		}
@@ -116,10 +101,9 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Creates a permission restricted directory. POSIX only; on Windows every directory this call
-	 * creates is given a protected ACL before the next one is made.
+	 * Creates a directory and restricts its permissions.
 	 *
-	 * @throws IOException when the dir cannot be created, or its ACL cannot be written
+	 * @throws IOException if the directory cannot be created or its permissions cannot be set
 	 */
 	public static void createRestrictedDirectory(Path dir, Set<PosixFilePermission> mode) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
@@ -131,12 +115,11 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Writes text into a file with spec mode. POSIX only; on Windows the file is created and protected
-	 * before the text is written into it.
+	 * Creates or restricts a file before writing text into it.
 	 *
-	 * @param text    what to write into it
-	 * @param charset the charset to write it in
-	 * @throws IOException when it cannot be written
+	 * @param text    text to write
+	 * @param charset encoding to use
+	 * @throws IOException if the file cannot be created, restricted, or written
 	 */
 	public static void writeRestricted(Path file, String text, Charset charset, Set<PosixFilePermission> mode)
 	throws IOException {
@@ -145,15 +128,9 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Creates every missing directory on the way to the one asked for, protecting each as it is made.
+	 * Creates missing directories one at a time, protecting each before creating its children.
 	 * <p>
-	 * {@link Files#createDirectories(Path)} would make the whole chain first, and on Windows the ones
-	 * above the leaf would inherit the profile directory's group access until the caller tightened
-	 * them. Making them one at a time keeps the window closed: each is protected before anything can
-	 * be put into it, and before the next one is made.
-	 *
-	 * @param dir the directory wanted
-	 * @throws IOException when a directory cannot be created or its ACL cannot be written
+	 * This prevents newly created directories from inheriting broader access from their parents.
 	 */
 	private static void createDirectoriesRestricted(Path dir) throws IOException {
 		Path absolute = dir.toAbsolutePath().normalize();
@@ -170,30 +147,17 @@ public final class DshPermissions {
 			} catch (FileAlreadyExistsException e) {
 				// Another thread made it between the check above and this call.
 			}
-			if (!path.equals(absolute)) {
-				// Protected before the child is made, so the child cannot inherit the profile
-				// directory's group access from it.
-				restrictToCurrentUser(path);
-			}
+			if (!path.equals(absolute)) restrictToCurrentUser(path); // before the child exists, thus it cannot inherit
 		}
-		// The leaf itself, and a directory that was already there: an older launcher left the
-		// profile directory's inherited group access on it.
 		restrictToCurrentUser(dir);
 	}
 
 	/**
-	 * Replaces a path's ACL with one that names only the accounts that own it.
+	 * Replaces a Windows path's ACL with entries for its owner and the current user.
 	 * <p>
-	 * The Windows profile directory inherits access for groups such as the local Users group, and a
-	 * terminal session's script can contain an account key while an exported log can contain the
-	 * harness's launch token. A file that inherits a group's read access therefore hands those
-	 * secrets to every member of that group. The owner and the user running the launcher get the
-	 * entry; a directory's entry is inheritable, so files created under it stay protected too.
-	 * <p>
-	 * The POSIX mode is a separate question: this is the Windows-side guard.
+	 * Directory entries are inheritable so that children retain the same access restrictions.
 	 *
-	 * @param path the file or directory to protect
-	 * @throws IOException when the entry or its ACL cannot be read or written
+	 * @throws IOException if the ACL cannot be read or updated
 	 */
 	private static void restrictToCurrentUser(Path path) throws IOException {
 		AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
@@ -221,7 +185,9 @@ public final class DshPermissions {
 		}
 	}
 
-	/// Returns the principal of the user running the launcher, or the owner when it cannot be named.
+	/**
+	 * Returns the principal of the user running the launcher, or the owner when it cannot be named.
+	 */
 	private static UserPrincipal currentUser(Path path, UserPrincipal fallback) {
 		String name = System.getProperty("user.name");
 		if (name == null || name.isBlank()) {
@@ -234,7 +200,6 @@ public final class DshPermissions {
 		}
 	}
 
-	/// Builds one allow entry for an owner or the current user.
 	private static AclEntry allow(UserPrincipal principal, boolean directory) {
 		EnumSet<AclEntryPermission> permissions = EnumSet.allOf(AclEntryPermission.class);
 		EnumSet<AclEntryFlag> flags = directory
