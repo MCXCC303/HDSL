@@ -67,11 +67,7 @@ public final class LogWindow extends Stage {
     private final Map<Log4jLevel, SimpleIntegerProperty> levelCountMap = new EnumMap<>(Log4jLevel.class);
     private final Map<Log4jLevel, SimpleBooleanProperty> levelShownMap = new EnumMap<>(Log4jLevel.class);
 
-    /// How many lines this window keeps.
-    ///
-    /// The original keeps this number in its log window rather than in the launcher's
-    /// settings, and the same is done here: the count belongs to the window that
-    /// applies it, so there is one control for it rather than two that can disagree.
+    // Maximum number of lines this window retains.
     private int retainedLines = LogLine.DEFAULT_LOG_LINES;
 
     {
@@ -94,16 +90,13 @@ public final class LogWindow extends Stage {
         this(gameProcess, logs, null);
     }
 
-    /// Creates the window.
-    ///
-    /// @param gameProcess the process whose output is shown
-    /// @param logs        the lines already collected
-    /// @param instanceId  the instance the lines came from, or `null`
     private LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs, @Nullable String instanceId) {
         this(gameProcess, logs, instanceId, null);
     }
 
-    /// Creates the window with an explicit action for its terminate button.
+    /**
+     * Creates the window with an explicit action for its terminate button.
+     */
     public LogWindow(ManagedProcess gameProcess,
                      CircularArrayList<LogLine> logs,
                      @Nullable String instanceId,

@@ -36,55 +36,39 @@ import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-/// One row of the auto-install list.
-///
-/// The list half of the original's installer item, and the same `.installer-item`
-/// family as [InstallerCard]: that is where the icon size, the two label styles
-/// and the row's separator come from, and the original's stylesheet selects the
-/// list shape with the `:list-item` pseudo-class rather than with a class of its
-/// own. The original keeps both shapes in one control; this keeps the card as it
-/// was and puts the row beside it, because the two are built differently — one is
-/// a column sized from its width, the other a row that grows a status line and
-/// carries the actions on its trailing edge.
+/**
+ * A row component representing an installer item in the auto-install list.
+ */
 @NotNullByDefault
 public final class InstallerListItem extends StackPane {
-	/// The original's pseudo-class for the list shape of an installer item.
 	private static final PseudoClass LIST_ITEM = PseudoClass.getPseudoClass("list-item");
-
-	/// The stylesheet's name for the wider name column.
 	private static final String WIDE_NAME = "wide";
 
-	/// The component's name, kept so its column can be sized.
 	private final Label nameLabel;
-
-	/// What state the component is in, shown between the name and the actions.
 	private final StringProperty status = new SimpleStringProperty();
-
-	/// The button that installs or changes the component.
 	private final JFXButton change = FXUtils.newToggleButton4(SVG.UPDATE);
-	/// The button that removes the component.
 	private final JFXButton remove = FXUtils.newToggleButton4(SVG.CLOSE);
-	/// The ripple surface the row is pressed on.
 	private final @Nullable RipplerContainer rippler;
-	/// What pressing the row does.
 	private @Nullable Runnable activate;
-	/// The action the change button runs, or `null` when there is none.
 	private @Nullable Runnable changeAction;
-	/// The action the remove button runs, or `null` when there is none.
 	private @Nullable Runnable removeAction;
 
-	/// Creates a row whose icon is a picture.
-	///
-	/// @param icon the image, or `null` for none
-	/// @param name the component's name
+	/**
+	 * Creates a list item with an image icon.
+	 *
+	 * @param icon the image, or {@code null}
+	 * @param name the component name
+	 */
 	public InstallerListItem(@Nullable Image icon, String name) {
 		this(icon == null ? null : new ImageView(icon), name);
 	}
 
-	/// Creates a row.
-	///
-	/// @param icon the icon node, already sized, or `null` for none
-	/// @param name the component's name
+	/**
+	 * Creates a list item with an arbitrary icon node.
+	 *
+	 * @param icon the icon node, or {@code null}
+	 * @param name the component name
+	 */
 	public InstallerListItem(@Nullable Node icon, String name) {
 		HBox pane = new HBox();
 		pane.getStyleClass().add("installer-item");
@@ -123,30 +107,22 @@ public final class InstallerListItem extends StackPane {
 
 		StackPane wrapper = new StackPane();
 		wrapper.getStyleClass().add("installer-item-wrapper");
-		// One rippler, as the card uses: the row's surface is what ripples, and
-		// building a second one around the same pane would move the pane into it.
 		this.rippler = new RipplerContainer(pane);
 		wrapper.getChildren().setAll(rippler);
 		getChildren().setAll(wrapper);
 	}
 
-	/// Runs an action, ignoring a button that is not offering one.
-	///
-	/// @param action the action, or `null`
 	private static void run(@Nullable Runnable action) {
 		if (action != null) {
 			action.run();
 		}
 	}
 
-	/// Gives the row's name column the wider width the stylesheet defines.
-	///
-	/// The original sizes that column for its own component names, and the runtime
-	/// this launcher lists does not fit. A page that lists several components asks
-	/// for the wider column on all of them, so the state each row reports still
-	/// starts in the same place.
-	///
-	/// @param wide whether the name needs the wider column
+	/**
+	 * Sets whether to apply the wider name column style.
+	 *
+	 * @param wide whether the name column should be widened
+	 */
 	public void setWideName(boolean wide) {
 		if (wide && !nameLabel.getStyleClass().contains(WIDE_NAME)) {
 			nameLabel.getStyleClass().add(WIDE_NAME);
@@ -155,18 +131,19 @@ public final class InstallerListItem extends StackPane {
 		}
 	}
 
-	/// Returns the state shown between the name and the actions.
-	///
-	/// A property rather than a setter alone, because a row is often built before
-	/// the value it reports on has been read.
-	///
-	/// @return the property
+	/**
+	 * Returns the status text property shown between the name and actions.
+	 *
+	 * @return the status property
+	 */
 	public StringProperty statusProperty() {
 		return status;
 	}
 
 	/**
-	 * @param action the action, or `null` for a row that does nothing
+	 * Sets the action executed when the row is clicked.
+	 *
+	 * @param action the action, or {@code null} for no-op
 	 */
 	public void setOnActivate(@Nullable Runnable action) {
 		activate = action;
@@ -180,10 +157,10 @@ public final class InstallerListItem extends StackPane {
 	}
 
 	/**
-	 * Sets what the change button does, and shows it.
+	 * Sets the action executed by the change button and shows or hides it.
 	 *
-	 * @param action  the action, or `null` to hide the button
-	 * @param tooltip what the button does, for the pointer
+	 * @param action  the action, or {@code null} to hide the button
+	 * @param tooltip tooltip description for the change button
 	 */
 	public void setOnChange(@Nullable Runnable action, String tooltip) {
 		this.changeAction = action;
@@ -194,10 +171,12 @@ public final class InstallerListItem extends StackPane {
 		}
 	}
 
-	/// Sets what the remove button does, and shows it.
-	///
-	/// @param action  the action, or `null` to hide the button
-	/// @param tooltip what the button does, for the pointer
+	/**
+	 * Sets the action executed by the remove button and shows or hides it.
+	 *
+	 * @param action  the action, or {@code null} to hide the button
+	 * @param tooltip tooltip description for the remove button
+	 */
 	public void setOnRemove(@Nullable Runnable action, String tooltip) {
 		this.removeAction = action;
 		remove.setVisible(action != null);

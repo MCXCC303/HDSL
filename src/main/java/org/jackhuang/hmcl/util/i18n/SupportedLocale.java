@@ -126,11 +126,14 @@ public final class SupportedLocale {
         return locale;
     }
 
-    /// Used to represent the text display language of HMCL.
-    ///
-    /// Usually equivalent to [#getLocale()],
-    /// but for [experimentally supported languages][#isExperimentalSupported(Locale)],
-    /// it falls back to ENGLISH by default.
+    /**
+     * Text display language of HMCL.
+     *
+     * <p>Usually equivalent to {@link #getLocale()}, but falls back to English
+     * for experimentally supported languages.
+     *
+     * @return the display locale
+     */
     public Locale getDisplayLocale() {
         return displayLocale;
     }
@@ -227,20 +230,12 @@ public final class SupportedLocale {
         return getString(key);
     }
 
-    /// Resolves a string from this locale's bundle, falling back to English.
-    ///
-    /// The bundles are not all the same size: the transplanted interface contributes about
-    /// four hundred strings, and only the two the launcher maintains are kept complete. A
-    /// key a bundle does not hold would otherwise be drawn as the key itself, so an entry
-    /// reading `dsh.settings.instance_defaults` appeared on the sidebar of every language
-    /// but the two — which says nothing at all to the person looking at it. English is what
-    /// the original falls back to as well, and the string it produces is at least a word.
-    ///
-    /// The key is still logged: a bundle that is missing strings is work left to do, and
-    /// silently substituting English is how it would go unnoticed.
-    ///
-    /// @param key the string's key
-    /// @return the localized string, the English one, or the key when neither bundle has it
+    /**
+     * Resolves a string from this locale's bundle, falling back to English.
+     *
+     * @param key the string's key
+     * @return the localized string, the English one, or the key when neither bundle has it
+     */
     private String getString(String key) {
         try {
             return getResourceBundle().getString(key);

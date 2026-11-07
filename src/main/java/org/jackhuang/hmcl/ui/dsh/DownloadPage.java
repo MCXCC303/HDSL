@@ -178,7 +178,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 	/**
 	 * Selects a tab by name.
 	 *
-	 * @param name the tab name: `versions`, `packs`, `plugins` or `skills`
+	 * @param name the tab name: {@code versions}, {@code packs}, {@code plugins} or {@code skills}
 	 * @return whether a tab was selected
 	 */
 	public boolean openTab(String name) {
@@ -197,7 +197,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 	/**
 	 * Opens the plugin market for an instance.
 	 *
-	 * @param instance the instance to install into, or `null` to follow the launcher's selection
+	 * @param instance the instance to install into, or {@code null} to follow the launcher's selection
 	 */
 	public void openPluginsFor(@Nullable DshInstance instance) {
 		openTab("plugins");

@@ -39,295 +39,322 @@ import java.util.concurrent.CompletableFuture;
 import java.nio.file.Path;
 import java.util.Objects;
 
-/// Owns the application stage, the window decorator and the dialog helpers the
-/// ported component library calls into.
-///
-/// This is the HDSL replacement for HMCL's `Controllers`: same entry points,
-/// but without the Minecraft page registry, account dialogs or update checker.
+/**
+ * Application-level controller managing the primary stage, decorator, dialogs, and navigation.
+ */
 @NotNullByDefault
 public final class Controllers {
-    private Controllers() {
-    }
+	private Controllers() {
+	}
 
-    /// The main window decorator, or `null` before [#initialize] or after [#shutdown].
-    private static @Nullable Decorator decorator;
+	private static @Nullable Decorator decorator;
+	private static @Nullable Stage stage;
+	private static @Nullable org.jackhuang.hmcl.ui.dsh.InstancesPage instancesPage;
+	private static @Nullable org.jackhuang.hmcl.ui.dsh.DownloadPage downloadPage;
 
-    /// The primary application stage, or `null` before [#initialize] or after [#shutdown].
-    private static @Nullable Stage stage;
+	/**
+	 * Whether idle heap trimming is enabled.
+	 */
+	public static final boolean AUTO_TRIM_HEAP =
+			!"false".equalsIgnoreCase(System.getenv("HDSL_AUTO_TRIM_HEAP"));
 
-    /// The instance list page, created on first use.
-    private static @Nullable org.jackhuang.hmcl.ui.dsh.InstancesPage instancesPage;
+	/**
+	 * Installs the main page into a decorator attached to the primary stage.
+	 *
+	 * @param primaryStage the application stage
+	 * @param mainPage     the initial page node
+	 * @return the scene created for the stage
+	 */
+	public static javafx.scene.Scene initialize(Stage primaryStage, Node mainPage) {
+		stage = primaryStage;
+		decorator = new Decorator(mainPage);
+		return decorator.attachStage(primaryStage);
+	}
 
-    /// The download page, created on first use.
-    private static @Nullable org.jackhuang.hmcl.ui.dsh.DownloadPage downloadPage;
+	/**
+	 * Returns the primary application stage.
+	 *
+	 * @return the primary stage
+	 * @throws NullPointerException if the main window has not been initialized
+	 */
+	public static Stage getStage() {
+		return Objects.requireNonNull(stage, "Main window is not initialized");
+	}
 
-    /// Whether idle heap trimming is enabled.
-    ///
-    /// Trimming is opt-out for machines where a stop-the-world collection after
-    /// each task is more noticeable than the retained heap.
-    public static final boolean AUTO_TRIM_HEAP =
-            !"false".equalsIgnoreCase(System.getenv("HDSL_AUTO_TRIM_HEAP"));
+	/**
+	 * Returns the application-wide window decorator.
+	 *
+	 * @return the main window decorator
+	 * @throws NullPointerException if the main window has not been initialized
+	 */
+	public static Decorator getDecorator() {
+		return Objects.requireNonNull(decorator, "Main window is not initialized");
+	}
 
-    /// Installs the main page into a decorator attached to the primary stage.
-    ///
-    /// @param primaryStage the application stage, which must not have been shown yet
-    /// @param mainPage     the page shown first
-    /// @return the scene created for the stage
-    public static javafx.scene.Scene initialize(Stage primaryStage, Node mainPage) {
-        stage = primaryStage;
-        decorator = new Decorator(mainPage);
-        return decorator.attachStage(primaryStage);
-    }
+	/**
+	 * Releases stage-specific listeners and window ownership.
+	 */
+	public static void onApplicationStop() {
+		Decorator current = decorator;
+		if (current != null) {
+			current.detachStage();
+		}
+	}
 
-    /// Returns the primary application stage.
-    ///
-    /// @return the primary stage
-    /// @throws NullPointerException when the launcher has not been initialized
-    public static Stage getStage() {
-        return Objects.requireNonNull(stage, "Main window is not initialized");
-    }
+	/**
+	 * Returns whether the main window has been torn down.
+	 *
+	 * @return {@code true} if the launcher window has been torn down
+	 */
+	public static boolean isStopped() {
+		return decorator == null;
+	}
 
-    /// Returns the application-wide window decorator.
-    ///
-    /// @return the main window decorator
-    /// @throws NullPointerException when the launcher has not been initialized
-    public static Decorator getDecorator() {
-        return Objects.requireNonNull(decorator, "Main window is not initialized");
-    }
+	/**
+	 * Releases controller-owned pages and JavaFX helper resources.
+	 */
+	public static void shutdown() {
+		onApplicationStop();
+		decorator = null;
+		stage = null;
+		FXUtils.shutdown();
+	}
 
-    /// Releases stage-specific listeners and retained window ownership.
-    public static void onApplicationStop() {
-        Decorator current = decorator;
-        if (current != null) {
-            current.detachStage();
-        }
-    }
+	/**
+	 * Displays a dialog containing the specified content region.
+	 *
+	 * @param content the dialog body
+	 */
+	public static void dialog(Region content) {
+		Decorator current = decorator;
+		if (current != null)
+			current.showDialog(content);
+	}
 
-    /// Returns whether the main window has been torn down.
-    ///
-    /// @return whether the launcher window is gone
-    public static boolean isStopped() {
-        return decorator == null;
-    }
+	/**
+	 * Shows an informational dialog containing plain text.
+	 *
+	 * @param text the message body
+	 */
+	public static void dialog(String text) {
+		dialog(text, null);
+	}
 
-    /// Releases controller-owned pages and JavaFX helper resources.
-    public static void shutdown() {
-        onApplicationStop();
-        decorator = null;
-        stage = null;
-        FXUtils.shutdown();
-    }
+	/**
+	 * Shows an informational dialog containing plain text.
+	 *
+	 * @param text  the message body
+	 * @param title the dialog title, or {@code null}
+	 */
+	public static void dialog(String text, @Nullable String title) {
+		dialog(text, title, MessageType.INFO);
+	}
 
-    /// Shows a dialog containing an arbitrary region.
-    ///
-    /// Does nothing when the main window is not available, so background
-    /// failures during shutdown cannot resurrect the UI.
-    ///
-    /// @param content the dialog body
-    public static void dialog(Region content) {
-        Decorator current = decorator;
-        if (current != null)
-            current.showDialog(content);
-    }
+	/**
+	 * Shows a dialog containing plain text with the specified message type.
+	 *
+	 * @param text  the message body
+	 * @param title the dialog title, or {@code null}
+	 * @param type  the message severity
+	 */
+	public static void dialog(String text, @Nullable String title, MessageType type) {
+		dialog(text, title, type, null);
+	}
 
-    /// Shows an informational dialog containing plain text.
-    ///
-    /// @param text the message body
-    public static void dialog(String text) {
-        dialog(text, null);
-    }
+	/**
+	 * Shows a dialog containing plain text and runs an action when accepted.
+	 *
+	 * @param text  the message body
+	 * @param title the dialog title, or {@code null}
+	 * @param type  the message severity
+	 * @param ok    action to run on accept, or {@code null}
+	 */
+	public static void dialog(String text, @Nullable String title, MessageType type, @Nullable Runnable ok) {
+		dialog(new MessageDialogPane.Builder(text, title, type).ok(ok).build());
+	}
 
-    /// Shows an informational dialog containing plain text.
-    ///
-    /// @param text  the message body
-    /// @param title the dialog title, or `null`
-    public static void dialog(String text, @Nullable String title) {
-        dialog(text, title, MessageType.INFO);
-    }
+	/**
+	 * Shows a yes/no confirmation dialog.
+	 *
+	 * @param text  the message body
+	 * @param title the dialog title, or {@code null}
+	 * @param yes   action to run when confirmed
+	 * @param no    action to run when declined, or {@code null}
+	 */
+	public static void confirm(String text, @Nullable String title, Runnable yes, @Nullable Runnable no) {
+		confirm(text, title, MessageType.QUESTION, yes, no);
+	}
 
-    /// Shows a dialog containing plain text.
-    ///
-    /// @param text  the message body
-    /// @param title the dialog title, or `null`
-    /// @param type  the message severity
-    public static void dialog(String text, @Nullable String title, MessageType type) {
-        dialog(text, title, type, null);
-    }
+	/**
+	 * Shows a confirmation dialog with an explicit severity.
+	 *
+	 * @param text  the message body
+	 * @param title the dialog title, or {@code null}
+	 * @param type  the message severity
+	 * @param yes   action to run when confirmed
+	 * @param no    action to run when declined, or {@code null}
+	 */
+	public static void confirm(String text, @Nullable String title, MessageType type,
+	                           Runnable yes, @Nullable Runnable no) {
+		dialog(new MessageDialogPane.Builder(text, title, type).yesOrNo(yes, no).build());
+	}
 
-    /// Shows a dialog containing plain text and runs an action when it is accepted.
-    ///
-    /// @param text  the message body
-    /// @param title the dialog title, or `null`
-    /// @param type  the message severity
-    /// @param ok    the action to run on accept, or `null`
-    public static void dialog(String text, @Nullable String title, MessageType type, @Nullable Runnable ok) {
-        dialog(new MessageDialogPane.Builder(text, title, type).ok(ok).build());
-    }
+	/**
+	 * Navigates the content area to the specified page node.
+	 *
+	 * @param node the page to show
+	 */
+	public static void navigate(Node node) {
+		Decorator current = decorator;
+		if (current != null)
+			current.navigate(node, ContainerAnimations.NAVIGATION, Motion.SHORT4, Motion.EASE);
+	}
 
-    /// Shows a yes/no confirmation dialog.
-    ///
-    /// @param text  the message body
-    /// @param title the dialog title, or `null`
-    /// @param yes   the action to run when confirmed
-    /// @param no    the action to run when declined, or `null`
-    public static void confirm(String text, @Nullable String title, Runnable yes, @Nullable Runnable no) {
-        confirm(text, title, MessageType.QUESTION, yes, no);
-    }
+	/**
+	 * Navigates the content area forward to the specified page node.
+	 *
+	 * @param node the page to show
+	 */
+	public static void navigateForward(Node node) {
+		Decorator current = decorator;
+		if (current != null)
+			current.navigate(node, ContainerAnimations.FORWARD, Motion.SHORT4, Motion.EASE);
+	}
 
-    /// Shows a yes/no confirmation dialog with an explicit severity.
-    ///
-    /// @param text  the message body
-    /// @param title the dialog title, or `null`
-    /// @param type  the message severity
-    /// @param yes   the action to run when confirmed
-    /// @param no    the action to run when declined, or `null`
-    public static void confirm(String text, @Nullable String title, MessageType type,
-                               Runnable yes, @Nullable Runnable no) {
-        dialog(new MessageDialogPane.Builder(text, title, type).yesOrNo(yes, no).build());
-    }
+	/**
+	 * Returns the download page, lazily initialized on first use.
+	 *
+	 * @return the download page
+	 */
+	public static org.jackhuang.hmcl.ui.dsh.DownloadPage getDownloadPage() {
+		org.jackhuang.hmcl.ui.dsh.DownloadPage page = downloadPage;
+		if (page == null) {
+			page = new org.jackhuang.hmcl.ui.dsh.DownloadPage();
+			downloadPage = page;
+		}
+		return page;
+	}
 
-    /// Navigates the content area to a page with the standard transition.
-    ///
-    /// @param node the page to show
-    public static void navigate(Node node) {
-        Decorator current = decorator;
-        if (current != null)
-            current.navigate(node, ContainerAnimations.NAVIGATION, Motion.SHORT4, Motion.EASE);
-    }
+	/**
+	 * Returns the instances page, lazily initialized on first use.
+	 *
+	 * @return the instances page
+	 */
+	public static org.jackhuang.hmcl.ui.dsh.InstancesPage getInstancesPage() {
+		org.jackhuang.hmcl.ui.dsh.InstancesPage page = instancesPage;
+		if (page == null) {
+			page = new org.jackhuang.hmcl.ui.dsh.InstancesPage();
+			instancesPage = page;
+		}
+		return page;
+	}
 
-    /// Navigates the content area to a page with the forward transition.
-    ///
-    /// @param node the page to show
-    public static void navigateForward(Node node) {
-        Decorator current = decorator;
-        if (current != null)
-            current.navigate(node, ContainerAnimations.FORWARD, Motion.SHORT4, Motion.EASE);
-    }
+	/**
+	 * Shows a transient toast message over the main window.
+	 *
+	 * @param content the message to show
+	 */
+	public static void showToast(String content) {
+		Decorator current = decorator;
+		if (current != null)
+			current.showToast(content);
+	}
 
-    /// Returns the download page, creating it on first use.
-    ///
-    /// Kept here for the same reason the instance list is: more than one place
-    /// opens it — the home page's own entry, and creating an instance, which the
-    /// original routes through the version list rather than through a wizard
-    /// step of its own.
-    ///
-    /// @return the download page
-    public static org.jackhuang.hmcl.ui.dsh.DownloadPage getDownloadPage() {
-        org.jackhuang.hmcl.ui.dsh.DownloadPage page = downloadPage;
-        if (page == null) {
-            page = new org.jackhuang.hmcl.ui.dsh.DownloadPage();
-            downloadPage = page;
-        }
-        return page;
-    }
+	/**
+	 * Shows a directory chooser dialog owned by the main window.
+	 *
+	 * @param chooser the chooser to show
+	 * @return the selected path, or {@code null} if cancelled
+	 */
+	public static @Nullable Path showDialog(DirectoryChooser chooser) {
+		return FileUtils.toPath(chooser.showDialog(stage));
+	}
 
-    /// Returns the instance list page, creating it on first use.
-    ///
-    /// The page is kept here rather than by whichever page opens it, because more
-    /// than one does: the home page's sidebar, an instance page that has just
-    /// renamed or removed its instance, and the home page's own empty state.
-    /// Handing out one page is what keeps them from drifting apart, and it is
-    /// where the original keeps its game list too.
-    ///
-    /// @return the instance list page
-    public static org.jackhuang.hmcl.ui.dsh.InstancesPage getInstancesPage() {
-        org.jackhuang.hmcl.ui.dsh.InstancesPage page = instancesPage;
-        if (page == null) {
-            page = new org.jackhuang.hmcl.ui.dsh.InstancesPage();
-            instancesPage = page;
-        }
-        return page;
-    }
+	/**
+	 * Shows a file-open chooser dialog owned by the main window.
+	 *
+	 * @param chooser the chooser to show
+	 * @return the selected path, or {@code null} if cancelled
+	 */
+	public static @Nullable Path showOpenDialog(FileChooser chooser) {
+		return FileUtils.toPath(chooser.showOpenDialog(stage));
+	}
 
-    /// Shows a transient snackbar message over the main window.
-    ///
-    /// @param content the message to show
-    public static void showToast(String content) {
-        Decorator current = decorator;
-        if (current != null)
-            current.showToast(content);
-    }
+	/**
+	 * Shows a file-save chooser dialog owned by the main window.
+	 *
+	 * @param chooser the chooser to show
+	 * @return the selected path, or {@code null} if cancelled
+	 */
+	public static @Nullable Path showSaveDialog(FileChooser chooser) {
+		return FileUtils.toPath(chooser.showSaveDialog(stage));
+	}
 
-    /// Shows a directory chooser owned by the main window.
-    ///
-    /// @param chooser the chooser to show
-    /// @return the selected directory, or `null` when cancelled
-    public static @Nullable Path showDialog(DirectoryChooser chooser) {
-        return FileUtils.toPath(chooser.showDialog(stage));
-    }
+	/**
+	 * Handles a hyperlink click action.
+	 *
+	 * @param href the link target
+	 */
+	public static void onHyperlinkAction(String href) {
+		openUriOrCopy(href);
+	}
 
-    /// Shows a file-open chooser owned by the main window.
-    ///
-    /// @param chooser the chooser to show
-    /// @return the selected file, or `null` when cancelled
-    public static @Nullable Path showOpenDialog(FileChooser chooser) {
-        return FileUtils.toPath(chooser.showOpenDialog(stage));
-    }
+	/**
+	 * Opens a URI in the desktop browser, falling back to copying it.
+	 *
+	 * @param uri the URI to open, or {@code null}
+	 */
+	public static void openUriOrCopy(@Nullable URI uri) {
+		if (uri != null) {
+			openUriOrCopy(uri.toString());
+		}
+	}
 
-    /// Shows a file-save chooser owned by the main window.
-    ///
-    /// @param chooser the chooser to show
-    /// @return the selected file, or `null` when cancelled
-    public static @Nullable Path showSaveDialog(FileChooser chooser) {
-        return FileUtils.toPath(chooser.showSaveDialog(stage));
-    }
+	/**
+	 * Opens a URI string in the desktop browser, falling back to copying it.
+	 *
+	 * @param uri the URI string to open, or {@code null}
+	 */
+	public static void openUriOrCopy(@Nullable String uri) {
+		if (uri == null) {
+			return;
+		}
+		FXUtils.openLink(uri);
+	}
 
-    /// Handles a hyperlink click coming from rendered rich text.
-    ///
-    /// HDSL has no in-application URI scheme yet, so every link is handed
-    /// to the desktop or copied to the clipboard.
-    ///
-    /// @param href the link target
-    public static void onHyperlinkAction(String href) {
-        openUriOrCopy(href);
-    }
+	/**
+	 * Prompts the user for a single line of text.
+	 *
+	 * @param title        dialog prompt title
+	 * @param onResult     callback to accept or reject input
+	 * @param initialValue initial value displayed in the text field
+	 * @param validators   optional input validators
+	 * @return future completing with accepted text
+	 */
+	public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult,
+	                                               String initialValue, ValidatorBase... validators) {
+		InputDialogPane pane = new InputDialogPane(title, initialValue, onResult, validators);
+		dialog(pane);
+		return pane.getCompletableFuture();
+	}
 
-    /// Opens a URI in the desktop browser, falling back to copying it.
-    ///
-    /// @param uri the URI to open, or `null`
-    public static void openUriOrCopy(@Nullable URI uri) {
-        if (uri != null) {
-            openUriOrCopy(uri.toString());
-        }
-    }
+	/**
+	 * Prompts the user for a single line of text with an empty initial value.
+	 *
+	 * @param title    dialog prompt title
+	 * @param onResult callback to accept or reject input
+	 * @return future completing with accepted text
+	 */
+	public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult) {
+		return prompt(title, onResult, "");
+	}
 
-    /// Opens a URI in the desktop browser, falling back to copying it.
-    ///
-    /// @param uri the URI to open, or `null`
-    public static void openUriOrCopy(@Nullable String uri) {
-        if (uri == null) {
-            return;
-        }
-        FXUtils.openLink(uri);
-    }
-
-    /// Prompts for a single line of text.
-    ///
-    /// @param title        the prompt shown above the field
-    /// @param onResult     the callback that accepts or rejects the entered value
-    /// @param initialValue the value shown when the dialog opens
-    /// @param validators   optional validators applied as the user types
-    /// @return a future completed with the accepted value, or completed exceptionally on cancel
-    public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult,
-                                                  String initialValue, ValidatorBase... validators) {
-        InputDialogPane pane = new InputDialogPane(title, initialValue, onResult, validators);
-        dialog(pane);
-        return pane.getCompletableFuture();
-    }
-
-    /// Prompts for a single line of text with an empty initial value.
-    ///
-    /// @param title    the prompt shown above the field
-    /// @param onResult the callback that accepts or rejects the entered value
-    /// @return a future completed with the accepted value, or completed exceptionally on cancel
-    public static CompletableFuture<String> prompt(String title, FutureCallback<String> onResult) {
-        return prompt(title, onResult, "");
-    }
-
-    /// Requests a garbage collection when heap trimming is enabled.
-    public static void trimHeap() {
-        if (AUTO_TRIM_HEAP) {
-            System.gc();
-        }
-    }
+	/**
+	 * Requests garbage collection if idle heap trimming is enabled.
+	 */
+	public static void trimHeap() {
+		if (AUTO_TRIM_HEAP) {
+			System.gc();
+		}
+	}
 }

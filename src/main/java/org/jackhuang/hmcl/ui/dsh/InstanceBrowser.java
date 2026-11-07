@@ -30,31 +30,21 @@ import java.util.Optional;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Opens an instance's browser interface.
-///
-/// The address is the instance's own, not something to be looked up: its port is settled when it is
-/// created and never changes, so "open the interface" means the same address whether the instance is
-/// running or not. A running one is asked for the address it actually bound, which carries the trust
-/// token — but only while that is the instance's own port: an instance the harness moved elsewhere,
-/// which a patch layer restating the `webserver` row can do, is still opened at the port it is
-/// recorded at. A stopped one is opened at the plain address, where the browser says the site cannot
-/// be reached, which is the truthful answer to asking for a page nobody is serving yet.
-///
-/// **Offered wherever an instance is, running or not**, from the instance list's menu and from the
-/// instance page's: an address that is not answering is a different answer from a menu entry that is
-/// not there, and the second one leaves the person wondering whether they misremembered.
+/**
+ * Utility to open an instance's web interface in the default browser.
+ */
 @NotNullByDefault
 public final class InstanceBrowser {
 	private InstanceBrowser() {
 	}
 
-	/// Opens an instance's interface in the browser.
-	///
-	/// @param instance the instance
+	/**
+	 * Opens the web interface for the specified instance.
+	 *
+	 * @param instance the instance
+	 */
 	public static void open(DshInstance instance) {
 		if (instance.portOrDefault() <= 0) {
-			// A surface that serves nothing has no address to open, and inventing one would open a
-			// page that is somebody else's.
 			Controllers.dialog(i18n("dsh.instance.port.auto.none"),
 			                   i18n("message.error"),
 			                   MessageDialogPane.MessageType.ERROR);

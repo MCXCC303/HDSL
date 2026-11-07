@@ -30,9 +30,11 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
-/// The managed process.
-///
-/// @author huangyuhui
+/**
+ * The managed process.
+ *
+ * @author huangyuhui
+ */
 public final class ManagedProcess {
     private final ReentrantLock lock = new ReentrantLock();
     private final Process process;
@@ -207,19 +209,12 @@ public final class ManagedProcess {
         }
     }
 
-    /// Waits for the threads monitoring this process to finish, for at most the given time.
-    ///
-    /// A process that has exited has not necessarily been read: what it wrote is still in the pipe,
-    /// and the thread reading it has not reached the end of that pipe yet. Interrupting such a thread
-    /// rather than waiting for it discards whatever it was in the middle of handling, so a caller that
-    /// wants the output has to wait here first — see [StreamPump], which drops the line it has just
-    /// read when it finds itself interrupted.
-    ///
-    /// The wait is bounded because a descendant that inherits the pipe keeps it open past the process
-    /// it came from: waiting without a bound would be waiting for that descendant.
-    ///
-    /// @param timeout how long to wait, at most
-    /// @throws InterruptedException when the calling thread is interrupted while waiting
+    /**
+     * Waits for the threads monitoring this process to finish, for at most the given duration.
+     *
+     * @param timeout how long to wait, at most
+     * @throws InterruptedException when the calling thread is interrupted while waiting
+     */
     public void awaitRelatedThreads(Duration timeout) throws InterruptedException {
         List<Thread> threads;
         lock.lock();

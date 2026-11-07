@@ -32,29 +32,20 @@ import java.util.Objects;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Adds a folder for the launcher to look for instances in.
-///
-/// A page of its own rather than a folder chooser: the folder is only one of the
-/// three things a directory has. It has a name to show, which need not be the
-/// folder's own, and it may be recorded relative to where the launcher runs so
-/// that moving both together keeps it working. The original arranges it this way,
-/// and a chooser has nowhere to ask for the other two.
+/**
+ * Page for adding a directory where the launcher searches for instances.
+ */
 @NotNullByDefault
 public final class DirectoryPage extends BorderPane implements DecoratorPage {
-	/// The page's state, which supplies the title.
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(
 			"game_directory.new")));
-
-	/// What the folder is to be called.
 	private final JFXTextField nameField = new JFXTextField();
-
-	/// The folder itself.
 	private final LineFileChooserButton chooser = new LineFileChooserButton();
-
-	/// Whether to record the folder relative to the launcher's own location.
 	private final LineSwitch relativePath = new LineSwitch();
 
-	/// Creates the page.
+	/**
+	 * Creates the directory page.
+	 */
 	public DirectoryPage() {
 		getStyleClass().add("gray-background");
 
@@ -97,7 +88,6 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 		list.getContent().setAll(nameRow, chooser, relativePath);
 
 		VBox content = new VBox(list);
-		// The original pads a settings page's root by twenty.
 		content.setPadding(new Insets(20));
 
 		ScrollPane scroll = new ScrollPane(content);
@@ -116,8 +106,7 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 		BorderPane.setAlignment(save, Pos.BOTTOM_RIGHT);
 		setBottom(footer);
 
-		// The name follows the folder until the name is edited, so that choosing
-		// a folder is all a user has to do.
+		// Follow chosen directory name until edited manually.
 		chooser.locationProperty().addListener((observable, was, now) -> {
 			if (nameField.getText() == null || nameField.getText().isBlank() ||
 			    Objects.equals(nameField.getText(), nameOf(was))) {
@@ -126,10 +115,6 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 		});
 	}
 
-	/// Returns a folder's own name, for the name box.
-	///
-	/// @param location the folder, or `null`
-	/// @return its last segment, or an empty string
 	private static String nameOf(@Nullable String location) {
 		if (location == null || location.isBlank()) {
 			return "";
@@ -138,14 +123,6 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 		return fileName == null ? "" : fileName.toString();
 	}
 
-	/// Expresses a folder relative to where the launcher runs, when it can be.
-	///
-	/// The original records it this way when the toggle is on, so that moving the
-	/// launcher and the folder together keeps the entry working. A folder that
-	/// cannot be expressed relative to the launcher is kept as it is.
-	///
-	/// @param path the folder
-	/// @return the path to record
 	private static Path portable(Path path) {
 		try {
 			return Metadata.CURRENT_DIRECTORY.relativize(path.toAbsolutePath().normalize());
@@ -159,7 +136,6 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 		return state.getReadOnlyProperty();
 	}
 
-	/// Records the folder and returns to the list.
 	private void save() {
 		if (!nameField.validate()) {
 			return;
@@ -188,25 +164,13 @@ public final class DirectoryPage extends BorderPane implements DecoratorPage {
 			return;
 		}
 
-		// A folder that holds no instances is not a mistake. Adding one is also how
-		// a person says where their next instance belongs, so an empty folder is
-		// the state a folder added for that purpose *starts* in, and refusing it
-		// would be refusing the thing that was asked for.
-		//
-		// The mistake worth naming is the one that looks the same and is not: a
-		// folder holding the launcher's own data, whose instances are one level
-		// further down. That one is worth a question, because it is usually the
-		// wrong folder chosen by accident and nothing else here would say so.
+		// Warn if selecting a folder containing a nested instances directory.
 		Path nested = chosen.toAbsolutePath().normalize().resolve("instances");
 		if (GameDirectoryManager.countInstances(added) == 0 && Files.isDirectory(nested)) {
 			Controllers.dialog(i18n("dsh.directory.empty.with_instances", nested.toString()),
 			                   i18n("dsh.directory.add"),
 			                   MessageType.WARNING,
-			                   () -> {
-				                   // The navigator listens for this and takes the page away,
-				                   // which is how the original returns to the list.
-				                   fireEvent(new PageCloseEvent());
-			                   });
+			                   () -> fireEvent(new PageCloseEvent()));
 			return;
 		}
 

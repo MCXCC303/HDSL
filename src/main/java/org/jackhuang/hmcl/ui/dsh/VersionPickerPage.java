@@ -34,44 +34,26 @@ import java.util.concurrent.CompletionException;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Chooses another DeepSeek Harness version for an instance.
-///
-/// A page rather than a dropdown, which is how this launcher chooses a version
-/// everywhere: the same name box, the same type filter, and a row per version.
+/**
+ * Page for selecting a DeepSeek Harness runtime version to upgrade or downgrade an instance.
+ */
 @NotNullByDefault
 public final class VersionPickerPage extends VBox implements DecoratorPage {
-	/// The page's state.
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(
 			"dsh.instance.upgrade.choose")));
-
-	/// The instance being moved.
 	private final DshInstance instance;
-
-	/// The name box and type filter, shared with the other version lists.
 	private final VersionFilterBar filterBar = new VersionFilterBar(this::render, this::load);
-
-	/// Spins while the versions are being fetched.
 	private final SpinnerPane spinner = new SpinnerPane();
-
-	/// The rows, rebuilt when the filter changes.
 	private final VBox list = new VBox();
-
-	/// Every published version the last load returned.
 	private List<DshRelease> releases = List.of();
-
-	/// The published versions of the package the harness is published with.
-	///
-	/// Read once with the release list: a harness version whose twin is missing
-	/// cannot be installed, and saying so beforehand is better than a failure after
-	/// a download.
 	private Set<String> lockstep = Set.of();
-
-	/// The oldest version of the lockstep package, or `null` when it is unknown.
 	private String oldestLockstep;
 
-	/// Creates the page.
-	///
-	/// @param instance the instance to choose a version for
+	/**
+	 * Creates a version picker page for the given instance.
+	 *
+	 * @param instance the instance to configure
+	 */
 	public VersionPickerPage(DshInstance instance) {
 		this.instance = instance;
 
@@ -103,7 +85,6 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		return state.getReadOnlyProperty();
 	}
 
-	/// Loads the published versions.
 	private void load() {
 		list.getChildren().clear();
 		spinner.setLoading(true);
@@ -134,7 +115,6 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		}));
 	}
 
-	/// Rebuilds the rows from the loaded versions and the filters.
 	private void render() {
 		list.getChildren().clear();
 
@@ -153,10 +133,6 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		}
 	}
 
-	/// Builds one row.
-	///
-	/// @param release the release this row offers
-	/// @return the row
 	private Node buildRow(DshRelease release) {
 		boolean current = release.version().equals(instance.version());
 
@@ -168,10 +144,7 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		content.getTags().clear();
 		content.addTag(i18n(current ? "dsh.instance.upgrade.current" : "download.type." + release.type().id()));
 
-		// A version whose published twin is missing cannot be installed: the
-		// registry has nothing to satisfy the dependency it names. Saying so here
-		// is the difference between a list of versions and a list of versions that
-		// can be used.
+		// Mark unresolvable lockstep dependency.
 		boolean installable = lockstep.isEmpty() || lockstep.contains(release.version()) ||
 		                      VersionOrder.predatesLockstep(release.version(), oldestLockstep);
 		if (!current && !installable) {
@@ -189,8 +162,6 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		StackPane.setAlignment(row, Pos.CENTER_LEFT);
 
 		if (!current) {
-			// Part of the row rather than a control of its own: it says where the
-			// row leads, and a press on it is a press on the row.
 			JFXButton choose = new JFXButton();
 			choose.setGraphic(SVG.ARROW_FORWARD.createIcon());
 			choose.getStyleClass().add("toggle-icon4");
@@ -211,9 +182,6 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		return rippler;
 	}
 
-	/// Asks before moving the instance, because the plugins are installed again.
-	///
-	/// @param version the version to move to
 	private void confirm(String version) {
 		Controllers.confirm(i18n("dsh.instance.upgrade.confirm", instance.id(), instance.version(), version),
 		                    i18n("dsh.instance.upgrade"),

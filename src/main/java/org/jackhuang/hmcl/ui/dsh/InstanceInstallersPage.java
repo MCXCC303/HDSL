@@ -51,31 +51,26 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * The instance's components page, includes dsh/appboot and custom marketplace plugins
+ * Component management page for an instance, listing DSH runtime, AppBoot, and plugins.
  */
 @NotNullByDefault
 public final class InstanceInstallersPage extends ListPageBase<InstallerListItem> implements Refreshable, PageAware {
-	/// The instance whose components are listed.
 	private DshInstance instance;
 
-	/// Creates the page.
-	///
-	/// @param instance the instance whose components are listed
+	/**
+	 * Creates the components page for the specified instance.
+	 *
+	 * @param instance instance whose components are listed
+	 */
 	public InstanceInstallersPage(DshInstance instance) {
 		this.instance = instance;
 		refresh();
 	}
 
-	/// Returns the boot library's mark for the current theme.
-	///
-	/// @return the mark, white on a dark surface and black on a light one
 	private static Image appBootMark() {
 		return (Themes.darkModeProperty().get() ? DshInstanceIcon.DSH_WHITE : DshInstanceIcon.DSH_BLACK).load();
 	}
 
-	/// Returns the catalogue's marketplace entry.
-	///
-	/// @return the preset, or `null` when the catalogue does not offer one
 	private static @Nullable DshPreset marketPreset() {
 		return DshPresetCatalog.builtin()
 		                       .stream()
@@ -84,31 +79,16 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		                       .orElse(null);
 	}
 
-	/// Describes a preset as the catalogue would describe it.
-	///
-	/// A preset is the catalogue's marketplace entry boiled down to what the create
-	/// page chooses between: a name and the package to install. The plugin page
-	/// wants the catalogue's shape, so this builds the part of it that is known —
-	/// and nothing else, because inventing a repository or a download count would
-	/// be describing something that does not exist.
-	///
-	/// @param preset the preset
-	/// @return the catalogue entry
 	private static Catalog.Plugin catalogueEntry(DshPreset preset) {
 		String spec = preset.spec();
 		int at = spec.lastIndexOf('@');
 		String name = at > 0 ? spec.substring(0, at) : spec;
 		String version = at > 0 ? spec.substring(at + 1) : null;
 
-		// The package's own page is the link that always exists for a plugin, and
-		// it is where its versions and its repository are named. The catalogue is
-		// asked first, because a plugin it knows has a page of its own.
 		Catalog.Plugin known = CatalogClient.find(name).orElse(null);
 		if (known != null) {
 			return known;
 		}
-		// The record's fields in order: name, owner, address, category, description,
-		// localised description, package, version, stars, downloads, tarball, source.
 		return new Catalog.Plugin(preset.name(),
 		                          "",
 		                          "https://www.npmjs.com/package/" + name,
@@ -128,37 +108,23 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		return new InstallersPageSkin(this);
 	}
 
-	/// Redraws the rows from what is installed now.
-	///
-	/// The rows are read from the instance's own files, so this is what makes the
-	/// page show the result of a change made elsewhere.
 	@Override
 	public void refresh() {
-		// The version row is read from the instance record rather than from its
-		// files, so a version changed on another page is only visible once the
-		// record is read again — which is what coming back to this page means.
 		DshInstance current = InstanceStore.find(instance.id());
 		if (current != null) {
 			instance = current;
 		}
 
 		List<InstallerListItem> rows = List.of(versionRow(), appBootRow(), marketRow());
-		// One column width for all three, so what each row reports starts in the
-		// same place: the runtime's name is longer than the original's column.
 		rows.forEach(row -> row.setWideName(true));
 		getItems().setAll(rows);
 	}
 
-	/// Redraws when the page comes back into view.
-	///
-	/// The version chooser and the boot library chooser are pages of their own,
-	/// and what they change is what these rows report.
 	@Override
 	public void onPageShown() {
 		refresh();
 	}
 
-	// Builds the rows.
 	private InstallerListItem versionRow() {
 		InstallerListItem row = new InstallerListItem(DshInstanceIcon.DSH_APPLICATION.load(),
 		                                              i18n("dsh.install.version.name"));
@@ -203,10 +169,6 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 		return row;
 	}
 
-	/// Returns the version of a package the instance's profile declares.
-	///
-	/// @param preset the preset whose package is looked for
-	/// @return the declared version, or `null` when the profile does not hold it
 	private @Nullable String installedVersion(DshPreset preset) {
 		try {
 			Map<String, String> dependencies = DshPluginInstaller.readDependencies(instance.homeDirectory(),
@@ -281,20 +243,13 @@ public final class InstanceInstallersPage extends ListPageBase<InstallerListItem
 				null);
 	}
 
-	/// The page's skin: the toolbar every list page has, over this page's rows.
 	private static final class InstallersPageSkin extends ToolbarListPageSkin<InstallerListItem, InstanceInstallersPage> {
-		/// Creates the skin.
-		///
-		/// @param page the page being drawn
 		InstallersPageSkin(InstanceInstallersPage page) {
 			super(page);
 		}
 
 		@Override
 		protected List<Node> initializeToolbar(InstanceInstallersPage page) {
-			// One button, as the original has here: it offers the local-file
-			// install, which this launcher has nothing to do with. What is left
-			// is reading the instance's files again.
 			return List.of(ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"),
 			                                                        SVG.REFRESH,
 			                                                        page::refresh));

@@ -25,7 +25,6 @@ import javafx.beans.binding.ObjectBinding;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import com.mcxcc303.hdsl.instance.DshInstance;
-import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -34,212 +33,174 @@ import java.util.Objects;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 
-/// The instances of one folder, as the interface sees them.
-///
-/// This is the HDSL counterpart of HMCL's `HMCLGameRepository`, and it is
-/// the reason the interface never has to go looking for changes itself: it owns
-/// a snapshot that is republished whenever the folder is re-read, and a
-/// selection that re-resolves against that snapshot. A page binds to the two and
-/// is therefore always showing what is on disk, without a refresh call anywhere.
-///
-/// Instances are still files, so a read is a directory listing; the snapshot
-/// exists to give that listing an identity the interface can observe, not to
-/// cache it.
+/**
+ * Repository observing instances within a game directory.
+ * <p>
+ * Publishes snapshot updates on directory rescans and maintains selection state.
+ */
 @NotNullByDefault
 public final class DshInstanceRepository {
-    /// One read of a folder: the instances it held at that moment.
-    ///
-    /// The revision is what makes one read different from the next. It is not
-    /// decoration: a record compares structurally, so reading a folder again and
-    /// finding exactly what was there before would produce a value equal to the
-    /// one already published, and a property — and every binding and listener
-    /// hanging off it — treats an equal value as no change at all. The pages
-    /// would then be showing the folder that was selected before, which is
-    /// precisely the state this class exists to keep them out of. The original's
-    /// snapshot is an object with no equality of its own, so every read counts as
-    /// a change there; carrying a revision is how the same guarantee is kept with
-    /// a record.
-    ///
-    /// @param directory the folder the snapshot describes
-    /// @param instances the instances inside it, newest first
-    /// @param revision  which read this is
-    public record Snapshot(GameDirectory directory, List<DshInstance> instances, long revision) {
-        /// Finds an instance by id.
-        ///
-        /// @param id the instance id
-        /// @return the instance, or `null` when the snapshot does not hold it
-        public @Nullable DshInstance findInstance(String id) {
-            for (DshInstance instance : instances) {
-                if (instance.id().equals(id)) {
-                    return instance;
-                }
-            }
-            return null;
-        }
-    }
 
-    /// The folder this repository describes.
-    private final GameDirectory directory;
+	/**
+	 * Immutable snapshot of instances in a directory at a specific revision.
+	 *
+	 * @param directory directory described by this snapshot
+	 * @param instances instances contained, newest first
+	 * @param revision  sequential read counter
+	 */
+	public record Snapshot(GameDirectory directory, List<DshInstance> instances, long revision) {
 
-    /// The last read of the folder.
-    ///
-    /// It starts empty rather than unset: a page may bind to the selection
-    /// before the first read has finished, and an unread folder holds nothing.
-    private final ReadOnlyObjectWrapper<Snapshot> snapshot =
-            new ReadOnlyObjectWrapper<>(this, "snapshot");
+		/**
+		 * Finds an instance by identifier.
+		 *
+		 * @param id the instance identifier
+		 * @return matching instance, or {@code null} if not found
+		 */
+		public @Nullable DshInstance findInstance(String id) {
+			for (DshInstance instance : instances) {
+				if (instance.id().equals(id)) {
+					return instance;
+				}
+			}
+			return null;
+		}
+	}
 
-    /// The instance selected in this folder, as the settings remember it.
-    ///
-    /// Resolved from the settings map rather than copied out of it, so a
-    /// selection written anywhere — the list, the home page, another window —
-    /// reaches every page without either of them knowing about the other.
-    private final ObjectBinding<@Nullable String> selectedInstanceId;
+	private final GameDirectory directory;
+	private final ReadOnlyObjectWrapper<Snapshot> snapshot =
+			new ReadOnlyObjectWrapper<>(this, "snapshot");
+	private final ObjectBinding<@Nullable String> selectedInstanceId;
+	private final ReadOnlyObjectWrapper<@Nullable DshInstance> selectedInstance =
+			new ReadOnlyObjectWrapper<>(this, "selectedInstance");
+	private boolean loaded;
+	private final java.util.concurrent.atomic.AtomicLong revisions = new java.util.concurrent.atomic.AtomicLong();
 
-    /// The selected instance, resolved against the current snapshot.
-    private final ReadOnlyObjectWrapper<@Nullable DshInstance> selectedInstance =
-            new ReadOnlyObjectWrapper<>(this, "selectedInstance");
+	DshInstanceRepository(GameDirectory directory) {
+		this.directory = directory;
+		this.snapshot.set(new Snapshot(directory, List.of(), 0));
+		this.selectedInstanceId = Bindings.valueAt(settings().getSelectedInstance(), directory.id());
+		this.selectedInstance.bind(Bindings.createObjectBinding(
+				this::resolveSelectedInstance, selectedInstanceId, snapshot));
+	}
 
-    /// Whether the folder has been read at least once.
-    private boolean loaded;
+	/**
+	 * Returns the directory described by this repository.
+	 *
+	 * @return the directory
+	 */
+	public GameDirectory getDirectory() {
+		return directory;
+	}
 
-    /// Counts the reads, so that two reads are two snapshots.
-    private final java.util.concurrent.atomic.AtomicLong revisions = new java.util.concurrent.atomic.AtomicLong();
+	/**
+	 * Returns the latest directory snapshot.
+	 *
+	 * @return current snapshot
+	 */
+	public Snapshot getSnapshot() {
+		return snapshot.get();
+	}
 
-    /// Creates a repository for a folder.
-    ///
-    /// @param directory the folder to describe
-    DshInstanceRepository(GameDirectory directory) {
-        this.directory = directory;
-        this.snapshot.set(new Snapshot(directory, List.of(), 0));
-        this.selectedInstanceId = Bindings.valueAt(settings().getSelectedInstance(), directory.id());
-        this.selectedInstance.bind(Bindings.createObjectBinding(
-                this::resolveSelectedInstance, selectedInstanceId, snapshot));
-    }
+	/**
+	 * Returns the snapshot property, updated on each rescan.
+	 *
+	 * @return snapshot property
+	 */
+	public ReadOnlyObjectProperty<Snapshot> snapshotProperty() {
+		return snapshot.getReadOnlyProperty();
+	}
 
-    /// Returns the folder this repository describes.
-    ///
-    /// @return the folder
-    public GameDirectory getDirectory() {
-        return directory;
-    }
+	/**
+	 * Returns instances in the current snapshot, newest first.
+	 *
+	 * @return list of instances
+	 */
+	public List<DshInstance> getInstances() {
+		return snapshot.get().instances();
+	}
 
-    /// Returns the last read of the folder.
-    ///
-    /// @return the snapshot
-    public Snapshot getSnapshot() {
-        return snapshot.get();
-    }
+	/**
+	 * Returns whether the directory has been loaded at least once.
+	 *
+	 * @return {@code true} if loaded
+	 */
+	public boolean isLoaded() {
+		return loaded;
+	}
 
-    /// Returns the snapshot property, which changes on every read.
-    ///
-    /// @return the snapshot property
-    public ReadOnlyObjectProperty<Snapshot> snapshotProperty() {
-        return snapshot.getReadOnlyProperty();
-    }
+	/**
+	 * Returns the selected instance in this directory.
+	 *
+	 * @return selected instance, or {@code null} if none
+	 */
+	public @Nullable DshInstance getSelectedInstance() {
+		return selectedInstance.get();
+	}
 
-    /// Returns the instances the folder holds, newest first.
-    ///
-    /// @return the instances
-    public List<DshInstance> getInstances() {
-        return snapshot.get().instances();
-    }
+	/**
+	 * Returns the selected-instance property.
+	 *
+	 * @return selected instance property
+	 */
+	public ReadOnlyObjectProperty<@Nullable DshInstance> selectedInstanceProperty() {
+		return selectedInstance.getReadOnlyProperty();
+	}
 
-    /// Reports whether the folder has been read.
-    ///
-    /// A listener registered before the first read is called by it, so this is
-    /// only asked to decide whether a registration has to be answered
-    /// immediately.
-    ///
-    /// @return whether a read has completed
-    public boolean isLoaded() {
-        return loaded;
-    }
+	/**
+	 * Sets the selected instance for this directory and persists settings.
+	 *
+	 * @param instance instance to select, or {@code null} to clear
+	 */
+	public void setSelectedInstance(@Nullable DshInstance instance) {
+		settings().setSelectedInstance(directory.id(), instance == null ? null : instance.id());
+		SettingsManager.save();
+	}
 
-    /// Returns the instance selected in this folder.
-    ///
-    /// @return the instance, or `null` when the folder holds none
-    public @Nullable DshInstance getSelectedInstance() {
-        return selectedInstance.get();
-    }
+	/**
+	 * Reconciles the persisted selection against current instances.
+	 */
+	public void refreshSelectedInstance() {
+		@Nullable String persistedId = selectedInstanceId.get();
+		@Nullable DshInstance refreshed = persistedId != null ? getSnapshot().findInstance(persistedId) : null;
+		if (refreshed == null) {
+			refreshed = getInstances().stream().findFirst().orElse(null);
+		}
 
-    /// Returns the selected-instance property.
-    ///
-    /// @return the selected-instance property
-    public ReadOnlyObjectProperty<@Nullable DshInstance> selectedInstanceProperty() {
-        return selectedInstance.getReadOnlyProperty();
-    }
+		@Nullable String refreshedId = refreshed == null ? null : refreshed.id();
+		if (!Objects.equals(persistedId, refreshedId)) {
+			settings().setSelectedInstance(directory.id(), refreshedId);
+			SettingsManager.save();
+		}
+	}
 
-    /// Records an instance as this folder's selection.
-    ///
-    /// The value is only written down; the property follows from it, so passing
-    /// an instance of another folder cannot desynchronise the two.
-    ///
-    /// @param instance the instance to select, or `null` to select nothing
-    public void setSelectedInstance(@Nullable DshInstance instance) {
-        settings().setSelectedInstance(directory.id(), instance == null ? null : instance.id());
-        SettingsManager.save();
-    }
+	/**
+	 * Rescans the directory and publishes a new snapshot.
+	 */
+	public void refresh() {
+		List<DshInstance> instances = InstanceStore.listIn(directory.directory());
+		publish(new Snapshot(directory, instances, revisions.incrementAndGet()));
+	}
 
-    /// Corrects the remembered selection against the current snapshot.
-    ///
-    /// A selection naming an instance that is gone is no selection: the home
-    /// page would otherwise offer to start something that is not there, while
-    /// the list says the folder holds nothing. An empty folder clears it, and a
-    /// folder that holds something but has nothing chosen chooses its first
-    /// instance — which is what makes a newly created instance the one the home
-    /// page acts on without anyone having to click it.
-    public void refreshSelectedInstance() {
-        @Nullable String persistedId = selectedInstanceId.get();
-        @Nullable DshInstance refreshed = persistedId != null ? getSnapshot().findInstance(persistedId) : null;
-        if (refreshed == null) {
-            refreshed = getInstances().stream().findFirst().orElse(null);
-        }
+	private void publish(Snapshot next) {
+		Runnable apply = () -> {
+			loaded = true;
+			snapshot.set(next);
+			refreshSelectedInstance();
+		};
+		if (Platform.isFxApplicationThread()) {
+			apply.run();
+			return;
+		}
+		try {
+			Platform.runLater(apply);
+		} catch (IllegalStateException e) {
+			// Fallback when JavaFX platform is not initialized (e.g. CLI or tests).
+			apply.run();
+		}
+	}
 
-        @Nullable String refreshedId = refreshed == null ? null : refreshed.id();
-        if (!Objects.equals(persistedId, refreshedId)) {
-            settings().setSelectedInstance(directory.id(), refreshedId);
-            SettingsManager.save();
-        }
-    }
-
-    /// Re-reads the folder and publishes what it holds.
-    ///
-    /// Safe to call from any thread: the read happens where it is called, and
-    /// the publication is moved onto the interface thread, because the snapshot
-    /// is what interface bindings hang off.
-    public void refresh() {
-        List<DshInstance> instances = InstanceStore.listIn(directory.directory());
-        publish(new Snapshot(directory, instances, revisions.incrementAndGet()));
-    }
-
-    /// Publishes a snapshot and re-resolves the selection against it.
-    ///
-    /// @param next the snapshot to publish
-    private void publish(Snapshot next) {
-        Runnable apply = () -> {
-            loaded = true;
-            snapshot.set(next);
-            refreshSelectedInstance();
-        };
-        if (Platform.isFxApplicationThread()) {
-            apply.run();
-            return;
-        }
-        try {
-            Platform.runLater(apply);
-        } catch (IllegalStateException e) {
-            // No interface is running — a command-line run, or a test. Nobody is
-            // bound to the property, so publishing it where the change was made
-            // is both safe and the only way to publish it at all.
-            apply.run();
-        }
-    }
-
-    /// Resolves the remembered selection against the current snapshot.
-    ///
-    /// @return the selected instance, or `null` when the folder holds none
-    private @Nullable DshInstance resolveSelectedInstance() {
-        String instanceId = selectedInstanceId.get();
-        return instanceId == null ? null : getSnapshot().findInstance(instanceId);
-    }
+	private @Nullable DshInstance resolveSelectedInstance() {
+		String instanceId = selectedInstanceId.get();
+		return instanceId == null ? null : getSnapshot().findInstance(instanceId);
+	}
 }

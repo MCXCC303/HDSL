@@ -83,11 +83,9 @@ public final class PluginVersionList extends VBox {
 	/**
 	 * Creates the version list.
 	 *
-	 * @param packageName   the package whose versions the registry lists, or null when the
-	 *                      catalogue names a repository rather than a package
-	 * @param pinnedVersion the one version to list when there is no package, or null
-	 * @param profileKey    the name a profile records the install under, or null when the caller
-	 *                      names the version in force
+	 * @param packageName   the package whose versions the registry lists, or {@code null}
+	 * @param pinnedVersion the single version to list when there is no package, or {@code null}
+	 * @param profileKey    the name a profile records the install under, or {@code null}
 	 * @param onChoose      what clicking a version does
 	 * @param onInstall     what the button beside a version does
 	 */
@@ -215,8 +213,7 @@ public final class PluginVersionList extends VBox {
 		}));
 	}
 
-	// Draws the groups that were loaded, honouring which of them are open.
-	// One list rather than one per group: a package with a hundred releases would otherwise put a hundred rows into a box that does not know how to scroll them.
+	// Draws the loaded groups, honouring which of them are expanded.
 	private void render() {
 		List<Row> drawn = new ArrayList<>();
 		if (groups.isEmpty()) {

@@ -37,40 +37,24 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
-/// One folder in the instance list's sidebar.
-///
-/// The node structure and style classes are the original's, because its
-/// stylesheet is the one this project ships and its rules select this shape
-/// exactly:
-///
-/// ```
-/// .game-directory-list-item > .rippler-container > BorderPane { padding: 8 0 8 16 }
-/// ... > .two-line-list-item > .title { font-size: 13 }
-/// ... > .two-line-list-item > .subtitle { font-size: 10 }
-/// ```
-///
-/// A row built any other way gets none of that — a plain list item carries the
-/// box's default sizes, which is a difference of a few pixels in two places and
-/// therefore one that looks almost right.
+/**
+ * Sidebar navigation item representing an instance directory.
+ */
 @NotNullByDefault
 public final class DirectoryListItem extends RadioButton {
-	/// Marks the row whose folder the list is showing.
 	private static final PseudoClass SELECTED = PseudoClass.getPseudoClass("selected");
 
-	/// The folder being shown.
 	private final GameDirectory directory;
-
-	/// Run when the row is clicked.
 	private final Consumer<GameDirectory> onSelect;
-
-	/// Run when the remove button is pressed, or `null` when there is none.
 	private final @Nullable Consumer<GameDirectory> onRemove;
 
-	/// Creates a row.
-	///
-	/// @param directory the folder to show
-	/// @param onSelect  run when the row is clicked
-	/// @param onRemove  run when the remove button is pressed, or `null`
+	/**
+	 * Creates a directory list item.
+	 *
+	 * @param directory directory to display
+	 * @param onSelect  selection callback
+	 * @param onRemove  optional removal callback
+	 */
 	public DirectoryListItem(GameDirectory directory,
 	                         Consumer<GameDirectory> onSelect,
 	                         @Nullable Consumer<GameDirectory> onRemove) {
@@ -79,16 +63,9 @@ public final class DirectoryListItem extends RadioButton {
 		this.onRemove = onRemove;
 
 		getStyleClass().setAll("game-directory-list-item", "navigation-drawer-item");
-
-		// The row's selection is the launcher's, not the button group's: two
-		// rows are never both selected, but which one is comes from the settings
-		// rather than from having been clicked.
 		selectedProperty().addListener((observable, was, active) -> pseudoClassStateChanged(SELECTED, active));
 	}
 
-	/// Returns the folder this row shows.
-	///
-	/// @return the folder
 	public GameDirectory getDirectory() {
 		return directory;
 	}
@@ -98,19 +75,9 @@ public final class DirectoryListItem extends RadioButton {
 		return new DirectoryListItemSkin(this);
 	}
 
-	/// Lays a row out.
-	///
-	/// The layout belongs to a skin rather than to the control: a RadioButton's
-	/// own skin renders it, and setting the control's children directly fights
-	/// that — the row ends up with no height and nothing appears. The original
-	/// splits them the same way.
 	private static final class DirectoryListItemSkin extends SkinBase<DirectoryListItem> {
-		/// The folder icon, which fills in when the row is selected.
 		private final SVGContainer icon;
 
-		/// Creates the skin.
-		///
-		/// @param control the row
 		DirectoryListItemSkin(DirectoryListItem control) {
 			super(control);
 

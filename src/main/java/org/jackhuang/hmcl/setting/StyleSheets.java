@@ -34,135 +34,97 @@ import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Base64;
 
-/// Builds and owns the stylesheet list applied to the launcher scene.
-///
-/// The list is rebuilt in place whenever the theme color scheme changes, which
-/// keeps every scene that bound to it up to date without re-applying CSS.
+/**
+ * Generates, manages, and binds dynamic theme stylesheets to JavaFX scenes.
+ */
 @NotNullByDefault
 public final class StyleSheets {
-    private StyleSheets() {
-    }
+	private StyleSheets() {
+	}
 
-    /// Index of the font stylesheet in [#stylesheets].
-    private static final int FONT_STYLE_SHEET_INDEX = 0;
+	private static final int FONT_STYLE_SHEET_INDEX = 0;
+	private static final int THEME_STYLE_SHEET_INDEX = 1;
+	private static final int BRIGHTNESS_SHEET_INDEX = 2;
 
-    /// Index of the generated theme stylesheet in [#stylesheets].
-    private static final int THEME_STYLE_SHEET_INDEX = 1;
+	private static final ObservableList<String> stylesheets;
 
-    /// Index of the brightness stylesheet in [#stylesheets].
-    private static final int BRIGHTNESS_SHEET_INDEX = 2;
+	static {
+		stylesheets = FXCollections.observableList(Arrays.asList(
+				"/assets/css/font.css",
+				getThemeStyleSheet(),
+				getBrightnessStyleSheet(),
+				"/assets/css/root.css"));
 
-    /// The live stylesheet list shared by every scene the launcher creates.
-    private static final ObservableList<String> stylesheets;
+		Themes.colorSchemeProperty().addListener(o -> {
+			stylesheets.set(THEME_STYLE_SHEET_INDEX, getThemeStyleSheet());
+			stylesheets.set(BRIGHTNESS_SHEET_INDEX, getBrightnessStyleSheet());
+		});
+	}
 
-    static {
-        stylesheets = FXCollections.observableList(Arrays.asList(
-                "/assets/css/font.css",
-                getThemeStyleSheet(),
-                getBrightnessStyleSheet(),
-                "/assets/css/root.css"));
+	private static String toStyleSheetUri(String styleSheet) {
+		return "data:text/css;charset=UTF-8;base64,"
+				+ Base64.getEncoder().encodeToString(styleSheet.getBytes(StandardCharsets.UTF_8));
+	}
 
-        Themes.colorSchemeProperty().addListener(o -> {
-            stylesheets.set(THEME_STYLE_SHEET_INDEX, getThemeStyleSheet());
-            stylesheets.set(BRIGHTNESS_SHEET_INDEX, getBrightnessStyleSheet());
-        });
-    }
+	private static String getBrightnessStyleSheet() {
+		return Themes.getColorScheme().getBrightness() == Brightness.LIGHT
+				? "/assets/css/brightness-light.css"
+				: "/assets/css/brightness-dark.css";
+	}
 
-    /// Encodes a CSS document as a `data:` URI that JavaFX accepts as a stylesheet.
-    ///
-    /// @param styleSheet the CSS source
-    /// @return the data URI
-    private static String toStyleSheetUri(String styleSheet) {
-        return "data:text/css;charset=UTF-8;base64,"
-                + Base64.getEncoder().encodeToString(styleSheet.getBytes(StandardCharsets.UTF_8));
-    }
+	private static void addColor(StringBuilder builder, String name, Color color) {
+		builder.append("  ").append(name)
+				.append(": ").append(ThemeColor.getColorDisplayName(color)).append(";\n");
+	}
 
-    /// Selects the stylesheet matching the current color scheme brightness.
-    ///
-    /// @return the brightness stylesheet path
-    private static String getBrightnessStyleSheet() {
-        return Themes.getColorScheme().getBrightness() == Brightness.LIGHT
-                ? "/assets/css/brightness-light.css"
-                : "/assets/css/brightness-dark.css";
-    }
+	private static void addColor(StringBuilder builder, String name, Color color, double opacity) {
+		builder.append("  ").append(name)
+				.append(": ").append(ThemeColor.getColorDisplayNameWithOpacity(color, opacity)).append(";\n");
+	}
 
-    /// Appends one CSS custom-property declaration.
-    ///
-    /// @param builder the target buffer
-    /// @param name    the custom-property name
-    /// @param color   the color value
-    private static void addColor(StringBuilder builder, String name, Color color) {
-        builder.append("  ").append(name)
-                .append(": ").append(ThemeColor.getColorDisplayName(color)).append(";\n");
-    }
+	private static void addColor(StringBuilder builder, ColorScheme scheme, ColorRole role, double opacity) {
+		builder.append("  ").append(role.getVariableName())
+				.append("-transparent-%02d".formatted((int) (100 * opacity)))
+				.append(": ").append(ThemeColor.getColorDisplayNameWithOpacity(scheme.getColor(role), opacity))
+				.append(";\n");
+	}
 
-    /// Appends one translucent CSS custom-property declaration.
-    ///
-    /// @param builder the target buffer
-    /// @param name    the custom-property name
-    /// @param color   the color value
-    /// @param opacity the alpha multiplier
-    private static void addColor(StringBuilder builder, String name, Color color, double opacity) {
-        builder.append("  ").append(name)
-                .append(": ").append(ThemeColor.getColorDisplayNameWithOpacity(color, opacity)).append(";\n");
-    }
+	private static String getThemeStyleSheet() {
+		final String blueCss = "/assets/css/blue.css";
 
-    /// Appends one translucent color-role custom property, named after its alpha percentage.
-    ///
-    /// @param builder the target buffer
-    /// @param scheme  the active color scheme
-    /// @param role    the color role
-    /// @param opacity the alpha multiplier
-    private static void addColor(StringBuilder builder, ColorScheme scheme, ColorRole role, double opacity) {
-        builder.append("  ").append(role.getVariableName())
-                .append("-transparent-%02d".formatted((int) (100 * opacity)))
-                .append(": ").append(ThemeColor.getColorDisplayNameWithOpacity(scheme.getColor(role), opacity))
-                .append(";\n");
-    }
+		if (ResolvedTheme.DEFAULT.equals(Themes.getTheme()))
+			return blueCss;
 
-    /// Generates the theme stylesheet for the active theme.
-    ///
-    /// The built-in default theme needs no generated variables and returns the
-    /// hand-written blue stylesheet instead.
-    ///
-    /// @return a stylesheet path or data URI
-    private static String getThemeStyleSheet() {
-        final String blueCss = "/assets/css/blue.css";
+		ColorScheme scheme = Themes.getColorScheme();
 
-        if (ResolvedTheme.DEFAULT.equals(Themes.getTheme()))
-            return blueCss;
+		StringBuilder builder = new StringBuilder();
+		builder.append("* {\n");
+		for (ColorRole colorRole : ColorRole.ALL) {
+			addColor(builder, colorRole.getVariableName(), scheme.getColor(colorRole));
+		}
 
-        ColorScheme scheme = Themes.getColorScheme();
+		addColor(builder, "-monet-primary-seed", scheme.getPrimaryColorSeed());
 
-        StringBuilder builder = new StringBuilder();
-        builder.append("* {\n");
-        for (ColorRole colorRole : ColorRole.ALL) {
-            addColor(builder, colorRole.getVariableName(), scheme.getColor(colorRole));
-        }
+		addColor(builder, scheme, ColorRole.PRIMARY, 0.5);
+		addColor(builder, scheme, ColorRole.PRIMARY, 0.8);
+		addColor(builder, scheme, ColorRole.SECONDARY_CONTAINER, 0.5);
+		addColor(builder, scheme, ColorRole.SURFACE, 0.5);
+		addColor(builder, scheme, ColorRole.SURFACE, 0.8);
+		addColor(builder, scheme, ColorRole.ON_SURFACE_VARIANT, 0.38);
+		addColor(builder, scheme, ColorRole.SURFACE_CONTAINER_LOW, 0.8);
+		addColor(builder, scheme, ColorRole.SECONDARY_CONTAINER, 0.8);
+		addColor(builder, scheme, ColorRole.INVERSE_SURFACE, 0.8);
 
-        addColor(builder, "-monet-primary-seed", scheme.getPrimaryColorSeed());
+		builder.append("}\n");
+		return toStyleSheetUri(builder.toString());
+	}
 
-        addColor(builder, scheme, ColorRole.PRIMARY, 0.5);
-        addColor(builder, scheme, ColorRole.PRIMARY, 0.8);
-        addColor(builder, scheme, ColorRole.SECONDARY_CONTAINER, 0.5);
-        addColor(builder, scheme, ColorRole.SURFACE, 0.5);
-        addColor(builder, scheme, ColorRole.SURFACE, 0.8);
-        addColor(builder, scheme, ColorRole.ON_SURFACE_VARIANT, 0.38);
-        addColor(builder, scheme, ColorRole.SURFACE_CONTAINER_LOW, 0.8);
-        addColor(builder, scheme, ColorRole.SECONDARY_CONTAINER, 0.8);
-        addColor(builder, scheme, ColorRole.INVERSE_SURFACE, 0.8);
-
-        builder.append("}\n");
-        return toStyleSheetUri(builder.toString());
-    }
-
-    /// Binds the launcher stylesheets to a scene.
-    ///
-    /// The binding is content-based, so later rebuilds of the theme stylesheet
-    /// reach this scene without calling this method again.
-    ///
-    /// @param scene the scene to style
-    public static void init(Scene scene) {
-        Bindings.bindContent(scene.getStylesheets(), stylesheets);
-    }
+	/**
+	 * Binds the dynamic launcher stylesheets to the specified scene.
+	 *
+	 * @param scene the scene to style
+	 */
+	public static void init(Scene scene) {
+		Bindings.bindContent(scene.getStylesheets(), stylesheets);
+	}
 }

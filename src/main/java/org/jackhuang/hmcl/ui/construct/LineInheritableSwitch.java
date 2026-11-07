@@ -26,211 +26,236 @@ import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 import javafx.css.PseudoClass;
-import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Tooltip;
 import javafx.scene.input.MouseEvent;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// A line component that edits an inheritable boolean.
-///
-/// One value and one override flag, the way the sibling inheritable rows are built: the caller puts
-/// the value **in force** into [#rawValueProperty] — this instance's own when it has one, the
-/// launcher's otherwise — and the control shows that value and flips it. [#overriddenProperty] says
-/// only whether the value is this instance's own, which is what decides if it is stored.
+/**
+ * A line component editing an inheritable boolean setting.
+ */
 @NotNullByDefault
 public final class LineInheritableSwitch extends LineButtonBase {
-    /// The style class applied to inheritable toggle rows.
-    private static final String DEFAULT_STYLE_CLASS = "line-inheritable-switch";
 
-    /// The pseudo class applied while the value overrides the inherited setting.
-    private static final PseudoClass PSEUDO_OVERRIDDEN = PseudoClass.getPseudoClass("overridden");
+	private static final String DEFAULT_STYLE_CLASS = "line-inheritable-switch";
+	private static final PseudoClass PSEUDO_OVERRIDDEN = PseudoClass.getPseudoClass("overridden");
+	private static final String INHERIT_BUTTON_STYLE_CLASS = "toggle-icon-tiny";
+	private static final int INHERIT_BUTTON_ICON_SIZE = 12;
+	private static final double INHERIT_FAINT = 0.45;
 
-    /// The style class applied to the compact inheritance state button.
-    private static final String INHERIT_BUTTON_STYLE_CLASS = "toggle-icon-tiny";
+	private final JFXButton inheritButton;
+	private final Tooltip inheritTooltip;
+	private final JFXSwitch switchControl;
+	private final BooleanProperty rawValue = new SimpleBooleanProperty(this, "rawValue");
+	private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden");
+	private final BooleanProperty inheritAvailable = new SimpleBooleanProperty(this, "inheritAvailable", true);
+	private final StringProperty inheritedTooltip = new SimpleStringProperty(this, "inheritedTooltip", "");
+	private final StringProperty overriddenTooltip = new SimpleStringProperty(this, "overriddenTooltip", "");
 
-    /// The icon size used by the compact inheritance state button.
-    private static final int INHERIT_BUTTON_ICON_SIZE = 12;
+	/**
+	 * Creates an inheritable boolean toggle row.
+	 */
+	public LineInheritableSwitch() {
+		this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-switch");
+		this.getStyleClass().add("line-inheritable-value");
 
-    /// How faint the switch is drawn while this row is showing the launcher's answer.
-    private static final double INHERIT_FAINT = 0.45;
+		this.inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
+		this.inheritTooltip = new Tooltip();
+		setInheritedTooltip(i18n("dsh.settings.inherit.tooltip"));
+		setOverriddenTooltip(i18n("dsh.settings.override.tooltip"));
+		FXUtils.installFastTooltip(inheritButton, inheritTooltip);
+		inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
+			if (!isInheritAvailable()) {
+				return;
+			}
 
-    /// The button that toggles between inherited and overridden mode.
-    private final JFXButton inheritButton;
+			if (!isOverridden()) {
+				setOverridden(true);
+			} else {
+				setOverridden(false);
+			}
+			super.fire();
+			event.consume();
+		});
 
-    /// The tooltip shown on the inheritance button.
-    private final Tooltip inheritTooltip;
+		this.switchControl = new JFXSwitch();
+		switchControl.setMouseTransparent(true);
 
-    /// The switch that displays the value in force.
-    private final JFXSwitch switchControl;
+		setTitleTrailing(inheritButton);
+		setRowTrailing(switchControl);
 
-    /// Creates an inheritable boolean toggle row.
-    public LineInheritableSwitch() {
-        this.getStyleClass().addAll(DEFAULT_STYLE_CLASS, "line-switch");
-        // The same class the inheritable choice rows wear, so a theme that styles "this row is
-        // following the launcher" reaches this row too. The dimming itself is done in `refresh()`
-        // rather than by that rule: the rule keys on `.trailing-label`, and this row's value is a
-        // toggle, which is not a label.
-        this.getStyleClass().add("line-inheritable-value");
+		rawValue.addListener(observable -> refresh());
+		overridden.addListener(observable -> refresh());
+		inheritAvailable.addListener(observable -> refresh());
+		inheritedTooltip.addListener(observable -> refresh());
+		overriddenTooltip.addListener(observable -> refresh());
+		refresh();
+	}
 
-        // The launcher's own small icon button, so the globe takes the theme's colour
-        // rather than the SVG's default fill.
-        this.inheritButton = FXUtils.newToggleButton4(SVG.PUBLIC);
-        this.inheritTooltip = new Tooltip();
-        // The control knows what its globe means, so it says so unless a caller has its own words:
-        // a globe with an empty tooltip is a control nobody dares press.
-        setInheritedTooltip(i18n("dsh.settings.inherit.tooltip"));
-        setOverriddenTooltip(i18n("dsh.settings.override.tooltip"));
-        FXUtils.installFastTooltip(inheritButton, inheritTooltip);
-        inheritButton.addEventFilter(MouseEvent.MOUSE_CLICKED, event -> {
-            if (!isInheritAvailable()) {
-                return;
-            }
+	@Override
+	public void fire() {
+		setOverridden(true);
+		setRawValue(!getRawValue());
+		super.fire();
+	}
 
-            if (!isOverridden()) {
-                // Taking the row over adopts the value that was in force, so the switch does not
-                // move until somebody moves it.
-                setOverridden(true);
-            } else {
-                setOverridden(false);
-            }
-            super.fire();
-            event.consume();
-        });
+	private void refresh() {
+		boolean inheritAvailable = isInheritAvailable();
+		boolean inherited = inheritAvailable && !isOverridden();
+		boolean overridden = inheritAvailable && isOverridden();
 
-        this.switchControl = new JFXSwitch();
-        switchControl.setMouseTransparent(true);
+		inheritButton.setGraphic((inherited ? SVG.PUBLIC : SVG.TUNE).createIcon(INHERIT_BUTTON_ICON_SIZE));
+		inheritButton.pseudoClassStateChanged(PSEUDO_OVERRIDDEN, overridden);
+		inheritButton.setVisible(inheritAvailable);
+		inheritButton.setManaged(inheritAvailable);
+		inheritTooltip.setText(inherited ? getInheritedTooltip() : getOverriddenTooltip());
 
-        setTitleTrailing(inheritButton);
-        setRowTrailing(switchControl);
+		switchControl.setSelected(getRawValue());
+		switchControl.setOpacity(inherited ? INHERIT_FAINT : 1.0);
+	}
 
-        rawValue.addListener(observable -> refresh());
-        overridden.addListener(observable -> refresh());
-        inheritAvailable.addListener(observable -> refresh());
-        inheritedTooltip.addListener(observable -> refresh());
-        overriddenTooltip.addListener(observable -> refresh());
-        refresh();
-    }
+	/**
+	 * Returns the raw setting value property.
+	 *
+	 * @return the raw value property
+	 */
+	public BooleanProperty rawValueProperty() {
+		return rawValue;
+	}
 
-    @Override
-    public void fire() {
-        setOverridden(true);
-        setRawValue(!getRawValue());
-        super.fire();
-    }
+	/**
+	 * Returns the raw setting value.
+	 *
+	 * @return raw boolean value
+	 */
+	public boolean getRawValue() {
+		return rawValueProperty().get();
+	}
 
-    /// Refreshes the visual state from the raw and effective values.
-    private void refresh() {
-        boolean inheritAvailable = isInheritAvailable();
-        boolean inherited = inheritAvailable && !isOverridden();
-        boolean overridden = inheritAvailable && isOverridden();
+	/**
+	 * Sets the raw setting value.
+	 *
+	 * @param rawValue raw boolean value
+	 */
+	public void setRawValue(boolean rawValue) {
+		rawValueProperty().set(rawValue);
+	}
 
-        inheritButton.setGraphic((inherited ? SVG.PUBLIC : SVG.TUNE).createIcon(INHERIT_BUTTON_ICON_SIZE));
-        inheritButton.pseudoClassStateChanged(PSEUDO_OVERRIDDEN, overridden);
-        inheritButton.setVisible(inheritAvailable);
-        inheritButton.setManaged(inheritAvailable);
-        inheritTooltip.setText(inherited ? getInheritedTooltip() : getOverriddenTooltip());
+	/**
+	 * Returns the overridden property.
+	 *
+	 * @return overridden property
+	 */
+	public BooleanProperty overriddenProperty() {
+		return overridden;
+	}
 
-        switchControl.setSelected(getRawValue());
-        // Following the launcher shows the launcher's answer, and the row has to look like one that
-        // is showing somebody else's value: the switch is dimmed until this instance decides for
-        // itself, which is what pressing the globe does.
-        switchControl.setOpacity(inherited ? INHERIT_FAINT : 1.0);
-    }
+	/**
+	 * Returns whether the value overrides the inherited value.
+	 *
+	 * @return {@code true} if overridden
+	 */
+	public boolean isOverridden() {
+		return overriddenProperty().get();
+	}
 
-    /// The raw value stored in this setting.
-    private final BooleanProperty rawValue = new SimpleBooleanProperty(this, "rawValue");
+	/**
+	 * Sets whether the value overrides the inherited value.
+	 *
+	 * @param overridden {@code true} to override
+	 */
+	public void setOverridden(boolean overridden) {
+		overriddenProperty().set(overridden);
+	}
 
-    /// Returns the raw setting value.
-    public BooleanProperty rawValueProperty() {
-        return rawValue;
-    }
+	/**
+	 * Returns the inherit-available property.
+	 *
+	 * @return inherit-available property
+	 */
+	public BooleanProperty inheritAvailableProperty() {
+		return inheritAvailable;
+	}
 
-    /// Returns the raw setting value.
-    public boolean getRawValue() {
-        return rawValueProperty().get();
-    }
+	/**
+	 * Returns whether inheritance can be selected.
+	 *
+	 * @return {@code true} if inheritance is available
+	 */
+	public boolean isInheritAvailable() {
+		return inheritAvailableProperty().get();
+	}
 
-    /// Sets the raw setting value.
-    public void setRawValue(boolean rawValue) {
-        rawValueProperty().set(rawValue);
-    }
+	/**
+	 * Sets whether inheritance can be selected.
+	 *
+	 * @param inheritAvailable {@code true} if inheritance is available
+	 */
+	public void setInheritAvailable(boolean inheritAvailable) {
+		inheritAvailableProperty().set(inheritAvailable);
+	}
 
-    /// Whether the direct value overrides the inherited value.
-    private final BooleanProperty overridden = new SimpleBooleanProperty(this, "overridden");
+	/**
+	 * Returns the tooltip displayed in inherited mode.
+	 *
+	 * @return inherited tooltip property
+	 */
+	public StringProperty inheritedTooltipProperty() {
+		return inheritedTooltip;
+	}
 
-    /// Returns the override-state property.
-    public BooleanProperty overriddenProperty() {
-        return overridden;
-    }
+	/**
+	 * Returns the tooltip displayed in inherited mode.
+	 *
+	 * @return tooltip text
+	 */
+	public String getInheritedTooltip() {
+		return inheritedTooltipProperty().get();
+	}
 
-    /// Returns whether the direct value overrides the inherited value.
-    public boolean isOverridden() {
-        return overriddenProperty().get();
-    }
+	/**
+	 * Sets the tooltip displayed in inherited mode.
+	 *
+	 * @param inheritedTooltip tooltip text
+	 */
+	public void setInheritedTooltip(String inheritedTooltip) {
+		inheritedTooltipProperty().set(inheritedTooltip);
+	}
 
-    /// Sets whether the direct value overrides the inherited value.
-    public void setOverridden(boolean overridden) {
-        overriddenProperty().set(overridden);
-    }
+	/**
+	 * Returns the tooltip displayed in overridden mode.
+	 *
+	 * @return overridden tooltip property
+	 */
+	public StringProperty overriddenTooltipProperty() {
+		return overriddenTooltip;
+	}
 
-    /// Whether inherited mode can be selected.
-    private final BooleanProperty inheritAvailable = new SimpleBooleanProperty(this, "inheritAvailable", true);
+	/**
+	 * Returns the tooltip displayed in overridden mode.
+	 *
+	 * @return tooltip text
+	 */
+	public String getOverriddenTooltip() {
+		return overriddenTooltipProperty().get();
+	}
 
-    /// Returns whether inherited mode can be selected.
-    public BooleanProperty inheritAvailableProperty() {
-        return inheritAvailable;
-    }
+	/**
+	 * Sets the tooltip displayed in overridden mode.
+	 *
+	 * @param overriddenTooltip tooltip text
+	 */
+	public void setOverriddenTooltip(String overriddenTooltip) {
+		overriddenTooltipProperty().set(overriddenTooltip);
+	}
 
-    /// Returns whether inherited mode can be selected.
-    public boolean isInheritAvailable() {
-        return inheritAvailableProperty().get();
-    }
-
-    /// Sets whether inherited mode can be selected.
-    public void setInheritAvailable(boolean inheritAvailable) {
-        inheritAvailableProperty().set(inheritAvailable);
-    }
-
-    /// The tooltip displayed while inheriting the parent value.
-    private final StringProperty inheritedTooltip = new SimpleStringProperty(this, "inheritedTooltip", "");
-
-    /// Returns the tooltip displayed while inheriting the parent value.
-    public StringProperty inheritedTooltipProperty() {
-        return inheritedTooltip;
-    }
-
-    /// Returns the tooltip displayed while inheriting the parent value.
-    public String getInheritedTooltip() {
-        return inheritedTooltipProperty().get();
-    }
-
-    /// Sets the tooltip displayed while inheriting the parent value.
-    public void setInheritedTooltip(String inheritedTooltip) {
-        inheritedTooltipProperty().set(inheritedTooltip);
-    }
-
-    /// The tooltip displayed while overriding the parent value.
-    private final StringProperty overriddenTooltip = new SimpleStringProperty(this, "overriddenTooltip", "");
-
-    /// Returns the tooltip displayed while overriding the parent value.
-    public StringProperty overriddenTooltipProperty() {
-        return overriddenTooltip;
-    }
-
-    /// Returns the tooltip displayed while overriding the parent value.
-    public String getOverriddenTooltip() {
-        return overriddenTooltipProperty().get();
-    }
-
-    /// Sets the tooltip displayed while overriding the parent value.
-    public void setOverriddenTooltip(String overriddenTooltip) {
-        overriddenTooltipProperty().set(overriddenTooltip);
-    }
-
-    /// Sets the tooltip displayed on the inherit button in inherited mode.
-    public void setInheritTooltip(String tooltip) {
-        setInheritedTooltip(tooltip);
-    }
+	/**
+	 * Sets the tooltip displayed on the inherit button in inherited mode.
+	 *
+	 * @param tooltip tooltip text
+	 */
+	public void setInheritTooltip(String tooltip) {
+		setInheritedTooltip(tooltip);
+	}
 }

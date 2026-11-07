@@ -39,23 +39,20 @@ import java.util.OptionalLong;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Windows integration for the launcher's own windows: the native handle of a
-/// JavaFX stage, and the AppUserModel properties that make the taskbar treat
-/// the running window as the executable it was launched from.
-///
-/// @author Glavo
+/**
+ * Windows integration for the launcher's own windows: the native handle of a
+ * JavaFX stage, and AppUserModel properties for taskbar integration.
+ *
+ * @author Glavo
+ */
 public final class WindowsNativeUtils {
 
-    /// Returns the native window handle of a JavaFX stage.
-    ///
-    /// The handle travels through the JavaFX implementation classes — `Window`
-    /// to its peer, the peer to the platform window, the platform window to its
-    /// native handle — which is why the access goes through method handles
-    /// rather than typed calls: the classes are internal and must stay
-    /// optional at compile time.
-    ///
-    /// @param stage the stage
-    /// @return the HWND, or empty when it cannot be reached
+    /**
+     * Returns the native window handle of a JavaFX stage.
+     *
+     * @param stage the stage
+     * @return the HWND, or empty when it cannot be reached
+     */
     public static OptionalLong getWindowHandle(Stage stage) {
         try {
             Class<?> windowStageClass = Class.forName("com.sun.javafx.tk.quantum.WindowStage");
@@ -81,24 +78,12 @@ public final class WindowsNativeUtils {
         }
     }
 
-    /// Installs permanent window listeners that keep AppUserModel relaunch properties in sync
-    /// with the stage's native HWND lifecycle.
-    ///
-    /// JavaFX may destroy and recreate the HWND across `hide()` / `show()` (for example with
-    /// `HIDE_AND_REOPEN`). Properties are therefore applied on every [`WindowEvent#WINDOW_SHOWN`]
-    /// and removed with `VT_EMPTY` on every [`WindowEvent#WINDOW_HIDING`], as required by
-    /// [`SHGetPropertyStoreForWindow`](https://learn.microsoft.com/windows/win32/api/shellapi/nf-shellapi-shgetpropertystoreforwindow).
-    ///
-    /// Handlers must run on the JavaFX application thread: `IPropertyStore` is a COM interface,
-    /// and the FX thread is already initialized for COM on Windows.
-    ///
-    /// The properties themselves only matter when the launcher runs from its `.exe`: a taskbar
-    /// pin, a jump-list entry and the taskbar's own launch shortcut all relaunch what these
-    /// properties name, and without them Windows pins the `java.exe` the jar was handed to
-    /// instead of the launcher's own executable. A jar run through `java -jar`, or a non-Windows
-    /// run, leaves the stage alone.
-    ///
-    /// @param stage the primary launcher stage
+    /**
+     * Installs permanent window listeners that keep AppUserModel relaunch properties in sync
+     * with the stage's native HWND lifecycle.
+     *
+     * @param stage the primary launcher stage
+     */
     public static void installWindowsAppUserModelRelaunchProperties(Stage stage) {
         if (OperatingSystem.CURRENT_OS != OperatingSystem.WINDOWS)
             return;
@@ -129,14 +114,13 @@ public final class WindowsNativeUtils {
         });
     }
 
-    /// Writes AppUserModel relaunch properties for the current native window of `stage`.
-    ///
-    /// Successful [`IPropertyStore#SetValue`] calls on a window property store take effect
-    /// immediately; no `Commit` is required or useful.
-    ///
-    /// @param stage the stage whose native window receives the properties
-    /// @param relaunchCommand the `PKEY_AppUserModel_RelaunchCommand` value
-    /// @param iconResource the `PKEY_AppUserModel_RelaunchIconResource` value
+    /**
+     * Writes AppUserModel relaunch properties for the current native window of the given stage.
+     *
+     * @param stage           the stage whose native window receives the properties
+     * @param relaunchCommand the {@code PKEY_AppUserModel_RelaunchCommand} value
+     * @param iconResource    the {@code PKEY_AppUserModel_RelaunchIconResource} value
+     */
     private static void applyWindowsAppUserModelRelaunchProperties(Stage stage, String relaunchCommand, String iconResource) {
         Shell32 shell32 = Shell32.INSTANCE;
         if (shell32 == null)
@@ -168,9 +152,11 @@ public final class WindowsNativeUtils {
         }
     }
 
-    /// Removes AppUserModel relaunch properties from the current native window before it is hidden.
-    ///
-    /// @param stage the stage whose native window is about to be destroyed or hidden
+    /**
+     * Removes AppUserModel relaunch properties from the current native window before it is hidden.
+     *
+     * @param stage the stage whose native window is about to be destroyed or hidden
+     */
     private static void clearWindowsAppUserModelRelaunchProperties(Stage stage) {
         Shell32 shell32 = Shell32.INSTANCE;
         if (shell32 == null)
@@ -197,12 +183,14 @@ public final class WindowsNativeUtils {
         }
     }
 
-    /// Sets a string property on an [`IPropertyStore`].
-    ///
-    /// @param store the property store
-    /// @param key the property key
-    /// @param value the string value
-    /// @return `true` if [`IPropertyStore#SetValue`] succeeds
+    /**
+     * Sets a string property on an {@link IPropertyStore}.
+     *
+     * @param store the property store
+     * @param key   the property key
+     * @param value the string value
+     * @return {@code true} if {@link IPropertyStore#SetValue} succeeds
+     */
     private static boolean setWindowsPropertyStoreString(IPropertyStore store, WinTypes.PROPERTYKEY key, String value) {
         WinTypes.PROPVARIANT propvar = new WinTypes.PROPVARIANT();
         propvar.setStringValue(value);
@@ -214,11 +202,13 @@ public final class WindowsNativeUtils {
         return true;
     }
 
-    /// Removes a property by writing `VT_EMPTY`.
-    ///
-    /// @param store the property store
-    /// @param key the property key to clear
-    /// @param empty a `VT_EMPTY` value
+    /**
+     * Removes a property by writing {@code VT_EMPTY}.
+     *
+     * @param store the property store
+     * @param key   the property key to clear
+     * @param empty a {@code VT_EMPTY} value
+     */
     private static void clearWindowsPropertyStoreValue(IPropertyStore store, WinTypes.PROPERTYKEY key, WinTypes.PROPVARIANT empty) {
         int hr = store.SetValue(key, empty);
         if (hr < 0) {

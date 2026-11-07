@@ -58,47 +58,32 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists the workspaces an instance's sessions were recorded in.
-///
-/// DeepSeek Harness groups its history by workspace, and the sessions themselves
-/// live under `sessions/<workspace-slug>/`, so a workspace is a directory rather
-/// than a label. This page is the session manager's front door: click one to see
-/// its conversations, or tick several and export them together as one pack.
-///
-/// Clicking a row opens it, which is the one thing a person comes here to do, so
-/// the multi-select is a tick box instead: the list's own selection would have
-/// nothing left to mean once a click navigates away.
+/**
+ * Lists the workspaces where an instance's sessions were recorded.
+ */
 @NotNullByDefault
 public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implements Refreshable {
-	/// Formats a workspace's last activity the way a person reads it.
+
 	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 	                                                                    .withZone(ZoneId.systemDefault());
 
-	/// The instance whose workspaces are listed.
 	private final DshInstance instance;
-	/// The slugs ticked for a batch export, kept across refreshes.
 	private final Set<String> selected = new LinkedHashSet<>();
-	/// The ordinary toolbar.
 	private final HBox toolbar = new HBox(8);
-	/// The toolbar shown while workspaces are ticked.
 	private final HBox selectingToolbar = new HBox(8);
-	/// The box the two toolbars swap in.
 	private final StackPane toolbarPane = new StackPane(toolbar, selectingToolbar);
-	/// Whether a load is already running.
 	private boolean busy;
 
-	/// Creates the page.
-	///
-	/// @param instance the instance whose workspaces are listed
+	/**
+	 * Creates the page.
+	 *
+	 * @param instance the instance whose workspaces are listed
+	 */
 	public WorkspaceListPage(DshInstance instance) {
 		this.instance = instance;
 		refresh();
 	}
 
-	/// Describes a workspace's path, sessions and last activity.
-	///
-	/// @param workspace the workspace
-	/// @return the text
 	private static String describe(DshWorkspace workspace) {
 		StringBuilder builder = new StringBuilder();
 		if (workspace.path() != null) {
@@ -143,16 +128,11 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 				return;
 			}
 			getItems().setAll(workspaces);
-			// A workspace that is gone cannot stay ticked, or the export would
-			// silently write nothing for it.
 			selected.retainAll(workspaces.stream().map(DshWorkspace::slug).toList());
 			showSelectingToolbar(!selected.isEmpty());
 		}));
 	}
 
-	/// Holds the list and gives the page the toolbar that acts on a tick box.
-	///
-	/// @param listView the page's list
 	private void attachList(JFXListView<DshWorkspace> listView) {
 		toolbar.setAlignment(Pos.CENTER_LEFT);
 		toolbar.getChildren()
@@ -180,9 +160,6 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 		showSelectingToolbar(!selected.isEmpty());
 	}
 
-	/// Shows the toolbar that acts on a tick, or the ordinary one.
-	///
-	/// @param selecting whether anything is ticked
 	private void showSelectingToolbar(boolean selecting) {
 		selectingToolbar.setVisible(selecting);
 		selectingToolbar.setManaged(selecting);
@@ -190,10 +167,6 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 		toolbar.setManaged(!selecting);
 	}
 
-	/// Ticks or unticks a workspace.
-	///
-	/// @param workspace the workspace
-	/// @param ticked    whether it is ticked
 	void setTicked(DshWorkspace workspace, boolean ticked) {
 		if (ticked) {
 			selected.add(workspace.slug());
@@ -203,22 +176,14 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 		showSelectingToolbar(!selected.isEmpty());
 	}
 
-	/// Returns whether a workspace is ticked.
-	///
-	/// @param workspace the workspace
-	/// @return whether it is ticked
 	boolean isTicked(DshWorkspace workspace) {
 		return selected.contains(workspace.slug());
 	}
 
-	/// Opens a workspace's sessions.
-	///
-	/// @param workspace the workspace
 	private void open(DshWorkspace workspace) {
 		Controllers.navigate(new SessionListPage(instance, workspace));
 	}
 
-	/// Exports every session of every ticked workspace as one pack.
 	private void exportSelected() {
 		List<DshSession> sessions = new ArrayList<>();
 		for (DshWorkspace workspace : getItems()) {
@@ -229,11 +194,8 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 		SessionPackActions.export(instance, sessions);
 	}
 
-	/// The page's skin: a toolbar above the workspace list.
 	private static final class WorkspaceListPageSkin extends ToolbarListPageSkin<DshWorkspace, WorkspaceListPage> {
-		/// Creates the skin.
-		///
-		/// @param control the page
+
 		WorkspaceListPageSkin(WorkspaceListPage control) {
 			super(control);
 			setPlaceholder(i18n("dsh.workspaces.empty"));
@@ -253,31 +215,13 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 		}
 	}
 
-	/// One row of the workspace list.
-	///
-	/// A tick box for the batch export, the workspace's own name and path, and an
-	/// open button. Clicking the row opens it: that is the action a person comes
-	/// here to take, so it is the click rather than a button on the edge.
 	private static final class WorkspaceListCell extends MDListCell<DshWorkspace> {
-		/// The page whose actions the row runs.
 		private final WorkspaceListPage page;
-
-		/// The tick box that adds the workspace to a batch export.
 		private final JFXCheckBox tick = new JFXCheckBox();
-
-		/// The workspace icon.
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The name and its path and counts.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button that opens the workspace's sessions.
 		private final JFXButton open = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list
-		/// @param page     the page the row belongs to
 		WorkspaceListCell(JFXListView<DshWorkspace> listView, WorkspaceListPage page) {
 			super(listView);
 			this.page = page;
@@ -304,8 +248,6 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 				}
 			});
 
-			// The tick and the button act for themselves; anywhere else opens the
-			// workspace, so one click does the thing the page is for.
 			setOnMouseClicked(event -> {
 				DshWorkspace workspace = getItem();
 				if (workspace == null || event.getButton() != MouseButton.PRIMARY) {
@@ -325,11 +267,6 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 			getContainer().getChildren().setAll(container);
 		}
 
-		/// Reports whether a node lies inside another.
-		///
-		/// @param node     the node to walk up from
-		/// @param ancestor the ancestor to look for
-		/// @return whether the node is the ancestor or one of its descendants
 		private static boolean isWithin(Node node, Node ancestor) {
 			for (Node current = node; current != null; current = current.getParent()) {
 				if (current == ancestor) {

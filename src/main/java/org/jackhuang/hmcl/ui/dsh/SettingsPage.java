@@ -34,44 +34,26 @@ import java.util.Locale;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// The launcher settings page.
-///
-/// Mirrors HMCL's launcher settings shell: a categorised sidebar on the left
-/// and a tab-owned content pane on the right. The Minecraft-specific tabs
-/// (game settings, Java runtimes, download sources, multiplayer) are gone;
-/// what remains configures the launcher itself.
+/**
+ * Launcher settings page with sidebar navigation tabs.
+ */
 @NotNullByDefault
 public final class SettingsPage extends DecoratorAnimatedPage implements DecoratorPage, PageAware {
-	/// The page state published to the window decorator.
+
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("settings")));
-
-	/// The tab strip driving the content pane.
 	private final TabHeader tab;
-
-	/// The tab holding what a new instance is given.
 	private final TabHeader.Tab<InstanceDefaultsPage> defaultsTab = new TabHeader.Tab<>("dshInstanceDefaults");
-
-	/// The general settings tab.
 	private final TabHeader.Tab<GeneralSettingsPage> generalTab = new TabHeader.Tab<>("dshGeneralSettings");
-
-	/// The Node runtime tab, mirroring where HMCL puts Java management.
 	private final TabHeader.Tab<NodeRuntimesPage> nodeTab = new TabHeader.Tab<>("dshNodeRuntimes");
-
-	/// The appearance settings tab.
 	private final TabHeader.Tab<AppearanceSettingsPage> appearanceTab = new TabHeader.Tab<>("dshAppearanceSettings");
-
-	/// The download settings tab, mirroring where HMCL keeps its download sources.
 	private final TabHeader.Tab<DownloadSettingsPage> downloadTab = new TabHeader.Tab<>("dshDownloadSettings");
-
-	/// The about tab.
 	private final TabHeader.Tab<AboutPage> aboutTab = new TabHeader.Tab<>("dshAbout");
-
-	/// The animated content pane shared by all tabs.
 	private final TransitionPane transitionPane = new TransitionPane();
 
-	/// Creates the settings page and installs its sidebar.
+	/**
+	 * Creates the settings page and installs its sidebar.
+	 */
 	public SettingsPage() {
-
 		defaultsTab.setNodeSupplier(InstanceDefaultsPage::new);
 		generalTab.setNodeSupplier(GeneralSettingsPage::new);
 		nodeTab.setNodeSupplier(NodeRuntimesPage::new);
@@ -82,10 +64,6 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 		tab.select(defaultsTab, false);
 
 		AdvancedListBox sideBar = new AdvancedListBox()
-				// The original leads with the game's own defaults and the
-				// runtime they use, before any category, and puts the launcher's
-				// settings under one of their own. A tab that configures
-				// instances is not a launcher preference.
 				.addNavigationDrawerTab(tab,
 				                        defaultsTab,
 				                        i18n("dsh.settings.instance_defaults"),
@@ -99,8 +77,6 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 				                        i18n("settings.launcher.appearance"),
 				                        SVG.STYLE,
 				                        SVG.STYLE_FILL)
-				// Same mark as the original's download entry, and the same reason
-				// it has no solid version: the icon set has none for a download.
 				.addNavigationDrawerTab(tab, downloadTab, i18n("settings.launcher.download_source"), SVG.DOWNLOAD)
 				.startCategory(i18n("help").toUpperCase(Locale.ROOT))
 				.addNavigationDrawerTab(tab, aboutTab, i18n("about"), SVG.INFO, SVG.INFO_FILL);
@@ -110,11 +86,13 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 		setCenter(transitionPane);
 	}
 
-	/// Selects a tab by name.
-	///
-	/// @param name the tab name: `defaults`, `node`, `general`, `appearance`,
-	///             `download` or `about`
-	/// @return whether a tab was selected
+	/**
+	 * Selects a tab by name.
+	 *
+	 * @param name the tab name: {@code defaults}, {@code node}, {@code general},
+	 *             {@code appearance}, {@code download} or {@code about}
+	 * @return whether a tab was selected
+	 */
 	public boolean openTab(String name) {
 		switch (name == null ? "" : name.trim().toLowerCase(Locale.ROOT)) {
 			case "defaults" -> tab.select(defaultsTab, false);
@@ -147,6 +125,6 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 
 	@Override
 	public void refresh() {
-		// Each tab reloads its own state when shown.
 	}
 }
+

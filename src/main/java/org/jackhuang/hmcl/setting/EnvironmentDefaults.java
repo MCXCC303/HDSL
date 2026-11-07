@@ -22,27 +22,20 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 
-/// Connects the launcher's environment settings to the layer that reads them.
-///
-/// An instance can follow the launcher for its Node runtime and its `DSH_HOME`
-/// policy. Those defaults are settings, and the instance layer sits below them,
-/// so the values are pushed down once rather than pulled up — pulling would make
-/// the two packages depend on each other.
-///
-/// HMCL keeps the same split, with an instance's settings inheriting from the
-/// global ones unless it states its own.
+/**
+ * Bridges launcher environment settings to the instance layer.
+ */
 @NotNullByDefault
 public final class EnvironmentDefaults {
-    private EnvironmentDefaults() {
-    }
+	private EnvironmentDefaults() {
+	}
 
-    /// Installs the launcher's defaults into the instance layer.
-    ///
-    /// Called once at start-up. The suppliers read the settings on every lookup,
-    /// so a change takes effect without a restart.
-    public static void install() {
-        DshEnvironment.install(
-                () -> settings().defaultNodeRuntimeProperty().get(),
-                () -> settings().defaultHomeModeProperty().get());
-    }
+	/**
+	 * Installs the launcher's environment defaults into the instance layer.
+	 */
+	public static void install() {
+		DshEnvironment.install(
+				() -> settings().defaultNodeRuntimeProperty().get(),
+				() -> settings().defaultHomeModeProperty().get());
+	}
 }

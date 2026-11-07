@@ -36,37 +36,33 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Runs a task that takes time behind the original's progress dialog.
-///
-/// Installing a plugin, changing a boot library and removing a package all run
-/// pnpm, which takes as long as it takes and says why when it fails; packing or
-/// unpacking a set of conversations copies hundreds of megabytes. Doing that
-/// quietly leaves the page that asked for it unchanged, with no way to tell
-/// whether anything happened, so the original's dialog is shown with whatever the
-/// work reports as it goes.
+/**
+ * Executes long-running tasks within a task progress dialog.
+ */
 @NotNullByDefault
 public final class ProgressDialog {
 	private ProgressDialog() {
 	}
 
-	/// Runs one installation with a progress dialog, and says so when it fails.
-	///
-	/// @param title  the line the dialog is titled with
-	/// @param work   the work, given a sink for the package manager's output
-	/// @param onDone run on the interface thread when the work ends, whether it
-	///               succeeded or not, or `null`
+	/**
+	 * Runs a task with a progress dialog.
+	 *
+	 * @param title  title of the progress dialog
+	 * @param work   the task to execute
+	 * @param onDone callback run on the JavaFX thread when the task ends, or {@code null}
+	 */
 	public static void run(String title, Work work, @Nullable Runnable onDone) {
 		run(title, work, onDone, null);
 	}
 
-	/// Runs one installation, letting the caller deal with a particular failure.
-	///
-	/// @param title     the line the dialog is titled with
-	/// @param work      the work, given a sink for the package manager's output
-	/// @param onDone    run on the interface thread when the work ends, whether it
-	///                  succeeded or not, or `null`
-	/// @param onFailure asked about the failure; returning true means it was dealt
-	///                  with and no error is shown, or `null` to always show it
+	/**
+	 * Runs a task with a progress dialog, with custom failure handling.
+	 *
+	 * @param title     title of the progress dialog
+	 * @param work      the task to execute
+	 * @param onDone    callback run on the JavaFX thread when the task ends, or {@code null}
+	 * @param onFailure predicate to handle failures, or {@code null} to show default error dialog
+	 */
 	public static void run(String title,
 	                       Work work,
 	                       @Nullable Runnable onDone,
@@ -103,13 +99,18 @@ public final class ProgressDialog {
 		executor.start();
 	}
 
-	/// Work that takes time and can fail.
+	/**
+	 * Task execution callback.
+	 */
 	@FunctionalInterface
 	public interface Work {
-		/// Runs the installation.
-		///
-		/// @param report receives the package manager's output
-		/// @throws DshException when the work fails
+
+		/**
+		 * Executes the task.
+		 *
+		 * @param report consumer receiving progress text
+		 * @throws DshException when execution fails
+		 */
 		void run(Consumer<String> report) throws DshException;
 	}
 }

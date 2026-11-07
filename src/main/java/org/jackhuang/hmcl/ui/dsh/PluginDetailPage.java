@@ -87,7 +87,6 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
 		                                      this::choose,
 		                                      version -> installInto(target(), version));
 
-		// A border pane rather than a box: its centre takes whatever height is left.
 		BorderPane layout = new BorderPane();
 		layout.setPadding(new Insets(10));
 		layout.setTop(buildHeader());
@@ -151,7 +150,6 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
 
 		if (plugin.url() != null && plugin.url().startsWith("http")) {
 			JFXButton page = new JFXButton(i18n("download.release_page"));
-			// A plugin published as a package has a package page rather than a repository one.
 			if (!plugin.hasRepository()) {
 				page.setText(i18n("dsh.market.package_page"));
 			}

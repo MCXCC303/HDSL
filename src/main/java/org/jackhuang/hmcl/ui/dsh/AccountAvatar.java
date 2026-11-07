@@ -22,41 +22,20 @@ import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.image.Image;
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// Draws an account's face.
-///
-/// The original's own drawing, arithmetic and all
-/// (`TexturesLoader.drawAvatar(Canvas, Image)`):
-///
-/// ```java
-/// int size = (int) canvas.getWidth();
-/// int scale = (int) skin.getWidth() / 64;
-/// int faceOffset = (int) Math.round(size / 18.0);
-///
-/// g.setImageSmoothing(false);
-/// g.drawImage(skin, 8*scale, 8*scale, 8*scale, 8*scale,
-///         faceOffset, faceOffset, size - 2*faceOffset, size - 2*faceOffset);
-/// g.drawImage(skin, 40*scale, 8*scale, 8*scale, 8*scale, 0, 0, size, size);
-/// ```
-///
-/// Three things in that are worth not simplifying away:
-///
-/// - **Two draws, not one.** A skin's head is two layers: the face at `(8,8)` and the hat or hair
-///   that goes over it at `(40,8)`. Drawing only the first loses every hat and every hairstyle,
-///   which most skins have.
-/// - **`faceOffset`, not zero.** The face is inset by a eighteenth of the box before being scaled up.
-///   Drawn edge to edge instead — which is what this did — the head fills the frame and looks
-///   subtly wrong beside the original without anything being obviously broken.
-/// - **`scale`.** A skin may be stored enlarged. Reading the head out at `8*scale` is what keeps a
-///   large one from drawing its top-left corner instead of its face.
+/**
+ * Utility to render player skin face avatars onto a canvas.
+ */
 @NotNullByDefault
 public final class AccountAvatar {
 	private AccountAvatar() {
 	}
 
-	/// Draws one skin's head, filling the canvas.
-	///
-	/// @param canvas where to draw
-	/// @param skin   a skin atlas, at any of the sizes the format allows
+	/**
+	 * Draws a skin's head onto the given canvas, rendering both base and overlay layers.
+	 *
+	 * @param canvas canvas to render onto
+	 * @param skin   skin texture image
+	 */
 	public static void draw(Canvas canvas, Image skin) {
 		GraphicsContext graphics = canvas.getGraphicsContext2D();
 		graphics.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());

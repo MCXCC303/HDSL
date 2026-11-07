@@ -122,7 +122,7 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
 	/**
 	 * Builds the search form.
 	 *
-	 * @return the form, on the surface the original puts it on
+	 * @return the search form pane
 	 */
 	private Node buildSearchPane() {
 		GridPane pane = new GridPane();

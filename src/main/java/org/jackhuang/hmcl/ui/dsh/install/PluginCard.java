@@ -46,39 +46,25 @@ import org.jetbrains.annotations.Nullable;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// One selectable plugin in the quick-install grid.
-///
-/// The card reuses HMCL's installer-card styling: an icon, a name and a status
-/// line in a rippling surface. HMCL uses the same shape for Forge, Fabric and
-/// NeoForge; HDSL uses it for the plugins a new profile can start with.
-///
-/// Selecting is a plain toggle rather than a sub-page, because unlike a mod
-/// loader a plugin has no version to choose at install time: `dsh plugin add`
-/// resolves the package spec itself.
+/**
+ * A selectable plugin card in the quick-install grid.
+ */
 @NotNullByDefault
 public final class PluginCard extends Control {
-	/// Applied while the card is selected.
 	private static final PseudoClass SELECTED = PseudoClass.getPseudoClass("selected");
 
-	/// The catalogue entry this card represents.
 	private final DshPreset preset;
-
-	/// Whether the plugin will be installed.
 	private final BooleanProperty selected = new SimpleBooleanProperty(this, "selected", false);
-
-	/// The action run when the card is activated.
 	private final ObjectProperty<@Nullable Runnable> onConfigure = new SimpleObjectProperty<>(this, "onConfigure");
-
-	/// The version shown under the name, or `null` for "do not install".
 	private final ObjectProperty<@Nullable String> chosenVersion = new SimpleObjectProperty<>(this, "chosenVersion");
-
-	/// Run when the choice is taken back.
 	private Runnable onClear = () -> {};
 
-	/// Creates a card for a catalogue entry.
-	///
-	/// @param preset   the entry
-	/// @param selected whether it starts selected
+	/**
+	 * Creates a card for a catalog preset.
+	 *
+	 * @param preset   the preset entry
+	 * @param selected whether the card starts selected
+	 */
 	public PluginCard(DshPreset preset, boolean selected) {
 		this.preset = preset;
 
@@ -95,57 +81,67 @@ public final class PluginCard extends Control {
 		});
 	}
 
-	/// Sets the action run when the card is activated.
-	///
-	/// @param action the action
+	/**
+	 * Sets the action executed when the card is activated.
+	 *
+	 * @param action the action
+	 */
 	public void setOnConfigure(Runnable action) {
 		onConfigure.set(action);
 	}
 
-	/// Returns the version the card currently shows.
-	///
-	/// @return the version, an empty string for the current release, or `null` when not installing
+	/**
+	 * Returns the version currently displayed.
+	 *
+	 * @return the version, an empty string for latest, or {@code null} if not installing
+	 */
 	public @Nullable String chosenVersion() {
 		return chosenVersion.get();
 	}
 
-	/// Sets the version the card shows.
-	///
-	/// @param version the version, or `null` for "do not install"
+	/**
+	 * Sets the version to display.
+	 *
+	 * @param version the version, or {@code null} for not installing
+	 */
 	public void setChosenVersion(@Nullable String version) {
 		chosenVersion.set(version);
 		selected.set(version != null);
 		pseudoClassStateChanged(SELECTED, version != null);
 	}
 
-	/// Returns the catalogue entry.
-	///
-	/// @return the preset
+	/**
+	 * Returns the catalog preset.
+	 *
+	 * @return the preset
+	 */
 	public DshPreset preset() {
 		return preset;
 	}
 
-	/// Returns whether the plugin is selected for installation.
-	///
-	/// @return whether it is selected
+	/**
+	 * Returns whether the plugin is selected for installation.
+	 *
+	 * @return whether selected
+	 */
 	public boolean isSelected() {
 		return selected.get();
 	}
 
-	/// Returns the selection property.
-	///
-	/// @return the selection property
+	/**
+	 * Returns the selection property.
+	 *
+	 * @return the selection property
+	 */
 	public BooleanProperty selectedProperty() {
 		return selected;
 	}
 
-	/// Takes the choice back, leaving the plugin unselected.
 	private void clearChosenVersion() {
 		setChosenVersion(null);
 		onClear.run();
 	}
 
-	/// Opens the version list.
 	private void configure() {
 		@Nullable Runnable action = onConfigure.get();
 		if (action != null) {
@@ -153,16 +149,20 @@ public final class PluginCard extends Control {
 		}
 	}
 
-	/// Sets what taking the choice back does.
-	///
-	/// @param action the action
+	/**
+	 * Sets the callback invoked when the version choice is cleared.
+	 *
+	 * @param action the clear action
+	 */
 	public void setOnClear(Runnable action) {
 		onClear = action;
 	}
 
-	/// Returns the chosen-version property.
-	///
-	/// @return the chosen-version property
+	/**
+	 * Returns the chosen version property.
+	 *
+	 * @return the chosen version property
+	 */
 	public ObjectProperty<@Nullable String> chosenVersionProperty() {
 		return chosenVersion;
 	}
@@ -172,11 +172,10 @@ public final class PluginCard extends Control {
 		return new PluginCardSkin(this);
 	}
 
-	/// Renders the icon, name and status of one plugin card.
+	/**
+	 * Renders the icon, name and status of a plugin card.
+	 */
 	private static final class PluginCardSkin extends SkinBase<PluginCard> {
-		/// Creates the skin.
-		///
-		/// @param control the card
 		private PluginCardSkin(PluginCard control) {
 			super(control);
 
@@ -184,9 +183,6 @@ public final class PluginCard extends Control {
 			pane.getStyleClass().add("installer-item");
 			pane.pseudoClassStateChanged(PseudoClass.getPseudoClass("card"), true);
 
-			// The marketplace leads with the mark of the loader it stands in for,
-			// which is the picture the install page shows for it; every other
-			// plugin has one of the launcher's own marks.
 			Node icon;
 			if (control.preset().id().equals("dshmarket")) {
 				ImageContainer picture = new ImageContainer(32);
@@ -217,11 +213,6 @@ public final class PluginCard extends Control {
 			}, control.chosenVersionProperty()));
 			pane.getChildren().add(status);
 
-			// The original's card carries its own controls rather than being one
-			// large button: a cross that takes the choice back, and an arrow that
-			// opens the list — or, once a version is chosen, reopens it. Leaving
-			// the plugin out is the cross, not a row in the list, so the list
-			// holds versions and the way out of it is on the card.
 			HBox buttons = new HBox(8);
 			buttons.setAlignment(Pos.CENTER);
 
@@ -250,16 +241,10 @@ public final class PluginCard extends Control {
 
 			getChildren().setAll(wrapper);
 
-			// The original ties a card's height to its width, so cards in a row
-			// keep one shape whatever their text does.
 			FXUtils.onWeakChangeAndOperate(control.widthProperty(),
 			                               width -> FXUtils.setLimitHeight(pane, width.doubleValue() * 0.7));
 		}
 
-		/// Chooses an icon for a catalogue entry.
-		///
-		/// @param preset the entry
-		/// @return the icon
 		private static SVG iconFor(DshPreset preset) {
 			return switch (preset.id()) {
 				case "dshmarket" -> SVG.EXTENSION;

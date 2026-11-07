@@ -33,14 +33,16 @@ import java.util.Objects;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// The "about" tab of the launcher settings page.
-///
-/// Reports the product identity, the running Java runtime and where HDSL
-/// keeps its data. Attribution for the upstream HMCL project lives in the
-/// repository `NOTICE` file rather than in the UI.
+/**
+ * The "about" tab of the launcher settings page.
+ * <p>
+ * Displays product identity, runtime details, and launcher data paths.
+ */
 @NotNullByDefault
 public final class AboutPage extends ScrollPane {
-	/// Creates the about tab.
+	/**
+	 * Creates the about tab.
+	 */
 	public AboutPage() {
 		setFitToWidth(true);
 
@@ -48,8 +50,6 @@ public final class AboutPage extends ScrollPane {
 		root.setPadding(new Insets(10));
 		setContent(root);
 
-		// Must run after the content is installed: smooth scrolling binds to
-		// the content node and fails on a null content.
 		FXUtils.smoothScrolling(this);
 
 		ComponentList aboutList = new ComponentList();
@@ -61,25 +61,19 @@ public final class AboutPage extends ScrollPane {
 		                           System.getProperty("java.vm.name") + " " + System.getProperty("java.version"),
 		                           null));
 
-		// One section, headed as the original heads its own: a card of rows with
-		// nothing above it is the form the original does not use. The directory
-		// row joins it rather than getting a section of its own — a section whose
-		// only row repeats its name is the shape that was wrong on the appearance
-		// tab, and this row's name is already the words a heading would use.
 		aboutList.getContent().addAll(buildPathsList().getContent());
 
 		root.getChildren().addAll(ComponentList.createComponentListTitle(i18n("about")), aboutList);
 	}
 
-	/// Builds a read-only information row.
-	///
-	/// `setLargeTitle` is what HMCL's about page uses on every row, and it is
-	/// what raises the title from the row default to its 15px about-page size.
-	///
-	/// @param title    the row label
-	/// @param subtitle the value to display
-	/// @param iconPath a bundled image to show as the leading graphic, or `null`
-	/// @return the row
+	/**
+	 * Builds a read-only information row.
+	 *
+	 * @param title    the row label
+	 * @param subtitle the value to display
+	 * @param iconPath a bundled image to show as the leading graphic, or {@code null}
+	 * @return the row
+	 */
 	private static LineButton buildInfoRow(String title, String subtitle, @Nullable String iconPath) {
 		LineButton item = new LineButton();
 		item.setLargeTitle(true);
@@ -92,9 +86,11 @@ public final class AboutPage extends ScrollPane {
 		return item;
 	}
 
-	/// Builds the list of directories HDSL owns.
-	///
-	/// @return the assembled component list
+	/**
+	 * Builds the list of directories HDSL uses.
+	 *
+	 * @return the assembled component list
+	 */
 	private static ComponentList buildPathsList() {
 		LineButton userHome = new LineButton();
 		userHome.setLargeTitle(true);

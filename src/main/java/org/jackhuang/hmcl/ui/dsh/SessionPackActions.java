@@ -40,21 +40,20 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The file-level session pack operations the two session pages share.
-///
-/// A workspace is exported as the list of sessions it holds, so the workspace
-/// list and the session list differ only in which sessions they hand over; the
-/// chooser, the progress dialog and the import are the same work, and living
-/// here keeps that from being written twice.
+/**
+ * File-level session pack operations shared between session pages.
+ */
 @NotNullByDefault
 final class SessionPackActions {
 	private SessionPackActions() {
 	}
 
-	/// Writes a set of sessions into a pack the user chooses.
-	///
-	/// @param instance the instance the sessions belong to
-	/// @param sessions the sessions to write
+	/**
+	 * Writes a set of sessions into a chosen pack file.
+	 *
+	 * @param instance the owning instance
+	 * @param sessions the sessions to write
+	 */
 	static void export(DshInstance instance, List<DshSession> sessions) {
 		if (sessions.isEmpty()) {
 			Controllers.dialog(i18n("dsh.session.pack.export.empty"),
@@ -81,10 +80,12 @@ final class SessionPackActions {
 		                   null);
 	}
 
-	/// Reads a pack the user chooses.
-	///
-	/// @param instance the instance to import into
-	/// @param onDone   run after a successful import
+	/**
+	 * Imports sessions from a chosen pack file.
+	 *
+	 * @param instance the instance to import into
+	 * @param onDone   callback run after a successful import
+	 */
 	static void importPack(DshInstance instance, Runnable onDone) {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("dsh.session.pack.import"));
@@ -105,15 +106,12 @@ final class SessionPackActions {
 		                   onDone);
 	}
 
-	/// Copies the sessions of the machine's own DeepSeek Harness installation.
-	///
-	/// The source is read and never written: this launcher does not manage that
-	/// installation, and importing is meant to take what it has without
-	/// becoming responsible for it. Sessions already present are left alone, and
-	/// ones whose lease is held are reported rather than skipped silently.
-	///
-	/// @param instance the instance to import into
-	/// @param onDone   run after the import, successful or not
+	/**
+	 * Copies sessions from the system DeepSeek Harness installation.
+	 *
+	 * @param instance the instance to import into
+	 * @param onDone   callback run after the import finishes
+	 */
 	static void importFromSystem(DshInstance instance, Runnable onDone) {
 		Path source = Path.of(System.getProperty("user.home"), ".dsh");
 		if (!Files.isDirectory(source)) {
@@ -141,9 +139,6 @@ final class SessionPackActions {
 						}
 					}
 				}
-				// Asking for the grouping to be worked out again is what files the
-				// imported conversations under their projects; the harness derives
-				// it from the sessions themselves on the next start of the instance.
 				DshSessions.regroup(instance.homeDirectory());
 				return new int[]{imported, present, refused, sessions.size()};
 			} catch (DshException e) {
@@ -164,3 +159,4 @@ final class SessionPackActions {
 		}));
 	}
 }
+

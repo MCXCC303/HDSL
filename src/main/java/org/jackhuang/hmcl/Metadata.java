@@ -23,110 +23,106 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.nio.file.Path;
 
-/// Stores metadata about the Hello DeepSeek! Launcher application and the
-/// directories it owns.
-///
-/// All launcher-owned data lives under a single user home so that HDSL can
-/// be installed next to a real HMCL without either application seeing the
-/// other's settings.
+/**
+ * Application metadata, product naming, and launcher home directory paths.
+ */
 @NotNullByDefault
 public final class Metadata {
-    private Metadata() {
-    }
+	private Metadata() {
+	}
 
-    /// The short product name.
-    public static final String NAME = "HDSL";
+	/**
+	 * Short product name.
+	 */
+	public static final String NAME = "HDSL";
 
-    /// The full product name shown in window titles.
-    public static final String FULL_NAME = "Hello DeepSeek! Launcher";
+	/**
+	 * Full product name shown in window titles.
+	 */
+	public static final String FULL_NAME = "Hello DeepSeek! Launcher";
 
-    /// The running version.
-    ///
-    /// The build script decides what this string says: a release carries the tag's
-    /// version, and anything else carries the commit it was built from, as in
-    /// `0.1.0+g1a613c5`. A package built here is therefore never mistaken for one a tag
-    /// published, which is what the window title shows.
-    ///
-    /// Resolution order: an explicit override (used by `gradlew run`, which has
-    /// no packaged manifest to read), then the jar manifest written by the
-    /// shadow task, then a development placeholder.
-    public static final String VERSION = resolveVersion();
+	/**
+	 * Running application version string.
+	 */
+	public static final String VERSION = resolveVersion();
 
-    /// Resolves the running version.
-    ///
-    /// Order: an explicit override, which `gradlew run` passes because a class
-    /// directory has no manifest; then the jar manifest written by the shadow
-    /// task; then a development placeholder.
-    ///
-    /// @return the version string
-    private static String resolveVersion() {
-        String override = System.getProperty("hdsl.version.override");
-        if (StringUtils.isNotBlank(override)) {
-            return override;
-        }
-        String fromManifest = Metadata.class.getPackage().getImplementationVersion();
-        return StringUtils.isNotBlank(fromManifest) ? fromManifest : "0.1.0-dev";
-    }
+	private static String resolveVersion() {
+		String override = System.getProperty("hdsl.version.override");
+		if (StringUtils.isNotBlank(override)) {
+			return override;
+		}
+		String fromManifest = Metadata.class.getPackage().getImplementationVersion();
+		return StringUtils.isNotBlank(fromManifest) ? fromManifest : "0.1.0-dev";
+	}
 
-    /// The window title including the version.
-    public static final String TITLE = NAME + " " + VERSION;
+	/**
+	 * Window title prefix including short name and version.
+	 */
+	public static final String TITLE = NAME + " " + VERSION;
 
-    /// The full window title including the version.
-    public static final String FULL_TITLE = FULL_NAME + " v" + VERSION;
+	/**
+	 * Full window title including full name and version.
+	 */
+	public static final String FULL_TITLE = FULL_NAME + " v" + VERSION;
 
-    /// The HDSL project page. The title bar's help button, the crash window's help
-    /// button and the About page's product row all open it.
-    public static final String HOMEPAGE_URL = "https://github.com/MCXCC303/HDSL";
+	/**
+	 * Project home URL.
+	 */
+	public static final String HOMEPAGE_URL = "https://github.com/MCXCC303/HDSL";
 
-    /// The identifier used for Linux desktop integration and window grouping.
-    public static final String APPLICATION_ID = "run.hdsl.HDSL";
+	/**
+	 * Desktop integration and application ID.
+	 */
+	public static final String APPLICATION_ID = "run.hdsl.HDSL";
 
-    /// The identifier used for Windows taskbar grouping.
-    ///
-    /// The transplanted window code groups the launcher's windows — and the
-    /// instance processes it starts — under this id, which is what keeps them
-    /// one entry in the taskbar rather than one per window.
-    public static final String WINDOWS_APP_USER_MODEL_ID = APPLICATION_ID;
+	/**
+	 * Windows Application User Model ID for taskbar grouping.
+	 */
+	public static final String WINDOWS_APP_USER_MODEL_ID = APPLICATION_ID;
 
-    /// The directory the launcher was started from.
-    public static final Path CURRENT_DIRECTORY = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
+	/**
+	 * Directory from which the launcher process was started.
+	 */
+	public static final Path CURRENT_DIRECTORY = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize();
 
-    /// The per-user directory holding shared HDSL data.
-    ///
-    /// Where that is follows the platform's own convention, as HMCL's does:
-    /// `~/.local/share/hdsl` (or `$XDG_DATA_HOME/hdsl`) on Linux, and
-    /// `%APPDATA%\.hdsl` on Windows.
-    public static final Path HMCL_USER_HOME;
+	/**
+	 * User home directory holding shared HDSL data and settings.
+	 */
+	public static final Path HMCL_USER_HOME;
 
-    /// The per-workspace directory holding HDSL configuration and state.
-    public static final Path HMCL_LOCAL_HOME;
+	/**
+	 * Workspace home directory holding local state.
+	 */
+	public static final Path HMCL_LOCAL_HOME;
 
-    /// The directory holding runtime dependencies downloaded by the launcher.
-    public static final Path DEPENDENCIES_DIRECTORY;
+	/**
+	 * Directory holding downloaded launcher dependencies.
+	 */
+	public static final Path DEPENDENCIES_DIRECTORY;
 
-    static {
-        String userHome = System.getProperty("hdsl.home", System.getenv("HDSL_USER_HOME"));
-        if (StringUtils.isBlank(userHome)) {
-            if (OperatingSystem.CURRENT_OS.isLinuxOrBSD()) {
-                String xdgData = System.getenv("XDG_DATA_HOME");
-                HMCL_USER_HOME = StringUtils.isNotBlank(xdgData)
-                        ? Path.of(xdgData, "hdsl").toAbsolutePath().normalize()
-                        : Path.of(System.getProperty("user.home"), ".local", "share", "hdsl").toAbsolutePath().normalize();
-            } else {
-                HMCL_USER_HOME = OperatingSystem.getWorkingDirectory("hdsl");
-            }
-        } else {
-            HMCL_USER_HOME = Path.of(userHome).toAbsolutePath().normalize();
-        }
+	static {
+		String userHome = System.getProperty("hdsl.home", System.getenv("HDSL_USER_HOME"));
+		if (StringUtils.isBlank(userHome)) {
+			if (OperatingSystem.CURRENT_OS.isLinuxOrBSD()) {
+				String xdgData = System.getenv("XDG_DATA_HOME");
+				HMCL_USER_HOME = StringUtils.isNotBlank(xdgData)
+						? Path.of(xdgData, "hdsl").toAbsolutePath().normalize()
+						: Path.of(System.getProperty("user.home"), ".local", "share", "hdsl").toAbsolutePath().normalize();
+			} else {
+				HMCL_USER_HOME = OperatingSystem.getWorkingDirectory("hdsl");
+			}
+		} else {
+			HMCL_USER_HOME = Path.of(userHome).toAbsolutePath().normalize();
+		}
 
-        String localHome = System.getProperty("hdsl.dir", System.getenv("HDSL_LOCAL_HOME"));
-        HMCL_LOCAL_HOME = StringUtils.isNotBlank(localHome)
-                ? Path.of(localHome).toAbsolutePath().normalize()
-                : HMCL_USER_HOME;
+		String localHome = System.getProperty("hdsl.dir", System.getenv("HDSL_LOCAL_HOME"));
+		HMCL_LOCAL_HOME = StringUtils.isNotBlank(localHome)
+				? Path.of(localHome).toAbsolutePath().normalize()
+				: HMCL_USER_HOME;
 
-        String dependencies = System.getProperty("hdsl.dependencies.dir", System.getenv("HDSL_DEPENDENCIES_DIR"));
-        DEPENDENCIES_DIRECTORY = StringUtils.isNotBlank(dependencies)
-                ? Path.of(dependencies).toAbsolutePath().normalize()
-                : HMCL_USER_HOME.resolve("dependencies");
-    }
+		String dependencies = System.getProperty("hdsl.dependencies.dir", System.getenv("HDSL_DEPENDENCIES_DIR"));
+		DEPENDENCIES_DIRECTORY = StringUtils.isNotBlank(dependencies)
+				? Path.of(dependencies).toAbsolutePath().normalize()
+				: HMCL_USER_HOME.resolve("dependencies");
+	}
 }

@@ -66,10 +66,7 @@ public class DecoratorAnimatedPage extends Control {
             pane.setLeft(control.left);
             pane.setCenter(control.center);
 
-            // The sidebar is two hundred wide when it holds something and takes
-            // no room when it does not. Pinning the width unconditionally leaves
-            // a column of nothing beside a page that has no sidebar — which
-            // every page of the original has, so it never came up there.
+            // Collapse sidebar width when empty.
             Runnable applySidebarWidth = () -> {
                 if (control.left.getChildren().isEmpty()) {
                     control.left.setMinWidth(0);

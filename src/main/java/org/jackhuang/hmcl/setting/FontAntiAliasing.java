@@ -22,73 +22,66 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 
-/// How the launcher draws text.
-///
-/// The original offers the choice because the answer depends on the display rather than
-/// on taste: sub-pixel rendering is sharper on a screen whose pixels line up with the
-/// grid, and produces coloured fringes where it does not — which is every scaled or
-/// rotated display, and most high-density ones.
+/**
+ * Font anti-aliasing rendering mode options for JavaFX text rendering.
+ */
 @NotNullByDefault
 public enum FontAntiAliasing {
-    /// Whatever the toolkit decides, which is what the platform usually gets right.
-    AUTO("auto"),
+	AUTO("auto"),
+	GRAY("gray"),
+	LCD("lcd");
 
-    /// Grey-scale smoothing: no coloured fringes, slightly softer.
-    GRAY("gray"),
+	private final String id;
 
-    /// Sub-pixel smoothing: sharper, and coloured at the edges.
-    LCD("lcd");
+	FontAntiAliasing(String id) {
+		this.id = id;
+	}
 
-    /// The value the setting is stored as.
-    private final String id;
+	/**
+	 * Returns the stored identifier string.
+	 *
+	 * @return the identifier
+	 */
+	public String id() {
+		return id;
+	}
 
-    /// Creates a choice.
-    ///
-    /// @param id the stored value
-    FontAntiAliasing(String id) {
-        this.id = id;
-    }
+	/**
+	 * Parses a stored anti-aliasing identifier, defaulting to {@link #AUTO}.
+	 *
+	 * @param value the stored string, or {@code null}
+	 * @return the matching anti-aliasing option
+	 */
+	public static FontAntiAliasing of(@Nullable String value) {
+		if (value != null) {
+			for (FontAntiAliasing choice : values()) {
+				if (choice.id.equalsIgnoreCase(value.trim())) {
+					return choice;
+				}
+			}
+		}
+		return AUTO;
+	}
 
-    /// Returns the value the setting is stored as.
-    ///
-    /// @return the id
-    public String id() {
-        return id;
-    }
+	/**
+	 * Returns the value for the JavaFX {@code prism.lcdtext} system property.
+	 *
+	 * @return {@code "true"}, {@code "false"}, or {@code null} for auto
+	 */
+	public @Nullable String lcdTextProperty() {
+		return switch (this) {
+			case LCD -> "true";
+			case GRAY -> "false";
+			case AUTO -> null;
+		};
+	}
 
-    /// Reads a stored value.
-    ///
-    /// @param value the stored value, or `null`
-    /// @return the choice, or [FontAntiAliasing#AUTO] when it is not one
-    public static FontAntiAliasing of(@Nullable String value) {
-        if (value != null) {
-            for (FontAntiAliasing choice : values()) {
-                if (choice.id.equalsIgnoreCase(value.trim())) {
-                    return choice;
-                }
-            }
-        }
-        return AUTO;
-    }
-
-    /// Returns the value the toolkit's `prism.lcdtext` property takes for this choice.
-    ///
-    /// The toolkit's property is a boolean, so "let the toolkit decide" is the absence of
-    /// an answer rather than a third value.
-    ///
-    /// @return `"true"` or `"false"`, or `null` when the toolkit decides
-    public @Nullable String lcdTextProperty() {
-        return switch (this) {
-            case LCD -> "true";
-            case GRAY -> "false";
-            case AUTO -> null;
-        };
-    }
-
-    /// Returns the translation key for this choice.
-    ///
-    /// @return the key suffix
-    public String i18nKey() {
-        return "settings.launcher.font.anti_aliasing." + name().toLowerCase(Locale.ROOT);
-    }
+	/**
+	 * Returns the translation key for this option.
+	 *
+	 * @return the i18n translation key
+	 */
+	public String i18nKey() {
+		return "settings.launcher.font.anti_aliasing." + name().toLowerCase(Locale.ROOT);
+	}
 }

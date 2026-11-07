@@ -40,15 +40,11 @@ public abstract class ToolbarListPageSkin<E, P extends ListPageBase<E>> extends 
 
     protected final JFXListView<E> listView;
 
-    /// Sets the message a list shows while it holds nothing.
-    ///
-    /// A list with rows in it says what it has; an empty one says nothing at all
-    /// unless it is told to, and an empty area with no explanation reads as a
-    /// page that failed rather than a list that is empty. The original builds
-    /// this from a `notice-pane` holding a label, and its stylesheet sizes the
-    /// label for exactly this use.
-    ///
-    /// @param message the message to show
+    /**
+     * Sets the placeholder message shown when the list view is empty.
+     *
+     * @param message the message to display
+     */
     protected void setPlaceholder(String message) {
         Label label = new Label(message);
         StackPane container = new StackPane(label);

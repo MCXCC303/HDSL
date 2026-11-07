@@ -47,33 +47,23 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// The list of instances shown by the launch pane's arrow.
-///
-/// HMCL's menu is a bounded, scrolling list rather than a menu that grows with
-/// its contents: it caps its height and scrolls, so a machine with thirty
-/// instances still gets a menu that fits on screen. Its rows also carry the
-/// instance's icon, which is what makes the list scannable — the name alone
-/// leaves the reader matching text.
+/**
+ * Dropdown list allowing quick selection of an instance from the main launch pane.
+ */
 @NotNullByDefault
 public final class InstancePickerMenu extends JFXListView<DshInstance> {
-	/// The greatest height the menu will take before scrolling.
-	///
-	/// HMCL's value; it is what keeps the menu shorter than the window behind it.
 	private static final double MAX_HEIGHT = 365;
-
-	/// The height of one row.
 	private static final double CELL_HEIGHT = 50;
-
-	/// The width of the menu.
 	private static final double WIDTH = 300;
 
-	/// Called when an instance is chosen.
 	private final Consumer<DshInstance> onSelect;
 
-	/// Creates the menu.
-	///
-	/// @param instances the instances to offer
-	/// @param onSelect  run with the chosen instance
+	/**
+	 * Creates an instance picker menu.
+	 *
+	 * @param instances instances to display
+	 * @param onSelect  callback when an instance is selected
+	 */
 	public InstancePickerMenu(List<DshInstance> instances, Consumer<DshInstance> onSelect) {
 		this.onSelect = onSelect;
 
@@ -85,12 +75,14 @@ public final class InstancePickerMenu extends JFXListView<DshInstance> {
 		getItems().setAll(instances);
 	}
 
-	/// Shows the menu above a node.
-	///
-	/// @param owner     the node the menu is anchored to
-	/// @param instances the instances to offer
-	/// @param onSelect  run with the chosen instance
-	/// @return the popup, so the caller can close it
+	/**
+	 * Displays the picker menu positioned relative to the owner node.
+	 *
+	 * @param owner     anchor node
+	 * @param instances instances to offer
+	 * @param onSelect  selection callback
+	 * @return the popup instance
+	 */
 	public static JFXPopup show(Node owner, List<DshInstance> instances, Consumer<DshInstance> onSelect) {
 		InstancePickerMenu menu = new InstancePickerMenu(instances, onSelect);
 		JFXPopup popup = new JFXPopup(menu);
@@ -102,26 +94,12 @@ public final class InstancePickerMenu extends JFXListView<DshInstance> {
 		return popup;
 	}
 
-	/// One row of the picker.
-	///
-	/// The shape is HMCL's: the instance's icon, its name and a summary line,
-	/// inside a rippling row that reports the selection.
 	private final class Cell extends ListCell<DshInstance> {
-		/// The instance icon.
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The name and summary.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The tag shown beside the name, used here for the running state.
 		private final StringProperty tag = new SimpleStringProperty();
-
-		/// The row's graphic, re-installed for every item.
 		private final Region graphic;
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list
 		Cell(ListView<DshInstance> listView) {
 			setPadding(Insets.EMPTY);
 
@@ -181,8 +159,6 @@ public final class InstancePickerMenu extends JFXListView<DshInstance> {
 			setGraphic(graphic);
 			icon.setImage(DshInstanceIcons.load(instance));
 
-			// What the row says is the instance's state, taken from the one place
-			// that decides it, so a picker row and a list row cannot disagree.
 			LaunchState state = DshLaunchService.state(instance.id());
 			DshProcess running = DshProcessManager.find(instance.id()).orElse(null);
 			content.setTitle(instance.id());

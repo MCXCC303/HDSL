@@ -68,66 +68,25 @@ import java.util.Locale;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// The launcher home.
-///
-/// The page is deliberately spare: a sidebar and one large launch control
-/// anchored to the bottom-right corner. Instance management lives behind that
-/// control rather than on the page, because the launcher's primary action is
-/// starting and stopping a single chosen instance.
-///
-/// Because DeepSeek Harness has no single-instance lock of its own, the button
-/// reflects the selected instance's state: it launches a stopped instance and
-/// stops a running one, so a second server can never be started by accident.
+// The launcher home page.
 @NotNullByDefault
 public final class MainPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
-	/// Key under which a menu row remembers the popup that owns it.
 	private static final String POPUP_KEY = "hdsl-popup";
-	/// The page the launcher made at startup.
-	///
-	/// Held because it is made **once** (`Launcher`) and several pages need to reach it — to open the
-	/// instance list after an installation, among other things. A second one would be a second
-	/// sidebar with its own idea of what is selected.
 	private static @Nullable MainPage instance;
-	/// The page state published to the window decorator.
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.rootNode(titleNode()));
-	/// The instance the launch control targets.
 	private final ObjectProperty<@Nullable DshInstance> currentInstance = new SimpleObjectProperty<>();
-	/// The launch/stop button's first line.
 	private final Label actionLabel = new Label();
-	/// The launch/stop button's second line, showing the target instance.
 	private final Label actionTarget = new Label();
-	/// The button itself, so its state can be refreshed.
 	private final JFXButton actionButton = new JFXButton();
-	/// Keeps the button in step with the process while one is running.
 	private final Timeline ticker;
-	/// The sidebar entry that opens the selected instance's management page.
-	///
-	/// It carries the instance name as its subtitle, so the home page always
-	/// shows which instance the launch button and this entry act on.
 	private final AdvancedListItem currentInstanceItem = new AdvancedListItem();
-	/// The instance icon shown on the manage entry.
 	private final ImageContainer currentInstanceIcon = new ImageContainer(AdvancedListItem.LEFT_GRAPHIC_SIZE);
-	/// The account entry at the head of the sidebar.
-	///
-	/// The original's home page leads with the account, and shows **which** one: its icon is the
-	/// account's skin and its second line names the kind of account it is. A launcher whose first
-	/// question is "who am I doing this for" has to be able to answer it without being asked, and an
-	/// entry that only said "Accounts" would leave the person opening a page to find out what they
-	/// could have been told.
 	private final AdvancedListItem accountItem = new AdvancedListItem();
-	/// The account's picture, drawn from the skin when one has been chosen.
 	private final Canvas accountAvatar = new Canvas(32, 32);
-	/// The state the launch button was last drawn for.
-	///
-	/// The button is redrawn once a second while an instance is starting or
-	/// stopping, and a tooltip installed again every second would be a new
-	/// tooltip every second for no gain.
 	private DshProcessManager.@Nullable LaunchState shownActionState;
-	/// Lazily created destination pages.
 	private @Nullable DownloadPage downloadPage;
 	private @Nullable SettingsPage settingsPage;
 
-	/// Creates the home page.
 	public MainPage() {
 		getStyleClass().remove("gray-background");
 
@@ -142,10 +101,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		accountItem.setLeftGraphic(accountAvatar);
 		accountItem.setOnAction(event -> Controllers.navigate(new AccountListPage()));
 
-		// The original's order, which is an order of importance rather than of implementation: the
-		// account leads, because without one nothing can be launched; then the game; then the
-		// launcher's own settings. An account is its own group rather than a row under the settings,
-		// because it is not a setting — it is the thing everything else is done on behalf of.
 		AdvancedListBox sideBar = new AdvancedListBox().startCategory(i18n("dsh.account.list").toUpperCase(Locale.ROOT))
 		                                               .add(accountItem)
 		                                               .startCategory(i18n("instance").toUpperCase(Locale.ROOT))
@@ -168,24 +123,12 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		getLeft().getStyleClass().add("gray-background");
 		setLeft(sideBar);
 
-		// The launch control is the only centre content; it is placed inside a
-		// StackPane because a Control's children belong to its skin.
 		setCenter(new StackPane(buildLaunchPane()));
 
-		// The instance the page acts on is the selected folder's selection, and
-		// the folder's contents can change under it — an icon edit, a rename, a
-		// new instance made by the wizard. Both are observed rather than asked
-		// for, so nothing here has to be refreshed by whoever changed them.
 		currentInstance.bind(GameDirectoryManager.selectedInstanceProperty());
 		currentInstance.addListener((observable, was, now) -> refresh());
 		GameDirectoryManager.registerVersionsListener(this::onRepositoryChanged);
 
-		// The account too, and for the same reason. This page is made **once**, at startup
-		// (`Launcher`), so `refresh()` runs when it is built and on navigation — and the account is
-		// chosen on another page, which this one then never hears about. Somebody who adds or picks
-		// an account and comes back here would still be shown the old one, which is exactly what was
-		// reported. Observing both the choice and the list covers both ways it can change: picking a
-		// different account, and adding one.
 		SettingsManager.settings()
 		               .activeAccountKeyProperty()
 		               .addListener((observable, was, now) -> refreshAccountItem());
@@ -201,14 +144,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		instance = this;
 	}
 
-	/// Builds the title the window shows while the home page is open.
-	///
-	/// The original puts the application's name and version here rather than a
-	/// page title, with its mark beside them: this is the one page that is not
-	/// somewhere you went, so naming it would be naming the place you already
-	/// are. The state is the root state, which is what keeps the back arrow off.
-	///
-	/// @return the title node
 	private static Node titleNode() {
 		ImageView icon = new ImageView(FXUtils.newBuiltinImage("/assets/img/icon-title.png"));
 
@@ -222,9 +157,11 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		return node;
 	}
 
-	/// Returns the page the launcher made at startup.
-	///
-	/// @return the page
+	/**
+	 * Returns the main page instance created at startup.
+	 *
+	 * @return the main page instance
+	 */
 	public static MainPage instance() {
 		MainPage page = instance;
 		if (page == null) {
@@ -233,9 +170,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		return page;
 	}
 
-	/// Hides the popup a row belongs to.
-	///
-	/// @param row the row that was activated
 	private static void hidePopup(Node row) {
 		Object popup = row.getProperties().get(POPUP_KEY);
 		if (popup instanceof JFXPopup jfxPopup) {
@@ -243,30 +177,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		}
 	}
 
-	/// Builds a bold heading for a menu card.
-	///
-	/// @param text the heading text
-	/// @param text the title
-	/// @return the heading row
-	/// Builds a section title.
-	///
-	/// HMCL's helper rather than a styled row: the original puts the title
-	/// between card groups, outside their background.
-	/// @return the title node
 	private static Node buildHeader(String text) {
 		return ComponentList.createComponentListTitle(text);
 	}
 
-	/// Redraws the page for the folder that just published its instances.
-	///
-	/// @param repository the selected folder's repository
 	private void onRepositoryChanged(DshInstanceRepository repository) {
 		refresh();
 	}
 
-	/// Builds the bottom-right launch control.
-	///
-	/// @return the launch pane
 	private Node buildLaunchPane() {
 		actionButton.getStyleClass().add("launch-button");
 		actionButton.setDefaultButton(true);
@@ -295,10 +213,12 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		return pane;
 	}
 
-	/// Opens a page by name, used by the `--page` start-up option.
-	///
-	/// @param name the page name: `home`, `instances`, `versions` or `settings`
-	/// @return whether a page was opened
+	/**
+	 * Opens a page by name, used by the {@code --page} startup option.
+	 *
+	 * @param name the page name
+	 * @return whether a page was opened
+	 */
 	public boolean openPage(String name) {
 		String raw = name == null ? "" : name.trim();
 		if (raw.toLowerCase(Locale.ROOT).startsWith("instance:")) {
@@ -342,24 +262,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 			return page.openTab(value.substring("settings/".length()));
 		}
 		switch (value) {
-			// The home page is where the application already is, so asking for
-			// it is not a navigation. Pushing it would give the root page a back
-			// entry and put the back arrow on the one page the original has none.
 			case "home", "" -> {
 				return true;
 			}
 			case "instances" -> Controllers.navigate(getInstancesPage());
 			case "download" -> Controllers.navigate(getDownloadPage());
-			// Deep links used when verifying the wizards; they are how a page
-			// inside the decorator can be reached without clicking.
-			// Creating an instance starts at the version list, which is what the
-			// original does: the version is chosen there, and the wizard that
-			// follows only fills in what that choice left open.
 			case "create" -> Controllers.navigate(getDownloadPage());
 			case "accounts" -> Controllers.navigate(new AccountListPage());
 			case "skin" -> {
-				// A skin belongs to an account, so the deep link opens the chooser for whichever
-				// account is in force — which is what a person would reach it through.
 				DshAccount chosen = SettingsManager.settings().activeAccount();
 				if (chosen == null) {
 					Controllers.dialog(i18n("dsh.launch.needs_account"),
@@ -377,29 +287,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		return true;
 	}
 
-	/// Returns the download page.
-	///
-	/// The page belongs to [Controllers] for the same reason the instance list
-	/// does: creating an instance opens it too.
-	///
-	/// @return the download page
 	public DownloadPage getDownloadPage() {
 		return Controllers.getDownloadPage();
 	}
 
-	/// Returns the instance list page.
-	///
-	/// The page belongs to [Controllers], because more than one place opens it
-	/// and only one page may exist: two of them would show two different lists.
-	///
-	/// @return the instance list page
 	public InstancesPage getInstancesPage() {
 		return Controllers.getInstancesPage();
 	}
 
-	/// Returns the settings page, creating it on first use.
-	///
-	/// @return the settings page
 	public SettingsPage getSettingsPage() {
 		if (settingsPage == null) {
 			settingsPage = new SettingsPage();
@@ -412,17 +307,10 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		return state.getReadOnlyProperty();
 	}
 
-	/// Redraws the page for the instance it currently acts on.
-	///
-	/// The instance is not chosen here: it is the selected folder's selection,
-	/// which the folder corrects on its own when what it points at is gone.
 	@Override
 	public void refresh() {
 		DshInstance current = currentInstance.get();
 
-		// With nothing chosen the entry stops naming an instance and says what
-		// there is instead, which is what the original's own home entry does:
-		// the title names the state and the subtitle names the way out of it.
 		currentInstanceItem.setTitle(current == null ? i18n("dsh.instance.empty") : i18n("dsh.instance.manage"));
 		currentInstanceItem.setSubtitle(current == null ? i18n("dsh.instance.install") : current.id());
 		currentInstanceIcon.setImage(current == null ? DshInstanceIcon.DEFAULT.load() : DshInstanceIcons.load(current));
@@ -431,11 +319,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		refreshActionState();
 	}
 
-	/// Recomputes the button's label and tooltip.
-	///
-	/// The label is the instance's state and nothing else, so the button offers
-	/// Stop whenever anything is up or on its way up — which is what keeps a
-	/// second server from being started from here.
 	private void refreshActionState() {
 		DshInstance current = currentInstance.get();
 		if (current == null) {
@@ -453,14 +336,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		}
 	}
 
-	/// Opens the management page of the instance the launch button targets.
-	///
-	/// With no instance chosen there is nothing to manage, so the list is shown
-	/// instead of an empty editor.
-	/// Redraws the account entry: which account is in force, and whose face it is.
-	///
-	/// The account is **asked for by name**, not taken from the top of the list: the entry has to
-	/// follow the choice, and the choice is no longer encoded in the list's order.
 	private void refreshAccountItem() {
 		DshAccount account = SettingsManager.settings().activeAccount();
 		if (account == null) {
@@ -473,24 +348,14 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		drawAccountAvatar();
 	}
 
-	/// Draws the skin's head on the account entry, or a monogram when there is none to draw.
-	///
-	/// The skin belongs to the **launcher**, not to an account: it is chosen once and drawn beside
-	/// whatever account is in force. So when there is no account, there is nothing for it to be
-	/// beside — and drawing it anyway is how a deleted account's face stayed on the home page. The
-	/// skin was never the account's to begin with, but it reads as the account's when it sits where
-	/// the account's face was.
 	private void drawAccountAvatar() {
 		DshAccount active = SettingsManager.settings().activeAccount();
 		accountAvatar.getGraphicsContext2D().clearRect(0, 0, 32, 32);
 
-		// Nothing to show when there is nobody to show it for.
 		if (active == null) {
 			return;
 		}
 
-		// The account's own face, whether or not one has been chosen: an account with no skin wears
-		// the picture its identity selects, as it does in the original's own sidebar.
 		AccountAvatar.draw(accountAvatar, DshSkin.headImage(active.key()));
 	}
 
@@ -503,7 +368,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		Controllers.navigate(new InstancePage(instance));
 	}
 
-	/// Launches or stops the selected instance.
 	private void onActionButton() {
 		DshInstance instance = currentInstance.get();
 		if (instance == null) {
@@ -513,12 +377,6 @@ public final class MainPage extends DecoratorAnimatedPage implements DecoratorPa
 		DshLaunchService.toggle(instance, this::refresh);
 	}
 
-	/// Shows the instance picker next to the launch button.
-	///
-	/// Selecting a running instance leaves the button showing Stop, which is
-	/// what keeps a second server from being started on the same home.
-	///
-	/// @param anchor the button the popup is anchored to
 	private void showInstanceMenu(Node anchor) {
 		List<DshInstance> instances = GameDirectoryManager.getSelectedRepository().getInstances();
 		if (instances.isEmpty()) {

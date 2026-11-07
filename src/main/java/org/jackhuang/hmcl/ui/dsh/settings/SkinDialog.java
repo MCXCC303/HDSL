@@ -53,84 +53,44 @@ import java.util.List;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Chooses the skin.
-///
-/// The original's arrangement, kept node for node, because every part of it is load-bearing:
-///
-/// ```java
-/// BorderPane pane = new BorderPane();
-/// StackPane canvasPane = new StackPane(canvas);   // 260x260
-/// pane.setCenter(canvasPane);                     // the turning model, in the middle
-/// pane.setRight(skinOptionPane);                  // the ways of choosing, on the right
-/// HBox body = new HBox(20);                       // 20 apart
-/// skinItem.setPrefWidth(170); skinItem.setMinWidth(170);
-/// VBox right = new VBox();                        // 230 wide, 12 apart, padded 10 on the left
-/// ```
-///
-/// Two details of that are easy to get wrong and both show. The ways of choosing sit at the
-/// **right of the body with the model at the centre** — putting the model on the left instead moves
-/// everything and leaves the model's column the wrong size. And the field column is **added to and
-/// removed from the box** as the choice changes, rather than hidden: a hidden column still takes its
-/// 230 pixels and the 20-pixel gap before it, which is what left a gap in the middle of the dialog
-/// with nothing in it.
-///
-/// The fields themselves are the original's too, and there are three of them rather than two: which
-/// body, which picture, and which cape. The cape is why the model's cloak can be seen at all — the
-/// renderer has always drawn one, and nothing here ever offered it.
-///
-/// The ways of choosing are a `MultiFileItem`, which is the component the original builds its own
-/// chooser from: one selectable row per way, and the application's own content beside each. Building
-/// it from loose radio buttons instead is what made the rows and their fields drift apart.
-///
-/// Two of the original's ways are not here, both for one reason: a nickname lookup on LittleSkin and
-/// a custom skin-loader API are lookups against services that exist to serve Minecraft accounts. What
-/// is left is what can be done without asking anybody — the launcher's own skins, and a picture on
-/// this machine.
+/**
+ * Dialog for selecting and customizing an account's skin and cape.
+ */
 @NotNullByDefault
 public final class SkinDialog extends JFXDialogLayout {
-	/// The account whose skin this dialog changes.
+
 	private final DshAccount account;
-	/// What to tell once the choice has been saved, or `null`.
 	private final @Nullable Runnable onSaved;
-	/// The turning model.
 	private final SkinCanvas canvas;
-	/// The ways of choosing a skin.
 	private final MultiFileItem<Source> skinItem = new MultiFileItem<>();
-	/// The body, when a file is the way in force.
 	private final JFXComboBox<DshSkinChoice.TextureModel> modelBox = new JFXComboBox<>();
-	/// The file, when a file is the way in force.
 	private final FileSelector skinSelector = new FileSelector();
-	/// The cape's file, when a file is the way in force.
 	private final FileSelector capeSelector = new FileSelector();
-	/// The fields, in a column that is added to the body only while there are any.
 	private final VBox right = new VBox();
-	/// The ways of choosing and the fields, 20 apart.
 	private final HBox body = new HBox(20);
-	/// Keeps the preview's listener alive, which a weak listener cannot do for itself.
-	///
-	/// Assigned and never read: what matters is that something points at it. See the note where it
-	/// is set.
+
 	@SuppressWarnings("unused")
 	private final InvalidationListener previewBinding;
 
-	/// Creates the dialog.
-	///
-	/// @param account the account whose skin is being changed
+	/**
+	 * Creates the dialog.
+	 *
+	 * @param account the account whose skin is being changed
+	 */
 	public SkinDialog(DshAccount account) {
 		this(account, null);
 	}
 
-	/// Creates the dialog, telling somebody once the choice has been saved.
-	///
-	/// @param account the account whose skin is being changed
-	/// @param onSaved what to tell, or `null`
+	/**
+	 * Creates the dialog with a callback upon saving.
+	 *
+	 * @param account the account whose skin is being changed
+	 * @param onSaved callback invoked once saved, or {@code null}
+	 */
 	public SkinDialog(DshAccount account, @Nullable Runnable onSaved) {
 		this.account = account;
 		this.onSaved = onSaved;
 
-		// The original puts this on the pane that holds the dialog; here the dialog is the pane, so
-		// it goes here. It is what gives the path boxes their 200-pixel width — without it they are
-		// sized by their text and the column does not line up.
 		getStyleClass().add("skin-pane");
 		setHeading(new Label(i18n("account.skin")));
 
@@ -142,8 +102,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		pane.setRight(skinOptionPane);
 		setBody(pane);
 
-		// A field fills the column it is in; without this each is as wide as its own text and the
-		// three of them end at three different places.
 		skinSelector.setMaxWidth(Double.MAX_VALUE);
 		capeSelector.setMaxWidth(Double.MAX_VALUE);
 		modelBox.setMaxWidth(Double.MAX_VALUE);
@@ -154,15 +112,9 @@ public final class SkinDialog extends JFXDialogLayout {
 		                              new MultiFileItem.Option<>(i18n("account.skin.type.local_file"),
 		                                                         Source.LOCAL_FILE)));
 
-		// The labels come from the original's own keys — `account.skin.model.default` reads
-		// "Classic" and `account.skin.model.slim` reads "Slim" — rather than from keys invented
-		// here, so the two programs say the same thing about the same two bodies.
 		modelBox.setConverter(FXUtils.stringConverter(model -> i18n("account.skin.model." + model.modelName)));
 		modelBox.getItems().setAll(DshSkinChoice.TextureModel.WIDE, DshSkinChoice.TextureModel.SLIM);
 
-		// Opened on what is in force, which is the choice the account holds rather than anything
-		// read off the disk: "Steve" and "a file that happens to be Steve's picture" are different
-		// answers, and only the stored choice can tell them apart.
 		openOnStoredChoice();
 
 		right.setPadding(new Insets(0, 0, 0, 10));
@@ -175,10 +127,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		body.getChildren().add(skinItem);
 		skinOptionPane.getChildren().setAll(body);
 
-		// The original's own switch, and its own emptiness rule: the three named skins need no
-		// field at all, so for them the column is taken out of the box rather than left standing
-		// empty. Keeping the model selector for them — which is what this did — asks a question the
-		// chosen skin has already answered.
 		FXUtils.onChangeAndOperate(skinItem.selectedDataProperty(), selected -> {
 			right.getChildren().clear();
 			if (selected == Source.LOCAL_FILE) {
@@ -197,16 +145,7 @@ public final class SkinDialog extends JFXDialogLayout {
 			}
 		});
 
-		// The original watches all four and redraws on any of them, which is what makes typing a
-		// path show the picture without a button to press.
-		//
-		// The returned listener is **kept**, and that is not tidiness. `observeWeak` registers a
-		// listener that holds its real listener weakly, so that a page's own listener does not keep
-		// the page alive — and it hands the strong one back for exactly this reason. Dropping the
-		// return value leaves nothing pointing at it, the collector takes it, and from the next
-		// collection on the preview silently stops following the fields. It still draws once,
-		// because `observeWeak` runs the body before it returns, which is what made this look like
-		// "the preview works" while choosing a file did nothing.
+		// Retain strong reference to prevent garbage collection of the weak listener
 		previewBinding = FXUtils.observeWeak(this::loadPreview,
 		                                     skinItem.selectedDataProperty(),
 		                                     modelBox.valueProperty(),
@@ -216,13 +155,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		setActions(buildActions());
 	}
 
-	/// Reads a path out of a field.
-	///
-	/// A field is a text box as well as a button, so what arrives may be blank, or may be something
-	/// no path can be made of. Both mean the same thing here: nothing has been named.
-	///
-	/// @param value the field's value, or `null`
-	/// @return the path, or `null`
 	private static @Nullable Path pathOf(@Nullable String value) {
 		if (value == null || value.isBlank()) {
 			return null;
@@ -234,21 +166,12 @@ public final class SkinDialog extends JFXDialogLayout {
 		}
 	}
 
-	/// Builds the turning model.
-	///
-	/// The animations are the original's — a wave and a run — so a skin's arms and legs are seen
-	/// moving rather than only standing. The canvas itself is made by the constructor, because a
-	/// field of this class cannot be given its value from in here.
-	///
-	/// @return the preview
 	private Node buildPreview() {
 		canvas.getAnimationPlayer()
 		      .addSkinAnimation(new SkinAniWavingArms(100, 2000, 7.5, canvas),
 		                        new SkinAniRunning(100, 100, 30, canvas));
 		canvas.enableRotation(0.5);
 
-		// A skin can be dropped on it, which is the original's own gesture: somebody with the file in
-		// front of them should not have to find it in a file chooser.
 		canvas.addEventHandler(DragEvent.DRAG_OVER, event -> {
 			if (event.getDragboard().hasFiles() &&
 			    DshSkin.looksLikeAnImage(event.getDragboard().getFiles().get(0).getName())) {
@@ -257,8 +180,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		});
 		canvas.addEventHandler(DragEvent.DRAG_DROPPED, event -> {
 			if (event.isAccepted() && !event.getDragboard().getFiles().isEmpty()) {
-				// Set on the selector rather than kept aside, so the path the person dropped is the
-				// path they can see, edit, and confirm — exactly as if they had browsed to it.
 				skinSelector.setValue(event.getDragboard().getFiles().get(0).getAbsolutePath());
 				skinItem.setSelectedData(Source.LOCAL_FILE);
 			}
@@ -270,12 +191,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		return canvasPane;
 	}
 
-	/// Puts the dialog into the state the account's stored choice describes.
-	///
-	/// A skin chosen before the choice itself was written down is accounted for too: the picture is
-	/// on the disk and nothing records how it got there, and opening on "nothing chosen" would then
-	/// draw one face while the account wears another. The file is taken to be the choice it plainly
-	/// was, which is also what makes the dialog agree with the avatar beside it.
 	private void openOnStoredChoice() {
 		DshSkinChoice stored = account.skinOrDefault();
 		if (stored.type() == DshSkinChoice.Type.DEFAULT && DshSkin.isSet(account.key())) {
@@ -295,9 +210,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		skinItem.setSelectedData(Source.of(stored.type()));
 	}
 
-	/// Builds the buttons.
-	///
-	/// @return the actions
 	private Node buildActions() {
 		JFXButton accept = new JFXButton(i18n("button.ok"));
 		accept.getStyleClass().add("dialog-accept");
@@ -313,16 +225,9 @@ public final class SkinDialog extends JFXDialogLayout {
 		return actions;
 	}
 
-	/// Draws whatever the current choices describe.
-	///
-	/// Nothing is written here: a picture is shown before it is agreed to, so nothing the person did
-	/// not confirm can replace what they had.
 	private void loadPreview() {
 		Source source = skinItem.getSelectedData();
 		if (source == null) {
-			// Nothing is selected yet while the dialog is being built: the four properties are
-			// watched before the stored choice has been set on them, so this runs once with no way
-			// in force to read. Nothing to draw is the honest answer at that moment.
 			return;
 		}
 
@@ -334,22 +239,10 @@ public final class SkinDialog extends JFXDialogLayout {
 		}
 	}
 
-	/// Draws the skin an account wears when it has chosen none.
-	///
-	/// Not one fixed picture: the original picks one of nine from the account's identity, so this
-	/// account's own default is what is drawn — and it is drawn on the body that choice comes with,
-	/// which is why the body is not read from the field here.
 	private void showDefault() {
 		canvas.updateSkin(DshSkin.defaultImage(account.key()), DshSkin.defaultSlim(account.key()), null);
 	}
 
-	/// Draws one of the launcher's own skins.
-	///
-	/// Each is drawn for its own body rather than for whatever the field says, because for the two
-	/// named skins the body is part of what was chosen — `ALEX` is slim, `STEVE` is not.
-	///
-	/// @param skin the skin
-	/// @param slim which of its two pictures to draw
 	private void showBundled(DefaultSkin skin, boolean slim) {
 		Image picture = skin.image(slim);
 		if (picture == null) {
@@ -359,7 +252,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		canvas.updateSkin(picture, slim, null);
 	}
 
-	/// Draws the picture and cape the fields name.
 	private void showFile() {
 		Path file = pathOf(skinSelector.getValue());
 		Image picture = file == null ? null : DshSkin.read(file);
@@ -370,12 +262,9 @@ public final class SkinDialog extends JFXDialogLayout {
 			canvas.updateSkin(DshSkin.defaultImage(account.key()), DshSkin.defaultSlim(account.key()), cape);
 			return;
 		}
-		// The body is the field's answer here, which is the one place it is a question: a file
-		// carries no record of which body it was drawn for, unlike the two bundled skins.
 		canvas.updateSkin(picture, modelBox.getValue() == DshSkinChoice.TextureModel.SLIM, cape);
 	}
 
-	/// Saves what the dialog describes.
 	private void confirm() {
 		Source source = skinItem.getSelectedData();
 		if (source == null) {
@@ -384,9 +273,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		try {
 			DshSkinChoice choice = switch (source) {
 				case DEFAULT -> {
-					// "Nothing chosen" is stored as such — the account's skin is cleared rather than
-					// set to one of the bundled pictures, so that the choice and the picture that
-					// stands in for it stay different answers.
 					DshSkin.clear(account.key());
 					DshSkin.clearCape(account.key());
 					yield new DshSkinChoice(DshSkinChoice.Type.DEFAULT, DshSkinChoice.TextureModel.WIDE, null, null);
@@ -408,14 +294,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		}
 	}
 
-	/// Keeps one of the launcher's own skins as this account's.
-	///
-	/// The choice was made when the row was picked, so the body is the type's own — there is no
-	/// question left for the field to answer, which is why it is not on screen for these.
-	///
-	/// @param skin the skin
-	/// @param slim which of its two pictures
-	/// @throws DshException when the picture cannot be read or written
 	private void keepBundled(DefaultSkin skin, boolean slim) throws DshException {
 		Image picture = skin.image(slim);
 		if (picture == null) {
@@ -425,13 +303,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		DshSkin.clearCape(account.key());
 	}
 
-	/// Keeps the picture and cape the fields name.
-	///
-	/// Both are copied in rather than remembered as paths: a path is where a file *was*, and the
-	/// skin has to survive the person moving, renaming, or deleting it.
-	///
-	/// @return the choice to store
-	/// @throws DshException when a file is missing, is not a picture, or cannot be written
 	private DshSkinChoice keepFile() throws DshException {
 		String skinValue = skinSelector.getValue();
 		Path file = pathOf(skinValue);
@@ -454,9 +325,6 @@ public final class SkinDialog extends JFXDialogLayout {
 		                         capeValue);
 	}
 
-	/// Stores the choice on the account and writes the settings out.
-	///
-	/// @param choice the choice
 	private void remember(DshSkinChoice choice) {
 		List<DshAccount> accounts = SettingsManager.settings().getAccounts();
 		for (int i = 0; i < accounts.size(); i++) {
@@ -471,24 +339,12 @@ public final class SkinDialog extends JFXDialogLayout {
 		}
 	}
 
-	/// How a skin is being chosen.
-	///
-	/// The original's `Skin.Type`, less the three that need a service. The names are the same and so
-	/// are the stored spellings, so a choice written by either program means the same thing.
 	private enum Source {
-		/// The body's own default skin.
 		DEFAULT,
-		/// The wide-armed model.
 		STEVE,
-		/// The slim-armed model.
 		ALEX,
-		/// A picture on this machine.
 		LOCAL_FILE;
 
-		/// Returns the way a stored choice names.
-		///
-		/// @param stored the stored choice
-		/// @return the way
 		static Source of(DshSkinChoice.Type stored) {
 			return switch (stored) {
 				case DEFAULT -> DEFAULT;
@@ -498,9 +354,6 @@ public final class SkinDialog extends JFXDialogLayout {
 			};
 		}
 
-		/// Returns the choice this way stores.
-		///
-		/// @return the choice
 		DshSkinChoice.Type stored() {
 			return switch (this) {
 				case DEFAULT -> DshSkinChoice.Type.DEFAULT;

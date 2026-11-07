@@ -83,7 +83,7 @@ public final class GameDirectoryManager {
 			"selectedGameDirectory");
 
 	/**
-	 * The repository of the selected folder, or `null` before one is resolved
+	 * The repository of the selected folder, or {@code null} before one is resolved
 	 */
 	private static @Nullable DshInstanceRepository selectedRepository;
 
@@ -265,7 +265,7 @@ public final class GameDirectoryManager {
 	/**
 	 * Returns the instance selected in the selected folder
 	 *
-	 * @return the instance, or `null` when the folder holds none
+	 * @return the instance, or {@code null} when the folder holds none
 	 */
 	public static @Nullable DshInstance getSelectedInstance() {
 		return getSelectedRepository().getSelectedInstance();
@@ -287,7 +287,7 @@ public final class GameDirectoryManager {
 	/**
 	 * Records the instance selected in the selected folder
 	 *
-	 * @param instance the instance to select, or `null` to select nothing
+	 * @param instance the instance to select, or {@code null} to select nothing
 	 */
 	public static void setSelectedInstance(@Nullable DshInstance instance) {
 		getSelectedRepository().setSelectedInstance(instance);
@@ -324,7 +324,7 @@ public final class GameDirectoryManager {
 	 * Finds a directory by identifier
 	 *
 	 * @param id the identifier
-	 * @return the directory, or `null` when there is none
+	 * @return the directory, or {@code null} when there is none
 	 */
 	public static @Nullable GameDirectory find(String id) {
 		for (GameDirectory directory : getGameDirectories()) {
@@ -353,7 +353,7 @@ public final class GameDirectoryManager {
 	 * Both are resolved the same way when the folder is read back.
 	 *
 	 * @param path       the folder to add
-	 * @param customName the name to show, or `null` to derive one from the path
+	 * @param customName the name to show, or {@code null} to derive one from the path
 	 * @return the directory entry, existing or new
 	 * @throws IllegalArgumentException when the path is not a directory
 	 */
@@ -383,7 +383,7 @@ public final class GameDirectoryManager {
 	 *
 	 * @param directories the entries, which a new one is added to
 	 * @param path        the folder
-	 * @param customName  the name to show, or `null` to derive one from the path
+	 * @param customName  the name to show, or {@code null} to derive one from the path
 	 * @return the entry for the folder
 	 */
 	static GameDirectory entryFor(List<GameDirectory> directories, Path path, @Nullable String customName) {

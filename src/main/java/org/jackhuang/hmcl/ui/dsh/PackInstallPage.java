@@ -57,32 +57,15 @@ import java.util.Locale;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Installs a pack somebody already has, or knows the address of.
-///
-/// The original's own chooser, card for card (`ModpackSelectionPage`): a heading, then one wide
-/// pressable card per way of getting a pack — a file on this machine, an address on the internet, or
-/// the catalogue — each with what it needs on one line and an arrow saying it leads somewhere. The
-/// whole page accepts a dropped file as well, because the commonest way to have a pack in front of
-/// you is to have just downloaded it, and making somebody find it in a file chooser after that is a
-/// step that buys nothing.
-///
-/// The three differ in where the archive comes from and in nothing else: once there is a file, the
-/// same three steps run — check the container, make an instance at the version it pins, land its
-/// files. So this page decides **where from** and hands the rest to the same code the market's
-/// detail page uses.
+// Installs a pack from a local file, a URL, or the market.
 @NotNullByDefault
 public final class PackInstallPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
-	/// The page's state for the title bar.
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(
 			"install.modpack")));
 
-	/// Creates the page.
 	public PackInstallPage() {
 		VBox content = new VBox(8);
 		content.setMaxWidth(400);
-		// Its height as well as its width: a box left free to grow is stretched to the whole page by
-		// the stack pane, and its children then sit at the top of a box that reaches the bottom —
-		// which is why centring the box changed nothing at all.
 		content.setMaxHeight(Region.USE_PREF_SIZE);
 		content.setSpacing(8);
 		content.setPadding(new Insets(20));
@@ -96,54 +79,28 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 		               card("modpack.choose.remote", this::chooseRemoteFile),
 		               card("dsh.pack.choose.market", this::openCatalogue));
 
-		// Whole-page drop, which is the original's own gesture: the card says the file can be
-		// dropped here, so it has to be true of the page and not only of the card.
 		FXUtils.applyDragListener(content, path -> isPack(path), files -> {
 			if (!files.isEmpty()) {
 				install(files.get(0));
 			}
 		});
 
-		// Centred rather than pinned to the top, which is the original's own arrangement: three cards
-		// in the middle of an empty page read as a question being asked, and the same three against
-		// the top edge read as a page that failed to load the rest of itself.
 		StackPane pane = new StackPane(content);
 		pane.setAlignment(Pos.CENTER);
 		pane.setPadding(new Insets(10));
 		setCenter(pane);
 	}
 
-	/// Reports whether a dropped file looks like a pack.
-	///
-	/// @param file the file
-	/// @return whether it is worth opening
 	private static boolean isPack(Path file) {
 		String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
 		return name.endsWith(".dspack") || name.endsWith(".hdslp") || name.endsWith(".zip");
 	}
 
-	/// Reports whether a file is the older pack format rather than the current container.
-	///
-	/// By extension, because that is what distinguishes them: the older one is a `.hdslp` (or a plain
-	/// `.zip` carrying its manifest), and the current one is a `.dspack` whose marker is inside. A
-	/// `.zip` is taken as the older format because the current one is never distributed as a bare
-	/// zip — that is the whole reason it has an extension of its own.
-	///
-	/// @param archive the file
-	/// @return whether it is the older format
 	private static boolean isOldFormat(Path archive) {
 		String name = archive.getFileName().toString().toLowerCase(Locale.ROOT);
 		return !name.endsWith(".dspack");
 	}
 
-	/// Returns an instance id that is not taken.
-	///
-	/// From the pack's own name, because that is what somebody will look for in the list, and made
-	/// unique by adding a number rather than by refusing — installing a pack twice wants a second
-	/// instance, not an error.
-	///
-	/// @param name what the pack calls itself, or `null`
-	/// @return the id
 	private static String uniqueId(@Nullable String name) {
 		String base = name == null || name.isBlank() ? "pack" : name;
 		base = base.replaceAll("[^A-Za-z0-9._-]", "-");
@@ -161,16 +118,6 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 		return base + "-" + System.currentTimeMillis();
 	}
 
-	/// Builds one way of getting a pack.
-	///
-	/// The original's own card, node for node: a button wearing the card surface, a two-line list as
-	/// its graphic, and an arrow on the right. The arrow is what says the card leads somewhere rather
-	/// than doing something, and the whole card is pressable because it is a button and not a panel
-	/// with a link in it.
-	///
-	/// @param key    the pair of strings' shared prefix
-	/// @param action what pressing it does
-	/// @return the card
 	private Node card(String key, Runnable action) {
 		JFXButton button = new JFXButton();
 		button.getStyleClass().add("card");
@@ -192,7 +139,6 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 		return button;
 	}
 
-	/// Asks for a file on this machine.
 	private void chooseLocalFile() {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("modpack.choose"));
@@ -204,11 +150,6 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 		}
 	}
 
-	/// Asks for an address.
-	///
-	/// The original prompts for a link the same way. What is downloaded has no index entry behind it,
-	/// so the two pointers the market provides are not available — the container is checked instead,
-	/// which is the part that says whether this launcher can install it at all.
 	private void chooseRemoteFile() {
 		Controllers.prompt(i18n("modpack.choose.remote.tooltip"), (url, handler) -> {
 			if (url == null || url.isBlank()) {
@@ -244,31 +185,16 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 		});
 	}
 
-	/// Opens the catalogue, which is where the launcher's own market lives.
 	private void openCatalogue() {
 		Controllers.navigate(new PackMarketPage());
 	}
 
-	/// Installs a pack from a file that is already here.
-	///
-	/// The three steps, and the order is what makes each safe: the container is recognised **before**
-	/// an instance is made, so a file that is not a pack leaves nothing behind.
-	///
-	/// @param archive where the pack is
 	private void install(Path archive) {
-		// **Two formats, one page**, because this page is now the only way in from the interface: the
-		// instance list's "install a pack" opens it too — the original's own arrangement, where both
-		// entry points call one method — so a page that understood only the newer container would
-		// take away the older one's only graphical route without saying so. The CLI keeps working
-		// either way; this is about the person who has a file and no terminal.
 		if (isOldFormat(archive)) {
 			installOlderFormat(archive);
 			return;
 		}
 
-		// Read and named before the dialog opens, because both have to survive a retry: the id is
-		// what the retry looks the instance up by, and a pack that cannot be read at all should say
-		// so without a progress dialog having flashed first.
 		String title = i18n("dsh.pack.installing", archive.getFileName().toString());
 		DspackContainer.Container container;
 		try {
@@ -296,26 +222,13 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 				DspackLander.installNew(archive, id, profile, version, report::accept);
 				return;
 			}
-			// A retry after an install-script answer. The instance is the one pnpm asked about, and
-			// the question is written into its profile, so it is finished here rather than made again.
 			report.accept("Finishing " + id + " now that the install scripts are answered");
 			DspackLander.finish(archive, existing, report::accept);
 		}, () -> Controllers.navigate(MainPage.instance().getInstancesPage()));
 	}
 
-	/// Installs a pack in the older format.
-	///
-	/// The installer for it makes its own instance, so this cannot go through
-	/// [DshPackInstaller#installNew] — but the same promise is kept: an instance that this attempt
-	/// created and then failed to fill is removed, so a failure does not leave a name in the list
-	/// that cannot start. Whether it created one is known by looking **before** the call, which is
-	/// the only moment the answer is available.
-	///
-	/// @param archive the pack
 	private void installOlderFormat(Path archive) {
 		String title = i18n("dsh.pack.installing", archive.getFileName().toString());
-		// Named once, outside the work: a retry after an install-script answer has to finish the
-		// instance the question was about, and an id computed again would be a second instance.
 		String id;
 		try {
 			id = uniqueId(PackManifest.readManifest(archive).name());
@@ -324,9 +237,6 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 			return;
 		}
 
-		// Asked once, before anything runs: the promise that a failure leaves no half-made instance
-		// behind is about what this install made, and a retry must keep it rather than mistake the
-		// instance it is finishing for one that was already there.
 		boolean existed = InstanceStore.find(id) != null;
 		PluginInstalls.runCreating(title, () -> InstanceStore.find(id), report -> {
 			try {
@@ -334,8 +244,6 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 				ModpackInstaller.install(archive, id, Path.of(System.getProperty("user.home")), report::accept);
 			} catch (DshException | RuntimeException failed) {
 				if (failed instanceof DshPluginInstaller.DshBuildScriptApprovalRequired) {
-					// The question is written into this instance's profile, so the instance is the
-					// answer's address: it stays, and the retry finishes it.
 					throw failed;
 				}
 				DshInstance made = InstanceStore.find(id);
@@ -352,9 +260,6 @@ public final class PackInstallPage extends DecoratorAnimatedPage implements Deco
 		}, () -> Controllers.navigate(MainPage.instance().getInstancesPage()));
 	}
 
-	/// Returns the page's state for the title bar.
-	///
-	/// @return the state
 	@Override
 	public ReadOnlyObjectWrapper<State> stateProperty() {
 		return state;

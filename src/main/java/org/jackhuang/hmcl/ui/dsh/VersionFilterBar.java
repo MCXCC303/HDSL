@@ -18,30 +18,25 @@ import java.util.Locale;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// The toolbar the version lists share: a name box, a release-type filter and a
-/// refresh, on a card.
-///
-/// The download page, the versions page and the boot library chooser all list
-/// published versions and all narrow them the same way. One row, built once,
-/// keeps them the same — which they were not while each page built its own.
+/**
+ * Toolbar containing a name query field, release type filter, and refresh action for version lists.
+ */
 @NotNullByDefault
 public final class VersionFilterBar extends GridPane {
-	/// The name box.
 	private final JFXTextField nameField = new JFXTextField();
-
-	/// The release-type filter.
 	private final JFXComboBox<TypeFilter> typeFilter = new JFXComboBox<>();
 
-	/// Creates the bar.
-	///
-	/// @param onChange  run whenever either filter changes
-	/// @param onRefresh run when the refresh button is pressed
+	/**
+	 * Creates a version filter bar.
+	 *
+	 * @param onChange  callback invoked when either filter changes
+	 * @param onRefresh callback invoked when the refresh button is clicked
+	 */
 	public VersionFilterBar(Runnable onChange, Runnable onRefresh) {
 		nameField.setPromptText(i18n("download.name.prompt"));
 		nameField.textProperty().addListener((observable, was, value) -> onChange.run());
 
 		typeFilter.getItems().setAll(TypeFilter.values());
-		// A selection, not a prompt.
 		typeFilter.getSelectionModel().select(TypeFilter.ALL);
 		typeFilter.setConverter(new StringConverter<>() {
 			@Override
@@ -59,8 +54,6 @@ public final class VersionFilterBar extends GridPane {
 		JFXButton refresh = FXUtils.newRaisedButton(i18n("button.refresh"));
 		refresh.setOnAction(event -> onRefresh.run());
 
-		// The original's grid: the labels take their own width, the name field
-		// takes what is left, and the type filter is capped.
 		ColumnConstraints labelColumn = new ColumnConstraints();
 		labelColumn.setMinWidth(Region.USE_PREF_SIZE);
 		ColumnConstraints fieldColumn = new ColumnConstraints();
@@ -77,10 +70,12 @@ public final class VersionFilterBar extends GridPane {
 		setPadding(new Insets(8));
 	}
 
-	/// Reports whether a version passes both filters.
-	///
-	/// @param version the version string
-	/// @return whether it is shown
+	/**
+	 * Checks whether a version matches the active query and release type filters.
+	 *
+	 * @param version the candidate version string
+	 * @return {@code true} if accepted, {@code false} otherwise
+	 */
 	public boolean accepts(String version) {
 		String needle = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase(Locale.ROOT);
 		if (!needle.isEmpty() && !version.toLowerCase(Locale.ROOT).contains(needle)) {
@@ -90,23 +85,18 @@ public final class VersionFilterBar extends GridPane {
 		return type == null || type.accepts(version);
 	}
 
-	/// What the type filter can be set to.
-	///
-	/// Its own type with an "all" member rather than a nullable release type:
-	/// "all" has to be a real selection, because a prompt is a different node
-	/// with different padding and lands the text a few pixels from the
-	/// original's.
+	/**
+	 * Filter options for release stability channels.
+	 */
 	public enum TypeFilter {
 		ALL, STABLE, RC, BETA, ALPHA, OTHER;
 
-		/// Reports whether a version string is of this kind.
-		///
-		/// The kind is read off the version string, which is all the boot
-		/// library publishes — the registry lists its releases with dist-tags
-		/// but the package itself is a list of version strings.
-		///
-		/// @param version the version string
-		/// @return whether it is shown
+		/**
+		 * Checks whether a version string matches this stability filter.
+		 *
+		 * @param version the version string
+		 * @return {@code true} if accepted, {@code false} otherwise
+		 */
 		public boolean accepts(String version) {
 			if (this == ALL) {
 				return true;
@@ -125,9 +115,6 @@ public final class VersionFilterBar extends GridPane {
 			return name().equals(kind);
 		}
 
-		/// Returns the translation key for this filter.
-		///
-		/// @return the key suffix
 		String id() {
 			return name().toLowerCase(Locale.ROOT);
 		}

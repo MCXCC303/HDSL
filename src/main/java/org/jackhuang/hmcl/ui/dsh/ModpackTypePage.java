@@ -36,22 +36,11 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// Asks what kind of pack to write.
-///
-/// The original asks the same question with four answers, because four launchers
-/// read four formats. This asks it with one, and says so: a pack this launcher can
-/// read back. The others that run DeepSeek Harness do not agree on a format yet, so
-/// offering to write one of theirs would be offering to write something that may
-/// not be read — and the step exists anyway, because that is where the choice will
-/// be made when there is more than one to make.
+// Wizard page for selecting the modpack format.
 @NotNullByDefault
 public final class ModpackTypePage extends VBox implements WizardPage {
-	/// The wizard this page belongs to.
 	private final WizardController controller;
 
-	/// Creates the page.
-	///
-	/// @param controller the wizard controller
 	public ModpackTypePage(WizardController controller) {
 		this.controller = controller;
 
@@ -64,15 +53,9 @@ public final class ModpackTypePage extends VBox implements WizardPage {
 		VBox.setMargin(title, new Insets(8, 0, 8, 12));
 		getChildren().setAll(title, createButton(true), createButton(false));
 
-		// Said once, as the wizard opens: part of what this instance holds is not something a pack
-		// can carry. Deferred to the next pulse because this page is built before it is on screen,
-		// and a dialog raised here would stand in front of the page it is about.
 		Platform.runLater(() -> warnAboutLocalPlugins(controller));
 	}
 
-	/// Says what a plugin installed from this machine means for the pack, once per wizard.
-	///
-	/// @param controller the wizard controller
 	private static void warnAboutLocalPlugins(WizardController controller) {
 		SettingsMap settings = controller.getSettings();
 		if (Boolean.TRUE.equals(settings.get(ModpackExportWizardProvider.LOCAL_WARNED)) ||
@@ -85,12 +68,6 @@ public final class ModpackTypePage extends VBox implements WizardPage {
 		                   MessageType.WARNING);
 	}
 
-	/// Builds the one option there is.
-	///
-	/// The shape the original's three options have: a card, a two-line label, and
-	/// the arrow that says it leads somewhere.
-	///
-	/// @return the row
 	private Node createButton(boolean hdsl) {
 		JFXButton button = new JFXButton();
 		button.getStyleClass().add("card");

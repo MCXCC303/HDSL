@@ -25,84 +25,83 @@ import org.jetbrains.annotations.Nullable;
 import java.nio.file.Path;
 import java.util.UUID;
 
-/// A folder the launcher looks for instances in.
-///
-/// HMCL's equivalent is its game directory, and the role is the same: it is the
-/// unit the instance list is filtered by, so a user with several collections of
-/// instances switches between them rather than seeing one long list.
-///
-/// Nothing is ever moved into or out of one. Adding a directory makes the
-/// launcher look inside it; removing one stops looking. The files are the
-/// user's, and a launcher that silently relocated them would be doing something
-/// the original does not.
-///
-/// @param id         the stable identifier
-/// @param path       the folder
-/// @param customName the name to show, or `null` to derive one from the path
+/**
+ * Represents a directory location managed by the launcher containing instances.
+ *
+ * @param id         stable unique identifier
+ * @param path       file system path string
+ * @param customName optional display name override
+ */
 @NotNullByDefault
 public record GameDirectory(
-        @SerializedName("id") String id,
-        @SerializedName("path") String path,
-        @SerializedName("customName") @Nullable String customName) {
+		@SerializedName("id") String id,
+		@SerializedName("path") String path,
+		@SerializedName("customName") @Nullable String customName) {
 
-    /// The identifier of the directory the launcher owns and starts with.
-    public static final String DEFAULT_ID = "default";
+	/**
+	 * Identifier for the default instance directory.
+	 */
+	public static final String DEFAULT_ID = "default";
 
-    /// Returns the folder this directory points at.
-    ///
-    /// @return the path
-    public Path directory() {
-        return Path.of(path).toAbsolutePath().normalize();
-    }
+	/**
+	 * Returns the normalized absolute path to this directory.
+	 *
+	 * @return the directory path
+	 */
+	public Path directory() {
+		return Path.of(path).toAbsolutePath().normalize();
+	}
 
-    /// Returns the name to show for this directory.
-    ///
-    /// @return the custom name, the folder's own name, or the path
-    public String displayName() {
-        if (customName != null && !customName.isBlank()) {
-            return customName;
-        }
-        Path name = directory().getFileName();
-        return name == null ? path : name.toString();
-    }
+	/**
+	 * Returns the display name for this directory.
+	 *
+	 * @return the display name
+	 */
+	public String displayName() {
+		if (customName != null && !customName.isBlank()) {
+			return customName;
+		}
+		Path name = directory().getFileName();
+		return name == null ? path : name.toString();
+	}
 
-    /// Reports whether this is the directory the launcher owns.
-    ///
-    /// The default one is where instances live when the user has never chosen a
-    /// directory, and it is the only one the launcher may write into without
-    /// being asked.
-    ///
-    /// @return whether this is the default directory
-    public boolean isDefault() {
-        return DEFAULT_ID.equals(id);
-    }
+	/**
+	 * Reports whether this is the default directory.
+	 *
+	 * @return true if this is the default directory
+	 */
+	public boolean isDefault() {
+		return DEFAULT_ID.equals(id);
+	}
 
-    /// Returns the directory instances live in when none has been chosen.
-    ///
-    /// @return the default directory
-    public static GameDirectory defaultDirectory() {
-        return new GameDirectory(DEFAULT_ID, DshPaths.INSTANCES.toString(), null);
-    }
+	/**
+	 * Returns the default directory configuration.
+	 *
+	 * @return default game directory
+	 */
+	public static GameDirectory defaultDirectory() {
+		return new GameDirectory(DEFAULT_ID, DshPaths.INSTANCES.toString(), null);
+	}
 
-    /// Creates a new directory entry for a folder.
-    ///
-    /// @param path the folder
-    /// @return the entry
-    public static GameDirectory of(Path path) {
-        return of(path, null);
-    }
+	/**
+	 * Creates a new directory entry with a generated ID.
+	 *
+	 * @param path the folder path
+	 * @return new directory entry
+	 */
+	public static GameDirectory of(Path path) {
+		return of(path, null);
+	}
 
-    /// Creates an entry for a folder, recorded as given.
-    ///
-    /// The path is kept as the caller wrote it rather than made absolute, so that
-    /// a folder recorded relative to the launcher stays relative — which is the
-    /// point of recording it that way.
-    ///
-    /// @param path       the folder
-    /// @param customName the name to show, or `null` to derive one from the path
-    /// @return the entry
-    public static GameDirectory of(Path path, @Nullable String customName) {
-        return new GameDirectory(UUID.randomUUID().toString(), path.toString(),
-                customName == null || customName.isBlank() ? null : customName);
-    }
+	/**
+	 * Creates a new directory entry with a generated ID and custom name.
+	 *
+	 * @param path       the folder path
+	 * @param customName custom display name, or {@code null}
+	 * @return new directory entry
+	 */
+	public static GameDirectory of(Path path, @Nullable String customName) {
+		return new GameDirectory(UUID.randomUUID().toString(), path.toString(),
+				customName == null || customName.isBlank() ? null : customName);
+	}
 }

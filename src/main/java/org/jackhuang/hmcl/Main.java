@@ -24,53 +24,40 @@ import org.jetbrains.annotations.NotNullByDefault;
 import java.util.Arrays;
 import java.util.List;
 
-/// The process entry point.
-///
-/// This class must not extend [javafx.application.Application]: the JavaFX
-/// launcher refuses to start when the main class is an `Application` subclass
-/// but the JavaFX modules are only on the classpath. Delegating from a plain
-/// class avoids that check and keeps the classpath-based build working.
-///
-/// Command-line arguments are handled here so that version management never
-/// needs a display: see [Cli] for the supported commands. Anything the CLI
-/// does not recognise starts the interface.
+/**
+ * Application entry point for HDSL.
+ */
 @NotNullByDefault
 public final class Main {
-    private Main() {
-    }
+	private Main() {
+	}
 
-    /// Starts HDSL.
-    ///
-    /// @param args command-line arguments
-    public static void main(String[] args) {
-        List<String> arguments = Arrays.asList(args);
+	/**
+	 * Application entry point.
+	 *
+	 * @param args command-line arguments
+	 */
+	public static void main(String[] args) {
+		List<String> arguments = Arrays.asList(args);
 
-        // The CLI is consulted first so that subcommand options never collide
-        // with the launcher's own flags.
-        // Before anything reads an instance: an instance that follows the
-        // launcher needs the launcher's defaults to resolve, and the command
-        // line reads them exactly as the interface does.
-        org.jackhuang.hmcl.setting.EnvironmentDefaults.install();
+		// Install environment defaults before resolving CLI or instances.
+		org.jackhuang.hmcl.setting.EnvironmentDefaults.install();
 
-        Cli.Invocation invocation = Cli.parse(arguments);
-        if (invocation != null) {
-            System.exit(Cli.run(invocation, System.out, System.err));
-        }
+		Cli.Invocation invocation = Cli.parse(arguments);
+		if (invocation != null) {
+			System.exit(Cli.run(invocation, System.out, System.err));
+		}
 
-        if (arguments.contains("--version")) {
-            System.out.println(Metadata.FULL_TITLE);
-            return;
-        }
+		if (arguments.contains("--version")) {
+			System.out.println(Metadata.FULL_TITLE);
+			return;
+		}
 
-        // One launcher to a home: one settings file, one instance store, one set of running
-        // harnesses. A second window would write the settings out of its own copy of them — read
-        // when it started, stale within minutes — and would keep its own idea of what is running,
-        // so it does not open. It leaves quietly: to whoever started it, a window already being
-        // open is the whole of what they asked for.
-        if (!LauncherLock.shared().acquire()) {
-            return;
-        }
+		// Enforce single-instance lock to prevent concurrent settings writes.
+		if (!LauncherLock.shared().acquire()) {
+			return;
+		}
 
-        Launcher.main(args);
-    }
+		Launcher.main(args);
+	}
 }

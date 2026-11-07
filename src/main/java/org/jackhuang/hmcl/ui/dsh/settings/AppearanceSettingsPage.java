@@ -54,30 +54,21 @@ import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The "appearance" tab of the launcher settings page.
-///
-/// Drives the transplanted theme engine: the theme pack, the brightness mode, the
-/// theme colour and its palette, the background and its opacity, the window, the
-/// animations and the fonts. The theme engine distinguishes "the theme chose this"
-/// from "the user chose this", so every appearance row carries the small mark beside
-/// its name that says which of the two is in force and switches between them — that
-/// mark is the original's own control, and without it a row that follows the theme
-/// gives no way to take it over.
+/**
+ * The "appearance" tab of the launcher settings page.
+ * <p>
+ * Controls themes, color palettes, window appearance, background images, animations, and fonts.
+ */
 @NotNullByDefault
 public final class AppearanceSettingsPage extends ScrollPane {
-	/// Brightness mode identifiers accepted by the theme engine.
 	private static final List<String> BRIGHTNESS_MODES = List.of("auto", "light", "dark");
-
-	/// The stylesheet class of the original's small override mark.
 	private static final String OVERRIDE_BUTTON_STYLE_CLASS = "toggle-icon-tiny";
-
-	/// The pseudo-class the mark wears once the value is the user's rather than the theme's.
 	private static final PseudoClass OVERRIDDEN = PseudoClass.getPseudoClass("overridden");
-
-	/// The tooltip the mark carries, kept so its text can follow the state.
 	private static final String OVERRIDE_TOOLTIP_KEY = "HDSL.themeAppearanceOverrideTooltip";
 
-	/// Creates the appearance settings tab.
+	/**
+	 * Creates the appearance settings tab.
+	 */
 	public AppearanceSettingsPage() {
 		setFitToWidth(true);
 		setFitToHeight(true);
@@ -88,9 +79,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 
 		FXUtils.smoothScrolling(this);
 
-		// The sections and their order are the original's: the theme, then how the launcher looks —
-		// the colours, the picture and how solid it is, and the window — then how a background is
-		// fetched, then the animations, and the fonts last.
 		root.getChildren()
 		    .addAll(sectionTitle(i18n("settings.launcher.theme")),
 		            buildThemeList(),
@@ -104,44 +92,24 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		            buildFontList());
 	}
 
-	/// Builds a section title.
-	///
-	/// Uses HMCL's helper rather than a styled row: the original puts the title
-	/// between card groups, outside their background, and that placement is what
-	/// makes a settings page read as titled groups rather than one long list.
-	///
-	/// @param text the title
-	/// @return the title node
 	private static Node sectionTitle(String text) {
 		return ComponentList.createComponentListTitle(text);
 	}
 
-	/// Returns the log font size in force.
-	///
-	/// @return the size, or the default when none was chosen
 	private static double logFontSize() {
 		Double stored = settings().logFontSizeProperty().get();
 		return stored == null || stored <= 0 ? 12.0 : stored;
 	}
 
-	/// Returns the font the interface uses when the user has chosen none.
-	///
-	/// @return the family's name
 	private static String systemFontFamily() {
 		return Objects.toString(FontManager.getFontFamily(), "");
 	}
 
-	/// Returns the network-background cache policy in force.
-	///
-	/// @return the policy, or the default when none was chosen
 	private static NetworkBackgroundImageCachePolicy cachePolicy() {
 		return Objects.requireNonNullElse(settings().networkBackgroundImageCachePolicyProperty().get(),
 		                                  NetworkBackgroundImageCachePolicy.ENABLED);
 	}
 
-	/// Returns the name of the theme in force.
-	///
-	/// @return the theme's display name, or a note that the pack is missing
 	private static String selectedThemeTitle() {
 		ThemeReference reference = settings().getSelectedThemeOrDefault();
 		try {
@@ -149,8 +117,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 			if (pack == null) {
 				return i18n("theme_pack.current.missing");
 			}
-			// The manifest's name is localized text, so it is rendered in the launcher's
-			// language rather than shown as whatever the pack happens to list first.
 			String packName = Objects.requireNonNullElse(ThemePackManagementPage.text(pack.manifest().name()),
 			                                             pack.manifest().id());
 			if (reference.themeId() == null) {
@@ -169,13 +135,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/// Returns the colour styles this build of the theme library offers.
-	///
-	/// The list is the original's, minus whatever the library here does not have: a name
-	/// the library does not know is skipped rather than failing, because a row with fewer
-	/// choices is better than a launcher that will not start.
-	///
-	/// @return the styles
 	private static List<ColorStyle> availableColorStyles() {
 		List<ColorStyle> styles = new ArrayList<>();
 		addStyle(styles, "FIDELITY");
@@ -187,10 +146,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return styles;
 	}
 
-	/// Adds a colour style by name, when this build has it.
-	///
-	/// @param styles where to add it
-	/// @param name   the style's name
 	private static void addStyle(List<ColorStyle> styles, String name) {
 		try {
 			styles.add(ColorStyle.valueOf(name));
@@ -199,30 +154,20 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/// Switches the background source and records the user's override.
-	///
-	/// Without the override key the theme engine would keep treating the
-	/// background as "chosen by the theme" and overwrite the user's selection.
-	///
-	/// @param type the newly selected source
 	private static void selectBackground(BackgroundType type) {
 		settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BACKGROUND);
 		settings().backgroundTypeProperty().set(type);
 	}
 
-	/// Builds the original's small mark that says whether a row follows the theme.
-	///
-	/// The theme engine keeps a set of keys naming the values the user took over, and this
-	/// is the control for that set: pressing it takes the value over — starting from what
-	/// the theme resolves to, so taking it over changes nothing until the value is changed
-	/// — and pressing it again hands the value back. Without it a row that follows the
-	/// theme can only be changed by changing it, which silently makes it the user's.
-	///
-	/// @param key      the override key this mark stands for
-	/// @param property the value the key governs
-	/// @param theme    what the theme resolves the value to
-	/// @param <T>      the value's type
-	/// @return the mark
+	/**
+	 * Builds an override button that toggles between theme defaults and user overrides.
+	 *
+	 * @param key      the override settings key
+	 * @param property the governed property
+	 * @param theme    supplier for the theme's resolved value
+	 * @param <T>      the value type
+	 * @return the override button node
+	 */
 	private static <T> JFXButton createOverrideMark(String key, Property<T> property, Supplier<T> theme) {
 		JFXButton mark = new JFXButton();
 		mark.getStyleClass().add(OVERRIDE_BUTTON_STYLE_CLASS);
@@ -253,25 +198,20 @@ public final class AppearanceSettingsPage extends ScrollPane {
 			refresh.run();
 		});
 
-		// Typed rather than a lambda: the set is observable both ways, and an untyped lambda
-		// leaves the compiler choosing between an invalidation and a change listener.
 		settings().getThemeAppearanceOverrides().addListener((InvalidationListener) ignored -> refresh.run());
 		refresh.run();
 		return mark;
 	}
 
-	/// Binds a choice to one of the theme-appearance values.
-	///
-	/// The row shows the user's value once the value is theirs and the theme's until then,
-	/// which is what the mark beside it reports. Choosing an entry is what makes the value
-	/// theirs — the original does the same, and it is the only way a dropdown can take a
-	/// value over: there is nowhere else to press.
-	///
-	/// @param row      the row
-	/// @param key      the override key the row governs
-	/// @param property the value the key governs
-	/// @param theme    what the theme resolves the value to
-	/// @param <T>      the value's type
+	/**
+	 * Binds a selection control to a theme appearance property with user override tracking.
+	 *
+	 * @param row      the selector row
+	 * @param key      the override settings key
+	 * @param property the governed property
+	 * @param theme    supplier for the theme's resolved value
+	 * @param <T>      the value type
+	 */
 	private static <T> void originalBinding(LineSelectButton<T> row,
 	                                        String key,
 	                                        Property<T> property,
@@ -279,8 +219,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		JFXButton mark = createOverrideMark(key, property, theme);
 		row.setTitleTrailing(mark);
 
-		// A guard: writing the resolved value into the property fires the row's own listener,
-		// and without this the refresh would be read as the user having chosen something.
 		boolean[] updating = {false};
 		InvalidationListener refresh = ignored -> {
 			if (updating[0]) {
@@ -317,15 +255,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		refresh.invalidated(null);
 	}
 
-	/// Builds the theme section: the installed theme, and getting one out of the launcher.
-	///
-	/// The original's two rows: one that goes on to the theme packs, and one that writes
-	/// what the launcher looks like now into a file. Both are navigation or export rather
-	/// than a choice, which is why neither is a dropdown: the first opens a page because
-	/// browsing theme packs is more than choosing one, and the second has nothing to
-	/// choose.
-	///
-	/// @return the assembled component list
 	private ComponentList buildThemeList() {
 		LineButton currentTheme = LineButton.createNavigationButton();
 		currentTheme.setTitle(i18n("theme_pack.theme"));
@@ -345,15 +274,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the appearance section.
-	///
-	/// One card, in the original's order: how bright the interface is, what colour it
-	/// takes, how that colour becomes a palette, the picture behind it and how solid it
-	/// is, and whether the title bar and the window are transparent. Each is a row that
-	/// opens where it stands — except the brightness and the palette, which are choices
-	/// with nothing inside them.
-	///
-	/// @return the assembled component list
 	private ComponentList buildAppearanceList() {
 		ComponentList list = new ComponentList();
 		list.getContent().add(buildBrightnessRow());
@@ -365,13 +285,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the row that chooses the launcher's brightness mode.
-	///
-	/// The original keeps this at the head of the appearance section, before the colours,
-	/// and gives it the same override mark as the rest: a theme states a brightness and
-	/// the user may take it over.
-	///
-	/// @return the row
 	private LineSelectButton<String> buildBrightnessRow() {
 		LineSelectButton<String> brightness = new LineSelectButton<>();
 		brightness.setTitle(i18n("settings.launcher.brightness"));
@@ -384,12 +297,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return brightness;
 	}
 
-	/// Builds the row that chooses the theme colour.
-	///
-	/// An expanding row, which is where the original keeps a setting with several forms:
-	/// the colour in force is shown beside the name, and the choices are inside.
-	///
-	/// @return the row
 	private ComponentSublist buildThemeColorRow() {
 		ComponentSublist sublist = new ComponentSublist();
 		sublist.setTitle(i18n("settings.launcher.theme_color"));
@@ -407,8 +314,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 			if (color != null) {
 				settings().customThemeColorProperty().set(new ThemeColor(currentCustom.name(), color));
 				settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_COLOR);
-				// Picking a colour is only meaningful if it is also the mode in
-				// use, so choosing one selects the custom entry.
 				settings().themeColorTypeProperty().set(ThemeColorType.CUSTOM);
 			}
 		});
@@ -433,9 +338,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		                                                    ThemeColorType.DEFAULT));
 		choices.selectedValueProperty().addListener((observable, was, value) -> {
 			if (value != null && value != was) {
-				// The colour is only consulted when it is recorded as an
-				// override; without this the theme pack's own colour wins and
-				// the choice appears to do nothing.
 				settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_COLOR);
 				settings().themeColorTypeProperty().set(value);
 				SettingsManager.save();
@@ -452,9 +354,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return sublist;
 	}
 
-	/// Builds the row that chooses how the theme's colour becomes a palette.
-	///
-	/// @return the row
 	private LineSelectButton<ColorStyle> buildColorStyleRow() {
 		LineSelectButton<ColorStyle> colorStyle = new LineSelectButton<>();
 		colorStyle.setTitle(i18n("settings.launcher.theme_color_style"));
@@ -474,15 +373,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return colorStyle;
 	}
 
-	/// Builds the row that chooses where the background comes from.
-	///
-	/// An expanding row holding every source the original offers — the default, a
-	/// built-in wallpaper, the theme colour, a picture of your own, a network picture and
-	/// a flat colour. The last of those is why the row has to hold them all: a colour has
-	/// nowhere to be typed if the row is a dropdown, since the picker belongs beside the
-	/// choice it applies to.
-	///
-	/// @return the row
 	private ComponentSublist buildBackgroundRow() {
 		ComponentSublist sublist = new ComponentSublist();
 		sublist.setTitle(i18n("launcher.background"));
@@ -553,8 +443,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 			}
 		});
 
-		// The line under the name says what is in force: the picture's address when there is one,
-		// the wallpaper's name otherwise — which is what the original shows there.
 		sublist.descriptionProperty().bind(Bindings.createStringBinding(() -> {
 			                                                                BackgroundType type = Objects.requireNonNullElse(background.selectedValueProperty().get(),
 			                                                                                                                 BackgroundType.DEFAULT);
@@ -583,12 +471,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return sublist;
 	}
 
-	/// Builds the row with the opacity slider.
-	///
-	/// A `LinePane`, not a `LineTextPane` with a trailing node: the original puts a slider
-	/// on the row's right edge, while a title trailing sits immediately after the label.
-	///
-	/// @return the row
 	private LinePane buildOpacityRow() {
 		LinePane opacity = new LinePane();
 		opacity.setTitle(i18n("settings.launcher.background.settings.opacity"));
@@ -596,9 +478,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return opacity;
 	}
 
-	/// Builds the opacity slider shown on the right of its row.
-	///
-	/// @return the slider and its percentage label
 	private HBox buildOpacitySlider() {
 		JFXSlider slider = new JFXSlider(0, 100, settings().backgroundOpacityProperty().get() * 100);
 		slider.setPrefWidth(220);
@@ -630,14 +509,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return box;
 	}
 
-	/// Builds the rows about how a background is fetched and what is used when it does not arrive.
-	///
-	/// The original's three rows: whether a network picture is kept for next time, which
-	/// standby is shown while it loads, and whether the launcher waits for the picture at
-	/// all. The standby is an expanding row because one of its answers carries a colour
-	/// picker.
-	///
-	/// @return the assembled component list
 	private ComponentList buildBackgroundLoadingList() {
 		LineSwitch cache = new LineSwitch();
 		cache.setTitle(i18n("launcher.background.network.cache"));
@@ -705,9 +576,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the window section.
-	///
-	/// @return the assembled component list
 	private ComponentList buildWindowList() {
 		LineSwitch transparentTitleBar = new LineSwitch();
 		transparentTitleBar.setTitle(i18n("settings.launcher.title_transparent"));
@@ -730,20 +598,12 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the animation section.
-	///
-	/// The toggle is inverted because the setting stores the disabling rather
-	/// than the enabling, which is how the animation helpers read it.
-	///
-	/// @return the assembled component list
 	private ComponentList buildAnimationList() {
 		ComponentList list = new ComponentList();
 
 		LineSwitch animations = new LineSwitch();
 		animations.setTitle(i18n("settings.launcher.turn_off_animations"));
 		animations.setSubtitle(i18n("settings.take_effect_after_restart"));
-		// The row asks what the original asks — whether to turn the animations off — so the switch
-		// reads the same way round as its own name.
 		animations.setSelected(settings().isAnimationDisabled());
 		animations.selectedProperty()
 		          .addListener((observable, was, value) -> settings().animationDisabledProperty().set(value));
@@ -752,22 +612,11 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the font section.
-	///
-	/// HMCL's font control is a `FontComboBox` rather than a generic selector,
-	/// and that is not cosmetic: this system reports thousands of font
-	/// families, and the generic selector builds a node per item the moment it
-	/// is opened. The combo box loads its list on first use and virtualises it,
-	/// so the count does not matter, and each row previews its own family.
-	///
-	/// @return the assembled component list
 	private ComponentList buildFontList() {
 		ComponentList list = new ComponentList();
 
 		LineTextPane launcherRow = new LineTextPane();
 		launcherRow.setTitle(i18n("settings.launcher.font"));
-		// The line under the name is the font's own name, drawn in it: the original
-		// shows what the choice looks like rather than a sentence about it.
 		launcherRow.setSubtitle(Objects.toString(settings().launcherFontFamilyProperty().get(), systemFontFamily()));
 
 		FontComboBox font = new FontComboBox();
@@ -787,8 +636,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 
 		list.getContent().add(buildLogFontRow());
 
-		// The original keeps the anti-aliasing row in the same card, last: it is a choice
-		// about how text is drawn, which is what the rest of the card is about.
 		LineSelectButton<FontAntiAliasing> antiAliasing = new LineSelectButton<>();
 		antiAliasing.setTitle(i18n("settings.launcher.font.anti_aliasing"));
 		antiAliasing.setSubtitle(i18n("settings.take_effect_after_restart"));
@@ -805,13 +652,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the row for the log's own font and size.
-	///
-	/// The log has a font and a size of its own, and both settings have existed all along
-	/// with nothing on the page to reach them. The size is a spinner rather than a box to
-	/// type into, which is what the original uses for a number with bounds.
-	///
-	/// @return the row
 	private LineTextPane buildLogFontRow() {
 		LineTextPane row = new LineTextPane();
 		row.setTitle(i18n("dsh.settings.font.log"));
@@ -844,9 +684,6 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Returns the brightness mode the theme resolves to when the user has not chosen one.
-	///
-	/// @return the mode's identifier
 	private String resolvedBrightnessMode() {
 		try {
 			return Objects.toString(ThemePackManager.resolveCurrentThemeBrightness(ThemePackManager.currentResolveContext()),
@@ -856,19 +693,10 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/// Saves what the launcher looks like now as a theme-pack file.
-	///
-	/// The original asks for the pack's name, its version and the author before asking
-	/// where to put the file. This launcher's dialog helper takes one answer at a time, so
-	/// the same three are asked in the same order, one after another, each starting at the
-	/// default the original would have shown.
 	private void exportCurrentThemePack() {
 		String defaultPackName = i18n("theme_pack.export.name");
 		String defaultAuthor = Objects.toString(System.getProperty("user.name"), "Unknown");
 
-		// What the answers are kept in while the three dialogs run one after another: the
-		// helper completes its future with the field's text, so what a later dialog wants to
-		// know about an earlier one has to be held here.
 		String[] answers = {defaultPackName, ThemePackManager.CURRENT_THEME_PACK_VERSION, defaultAuthor};
 
 		Controllers.prompt(i18n("theme_pack.export.name"), (value, handler) -> {
@@ -887,18 +715,11 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		           }, defaultAuthor))
 		           .thenAccept(ignored -> writeThemePack("hdsl-theme", answers[1], answers[0], answers[2]))
 		           .exceptionally(failure -> {
-			           // Closing a dialog is not a failure to report.
 			           LOG.info("Theme-pack export was cancelled");
 			           return null;
 		           });
 	}
 
-	/// Asks where to put the theme pack and writes it.
-	///
-	/// @param packId  the pack's identifier
-	/// @param version the pack's version
-	/// @param name    the pack's name
-	/// @param author  the pack's author
 	private void writeThemePack(String packId, String version, String name, String author) {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("theme_pack.export.title"));
@@ -929,24 +750,15 @@ public final class AppearanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/// A choice whose right-hand side is a colour picker.
-	///
-	/// A flat colour cannot be offered as an ordinary entry: the colour is the answer as
-	/// well as the choice, so the picker belongs on the entry's own line.
+	/**
+	 * Choice item presenting a color picker on the right.
+	 */
 	private static final class PaintChoice extends RadioChoiceList.Choice<BackgroundType> {
-		/// The picker owned by this entry.
 		private final JFXColorPicker picker = new JFXColorPicker();
 
-		/// Creates the entry.
-		///
-		/// @param title    the entry's name
-		/// @param value    the background source it selects
-		/// @param property the colour it edits
 		private PaintChoice(String title, BackgroundType value, Property<Paint> property) {
 			super(title, value);
 			FXUtils.bindPaint(picker, property);
-			// Choosing the colour is choosing this source, which is what somebody who
-			// opens the picker means.
 			picker.valueProperty().addListener((observable, was, color) -> {
 				if (color != null) {
 					settings().getThemeAppearanceOverrides().add(LauncherSettings.THEME_APPEARANCE_BACKGROUND);

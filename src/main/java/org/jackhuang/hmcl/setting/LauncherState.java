@@ -21,77 +21,45 @@ import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// Holds the launcher window geometry that survives a restart.
-///
-/// The position is stored in screen-relative units so that a window restored on
-/// a differently sized display still lands inside the visible area.
+/**
+ * Persisted window geometry and layout coordinates across restarts.
+ */
 @NotNullByDefault
 public final class LauncherState {
-    /// The horizontal window position as a fraction of the primary screen width.
-    private final DoubleProperty x = new SimpleDoubleProperty();
+	private final DoubleProperty x = new SimpleDoubleProperty();
+	private final DoubleProperty y = new SimpleDoubleProperty();
+	private final DoubleProperty width = new SimpleDoubleProperty();
+	private final DoubleProperty height = new SimpleDoubleProperty();
 
-    /// The vertical window position as a fraction of the primary screen height.
-    private final DoubleProperty y = new SimpleDoubleProperty();
+	public double getX() {
+		return x.get();
+	}
 
-    /// The window content width in pixels.
-    private final DoubleProperty width = new SimpleDoubleProperty();
+	public void setX(double value) {
+		x.set(value);
+	}
 
-    /// The window content height in pixels.
-    private final DoubleProperty height = new SimpleDoubleProperty();
+	public double getY() {
+		return y.get();
+	}
 
-    /// Returns the horizontal window position fraction.
-    ///
-    /// @return the horizontal position
-    public double getX() {
-        return x.get();
-    }
+	public void setY(double value) {
+		y.set(value);
+	}
 
-    /// Sets the horizontal window position fraction.
-    ///
-    /// @param value the horizontal position
-    public void setX(double value) {
-        x.set(value);
-    }
+	public double getWidth() {
+		return width.get();
+	}
 
-    /// Returns the vertical window position fraction.
-    ///
-    /// @return the vertical position
-    public double getY() {
-        return y.get();
-    }
+	public void setWidth(double value) {
+		width.set(value);
+	}
 
-    /// Sets the vertical window position fraction.
-    ///
-    /// @param value the vertical position
-    public void setY(double value) {
-        y.set(value);
-    }
+	public double getHeight() {
+		return height.get();
+	}
 
-    /// Returns the window content width in pixels.
-    ///
-    /// @return the content width
-    public double getWidth() {
-        return width.get();
-    }
-
-    /// Sets the window content width in pixels.
-    ///
-    /// @param value the content width
-    public void setWidth(double value) {
-        width.set(value);
-    }
-
-    /// Returns the window content height in pixels.
-    ///
-    /// @return the content height
-    public double getHeight() {
-        return height.get();
-    }
-
-    /// Sets the window content height in pixels.
-    ///
-    /// @param value the content height
-    public void setHeight(double value) {
-        height.set(value);
-    }
+	public void setHeight(double value) {
+		height.set(value);
+	}
 }

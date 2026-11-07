@@ -44,38 +44,29 @@ import static org.jackhuang.hmcl.ui.FXUtils.onEscPressed;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The icon chooser for an instance.
-///
-/// This mirrors HMCL's `GameInstanceIconDialog`: a row of square tiles that
-/// apply on click, preceded by an add tile that picks an image file. A dialog of
-/// tiles is what the original uses because the choice is visual — a dropdown of
-/// names would make the user read what they are meant to recognise.
+/**
+ * Dialog for selecting or importing an instance icon.
+ */
 @NotNullByDefault
 public final class InstanceIconDialog extends JFXDialogLayout {
-	/// The instance being edited.
 	private final DshInstance instance;
-
-	/// Called after a successful change.
 	private final Runnable onFinish;
 
-	/// Creates the dialog.
-	///
-	/// @param instance the instance being edited
-	/// @param onFinish run after the icon changes
+	/**
+	 * Creates the instance icon dialog.
+	 *
+	 * @param instance instance being edited
+	 * @param onFinish callback invoked after the icon changes
+	 */
 	public InstanceIconDialog(DshInstance instance, Runnable onFinish) {
 		this.instance = instance;
 		this.onFinish = onFinish;
 
 		setHeading(new Label(i18n("settings.icon")));
 
-		// No gap: the original's tiles are thirty-six across and sit flush, so
-		// ten fit on a row. Four pixels of gap here is four pixels of pitch, and
-		// the row holds eight instead — the same dialog with a different shape.
 		FlowPane tiles = new FlowPane();
-
 		tiles.getChildren().add(buildCustomTile());
-		// DEFAULT shares GRASS's artwork, so the chooser starts at GRASS and the
-		// duplicate would only be a second tile with the same picture.
+
 		for (DshInstanceIcon icon : DshInstanceIcon.values()) {
 			if (icon == DshInstanceIcon.DEFAULT) {
 				continue;
@@ -99,9 +90,6 @@ public final class InstanceIconDialog extends JFXDialogLayout {
 		setActions(confirm, cancel);
 	}
 
-	/// Builds the tile that picks an image file.
-	///
-	/// @return the tile
 	private Node buildCustomTile() {
 		Node shape = SVG.ADD_CIRCLE.createIcon(32);
 		shape.setMouseTransparent(true);
@@ -114,25 +102,12 @@ public final class InstanceIconDialog extends JFXDialogLayout {
 		return container;
 	}
 
-	/// Builds one tile for a built-in icon.
-	///
-	/// Choosing applies at once and closes, which is what HMCL does: the OK and
-	/// Cancel buttons are present in the original dialog but neither confirms a
-	/// pending choice, so reproducing them must not invent that step.
-	///
-	/// @param image the image to show
-	/// @param icon  the icon the tile represents
-	/// @return the tile
 	private Node buildTile(Image image, DshInstanceIcon icon) {
 		RipplerContainer container = buildTile(image);
 		FXUtils.onClicked(container, () -> apply(icon, null));
 		return container;
 	}
 
-	/// Builds a tile frame around an image.
-	///
-	/// @param image the image to show
-	/// @return the tile
 	private RipplerContainer buildTile(Image image) {
 		ImageView view = new ImageView(image);
 		view.setFitWidth(32);
@@ -146,7 +121,6 @@ public final class InstanceIconDialog extends JFXDialogLayout {
 		return container;
 	}
 
-	/// Asks for an image file and applies it.
 	private void chooseFile() {
 		FileChooser chooser = new FileChooser();
 		chooser.getExtensionFilters().add(FXUtils.getImageExtensionFilter());
@@ -156,10 +130,6 @@ public final class InstanceIconDialog extends JFXDialogLayout {
 		}
 	}
 
-	/// Writes the choice back to the instance.
-	///
-	/// @param icon the chosen built-in icon, or `null` when a file was chosen
-	/// @param file the chosen file, or `null` when a built-in icon was chosen
 	private void apply(@Nullable DshInstanceIcon icon, @Nullable Path file) {
 		try {
 			DshInstance updated = file != null
