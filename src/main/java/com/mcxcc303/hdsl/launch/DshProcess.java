@@ -74,11 +74,13 @@ public final class DshProcess {
 	private final CircularArrayList<LogLine> windowLogs = new CircularArrayList<>();
 	private final List<Consumer<LogLine>> logListeners = new CopyOnWriteArrayList<>();
 	private final Object logLock = new Object();
+	private final Object stateLock = new Object();
 	private volatile State state = State.STARTING;
 	private volatile @Nullable URI webUrl;
 	private volatile int exitCode = Integer.MIN_VALUE;
 	private volatile @Nullable Consumer<String> logSink;
 	private volatile @Nullable Consumer<State> stateListener;
+	private @Nullable Consumer<State> terminalListener;
 	private volatile boolean stopRequested;
 
 	/**
@@ -266,9 +268,25 @@ public final class DshProcess {
 	 * @param listener the listener, or `null` to detach
 	 */
 	public void setStateListener(@Nullable Consumer<State> listener) {
-		this.stateListener = listener;
-		if (listener != null && (state == State.STOPPED || state == State.FAILED)) {
-			listener.accept(state);
+		State current;
+		boolean notifyImmediate = false;
+		synchronized (stateLock) {
+			if (this.stateListener == listener && isTerminal(state) && terminalListener == listener) {
+				return;
+			}
+			this.stateListener = listener;
+			current = this.state;
+			if (listener != null && isTerminal(current) && terminalListener != listener) {
+				this.terminalListener = listener;
+				notifyImmediate = true;
+			}
+		}
+		if (notifyImmediate && listener != null) {
+			try {
+				listener.accept(current);
+			} catch (RuntimeException e) {
+				LOG.warning("State listener failed", e);
+			}
 		}
 	}
 
@@ -379,15 +397,35 @@ public final class DshProcess {
 	}
 
 	private void transitionTo(State next) {
-		state = next;
-		Consumer<State> listener = stateListener;
-		if (listener == null) return;
-
-		try {
-			listener.accept(next);
-		} catch (RuntimeException e) {
-			LOG.warning("State listener failed", e);
+		Consumer<State> listener = null;
+		synchronized (stateLock) {
+			if (isTerminal(state)) {
+				return;
+			}
+			if (state == next) {
+				return;
+			}
+			state = next;
+			if (isTerminal(next)) {
+				if (stateListener != null && terminalListener != stateListener) {
+					terminalListener = stateListener;
+					listener = stateListener;
+				}
+			} else {
+				listener = stateListener;
+			}
 		}
+		if (listener != null) {
+			try {
+				listener.accept(next);
+			} catch (RuntimeException e) {
+				LOG.warning("State listener failed", e);
+			}
+		}
+	}
+
+	private static boolean isTerminal(State state) {
+		return state == State.STOPPED || state == State.FAILED;
 	}
 
 	public Path workingDirectory() {
