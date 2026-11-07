@@ -42,11 +42,10 @@ class PortOccupantTest {
 	private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(30);
 
 	/**
-	 * Reads a listening pid out of `netstat -ano` output without reading the state word.
-	 *
-	 * Windows translates that column, so a German machine writes `ABHÖREN` where an English one
-	 * writes `LISTENING`. The row carrying the German word is the only listening row on its
-	 * port, so a parser that began requiring `LISTENING` would answer differently here.
+	 * Reads a listening pid out of {@code netstat -ano} output without reading the state word.
+	 * <p>
+	 * The state column is translated across locales (e.g. {@code ABHÖREN} vs {@code LISTENING}),
+	 * so only protocol and port shape determine listening state.
 	 */
 	@Test
 	void readsTheListeningPidWithoutReadingTheStateWord() {
@@ -75,9 +74,7 @@ class PortOccupantTest {
 	}
 
 	/**
-	 * Reads the socket inodes out of the lines of one `/proc/net` table.
-	 *
-	 * What is fixed here is the position of the state column and of the inode column.
+	 * Reads the socket inodes out of the lines of one {@code /proc/net} table.
 	 */
 	@Test
 	void readsTheListeningInodesOutOfProcRows() {
@@ -186,8 +183,7 @@ class PortOccupantTest {
 	}
 
 	/**
-	 * Reads the image name out of `tasklist` CSV output, skipping the notices it prints
-	 * instead of a row.
+	 * Reads the image name out of {@code tasklist} CSV output, skipping notices.
 	 */
 	@Test
 	void readsTheImageNameOutOfTasklistRows() {

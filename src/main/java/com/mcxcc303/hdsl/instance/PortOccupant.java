@@ -42,7 +42,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class PortOccupant {
 	/**
-	 * How long a lookup command is given to answer. `lsof` is the one that can stop answering on a
+	 * How long a lookup command is given to answer. {@code lsof} is the one that can stop answering on a
 	 * filesystem that has stopped.
 	 */
 	private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(2);
@@ -59,10 +59,10 @@ public final class PortOccupant {
 	 * The process holding a port.
 	 *
 	 * @param pid         the process id
-	 * @param name        the executable's name, or `null` when the platform would not say
-	 * @param commandLine the command line it was started with, or `null` when the platform
+	 * @param name        the executable's name, or {@code null} when the platform would not say
+	 * @param commandLine the command line it was started with, or {@code null} when the platform
 	 *                    would not say
-	 * @param executable  the program alone, or `null` when the platform would not say
+	 * @param executable  the program alone, or {@code null} when the platform would not say
 	 */
 	public record Occupant(long pid, @Nullable String name, @Nullable String commandLine,
 	                       @Nullable String executable) {}
@@ -113,7 +113,7 @@ public final class PortOccupant {
 			commandLine = handle.info().commandLine().orElse(null);
 			executable = handle.info().command().orElse(null);
 		}
-		// `ProcessHandle` reports nothing for a process of another user, and these do.
+		// ProcessHandle reports nothing for a process of another user, and these do.
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.LINUX) {
 			String fromProc = linuxCommandLine(pid);
 			if (fromProc != null) {
@@ -134,8 +134,8 @@ public final class PortOccupant {
 	/**
 	 * Returns the name of the executable a command line or an executable path starts with.
 	 *
-	 * @param commandLine the command line, an executable path, or `null`
-	 * @return the executable's name, or `null` when none can be read
+	 * @param commandLine the command line, an executable path, or {@code null}
+	 * @return the executable's name, or {@code null} when none can be read
 	 */
 	static @Nullable String nameOf(@Nullable String commandLine) {
 		if (commandLine == null) {
@@ -158,10 +158,10 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Returns the image name out of `tasklist` CSV output.
+	 * Returns the image name out of {@code tasklist} CSV output.
 	 *
 	 * @param lines the output lines
-	 * @return the image name, or `null` when no row names one
+	 * @return the image name, or {@code null} when no row names one
 	 */
 	static @Nullable String imageNameFromTasklist(List<String> lines) {
 		for (String raw : lines) {
@@ -178,10 +178,10 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Returns a process's command line out of `/proc/<pid>/cmdline`, or `null`.
+	 * Returns a process's command line out of {@code /proc/<pid>/cmdline}, or {@code null}.
 	 *
 	 * @param pid the process
-	 * @return the command line, or `null` when it cannot be read
+	 * @return the command line, or {@code null} when it cannot be read
 	 */
 	private static @Nullable String linuxCommandLine(long pid) {
 		try {
@@ -194,18 +194,39 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Finds the listening pid on Windows with `netstat -ano`.
+	 * Finds the listening pid on Windows with {@code netstat -ano}.
 	 *
 	 * @param port    the port
 	 * @param timeout how long the command is given
 	 * @return the pid, or empty when no row listens on it
 	 */
 	private static OptionalLong pidFromNetstat(int port, Duration timeout) {
-		return pidListeningOn(run(List.of("netstat", "-ano"), timeout), port);
+		OptionalLong pid = pidListeningOn(run(List.of("netstat", "-ano"), timeout), port);
+		if (pid.isPresent()) {
+			return pid;
+		}
+		List<String> lines = run(List.of("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		                                 "Get-NetTCPConnection -LocalPort " + port +
+		                                 " -RemotePort 0 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"),
+		                         timeout);
+		for (String line : lines) {
+			String text = line.trim();
+			if (text.isEmpty()) {
+				continue;
+			}
+			try {
+				long fallbackPid = Long.parseLong(text);
+				if (fallbackPid > 0) {
+					return OptionalLong.of(fallbackPid);
+				}
+			} catch (NumberFormatException ignored) {
+			}
+		}
+		return OptionalLong.empty();
 	}
 
 	/**
-	 * Reads the listening pid out of `netstat -ano` output.
+	 * Reads the listening pid out of {@code netstat -ano} output.
 	 *
 	 * @param lines the output lines
 	 * @param port  the port to find
@@ -220,7 +241,7 @@ public final class PortOccupant {
 			}
 			String[] fields = line.split("\\s+");
 			// The state column is translated by Windows, so it is not read.
-			// A listening row is the one whose protocol is `TCP` and whose foreign port is `0`.
+			// A listening row is the one whose protocol is TCP and whose foreign port is 0.
 			if (fields.length < 5 || !"TCP".equalsIgnoreCase(fields[0])) {
 				continue;
 			}
@@ -240,7 +261,7 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Returns the port out of `address:port`, in either the IPv4 or the bracketed IPv6 spelling.
+	 * Returns the port out of {@code address:port}, in either the IPv4 or the bracketed IPv6 spelling.
 	 *
 	 * @param address the address
 	 * @return the port, or an empty string when there is none
@@ -251,9 +272,9 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Finds the listening pid on Linux out of `/proc`.
+	 * Finds the listening pid on Linux out of {@code /proc}.
 	 * <p>
-	 * `/proc/net/tcp` and its IPv6 sibling hold, per row, the local port and the socket's inode;
+	 * {@code /proc/net/tcp} and its IPv6 sibling hold, per row, the local port and the socket's inode;
 	 * the pid is then the one whose descriptors include that inode.
 	 *
 	 * @param port    the port
@@ -293,7 +314,7 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Returns the socket inodes listening on a port, out of the two `/proc/net` tables.
+	 * Returns the socket inodes listening on a port, out of the two {@code /proc/net} tables.
 	 *
 	 * @param port the port
 	 * @return the inodes of the listening sockets on it
@@ -311,7 +332,7 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Returns the listening inodes out of the lines of one `/proc/net` table.
+	 * Returns the listening inodes out of the lines of one {@code /proc/net} table.
 	 *
 	 * @param lines the table's lines
 	 * @param port  the port to find
@@ -343,9 +364,9 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Reports whether any descriptor in a process's `fd` directory is one of the sockets.
+	 * Reports whether any descriptor in a process's {@code fd} directory is one of the sockets.
 	 *
-	 * @param descriptors the process's `fd` directory
+	 * @param descriptors the process's {@code fd} directory
 	 * @param inodes      the socket inodes to look for
 	 * @return whether the process holds one of them
 	 */
@@ -372,7 +393,7 @@ public final class PortOccupant {
 	}
 
 	/**
-	 * Finds the listening pid on macOS and FreeBSD with `lsof`.
+	 * Finds the listening pid on macOS and FreeBSD with {@code lsof}.
 	 *
 	 * @param port    the port
 	 * @param timeout how long the command is given
@@ -391,7 +412,7 @@ public final class PortOccupant {
 					return OptionalLong.of(pid);
 				}
 			} catch (NumberFormatException e) {
-				// `lsof` prints only pids with `-t`; anything else is a diagnostic line.
+				// lsof prints only pids with -t; anything else is a diagnostic line.
 			}
 		}
 		return OptionalLong.empty();
@@ -439,10 +460,10 @@ public final class PortOccupant {
 	 * A short form of the process, for a message that has a line to itself.
 	 * <p>
 	 * The command line is preferred over the name and the name over the program alone, and
-	 * anything past [#MAX_DESCRIBED] is replaced by an ellipsis.
+	 * anything past {@link #MAX_DESCRIBED} is replaced by an ellipsis.
 	 *
 	 * @param occupant the process
-	 * @return the text to show, or `null` when the platform named nothing
+	 * @return the text to show, or {@code null} when the platform named nothing
 	 */
 	public static @Nullable String describe(@Nullable Occupant occupant) {
 		if (occupant == null) {
