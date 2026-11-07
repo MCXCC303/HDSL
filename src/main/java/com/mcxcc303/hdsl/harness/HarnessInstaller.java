@@ -43,7 +43,12 @@ import java.util.function.Consumer;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Installs versions of the DeepSeek Harness into an instance.
+ * Installs versions of the DeepSeek Harness CLI ({@value #PACKAGE_NAME}) into an instance.
+ *
+ * <p>Generates an install manifest ({@code package.json}) and dependency pinning overrides
+ * ({@code pnpm-workspace.yaml} for pnpm 10+). On Windows, installations are performed directly
+ * in place using the hoisted linker ({@code --config.node-linker=hoisted}) to prevent directory
+ * junction targets from breaking across moves or renames.
  */
 @NotNullByDefault
 public final class HarnessInstaller {
@@ -86,14 +91,18 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * Writes the manifest npm installs from.
+	 * Writes the manifest files ({@code package.json} and {@code pnpm-workspace.yaml}) from which
+	 * the package manager installs.
+	 *
+	 * <p>Pins the harness CLI and boot library in lockstep and records dependency policy overrides.
+	 * Since pnpm 10, overrides must be written to {@code pnpm-workspace.yaml} rather than {@code package.json}.
 	 *
 	 * @param prefix  the directory the version is installed into
 	 * @param version the DeepSeek Harness version
 	 * @param appBoot the application boot library version to hold it to
 	 * @param runtime the detected Node runtime, or {@code null}
 	 * @param policy  the dependency holding policy
-	 * @throws DshException when the manifest cannot be written
+	 * @throws DshException when the manifest files cannot be written
 	 */
 	static void writeManifest(Path prefix,
 	                          String version,

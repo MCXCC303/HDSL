@@ -23,13 +23,33 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * Serializes string values into safe YAML scalar representations.
+ * Serializes string values into safe YAML 1.2 scalar representations.
+ *
+ * <p>DeepSeek Harness parses settings and patches with a YAML 1.2 parser. Plain (unquoted) scalars
+ * can easily be misparsed or corrupted:
+ * <ul>
+ * <li>{@code model: qwen3:32b} — A colon inside a plain scalar followed by whitespace or special
+ * characters can cause syntax errors, corrupting settings files on subsequent writes.</li>
+ * <li>{@code model: a#b} — A {@code #} character can be parsed as initiating a comment, silently
+ * truncating the model identifier.</li>
+ * <li>{@code model: yes}, {@code model: 123}, {@code model: null} — Interpreted as booleans, numbers,
+ * or null rather than string identifiers unless quoted.</li>
+ * </ul>
+ *
+ * <p>A value is quoted unless it is verified to be safe against all YAML 1.2 ambiguities.
  */
 @NotNullByDefault
 public final class YamlScalar {
+	/**
+	 * Literal words that have non-string semantics in YAML 1.2 (booleans, null, empty).
+	 */
 	private static final Set<String> RESERVED = Set.of(
 			"true", "false", "yes", "no", "on", "off", "y", "n", "null", "~", ""
 	);
+
+	/**
+	 * Characters reserved by YAML at the beginning of a plain scalar (indicator characters).
+	 */
 	private static final String RESERVED_FIRST = "-?:,[]{}#&*!|>'\"%@`";
 
 	private YamlScalar() {

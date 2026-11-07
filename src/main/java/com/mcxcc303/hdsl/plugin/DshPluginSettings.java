@@ -33,6 +33,24 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
  * Manages extraction and merging of plugin configuration in {@code settings.yaml} for instance packs.
+ *
+ * <p>DeepSeek Harness maintains user settings in {@code settings.yaml} with one top-level section per plugin.
+ * A pack carries selected sections and merges them into the destination instance's home, preserving any
+ * unmanaged sections, formatting, and comments.
+ *
+ * <p><strong>Excluded Sections ({@link #RESERVED}):</strong>
+ * <ul>
+ * <li>{@code agent-default-model} and {@code llm-pi-ai} — Managed by the launcher's account routing,
+ * pointing to machine-specific credentials and local provider routes.</li>
+ * <li>{@code ui-onboarding} — Records whether the welcome walkthrough has been viewed, which new instances
+ * should display.</li>
+ * <li>Credential-like keys (matching {@link #SECRET_KEY}) — Stripped to prevent leaking secrets in export packs,
+ * while credential reference names (matching {@link #REFERENCE_KEY}) are retained.</li>
+ * </ul>
+ *
+ * <p><strong>Section Splitting:</strong> The file is processed at the line level rather than parsed into a YAML AST.
+ * A section starts at an unindented key declaration and includes its preceding comments and whitespace.
+ * Block scalar contents remain attached to their owning parent sections because they are indented.
  */
 @NotNullByDefault
 public final class DshPluginSettings {

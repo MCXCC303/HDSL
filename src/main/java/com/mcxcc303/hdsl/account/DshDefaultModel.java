@@ -35,6 +35,16 @@ import java.util.regex.Pattern;
 
 /**
  * Updates the agent default model and provider configuration in an instance's {@code settings.yaml}.
+ *
+ * <p>A route in the profile's patch layer says what the harness is offered; it does not make the
+ * harness <em>use</em> it. Which supplier and model to start on is recorded in the
+ * {@code agent-default-model} section in {@code settings.yaml}.
+ *
+ * <p><strong>Only targeted lines are rewritten.</strong> While the harness runs, it also writes this file
+ * under a cross-process lock with a leaf-level diff preserving formatting and comments. Restoring a copy
+ * of the file would silently discard user changes made via the interface during the run and could race
+ * the harness's atomic writes. This class performs minimal line-level edits to the two scalar values
+ * under the section's indentation, preserving trailing comments and formatting.
  */
 @NotNullByDefault
 public final class DshDefaultModel {
@@ -210,8 +220,16 @@ public final class DshDefaultModel {
 		return String.join(newline, lines) + newline;
 	}
 
+	/**
+	 * Returns the trailing comment of a line, with the space before it, or the empty string.
+	 *
+	 * <p>A {@code #} only starts a comment when it is at the start of the line or after whitespace, and it
+	 * is not inside quotes.
+	 *
+	 * @param line the line
+	 * @return the comment, including the whitespace that separates it
+	 */
 	private static String commentOf(String line) {
-		boolean quoted = false;
 		char quote = 0;
 		for (int i = 0; i < line.length(); i++) {
 			char c = line.charAt(i);
@@ -223,6 +241,7 @@ public final class DshDefaultModel {
 			}
 			if (c == '"' || c == '\'') {
 				quote = c;
+				continue;
 			}
 			if (c == '#' && (i == 0 || Character.isWhitespace(line.charAt(i - 1)))) {
 				int from = i;

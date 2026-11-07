@@ -78,9 +78,14 @@ public final class DshEnvironment {
 
 	/**
 	 * Returns the merged environment variables for an instance.
-	 * <p>
-	 * Global launcher variables are merged with instance-specific variables,
-	 * dropping any reserved variables such as {@code DSH_HOME}.
+	 *
+	 * <p>Global launcher variables are merged with instance-specific variables, dropping any
+	 * variables the launcher manages for itself (such as {@link #HOMEDIRECTORY_VARIABLE}).
+	 *
+	 * <p><strong>Refusal of {@code DSH_HOME}:</strong> The launcher manages the instance's home directory.
+	 * If user-specified environment variables could inject {@code DSH_HOME}, the instance process could be
+	 * hijacked to read a decoy directory (compromising credentials, profiles, sessions, and origin storage).
+	 * Dropping it quietly ensures free-form typing in settings does not crash the launcher while preventing hijacking.
 	 *
 	 * @param instance the instance
 	 * @return the merged environment map
@@ -109,6 +114,10 @@ public final class DshEnvironment {
 
 	/**
 	 * Checks whether an environment variable name is reserved by the launcher.
+	 *
+	 * <p>The check is performed case-insensitively because Windows environment variables are case-insensitive
+	 * (e.g., {@code dsh_home} vs {@code DSH_HOME}, or {@code Path} vs {@code PATH}). On Windows, a differently-cased
+	 * variable would otherwise bypass the check and overwrite the launcher-provided variable in the child process.
 	 *
 	 * @param name the variable name
 	 * @return true if the variable is reserved

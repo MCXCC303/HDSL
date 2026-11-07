@@ -39,7 +39,25 @@ import java.util.regex.Pattern;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Switches an installed plugin on and off in a profile's own patch layer.
+ * Switches an installed plugin on and off in a profile's own patch layer ({@code cordis.patch.yml}).
+ *
+ * <p>DeepSeek Harness composes a profile from its bundles' layers and then from the profile's
+ * {@code cordis.patch.yml}. A plugin is disabled by appending a top-level entry:
+ * <pre>{@code
+ * - id: better-sidebar
+ *   disabled: true
+ * }</pre>
+ * which the loader applies on boot. The row id corresponds to the loader entry inserted by the package,
+ * not necessarily the package name itself.
+ *
+ * <p>The patch file is preserved across edits by surgically inserting or removing specific lines
+ * rather than round-tripping through a YAML parser, ensuring comments and {@code !!js} expressions
+ * remain intact.
+ *
+ * <p><strong>Empty list placeholder handling:</strong> Profile templates ship with an empty list
+ * ({@code []}) placeholder. Appending an entry comments out the placeholder ({@code # []}) so the document
+ * remains a valid single top-level YAML array. When the last entry is removed, the placeholder is restored
+ * to prevent leaving an invalid empty/comment-only document that fails to boot.
  */
 @NotNullByDefault
 public final class DshPluginPatch {

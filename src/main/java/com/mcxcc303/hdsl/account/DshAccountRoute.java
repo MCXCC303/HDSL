@@ -28,6 +28,31 @@ import java.util.*;
 
 /**
  * Generates and applies model provider routes in a profile's patch layer during launch.
+ *
+ * <p>The route is written to {@code $DSH_HOME/profiles/<profile>/cordis.patch.yml} under the
+ * {@code llm-pi-ai} supplier entry's {@code config.providers.<route>} mapping:
+ * <pre>{@code
+ * - id: llm-pi-ai
+ *   config:
+ *     providers:
+ *       custom-provider:
+ *         api: openai-completions
+ *         apiKeyRef: HDSL_LAUNCH_API_KEY_CUSTOM_PROVIDER_...
+ *         baseURL: "https://api.example.com/v1"
+ *         defaultContextWindow: 1000000
+ *         defaultMaxTokens: 256000
+ *         models:
+ *           - id: "deepseek-chat"
+ *             name: "deepseek-chat"
+ * }</pre>
+ *
+ * <p>It is placed in the profile's own patch layer rather than a {@code --patch} command-line overlay
+ * because overlays replace the entire entry configuration and conflict with the harness's configuration
+ * editor. Written into the profile layer, the document composes cleanly.
+ *
+ * <p>The route persists only for the duration of the launch session and is cleanly removed upon termination.
+ * The credential itself is never written to disk; instead, the route references an environment variable
+ * named after the route ({@link #environmentVariable(String)}), populated in the process environment.
  */
 @NotNullByDefault
 public final class DshAccountRoute {
@@ -44,7 +69,19 @@ public final class DshAccountRoute {
 	private static final String ENTRY = "llm-pi-ai";
 	private static final int READABLE_LIMIT = 24;
 	private static final Set<String> IMAGE_MODELS = Set.of("deepseek-flash", "deepseek-v4-flash-vision-exp");
+	/**
+	 * Default context window capacity (1,000,000 tokens) matching the harness's built-in
+	 * DeepSeek adapter ({@code dsh-llm-deepseek}).
+	 *
+	 * <p>Without this explicit default, {@code pi-ai} falls back to 262,144 tokens (256 Ki)
+	 * for models not recognized in its static catalogue.
+	 */
 	private static final int DEEPSEEK_CONTEXT_WINDOW = 1_000_000;
+
+	/**
+	 * Default maximum output tokens (256,000 tokens) matching {@code dsh-llm-deepseek},
+	 * preventing {@code pi-ai} from falling back to 32,768 tokens.
+	 */
 	private static final int DEEPSEEK_MAX_TOKENS = 256_000;
 
 	private DshAccountRoute() {

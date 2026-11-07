@@ -35,9 +35,21 @@ import java.util.List;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Line-level edits to a profile's own patch layer.
+ * Line-level edits to a profile's own patch layer ({@code cordis.patch.yml}).
  *
  * <p>Comments, {@code !!js} expressions, indentation and key order survive an edit.
+ *
+ * <p>A profile patch file structures supplier and plugin configurations as a top-level YAML list:
+ * <pre>{@code
+ * - id: llm-pi-ai
+ *   config:
+ *     providers:
+ *       deepseek:
+ *         baseURL: https://api.deepseek.com/v1
+ *         models:
+ *           - id: deepseek-chat
+ *             name: deepseek-chat
+ * }</pre>
  */
 @NotNullByDefault
 public final class DshProfilePatch {
@@ -153,60 +165,63 @@ public final class DshProfilePatch {
 		List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
 		int item = lastEntryItem(lines, entry);
 		if (item < 0) {
+			// Nothing names the entry yet: a profile nobody has configured a supplier in.
 			return new Edit(DshPluginPatch.appendEntry(text, newEntry(entry, route, block)), true, List.of());
 		}
 		int end = itemEnd(lines, item);
 		int body = childIndent(lines, item, end, indentOf(lines.get(item)));
 		int config = keyAtIndent(lines, item, end, "config", body);
 		if (config < 0) {
+			// A row that only names the entry, or disables it: everything below is added.
 			int at = beforeBlanks(lines, end);
-			List<String> addition = new ArrayList<>();
-			addition.add(pad(body) + "config:");
-			addition.add(pad(body + 2) + "providers:");
-			addition.addAll(routeLines(route, block, body + 4, 2));
-			lines.addAll(at, addition);
+			lines.addAll(at, List.of(pad(body) + "config:", pad(body + 2) + "providers:"));
+			lines.addAll(at + 2, routeLines(route, block, body + 4, step(lines, item, body)));
 			return changed(lines, text);
 		}
 
-		if (isNullOrEmptyMapping(contentOf(lines.get(config)), "config")) {
-			lines.set(config, pad(indentOf(lines.get(config))) + "config:");
-		} else if (lines.get(config).trim().contains("{")) {
-			throw new DshException("The profile's patch layer already holds `" + entry + "` with an inline or empty `config`; " +
-			                       "format it with newlines to configure an account");
+		String configLine = contentOf(lines.get(config));
+		if (!configLine.equals("config:") && !isNullOrEmptyMapping(configLine, "config")) {
+			throw new DshException(
+					"The entry " + entry + " has its config written inline (" + contentOf(lines.get(config)) +
+					"); the providers of a supplier cannot be added" +
+					" to it. Write that entry's config as a block, or launch on a profile that has" +
+					" no such entry.");
 		}
 
 		int configIndent = indentOf(lines.get(config));
+		if (!configLine.equals("config:")) lines.set(config, pad(configIndent) + "config:");
+
 		int configEnd = blockEnd(lines, config + 1, end, configIndent);
 		int providers = keyDeeperThan(lines, config + 1, configEnd, "providers", configIndent);
 		if (providers < 0) {
+			int child = childIndent(lines, config + 1, configEnd, configIndent);
 			int at = beforeBlanks(lines, configEnd);
-			int providersIndent = childIndent(lines, config + 1, configEnd, configIndent);
-			int step = providersIndent - configIndent;
-			List<String> addition = new ArrayList<>();
-			addition.add(pad(providersIndent) + "providers:");
-			addition.addAll(routeLines(route, block, providersIndent + step, step));
-			lines.addAll(at, addition);
+			lines.addAll(at, List.of(pad(child) + "providers:"));
+			lines.addAll(at + 1, routeLines(route, block, child + 2, step(lines, item, body)));
 			return changed(lines, text);
 		}
 
-		if (isNullOrEmptyMapping(contentOf(lines.get(providers)), "providers")) {
-			lines.set(providers, pad(indentOf(lines.get(providers))) + "providers:");
-		} else if (lines.get(providers).trim().contains("{")) {
-			throw new DshException("The profile's patch layer already holds `" + entry + "` with an inline or empty `providers`; " +
-			                       "format it with newlines to configure an account");
+		String providersLine = contentOf(lines.get(providers));
+		if (!providersLine.equals("providers:") && !isNullOrEmptyMapping(providersLine, "providers")) {
+			throw new DshException(
+					"The entry " + entry + " has its providers written inline (" + contentOf(lines.get(providers)) +
+					"); a supplier cannot be added to it. Write" +
+					" that mapping as a block, or launch on a profile that has no such entry.");
 		}
 
 		int providersIndent = indentOf(lines.get(providers));
+		if (!providersLine.equals("providers:")) lines.set(providers, pad(providersIndent) + "providers:");
+
 		int providersEnd = blockEnd(lines, providers + 1, end, providersIndent);
 		int existing = routeKey(lines, providers + 1, providersEnd, route, providersIndent);
-		int routeIndent = childIndent(lines, providers + 1, providersEnd, providersIndent);
 		if (existing < 0) {
-			int at = beforeBlanks(lines, providersEnd);
-			lines.addAll(at, routeLines(route, block, routeIndent, step(lines, item, body)));
+			int child = childIndent(lines, providers + 1, providersEnd, providersIndent);
+			lines.addAll(beforeBlanks(lines, providersEnd), routeLines(route, block, child, step(lines, item, body)));
 			return changed(lines, text);
 		}
 
-		int routeEnd = beforeBlanks(lines, blockEnd(lines, existing + 1, providersEnd, indentOf(lines.get(existing))));
+		int routeIndent = indentOf(lines.get(existing));
+		int routeEnd = beforeBlanks(lines, blockEnd(lines, existing + 1, providersEnd, routeIndent));
 		lines.subList(existing, routeEnd).clear();
 		lines.addAll(existing, routeLines(route, block, routeIndent, step(lines, item, body)));
 		return changed(lines, text);

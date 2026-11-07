@@ -333,6 +333,26 @@ public final class DshPackMarket {
 
 	/**
 	 * One pack version described in the market index.
+	 *
+	 * @param id              {@code <owner>.<repo>}, identifying the pack and directory holding its manifest
+	 * @param name            the slug chosen by the author
+	 * @param version         the pack semantic version
+	 * @param displayName     resolved display name to present in UI
+	 * @param description     one-line summary description, or {@code null}
+	 * @param downloadUrl     direct URL of the pack archive
+	 * @param sha256          SHA-256 digest of the archive in lowercase hex
+	 * @param size            length of the archive in bytes
+	 * @param owner           GitHub owner/account name
+	 * @param repo            GitHub repository name
+	 * @param manifestVersion manifest contract version, or {@code null} if unstated
+	 * @param type            pack type ({@code "profile"} or {@code "dshhome"}), or {@code null} if unstated
+	 * @param author          author display name, or {@code null}
+	 * @param category        market category classification, or {@code null}
+	 * @param dshVersion      compatible DeepSeek Harness version, or {@code null}
+	 * @param profileName     target profile name when installed, or {@code null}
+	 * @param updatedAt       last update timestamp string, or {@code null}
+	 * @param bundleCount     number of bundled layers, or {@code null}
+	 * @param depCount        number of package dependencies, or {@code null}
 	 */
 	public record Entry(String id, String name, String version, String displayName, @Nullable String description,
 	                    String downloadUrl, String sha256, long size, String owner, String repo,

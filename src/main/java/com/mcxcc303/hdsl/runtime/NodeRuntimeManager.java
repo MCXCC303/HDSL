@@ -118,7 +118,9 @@ public final class NodeRuntimeManager {
 	}
 
 	/**
-	 * Lists the Node runtimes installed under [DshPaths#RUNTIMES], newest first.
+	 * Lists the Node runtimes installed under {@link DshPaths#RUNTIMES}, newest first.
+	 *
+	 * @return list of installed usable runtimes sorted newest first
 	 */
 	public static List<NodeRuntime> listInstalled() {
 		List<NodeRuntime> runtimes = new ArrayList<>();
@@ -277,7 +279,12 @@ public final class NodeRuntimeManager {
 	}
 
 	/**
-	 * Installs a Node release.
+	 * Installs a Node release into {@link DshPaths#RUNTIMES}.
+	 *
+	 * <p>The distribution archive is downloaded to a staging file under {@code RUNTIMES},
+	 * unpacked into a {@code <version>.installing} directory, and atomically moved into
+	 * the final {@code RUNTIMES/<version>} location. On extraction or download failure,
+	 * both staging directory and partial archive are cleanly deleted.
 	 *
 	 * @param version the version to install, with or without a leading {@code v}
 	 * @param source  where to fetch the archive from

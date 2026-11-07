@@ -35,6 +35,10 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
  * Runs pre-launch and post-exit custom shell commands configured for an instance.
+ *
+ * <p>Commands execute in the instance's workspace directory ({@link DshInstance#workspacePath()})
+ * and see the instance's environment variables (with {@code DSH_HOME} pinned to the instance's home).
+ * Pre-launch command failures halt the launch process, while post-exit command failures are logged.
  */
 @NotNullByDefault
 public final class DshCustomCommands {
@@ -103,6 +107,14 @@ public final class DshCustomCommands {
 
 	/**
 	 * Wraps a shell command string for the host platform's command interpreter.
+	 *
+	 * <p>On Windows, uses {@code %ComSpec% /d /s /c <command>}:
+	 * <ul>
+	 * <li>{@code /d} disables AutoRun execution from registry keys, preventing command hijacking.</li>
+	 * <li>{@code /s} modifies quote handling so the command string following {@code /c} is preserved verbatim.</li>
+	 * <li>{@code /c} executes the command string and terminates.</li>
+	 * </ul>
+	 * On Unix/Linux, invokes {@code /bin/sh -c <command>}.
 	 *
 	 * @param command the shell command line
 	 * @return command arguments for ProcessBuilder

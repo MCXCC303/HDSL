@@ -75,7 +75,12 @@ public final class DshInstanceTerminal {
 	                                                              new Emulator("foot", List.of()),
 	                                                              new Emulator("xterm", List.of("-e")));
 	/**
-	 * The terminals tried on Windows, most preferred first.
+	 * The terminal emulators tried on Windows, most preferred first.
+	 *
+	 * <p>Prefers Windows Terminal ({@code wt.exe}) running {@code cmd.exe /k <script>}, keeping the
+	 * command prompt interactive after running the session setup script. Falls back to launching
+	 * {@code cmd.exe /c start HDSL cmd.exe /k <script>} to detach a new console window if Windows Terminal
+	 * is unavailable.
 	 */
 	private static final List<Emulator> WINDOWS_EMULATORS = List.of(new Emulator("wt.exe", List.of("cmd.exe", "/k")),
 	                                                                new Emulator("cmd.exe",
@@ -346,6 +351,7 @@ public final class DshInstanceTerminal {
 	/**
 	 * Builds the environment in the launcher's order.
 	 *
+	 * @param instance the instance to build the environment for
 	 * @param account the account to launch with, or null for none
 	 * @param runtime the node runtime the instance runs on
 	 * @return the environment

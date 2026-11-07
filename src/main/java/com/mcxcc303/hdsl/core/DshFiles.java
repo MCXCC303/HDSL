@@ -26,7 +26,22 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.DosFileAttributeView;
 
 /**
- * File system utilities for recursively deleting directory trees.
+ * File system utilities for recursively deleting directory trees safely across platforms.
+ *
+ * <p>The launcher deletes large nested trees created by package managers and Node runtimes.
+ * Several platform-specific behaviors (measured on Windows) are handled:
+ * <ul>
+ * <li><strong>Read-only entries:</strong> Package managers unpack files with read-only attributes.
+ * On Windows, {@link Files#delete} fails with {@link AccessDeniedException}. The read-only attribute
+ * is cleared via {@link DosFileAttributeView} before retrying deletion.</li>
+ * <li><strong>Directory Junctions ({@code mklink /J}):</strong> Junctions are reported as directories
+ * by standard Java APIs ({@code isSymbolicLink} returns {@code false}, while {@code isDirectory} returns {@code true}).
+ * Standard traversal would follow the junction and erase external target directories! Reparse points
+ * are detected via {@link BasicFileAttributes#isOther()} with {@link LinkOption#NOFOLLOW_LINKS} so they are
+ * unlinked rather than traversed.</li>
+ * <li><strong>Pending file handles:</strong> Recently terminated processes take a moment to release open
+ * handles; failed deletions are retried with incremental backoff.</li>
+ * </ul>
  */
 @NotNullByDefault
 public final class DshFiles {
@@ -117,10 +132,17 @@ public final class DshFiles {
 	}
 
 	/**
-	 * Reports whether a path is a symbolic link or junction.
+	 * Reports whether a path is a symbolic link or Windows directory junction.
+	 *
+	 * <p>On Windows, a directory junction ({@code mklink /J}) reports {@code false} for
+	 * {@link Files#isSymbolicLink(Path)} and {@code true} for {@link Files#isDirectory(Path, LinkOption...)}.
+	 * Only {@link BasicFileAttributes#isOther()} correctly identifies it with {@link LinkOption#NOFOLLOW_LINKS}.
+	 * Traversal without this check would descend through the junction and wipe the external target directory!
+	 *
+	 * <p>Also returns {@code true} when attributes cannot be read to prevent descending into unreadable paths.
 	 *
 	 * @param path the path to check
-	 * @return {@code true} if the path is a link, junction, or unreadable
+	 * @return {@code true} if the path is a symbolic link, directory junction, or unreadable
 	 */
 	public static boolean isReparsePoint(Path path) {
 		try {
