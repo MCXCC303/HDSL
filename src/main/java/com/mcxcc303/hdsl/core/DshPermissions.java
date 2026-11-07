@@ -48,10 +48,10 @@ public final class DshPermissions {
 	private DshPermissions() {}
 
 	/**
-	 * Restricts an existing path's permissions. Failures are logged but do not propagate.
+	 * Restricts an existing path's permissions. Failures never propagate; a store without a
+	 * usable view is skipped silently, other failures are logged.
 	 * <p>
-	 * Used for best-effort tightening of existing paths; use the creating methods when
-	 * failure to restrict access must prevent further writes.
+	 * Best-effort. Use the creating methods when a failure to restrict must stop the writes.
 	 */
 	public static void restrict(Path path, Set<PosixFilePermission> mode) {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
@@ -65,9 +65,7 @@ public final class DshPermissions {
 		try {
 			PosixFileAttributeView view = Files.getFileAttributeView(path, PosixFileAttributeView.class);
 			if (view == null) return;
-			if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
-				return; // exclude windows and some special url
-			}
+			if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) return;
 
 			view.setPermissions(mode);
 		} catch (IOException | UnsupportedOperationException e) {
@@ -78,7 +76,7 @@ public final class DshPermissions {
 	/**
 	 * Creates a file with the specified permissions, or applies them to an existing file.
 	 *
-	 * @throws IOException if the file cannot be created or its permissions cannot be set
+	 * @throws IOException if the file cannot be created or the store has no view to protect it with
 	 */
 	public static void createRestricted(Path file, Set<PosixFilePermission> mode) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
@@ -90,8 +88,8 @@ public final class DshPermissions {
 			restrictToCurrentUser(file);
 			return;
 		}
-		if (!file.getFileSystem().supportedFileAttributeViews().contains("posix")) return;
 
+		requirePosixView(file);
 		try {
 			Files.createFile(file, PosixFilePermissions.asFileAttribute(mode));
 		} catch (FileAlreadyExistsException e) {
@@ -101,15 +99,17 @@ public final class DshPermissions {
 	}
 
 	/**
-	 * Creates a directory and restricts its permissions.
+	 * Creates a directory and restricts its permissions. Windows & POSIX
 	 *
-	 * @throws IOException if the directory cannot be created or its permissions cannot be set
+	 * @throws IOException if the directory cannot be created or the store has no view to protect it with
 	 */
 	public static void createRestrictedDirectory(Path dir, Set<PosixFilePermission> mode) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-			createDirectoriesRestricted(dir);
+			createRestrictedDirectory(dir);
 			return;
 		}
+
+		requirePosixView(dir);
 		Files.createDirectories(dir);
 		restrict(dir, mode);
 	}
@@ -119,7 +119,8 @@ public final class DshPermissions {
 	 *
 	 * @param text    text to write
 	 * @param charset encoding to use
-	 * @throws IOException if the file cannot be created, restricted, or written
+	 * @throws IOException if the file cannot be created, the store has no view to protect it with,
+	 *                     or the text cannot be written
 	 */
 	public static void writeRestricted(Path file, String text, Charset charset, Set<PosixFilePermission> mode)
 	throws IOException {
@@ -127,17 +128,22 @@ public final class DshPermissions {
 		Files.writeString(file, text, charset);
 	}
 
+	private static void requirePosixView(Path path) throws IOException {
+		if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+			throw new IOException("This file store has no POSIX permissions to protect " + path);
+		}
+	}
+
 	/**
-	 * Creates missing directories one at a time, protecting each before creating its children.
+	 * Creates missing directories one at a time, protecting each before creating its children. Windows only.
 	 * <p>
 	 * This prevents newly created directories from inheriting broader access from their parents.
 	 */
-	private static void createDirectoriesRestricted(Path dir) throws IOException {
+	private static void createRestrictedDirectory(Path dir) throws IOException {
 		Path absolute = dir.toAbsolutePath().normalize();
 		List<Path> missing = new ArrayList<>();
 		for (Path path = absolute;
-		     path != null && !Files.exists(path, LinkOption.NOFOLLOW_LINKS);
-		     path = path.getParent()) {
+		     path != null && !Files.exists(path, LinkOption.NOFOLLOW_LINKS); path = path.getParent()) {
 			missing.add(path);
 		}
 		for (int i = missing.size() - 1; i >= 0; i--) {
@@ -161,13 +167,7 @@ public final class DshPermissions {
 	 */
 	private static void restrictToCurrentUser(Path path) throws IOException {
 		AclFileAttributeView acl = Files.getFileAttributeView(path, AclFileAttributeView.class);
-		if (acl == null) {
-			// A store with no ACL view cannot keep a secret from the people who can read the
-			// directory, so the calls that are about to write one must fail instead of leaving
-			// it open. The best-effort `restrict` catches this and logs it, as the POSIX branch
-			// does when a store has no POSIX view.
-			throw new IOException("This file store has no ACL view to protect " + path);
-		}
+		if (acl == null) throw new IOException("This file store has no ACL view to protect " + path);
 		try {
 			boolean directory = Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS);
 			UserPrincipal owner = acl.getOwner();
@@ -179,8 +179,6 @@ public final class DshPermissions {
 			}
 			acl.setAcl(entries);
 		} catch (RuntimeException e) {
-			// Some stores expose the view but not the ACL behind it. Callers about to write a
-			// secret catch IOException, so the failure is translated rather than escaping.
 			throw new IOException("Could not restrict the permissions of " + path, e);
 		}
 	}
@@ -190,9 +188,8 @@ public final class DshPermissions {
 	 */
 	private static UserPrincipal currentUser(Path path, UserPrincipal fallback) {
 		String name = System.getProperty("user.name");
-		if (name == null || name.isBlank()) {
-			return fallback;
-		}
+		if (name == null || name.isBlank()) return fallback;
+
 		try {
 			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
 		} catch (IOException | RuntimeException e) {
