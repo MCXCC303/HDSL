@@ -19,6 +19,7 @@ package com.mcxcc303.hdsl.launch;
 
 import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.core.DshFiles;
+import com.mcxcc303.hdsl.core.WindowsAclAssertions;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
@@ -28,30 +29,22 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.AclEntry;
-import java.nio.file.attribute.AclEntryType;
-import java.nio.file.attribute.AclFileAttributeView;
-import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The ACL a session's files and directories carry on Windows, where there is no mode.
  * <p>
- * The class is Windows-only; the POSIX mode is checked by [DshInstanceTerminalPermissionsTest].
+ * The class is Windows-only; the POSIX mode is checked by {@link DshInstanceTerminalPermissionsTest}.
  */
 @EnabledOnOs(OS.WINDOWS)
 class DshInstanceTerminalWindowsAclTest {
 	private static final String INSTANCE_ID = "terminal-windows-acl";
 
-	/** Where the instance's own files are made, one per test. */
 	@TempDir
 	Path folder;
 
@@ -61,11 +54,11 @@ class DshInstanceTerminalWindowsAclTest {
 	}
 
 	@Test
-	void aSessionScriptNamesOnlyItsOwningAccounts() throws Exception {
+	void aSessionScriptAndShimNameOnlyTheirOwningAccounts() throws Exception {
 		Path script = write();
 
-		assertOnlyOwningAccounts(script);
-		assertOnlyOwningAccounts(shim());
+		WindowsAclAssertions.assertOnlyOwningAccounts(script);
+		WindowsAclAssertions.assertOnlyOwningAccounts(shim());
 		assertTrue(Files.readString(script).contains("sk-test-session"),
 		           "the account's key still travels with the session");
 	}
@@ -74,19 +67,22 @@ class DshInstanceTerminalWindowsAclTest {
 	void theSessionDirectoriesAreRestrictedToo() throws Exception {
 		write();
 
-		assertOnlyOwningAccounts(session());
-		assertOnlyOwningAccounts(bin());
+		WindowsAclAssertions.assertOnlyOwningAccounts(DshInstanceTerminal.getTermSessionsDir());
+		WindowsAclAssertions.assertOnlyOwningAccounts(session());
+		WindowsAclAssertions.assertOnlyOwningAccounts(bin());
 	}
 
 	@Test
-	void aSessionWrittenOverALooseFileIsTightened() throws Exception {
+	void aSessionWrittenOverALooseTreeIsTightened() throws Exception {
 		Files.createDirectories(bin());
 		Path script = session().resolve("open.cmd");
 		Files.writeString(script, "written by an older launcher");
 
 		write();
 
-		assertOnlyOwningAccounts(script);
+		WindowsAclAssertions.assertOnlyOwningAccounts(script);
+		WindowsAclAssertions.assertOnlyOwningAccounts(session());
+		WindowsAclAssertions.assertOnlyOwningAccounts(bin());
 	}
 
 	private Path write() throws Exception {
@@ -129,35 +125,5 @@ class DshInstanceTerminalWindowsAclTest {
 
 	private Path shim() {
 		return bin().resolve("dsh.cmd");
-	}
-
-	/// Asserts that the path's ACL allows, and names no principal but the owner and the current user.
-	private static void assertOnlyOwningAccounts(Path path) throws Exception {
-		AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);
-		assertNotNull(view, "this test needs a file store with an ACL view to protect");
-		List<AclEntry> entries = view.getAcl();
-		assertEquals(0, entries.stream().filter(entry -> entry.type() != AclEntryType.ALLOW).count(),
-		             "the protected list has no deny rules to reason about: " + entries);
-		assertTrue(entries.size() <= 2,
-		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
-		UserPrincipal owner = view.getOwner();
-		UserPrincipal current = currentUser(path);
-		assertTrue(entries.stream()
-		                  .allMatch(entry -> entry.principal().equals(owner) ||
-		                                     (current != null && entry.principal().equals(current))),
-		           "every entry names the owner or the current user, nothing else: " + entries);
-	}
-
-	/// Resolves the user running the tests, or `null` when the name does not resolve.
-	private static UserPrincipal currentUser(Path path) {
-		String name = System.getProperty("user.name");
-		if (name == null || name.isBlank()) {
-			return null;
-		}
-		try {
-			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
-		} catch (IOException | RuntimeException e) {
-			return null;
-		}
 	}
 }

@@ -28,14 +28,12 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.AclEntry;
-import java.nio.file.attribute.AclEntryType;
-import java.nio.file.attribute.AclFileAttributeView;
-import java.nio.file.attribute.UserPrincipal;
-import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The ACL a file that may hold a secret carries on Windows, where there is no mode.
@@ -48,63 +46,29 @@ class DshPermissionsWindowsTest {
 	@TempDir
 	Path folder;
 
-	private static void assertOnlyOwningAccounts(Path path) throws Exception {
-		AclFileAttributeView view = Files.getFileAttributeView(path, AclFileAttributeView.class);
-		assertNotNull(view, "this test needs a file store with an ACL view to protect");
-		List<AclEntry> entries = view.getAcl();
-		assertTrue(entries.size() <= 2,
-		           "the inherited groups are gone, leaving only the owner and current user: " + entries);
-		assertTrue(entries.stream().allMatch(entry -> entry.type() == AclEntryType.ALLOW),
-		           "the protected list has no deny rules to reason about: " + entries);
-		// The count above alone would pass an ACL naming Everyone and Users, so the principals
-		// themselves are checked.
-		UserPrincipal owner = view.getOwner();
-		UserPrincipal current = currentUser(path);
-		assertTrue(entries.stream()
-		                  .allMatch(entry -> entry.principal().equals(owner) ||
-		                                     (current != null && entry.principal().equals(current))),
-		           "every entry names the owner or the current user, nothing else: " + entries);
-	}
-
-	private static UserPrincipal currentUser(Path path) {
-		String name = System.getProperty("user.name");
-		if (name == null || name.isBlank()) {
-			return null;
-		}
-		try {
-			return path.getFileSystem().getUserPrincipalLookupService().lookupPrincipalByName(name);
-		} catch (IOException | RuntimeException e) {
-			return null;
-		}
-	}
-
 	@Test
 	void anExistingFileIsRestrictedToItsOwningAccounts() throws Exception {
 		Path file = Files.writeString(folder.resolve("secret.txt"), "key");
-
 		DshPermissions.restrict(file, DshPermissions.SECRET_FILE);
-
-		assertOnlyOwningAccounts(file);
+		WindowsAclAssertions.assertOnlyOwningAccounts(file);
 	}
 
 	@Test
 	void aCreatedFileIsRestrictedToItsOwningAccounts() throws Exception {
 		Path file = folder.resolve("new.json");
-
 		DshPermissions.createRestricted(file, DshPermissions.SECRET_FILE);
 
 		assertTrue(Files.isRegularFile(file), "a missing secret file is created");
-		assertOnlyOwningAccounts(file);
+		WindowsAclAssertions.assertOnlyOwningAccounts(file);
 	}
 
 	@Test
 	void aWrittenFileIsRestrictedToItsOwningAccounts() throws Exception {
 		Path file = folder.resolve("open.cmd");
-
 		DshPermissions.writeRestricted(file, "set KEY=1", StandardCharsets.UTF_8, DshPermissions.SECRET_EXECUTABLE);
 
 		assertEquals("set KEY=1", Files.readString(file), "the text is still written");
-		assertOnlyOwningAccounts(file);
+		WindowsAclAssertions.assertOnlyOwningAccounts(file);
 	}
 
 	@Test
@@ -125,13 +89,24 @@ class DshPermissionsWindowsTest {
 	@Test
 	void aDirectoryIsRestrictedAndNewEntriesInheritIt() throws Exception {
 		Path directory = folder.resolve("session");
-
 		DshPermissions.createRestrictedDirectory(directory, DshPermissions.SECRET_DIRECTORY);
 
-		assertOnlyOwningAccounts(directory);
+		WindowsAclAssertions.assertOnlyOwningAccounts(directory);
 		// A file written into the protected directory after it was made must not regain the
 		// inherited group access the directory was protected from.
 		Path entry = Files.writeString(directory.resolve("open.cmd"), "set KEY=1");
-		assertOnlyOwningAccounts(entry);
+		WindowsAclAssertions.assertOnlyOwningAccounts(entry);
+	}
+
+	@Test
+	void everyDirectoryOnTheWayIsRestricted() throws Exception {
+		Path first = folder.resolve("a");
+		Path second = first.resolve("b");
+		Path leaf = second.resolve("session");
+		DshPermissions.createRestrictedDirectory(leaf, DshPermissions.SECRET_DIRECTORY);
+
+		WindowsAclAssertions.assertOnlyOwningAccounts(first);
+		WindowsAclAssertions.assertOnlyOwningAccounts(second);
+		WindowsAclAssertions.assertOnlyOwningAccounts(leaf);
 	}
 }
