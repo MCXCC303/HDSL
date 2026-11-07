@@ -23,37 +23,30 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-/// Pins that the bounds the build puts on this suite are bounds JUnit reads.
-///
-/// The mistake this exists for: the first version of these bounds was set as
-/// `junit.jupiter.execution.timeout.method.default`, which is not a name JUnit knows. JUnit's own
-/// names are `junit.jupiter.execution.timeout.default` and its `…testable.method…`,
-/// `…lifecycle.method…` and `…beforeall.method…` siblings — `org.junit.jupiter.engine.Constants`
-/// lists them. A setting nobody reads is worse than one nobody wrote, because the build file reads
-/// as though the suite were bounded: a runner whose JavaFX toolkit never came up then held a build
-/// for seventy-six minutes, and nothing in the log said the bound was missing. `assertNull` below is
-/// the tripwire for that name in particular.
+/**
+ * Verifies that test timeout bounds and execution settings match JUnit engine configuration.
+ */
 class TestBoundsTest {
 
-    @Test
-    void everyTestAndLifecycleMethodIsBounded() {
-        String bound = System.getProperty("junit.jupiter.execution.timeout.default");
+	@Test
+	void everyTestAndLifecycleMethodIsBounded() {
+		String bound = System.getProperty("junit.jupiter.execution.timeout.default");
 
-        assertNotNull(bound, "the suite has no timeout bound, so a wedged test holds the build");
-        assertEquals("120s", bound, "the bound is the one the build sets, in JUnit's own spelling");
-    }
+		assertNotNull(bound, "the suite has no timeout bound, so a wedged test holds the build");
+		assertEquals("120s", bound, "the bound is the one the build sets, in JUnit's own spelling");
+	}
 
-    @Test
-    void aTestThatReachesItsBoundIsReportedWithItsStacks() {
-        assertEquals("true", System.getProperty("junit.jupiter.execution.timeout.threaddump.enabled"),
-                "a timeout without a thread dump says that something hung and not what did");
-    }
+	@Test
+	void aTestThatReachesItsBoundIsReportedWithItsStacks() {
+		assertEquals("true", System.getProperty("junit.jupiter.execution.timeout.threaddump.enabled"),
+				"a timeout without a thread dump says that something hung and not what did");
+	}
 
-    @Test
-    void theNameJUnitDoesNotReadIsNotTheOneUsed() {
-        assertNull(System.getProperty("junit.jupiter.execution.timeout.method.default"),
-                "`junit.jupiter.execution.timeout.method.default` is not a key JUnit reads: it is ignored "
-                        + "in silence. The names it does read are `junit.jupiter.execution.timeout.default` "
-                        + "and its `…testable.method…`, `…lifecycle.method…`, `…beforeall.method…` siblings.");
-    }
+	@Test
+	void theNameJUnitDoesNotReadIsNotTheOneUsed() {
+		assertNull(System.getProperty("junit.jupiter.execution.timeout.method.default"),
+				"`junit.jupiter.execution.timeout.method.default` is not a key JUnit reads: it is ignored "
+						+ "in silence. The names it does read are `junit.jupiter.execution.timeout.default` "
+						+ "and its `…testable.method…`, `…lifecycle.method…`, `…beforeall.method…` siblings.");
+	}
 }

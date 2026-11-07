@@ -25,17 +25,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for editing the harness's default model.
-///
-/// This edits a file the harness reads *and writes* while it runs, so the property that matters is
-/// not only "the value changed" but "nothing else did": the harness keeps the file's comments and
-/// formatting with a leaf-level diff under a cross-process lock, and an edit that rewrote lines it
-/// had no business touching would fight that. Every test here therefore asserts on the whole text.
+/**
+ * Tests for editing the harness's default model configuration.
+ */
 class DshDefaultModelTest {
-	/// Writes a settings file and returns its home.
-	///
-	/// @param contents the file's contents, or `null` for no file
-	/// @return the home
 	private static Path homeWith(String contents) throws Exception {
 		Path home = Files.createTempDirectory("dsh-home");
 		if (contents != null) {
@@ -46,7 +39,6 @@ class DshDefaultModelTest {
 
 	@Test
 	void theValueChangesAndNothingElseDoes() throws Exception {
-		// The shape a real home has: the section sits among others, and its siblings must survive.
 		String before = """
 				ui-onboarding:
 				  welcomeNoticeVersion: 2026-08-13.1
@@ -104,8 +96,6 @@ class DshDefaultModelTest {
 
 		assertTrue(DshDefaultModel.apply(home, "deepseek", "deepseek-chat"));
 
-		// The new keys go after the last real key. Placed after the blank line they would read as a
-		// new key at the same level as the section, and the file would no longer parse as intended.
 		assertEquals("""
 				             agent-default-model:
 				               reasoningEffort: max
@@ -116,8 +106,6 @@ class DshDefaultModelTest {
 
 	@Test
 	void theSectionsOwnIndentationIsKept() throws Exception {
-		// The file belongs to the harness and to the person, so what the launcher writes back keeps
-		// the shape it found — four spaces or a tab, whichever this section was written with.
 		for (String indent : List.of("    ", "\t")) {
 			Path home = homeWith("agent-default-model:\n" + indent + "provider: old\n" + indent + "model: old-model\n");
 
@@ -134,7 +122,6 @@ class DshDefaultModelTest {
 
 		assertTrue(DshDefaultModel.apply(home, "deepseek", "deepseek-chat"));
 
-		// The last key must not be run into the one after it.
 		assertEquals("agent-default-model:\n  provider: deepseek\n  model: deepseek-chat\n",
 		             Files.readString(home.resolve("settings.yaml")));
 	}
@@ -144,9 +131,6 @@ class DshDefaultModelTest {
 		String before = "agent-default-model:\n  provider: deepseek-official\n  model: deepseek-flash\n";
 		Path home = homeWith(before);
 
-		// Which model a route defaults to is the vendor's answer or the person's. Guessing it would
-		// turn a convenience into a launch that fails, because the harness refuses to start on a
-		// default it cannot resolve.
 		assertFalse(DshDefaultModel.apply(home, "deepseek", null));
 		assertFalse(DshDefaultModel.apply(home, "deepseek", "   "));
 
@@ -203,9 +187,6 @@ class DshDefaultModelTest {
 
 	@Test
 	void aKeyNestedDeeperIsNotFlattened() throws Exception {
-		// `model:` one level below a `provider:` object belongs to that object. Writing a scalar
-		// over it would delete a structure the person wrote, so it is left alone and the section
-		// gets a `model:` of its own at its own level.
 		Path home = homeWith("agent-default-model:\n  provider: old\n    model: nested\n");
 
 		DshDefaultModel.apply(home, "deepseek", "deepseek-chat");
@@ -238,8 +219,6 @@ class DshDefaultModelTest {
 
 	@Test
 	void everyResultIsParsableAsYaml() throws Exception {
-		// The harness reads this file with a real parser, so a shape that merges two keys onto one
-		// line is not a cosmetic problem: it is a home that will not start.
 		List<String> shapes = List.of("",
 		                              "ui-onboarding:\n  a: 1\n",
 		                              "agent-default-model:\n  provider: old\n  model: old\n",

@@ -22,13 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the specification an installed-from-a-source plugin is written as.
-///
-/// This is the string the profile ends up carrying, so it is what decides whether a plugin installed
-/// from a fork of a branch, or from a directory somebody is still editing, is still there on the next
-/// boot — and whether it is the same plugin. The refusals matter as much as the readings: an address
-/// this cannot name correctly has to say so, because the alternative is a package manager quietly
-/// installing the default branch (or, for a bare `https://` address, a tarball) instead.
+/** Verifies plugin source address normalization and handling. */
 class DshPluginSourcesTest {
 	@Test
 	void aGitHubLinkBecomesTheSpecificationTheProfileWrites() throws Exception {

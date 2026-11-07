@@ -38,11 +38,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The question a command that changes an instance asks first.
-///
-/// What is pinned here is the answer to a command typed in a terminal about an instance the window
-/// is running: it is refused, and told what to do instead. Nothing about the instance is touched
-/// either way — the check is the whole of it.
+/**
+ * Verifies checks for already-running instances before CLI commands proceed.
+ */
 class RunningInstancesTest {
 
 	@Test
@@ -67,11 +65,6 @@ class RunningInstancesTest {
 		assertEquals("", err.toString(StandardCharsets.UTF_8), "and nothing is said when there is nothing to say");
 	}
 
-	/// Writes what a launcher that started this instance would have left behind.
-	///
-	/// Written out by hand rather than through the launcher's own record type: what this test is
-	/// about is the command line, which reads the file another launcher wrote — and the file's shape
-	/// is the one thing the two have to agree on, so pinning it here is the point.
 	private static void leaveARunningRecord(Path directory) throws IOException {
 		long began = ProcessHandle.current().info().startInstant().orElseGet(Instant::now).toEpochMilli();
 		Files.writeString(directory.resolve("running.json"),
@@ -79,7 +72,6 @@ class RunningInstancesTest {
 		                  "\"surface\":\"" + DshSurface.WEB.name() + "\",\"startedAt\":" + began + "}");
 	}
 
-	/// Builds an instance whose own directory is the one given.
 	private static DshInstance instanceIn(Path directory) {
 		return new DshInstance("test-running",
 		                       "0.0.0",

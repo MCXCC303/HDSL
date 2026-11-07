@@ -36,64 +36,31 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that one launch opens one browser window, and says which side opens it.
-///
-/// The reported defect: launching an instance opened the interface twice. It had two askers — the
-/// launcher opens the instance's address once the harness reports ready, and a harness that knows
-/// `--no-open` opens a tab of its own unless it is told not to — and each of them only knew what it
-/// was doing. The flag is what settles it, and the flag can only be passed to a version whose own
-/// help lists it: one a version does not know is a launch that does not start.
-///
-/// The second defect, reported after the first was fixed: an instance on 0.0.1-rc.5 opened no window
-/// at all. That version's help lists no `--no-open`, so the flag was left out — and the reasoning that
-/// the harness would then open a tab of its own was wrong, because a version that cannot be told about
-/// the browser is one that never opens one. Those instances had nobody to open it. Both defects are
-/// one decision, and the decision is what the tests below pin.
-///
-/// So the flag and the plan's answer are one decision, and the answers a real version can give to
-/// `--help` are what this asks about. Nothing here can be checked without a real child, because a real
-/// child is what the launcher's question is asked of.
+/**
+ * Verifies browser window opening behavior on instance launch.
+ */
 class DshBrowserWindowWindowsTest {
-	/// The browser surface, which is the one that can be opened twice.
 	private static final String WEB = "@deepseek-ai/dsh-web-app";
-
-	/// An app that is not the browser, so a launch of it has no window to open at all.
 	private static final String HEADLESS = "@deepseek-ai/dsh-headless";
 
-	/// Where the instance's own directory is made.
 	@TempDir
 	Path folder;
 
-	/// The instance's workspace.
 	@TempDir
 	Path workspace;
 
-	/// The folders the manager was pointed at before this test replaced them.
 	private Supplier<List<Path>> previousFolders;
 
-	/// Points the manager at this test's own folder.
 	@BeforeEach
 	void makeItIsolate() {
 		previousFolders = InstanceFolders.setFolders(() -> List.of(folder));
 	}
 
-	/// Puts the folders back, so one test does not decide the next.
 	@AfterEach
 	void putItBack() {
 		InstanceFolders.setFolders(previousFolders);
 	}
 
-	/// An instance whose harness answers its own help request with a chosen text.
-	///
-	/// The profile it is made in decides whether this is a browser surface — the instance declares
-	/// which app it boots, which is how the launcher answers the question for a pack's profile as
-	/// well as for its own.
-	///
-	/// @param id           the instance id, which is also its profile name
-	/// @param bundle       the app bundle the profile layers
-	/// @param typed        the launch arguments somebody typed, or `null` for none
-	/// @param helpMentions whether the stub's help mentions `--no-open`
-	/// @return the instance
 	private DshInstance makeInstance(String id, String bundle, String typed, boolean helpMentions) throws Exception {
 		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
 		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");

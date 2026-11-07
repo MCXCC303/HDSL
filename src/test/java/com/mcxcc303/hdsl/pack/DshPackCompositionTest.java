@@ -4,10 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What a person is shown when an installed pack does not compose.
-///
-/// The harness prints its plugin tree before it fails, so the output is a page of rows with the
-/// reason buried in it. Showing all of it would bury the reason in the dialog too.
+/**
+ * What a person is shown when an installed pack does not compose.
+ */
 class DshPackCompositionTest {
 
 	private static String failure(String output) {

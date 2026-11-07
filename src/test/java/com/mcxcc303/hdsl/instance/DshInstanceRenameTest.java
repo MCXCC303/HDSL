@@ -28,17 +28,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that renaming an instance takes everything named after it along.
-///
-/// This pins the reported defect: renaming made the instance vanish from the
-/// list while its folder stayed on disk, because the manifest was written to the
-/// new folder and then deleted from it. The folder the instance owns is named
-/// after the instance, so the instance's own files have to move with it.
+/**
+ * Verifies that renaming an instance takes everything named after it along.
+ */
 class DshInstanceRenameTest {
-	/// Renames an instance in one home mode and checks what moved and what did not.
-	///
-	/// @param mode the home mode the instance is made with
-	/// @throws Exception when the filesystem refuses
 	private static void renamingTakesTheFolderAlong(DshHomeMode mode) throws Exception {
 		String id = "test-rename-" + mode.name().toLowerCase() + "-" + Long.toHexString(System.nanoTime());
 		String newId = id + "-renamed";
@@ -90,9 +83,6 @@ class DshInstanceRenameTest {
 		}
 	}
 
-	/// Removes an instance without letting a cleanup failure mask the assertions.
-	///
-	/// @param id the instance id
 	private static void deleteQuietly(String id) {
 		try {
 			DshInstanceManager.delete(id);

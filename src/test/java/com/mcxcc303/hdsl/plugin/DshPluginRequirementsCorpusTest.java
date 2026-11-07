@@ -29,29 +29,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What npm says about its own ranges, asked of this launcher's reading of them.
-///
-/// The rule [DshPluginRequirements] follows is npm's, so the cases worth checking are npm's: the
-/// fixture files of node-semver, the implementation npm itself resolves a `dependencies` entry
-/// with. They are copied into `semver/npm-satisfies.tsv` rather than written here, because a case
-/// written here is the answer this launcher already gives, checked against itself.
-///
-/// **This found forty-two answers that differ from npm's** the first time it ran, which is the
-/// point of it: fourteen invented cases agreed with the code, and no number of invented cases would
-/// have said that a plugin asking for `>= 1.0.0` is hidden from every instance. What they are is
-/// `semver/npm-differences.tsv`, which may only shrink.
+/** Verifies range satisfaction against the node-semver corpus. */
 class DshPluginRequirementsCorpusTest {
-	/// The cases, on the test classpath.
 	private static final String CASES = "/semver/npm-satisfies.tsv";
-
-	/// The cases this launcher answers differently, on the test classpath.
 	private static final String DIFFERENCES = "/semver/npm-differences.tsv";
 
-	/// Reads one of the two files.
-	///
-	/// @param resource the file's name on the classpath
-	/// @return one entry per line, with the comments and the blank lines left out
-	/// @throws IOException when the file cannot be read
 	private static List<String[]> read(String resource) throws IOException {
 		InputStream stream = DshPluginRequirementsCorpusTest.class.getResourceAsStream(resource);
 		assertNotNull(stream, "the corpus is not on the classpath: " + resource);
@@ -71,13 +53,6 @@ class DshPluginRequirementsCorpusTest {
 		return entries;
 	}
 
-	/// Returns a field as it stands for something.
-	///
-	/// A file of lines cannot carry a tab inside a field, and one of npm's cases is about exactly
-	/// that — \`<\t2.0.0\`, an operator separated from its version by one. It is written \`\\t\` there.
-	///
-	/// @param field the field as the file holds it
-	/// @return the text it stands for
 	private static String text(String field) {
 		return field.replace("\\t", "\t");
 	}
@@ -102,11 +77,6 @@ class DshPluginRequirementsCorpusTest {
 		           " cases are answered differently from npm and are not written down as differences: " + wrong);
 	}
 
-	/// Asks the same question of the differences, in the other direction.
-	///
-	/// A list of known differences is only honest while it is true: a case that has been fixed has
-	/// to be struck off it, and this is what says which one. It is also what makes the list a
-	/// ledger rather than a place to put a failing case and forget it.
 	@Test
 	void everyDifferenceFromNpmIsStillThere() throws IOException {
 		List<String[]> differences = read(DIFFERENCES);

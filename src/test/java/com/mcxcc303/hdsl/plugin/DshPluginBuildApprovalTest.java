@@ -31,32 +31,12 @@ import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that a build script waiting for an answer is asked about, and that the setting decides
-/// how.
-///
-/// The reported defect: the manual-approval setting never asked anything, whatever was installed. The
-/// reason is that the question was tied to how the package manager exited. pnpm 11 writes the
-/// undecided package into the profile's `allowBuilds` with a placeholder and **returns success** —
-/// only `strictDepBuilds` makes it fail instead, and that is off by default — so a launcher waiting
-/// for a non-zero exit waited forever while the profile said, in the file it reads for every other
-/// decision, that somebody still had to answer.
-///
-/// What is pinned here is therefore the reading of the profile rather than the exit code: with an
-/// entry waiting, the three policies do their three things, and a run that simply succeeded is enough
-/// to make it happen. The entry is a package that nothing on this machine has to build, because the
-/// package manager is never reached: the instance's entry point is a stub that exits successfully.
-
-/// Needs pnpm, npm or a Node runtime on the machine, which is why it carries the `external` tag:
-/// `gradlew test` leaves it out and `gradlew test -Pexternal` runs it.
+/** Verifies build script approval prompts and policy handling. */
 @Tag("external")
 class DshPluginBuildApprovalTest {
-	/// The name of the instance the tests work in.
 	private static final String ID = "build-approval-test";
-
-	/// A second instance, for the tests that need one refusal not to reach another instance.
 	private static final String OTHER_ID = "build-approval-other-test";
 
-	/// The package left waiting, as a real profile would leave it.
 	private static final String WAITING = """
 			packages:
 			  - .
@@ -66,7 +46,6 @@ class DshPluginBuildApprovalTest {
 			  node-pty: set this to true or false
 			""";
 
-	/// The same profile after somebody refused, which pnpm remembers as firmly as an approval.
 	private static final String REFUSED = """
 			packages:
 			  - .
@@ -76,7 +55,6 @@ class DshPluginBuildApprovalTest {
 			  node-pty: false
 			""";
 
-	/// A profile that refused a package installed from a file, which pnpm keys by the whole id.
 	private static final String REFUSED_FROM_A_FILE = """
 			packages:
 			  - .
@@ -86,16 +64,9 @@ class DshPluginBuildApprovalTest {
 			  build-script-probe@file:../../../pkg/build-script-probe-1.0.0.tgz: false
 			""";
 
-	/// The workspace the instance runs in, which JUnit makes and removes.
 	@TempDir
 	Path workspaceDirectory;
 
-	/// Builds a gzipped tar holding a `package/package.json`, the way `npm pack` writes one.
-	///
-	/// @param directory where to write it
-	/// @param name      the package's name, which is what the test is about
-	/// @param version   the package's version
-	/// @return the archive
 	private static Path packedPlugin(Path directory, String name, String version) throws Exception {
 		String manifest = "{\"name\":\"" + name + "\",\"version\":\"" + version + "\"}";
 		Path file = directory.resolve(name + "-" + version + ".tgz");
@@ -106,14 +77,6 @@ class DshPluginBuildApprovalTest {
 		return file;
 	}
 
-	/// Builds one tar entry: a header block and the body, padded to a block.
-	///
-	/// The checksum field is left blank because the launcher's reader does not check it — it is
-	/// looking for a name, a size and the entry's kind, which are the fields written here.
-	///
-	/// @param name the entry's name
-	/// @param body the entry's bytes
-	/// @return the header and body
 	private static byte[] tarEntry(String name, byte[] body) {
 		byte[] block = new byte[512];
 		byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
@@ -127,29 +90,15 @@ class DshPluginBuildApprovalTest {
 		return entry;
 	}
 
-	/// Returns an instance's `pnpm-workspace.yaml`.
-	///
-	/// @param instance the instance
-	/// @return the file
 	private static Path profileFile(DshInstance instance) throws Exception {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile()).resolve("pnpm-workspace.yaml");
 	}
 
-	/// Every test starts its own installation.
-	///
-	/// What an installation has already been told lives in the installer, one set per process, and only
-	/// the interface starting a new installation clears it. A test that asserts a question is asked
-	/// therefore cannot rely on which test ran before it — and must not, because whether one did depends
-	/// on the machine: the sibling test that clears the set is skipped wherever Node or pnpm is missing,
-	/// which is how one run of this class failed on macOS while Linux and Windows passed.
-	///
-	/// This could prevent CI from being failed after other platforms' tests were edited.
 	@BeforeEach
 	void newInstallation() {
 		DshPluginInstaller.beginInstallation();
 	}
 
-	/// Removes the instances the tests made.
 	@AfterEach
 	void removeInstance() {
 		for (String id : List.of(ID, OTHER_ID)) {
@@ -416,32 +365,10 @@ class DshPluginBuildApprovalTest {
 		           "the instance that refused is untouched by an installation into another one");
 	}
 
-	/// Creates an instance with a stub harness and a profile holding the given workspace file.
-	///
-	/// The stub is what makes this test possible without a package manager: the installer runs
-	/// `node <entry point> plugin --profile <name> add <spec>`, so an entry point that exits
-	/// successfully is a run that succeeded and changed nothing — which is exactly the run that used
-	/// to end the question.
-	///
-	/// The workspace is JUnit's temporary directory rather than one made here, because a directory
-	/// made here is one nothing removes: running this suite used to leave one behind in `%TEMP%` per
-	/// test, and an instance that is deleted by [#removeInstance] does not delete the directory it ran
-	/// in.
-	///
-	/// @param workspace the profile's `pnpm-workspace.yaml`
-	/// @param policy    the instance's build-script policy
-	/// @return the instance
 	private DshInstance makeInstance(String workspace, String policy) throws Exception {
 		return makeInstance(ID, workspace, policy, workspaceDirectory);
 	}
 
-	/// Creates an instance under its own name, for the tests that need two at once.
-	///
-	/// @param id        the instance's name
-	/// @param workspace the profile's `pnpm-workspace.yaml`
-	/// @param policy    the instance's build-script policy
-	/// @param directory the workspace the instance runs in
-	/// @return the instance
 	private DshInstance makeInstance(String id, String workspace, String policy, Path directory) throws Exception {
 		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
 		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");

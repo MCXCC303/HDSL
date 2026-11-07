@@ -4,13 +4,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/// What an npm answer means.
-///
-/// An exporter asks the registry whether a plugin it installed from a file is published, because a
-/// plugin that is published does not have to be carried: the pack names `name@version` and the install
-/// fetches it. The two wrong answers are expensive in opposite directions — reading a silence as
-/// "published" writes a pack that does not install, and reading it as "absent" carries files nobody
-/// needed — so what a non-zero exit means is pinned here rather than guessed at the call site.
+/**
+ * Verifies package registry availability checks.
+ */
 class DshPackageRegistryTest {
 
 	@Test

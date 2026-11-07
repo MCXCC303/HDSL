@@ -28,27 +28,12 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that a plugin is switched off in the profile's patch layer, not in
-/// the package.
-///
-/// Only the rows a package `insert`s are its own: a bundle patch also carries
-/// rows that merely reconfigure a neighbour, and writing `disabled: true` onto
-/// one of those takes the neighbour down with it. The patch file is the
-/// person's, so a disable is an appended block and an enable removes exactly
-/// that block — the template's empty-list placeholder goes back when the last
-/// one leaves.
+/** Verifies that a plugin is switched off in the profile's patch layer. */
 class DshPluginPatchTest {
-	/// The profile every case installs into.
 	private static final String PROFILE = "web";
-	/// A home to build profiles in.
 	@TempDir
 	Path home;
 
-	/// Writes a package with a bundle patch.
-	///
-	/// @param name          the package name
-	/// @param declaredPatch the path the manifest declares, or `null`
-	/// @param patchText     the package's own patch
 	private void writePackage(String name, @Nullable String declaredPatch, String patchText) throws Exception {
 		Path directory = home.resolve("profiles").resolve(PROFILE).resolve("node_modules").resolve(name);
 		Files.createDirectories(directory);
@@ -59,9 +44,6 @@ class DshPluginPatchTest {
 		Files.writeString(directory.resolve("cordis.patch.yml"), patchText);
 	}
 
-	/// Writes the profile's own patch layer.
-	///
-	/// @param text the patch text
 	private void writeProfilePatch(String text) throws Exception {
 		Path file = DshPluginPatch.patchFile(home, PROFILE);
 		Files.createDirectories(file.getParent());

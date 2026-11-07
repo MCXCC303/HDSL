@@ -23,15 +23,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/// Verifies what the launcher reads out of the package manager's output.
-///
-/// One failure is worth translating rather than relaying: a plugin fetched from a repository is
-/// built by its `prepare` script, and pnpm refuses to run it until the profile allows that,
-/// naming the exact entry it needs. Reading that entry is what lets the launcher ask about it
-/// like any other build script — and reading it wrongly would ask about a package that does not
-/// exist, so the shape is pinned here against the output pnpm really prints.
+/** Verifies what the launcher reads out of package manager output. */
 class DshPluginInstallerTest {
-	/// The entry pnpm named in a real refusal, printed as one line.
 	private static final String NAMED = "  dshmarket@https://codeload.github.com/dsh-market/dsh-market/tar.gz/180c3144da8eb4229cacb843aced229ea55912fc: true";
 
 	@Test

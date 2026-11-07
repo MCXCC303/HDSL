@@ -44,24 +44,19 @@ import java.util.function.BooleanSupplier;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies what an instance is doing while it starts and stops.
-///
-/// The surface is stubbed with a script that prints the readiness line the
-/// launcher listens for and then takes its time going down, which is what makes
-/// the stopping window observable. A launcher that forgot an instance the moment
-/// it was asked to stop would start a second server inside that window — on
-/// another port, because the first one is still held — and that is the defect
-/// these tests pin.
+/**
+ * Verifies instance lifecycle behavior during start and stop.
+ */
 class DshProcessLifecycleTest {
-	/// The instance these tests start and stop.
 	private static final String INSTANCE_ID = "lifecycle";
 
-	/// The instance, once it exists.
 	private @TempDir Path workspace;
 
-	/// Writes a browser surface that reports ready and then drains slowly.
-	///
-	/// @param instance the instance to install it into
+	/**
+	 * Writes a browser surface that reports ready and then drains slowly.
+	 *
+	 * @param instance the instance to install it into
+	 */
 	private static void installStubSurface(DshInstance instance) throws Exception {
 		Path script = instance.dshEntryPoint();
 		Files.createDirectories(script.getParent());
@@ -88,9 +83,11 @@ class DshProcessLifecycleTest {
 				""");
 	}
 
-	/// Writes a browser surface that starts a long-lived child and reports its pid.
-	///
-	/// @param instance the instance to install it into
+	/**
+	 * Writes a browser surface that starts a long-lived child and reports its pid.
+	 *
+	 * @param instance the instance to install it into
+	 */
 	private static void installChildSurface(DshInstance instance) throws Exception {
 		Path script = instance.dshEntryPoint();
 		Files.createDirectories(script.getParent());
@@ -106,10 +103,12 @@ class DshProcessLifecycleTest {
 				""");
 	}
 
-	/// Waits for a condition, failing rather than hanging when it never holds.
-	///
-	/// @param condition what to wait for
-	/// @param what      what it means, for the failure message
+	/**
+	 * Waits for a condition, failing rather than hanging when it never holds.
+	 *
+	 * @param condition what to wait for
+	 * @param what      what it means, for the failure message
+	 */
 	private static void await(BooleanSupplier condition, String what) throws Exception {
 		long deadline = System.currentTimeMillis() + 15_000;
 		while (System.currentTimeMillis() < deadline) {
@@ -121,18 +120,17 @@ class DshProcessLifecycleTest {
 		throw new AssertionError("Timed out waiting for " + what);
 	}
 
-	/// Skips a test when the launcher has no Node.js it may run the stub with.
-	///
-	/// The version range is part of the gate, not just the presence: a machine
-	/// may well hold a Node the launcher itself would refuse — an old
-	/// distribution, a CI image — and refusing it is the launcher's own tested
-	/// behaviour, not something these tests need to fail on.
+	/**
+	 * Skips a test when the launcher has no compatible Node.js runtime.
+	 */
 	private static void requireNode() {
 		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
 		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; the launcher cannot start anything without it");
 	}
 
-	/// Stops whatever is left running, so one failure does not affect the next test.
+	/**
+	 * Stops whatever is left running, so one failure does not affect the next test.
+	 */
 	@AfterEach
 	void stopEverything() {
 		DshProcessManager.stopAll();
@@ -143,16 +141,10 @@ class DshProcessLifecycleTest {
 		}
 	}
 
-	/// The file the stub waits for and the test writes.
-	///
-	/// @return the file, which is inside the instance's own workspace
 	private Path drainFile() {
 		return workspace.resolve("drain-ok");
 	}
 
-	/// Creates the instance the tests run.
-	///
-	/// @return the instance
 	private DshInstance makeInstance() throws Exception {
 		return makeInstance(Map.of("DSH_TEST_DRAIN_FILE", drainFile().toString()));
 	}

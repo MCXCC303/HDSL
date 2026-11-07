@@ -55,17 +55,17 @@ import java.util.stream.Collectors;
 import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies row sizing, tag folding, text interaction, and optional child lifecycle.
+/**
+ * Tests row sizing, tag folding, text interaction, and child lifecycle in {@link TwoLineListItem}.
+ */
 @NotNullByDefault
 public final class TwoLineListItemLayoutTest {
 
-    /// Starts the toolkit for this class, or skips the class where it cannot run.
     @BeforeAll
     static void startToolkit() {
         FxToolkit.requireRunning();
     }
 
-    /// Verifies preferred width includes tags and updates when immutable values are replaced or removed.
     @Test
     public void testNaturalWidthUpdates() {
         onFxThread(() -> {
@@ -91,7 +91,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies constrained titles receive the remaining width and subtitles wrap below the whole first row.
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     public void testConstrainedTextAndFolding(boolean wrapTitle) {
@@ -135,7 +134,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies partial and complete folding, tooltip contents, and expansion after tags change.
     @Test
     public void testFoldingAndUpdates() {
         onFxThread(() -> {
@@ -188,7 +186,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies list mutations update text and warning styles while reusing existing labels.
     @Test
     public void testTagUpdatesAndReuse() {
         onFxThread(() -> {
@@ -214,7 +211,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies folded tags render updated text and CSS when expanded again.
     @Test
     public void testFoldedTagUpdates() {
         onFxThread(() -> {
@@ -251,7 +247,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies horizontal bias and row height follow wrapping and tag changes.
     @Test
     public void testContentBiasTracksChildren() {
         onFxThread(() -> {
@@ -280,8 +275,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies truncated text enables tooltip interaction and wrapping or removal disables it.
-    /// On JavaFX versions before 23, verifies truncated labels remain mouse-transparent.
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     public void testTruncatedTextInteraction(boolean subtitle) {
@@ -329,7 +322,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies trailing-node lifecycle and independent rendering of repeated and shared tag values.
     @Test
     public void testTrailingNodeAndSharedTags() {
         onFxThread(() -> {
@@ -366,7 +358,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies binding, replacement, visibility, and managed-state changes for optional side nodes.
     @Test
     public void testSideNodeProperties() {
         onFxThread(() -> {
@@ -410,7 +401,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies side margins supply the entire gap and changes invalidate row sizing.
     @Test
     public void testSideMarginsControlSpacing() {
         onFxThread(() -> {
@@ -443,7 +433,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies side margins, vertical centering, wrapped text width, and folding before the trailing control.
     @Test
     public void testSideNodeLayout() {
         onFxThread(() -> {
@@ -491,7 +480,6 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Verifies flexible trailing content shrinks to preserve the tag minimum without exceeding row bounds.
     @Test
     public void testSideNodeWidthConstraints() {
         onFxThread(() -> {
@@ -515,19 +503,16 @@ public final class TwoLineListItemLayoutTest {
         });
     }
 
-    /// Returns rendered tags in their scene-graph order.
     private static @Unmodifiable List<Label> labels(TwoLineListItem item) {
         return item.getChildrenUnmodifiable().stream().filter(node -> node.getStyleClass().contains("tag")
                         && !node.getStyleClass().contains("collapsed-tag"))
                 .map(Label.class::cast).toList();
     }
 
-    /// Returns the summary tag, including when it is hidden.
     private static Label collapsedTag(TwoLineListItem item) {
         return (Label) requireNonNull(item.lookup(".collapsed-tag"));
     }
 
-    /// Initializes the hover tooltip and runs its preparation callback without opening a window.
     private static String prepareTooltipText(Label summary) {
         if (summary.getTooltip() == null) {
             summary.fireEvent(new MouseEvent(MouseEvent.MOUSE_ENTERED, 1, 1, 1, 1, MouseButton.NONE,
@@ -539,7 +524,6 @@ public final class TwoLineListItemLayoutTest {
         return tooltip.getText();
     }
 
-    /// Verifies every tag is a visible direct child displayed at its full preferred width.
     private static void assertTagsFit(TwoLineListItem item) {
         assertEquals(item.getTags().size(), labels(item).size());
         for (Label label : labels(item)) {
@@ -550,14 +534,12 @@ public final class TwoLineListItemLayoutTest {
         }
     }
 
-    /// Applies CSS and lays out a parent at the given width and its computed preferred height.
     private static void layout(Region parent, double width) {
         parent.applyCss();
         parent.resize(width, parent.prefHeight(width));
         parent.layout();
     }
 
-    /// Runs assertions on the JavaFX application thread and waits up to 30 seconds.
     private static void onFxThread(Runnable action) {
         FutureTask<Boolean> task = new FutureTask<>(action, true);
         Platform.runLater(task);

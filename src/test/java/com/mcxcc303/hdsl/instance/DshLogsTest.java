@@ -31,15 +31,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies what an exported log file is called, and where it goes.
-///
-/// A folder of exported logs is only useful if the files in it can be told apart without opening
-/// them, so the name is the feature: which launcher wrote it, which instance it came from, and when
-/// it was taken. Where it goes matters for the same reason — the original wrote it beside the
-/// process's working directory, which is a place somebody looking for their log has no reason to
-/// look in.
+/**
+ * Verifies what an exported log file is called, and where it goes.
+ */
 class DshLogsTest {
-	/// The moment the names below are stamped with.
 	private static final LocalDateTime MOMENT = LocalDateTime.of(2026, 9, 27, 21, 58, 30);
 
 	@Test

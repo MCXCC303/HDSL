@@ -26,11 +26,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What adding a folder to the list does to it.
-///
-/// The window and the command line both go through this, which is the point of it being one method:
-/// the identity of a folder is its path, and the entry an id — so "the same folder twice" has one
-/// answer, and the settings file's other members, which name a folder by that id, keep naming it.
+/**
+ * Tests verifying game directory entry normalization and deduplication behavior.
+ */
 class GameDirectoryEntryTest {
 
 	@Test

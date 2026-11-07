@@ -23,12 +23,9 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for reading what a vendor says it serves.
-///
-/// The launcher writes a supplier of its own into the harness, and a route the harness has never
-/// heard of cannot have its model list filled in from the catalogue — so the list has to come from
-/// the vendor. A list this reads wrongly becomes models the harness cannot find, which is worse than
-/// no list at all, so the reading is defensive and tested on the shapes that are not lists.
+/**
+ * Tests for reading model listings from vendors.
+ */
 class ModelListTest {
 	@Test
 	void theIdsAreReadFromTheShapeOpenAiCompatibleServicesShare() {
@@ -43,9 +40,6 @@ class ModelListTest {
 
 	@Test
 	void whatIsNotAModelListReadsAsNothingRatherThanAsAModel() {
-		// "Compatible" is a claim rather than a promise, and a service that answers something else
-		// has no list this can use. Inventing a model from it would put a name into the harness that
-		// no request can be made against.
 		assertTrue(DshAccount.readModelIds("{\"data\":\"not an array\"}").isEmpty());
 		assertTrue(DshAccount.readModelIds("{\"models\":[]}").isEmpty());
 		assertTrue(DshAccount.readModelIds("[]").isEmpty());
@@ -53,7 +47,6 @@ class ModelListTest {
 		assertTrue(DshAccount.readModelIds("").isEmpty());
 		assertTrue(DshAccount.readModelIds(null).isEmpty());
 
-		// Entries without an id, and ids named twice, are dropped rather than written out.
 		assertEquals(List.of("a"),
 		             DshAccount.readModelIds(
 				             "{\"data\":[{\"id\":\"a\"},{\"object\":\"model\"},{\"id\":\"a\"},{\"id\":\"\"}]}"));
@@ -61,9 +54,6 @@ class ModelListTest {
 
 	@Test
 	void theEnrichedMapSomeGatewaysAnswerWithIsReadToo() {
-		// The other published shape, and the one the harness's own reader accepts as well: a map
-		// whose **keys** are the ids. Reading only the `data` array is how a gateway that answers
-		// this way ends up looking like a supplier with no models.
 		String body = """
 				{"object":"list","models":{
 				  "deepseek-chat":{"name":"DeepSeek Chat"},
@@ -75,8 +65,6 @@ class ModelListTest {
 
 	@Test
 	void aMapsKeyNamesTheModelAndItsOwnIdDoesNotRenameIt() {
-		// The harness reads the key first for the same reason: the key is what the gateway indexes
-		// the model by, and an entry's `id` is a label it may or may not carry.
 		assertEquals(List.of("by-key"),
 		             DshAccount.readModelIds("{\"models\":{\"by-key\":{\"id\":\"something-else\"}}}"));
 		assertEquals(List.of("from-the-entry"),
@@ -89,9 +77,6 @@ class ModelListTest {
 
 	@Test
 	void theListingAddressFollowsTheProtocol() {
-		// The harness's own discovery, which is the authority on this: an OpenAI protocol lists
-		// beside the address, Anthropic Messages lists under a `/v1` root. Asking Anthropic's
-		// dialect at `/models` is a 404, and a 404 here is a route with no models at all.
 		assertEquals("https://api.opencode.ai/v1/models",
 		             DshAccount.listingUrl("https://api.opencode.ai/v1", "openai-completions"));
 		assertEquals("https://api.openai.com/v1/models",
@@ -112,25 +97,16 @@ class ModelListTest {
 
 	@Test
 	void aStatusAloneDoesNotMakeAnAddressASupplier() {
-		// The defect this pins, taken from a real host: `api.opencode.ai` answers **200** to every
-		// path, with the body `Not Found`. Reading the status for the answer accepted it as a
-		// supplier, and the account made on it then had no models to route to — for months of
-		// debugging, a 200 was the whole of the evidence.
 		DshAccount.Answer plainPage = new DshAccount.Answer(200, false);
 		assertFalse(plainPage.listsModels(), "a page that answers 200 to everything is not a supplier");
 
-		// A 2xx whose body is a listing is the answer, and an empty listing is still a listing: a
-		// supplier that hides its models until it is given a key answers with one.
 		assertTrue(new DshAccount.Answer(200, true).listsModels());
 		assertTrue(DshAccount.looksLikeAListing("{\"object\":\"list\",\"data\":[]}"));
 		assertTrue(DshAccount.looksLikeAListing("{\"models\":{}}"));
 
-		// A refusal counts as an answer — it is an API saying it wants a key, which is the ordinary
-		// thing to hear while adding a supplier.
 		assertTrue(new DshAccount.Answer(401, false).listsModels());
 		assertTrue(new DshAccount.Answer(403, false).listsModels());
 
-		// Anything else answered as something other than a model service, or did not answer.
 		assertFalse(new DshAccount.Answer(404, false).listsModels());
 		assertFalse(new DshAccount.Answer(500, false).listsModels());
 		assertFalse(new DshAccount.Answer(-1, false).listsModels());
@@ -138,9 +114,6 @@ class ModelListTest {
 
 	@Test
 	void whatAVendorSaidAboutARefusalIsReadBack() {
-		// Taken from a real refusal: SiliconFlow answers this to a request with no key, with a wrong
-		// one, and with a key issued for its other region — so the status says only that the token was
-		// not accepted, and what the vendor was willing to say is the rest of the answer.
 		assertEquals("Token is invalid.",
 		             DshAccount.saidIn("{\"code\":30014,\"data\":null,\"message\":\"Token is invalid.\"}"));
 

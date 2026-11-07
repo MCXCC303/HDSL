@@ -35,12 +35,10 @@ import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that what a pack says it carries is what it carries.
-///
-/// The choosing happens in a tree, and a box there has to mean something: a pack that named a plugin
-/// it left out would describe an installation nobody can make from it, and an import would try.
+/**
+ * Verifies that what a pack says it carries is what it carries.
+ */
 class DshPackContentsTest {
-	/// The instance these tests build a pack from.
 	private static final String INSTANCE_ID = "pack-contents-test";
 
 	@Test

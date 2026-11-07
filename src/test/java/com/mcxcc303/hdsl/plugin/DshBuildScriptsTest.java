@@ -29,26 +29,14 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies what the launcher reads out of a profile's package-manager settings, and
-/// what it writes back.
-///
-/// The setting decides whether arbitrary install scripts may run with the user's own
-/// rights, so what matters is that the launcher only ever says what it was told to
-/// say: an entry nobody has answered is reported as waiting, answering one leaves the
-/// others alone, and nothing else in the file moves.
+/** Verifies reading and writing profile build-script policies. */
 class DshBuildScriptsTest {
-	/// The instance the tests work in.
 	private static final String ID = "build-scripts-test";
 
-	/// Returns an instance's `pnpm-workspace.yaml`.
-	///
-	/// @param instance the instance
-	/// @return the file
 	private static Path profileFile(DshInstance instance) throws Exception {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile()).resolve("pnpm-workspace.yaml");
 	}
 
-	/// Removes the instance the tests made.
 	@AfterEach
 	void removeInstance() {
 		try {
@@ -190,15 +178,6 @@ class DshBuildScriptsTest {
 		assertEquals(DshBuildScriptPolicy.MANUAL, DshBuildScriptPolicy.of(instance));
 	}
 
-	/// A fresh instance runs under the launcher-wide answer, whichever of the three it is.
-	///
-	/// Installing a pack is what makes the instance, so there is no per-instance answer to find and
-	/// the launcher's is the one that decides: run install scripts without asking, ask, or never run
-	/// them. A pack that answered for itself — always asking, or answering yes — would be deciding
-	/// about running somebody else's code on the person's behalf, which is the one thing this
-	/// setting exists to prevent.
-	///
-	/// @throws Exception when the instance cannot be made
 	@Test
 	void aFreshInstanceRunsUnderTheLauncherWideAnswer() throws Exception {
 		DshInstance instance = makeInstance("""
@@ -219,10 +198,6 @@ class DshBuildScriptsTest {
 		}
 	}
 
-	/// Creates an instance whose profile holds the given workspace file.
-	///
-	/// @param workspace the file's contents
-	/// @return the instance
 	private DshInstance makeInstance(String workspace) throws Exception {
 		Path source = Files.createTempDirectory("build-scripts-home");
 		DshInstance instance = DshInstanceManager.create(ID,

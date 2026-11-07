@@ -21,11 +21,9 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/// Verifies the rule that decides whether a new instance keeps its own home.
-///
-/// It is the same question the original asks when it installs a version, and the answer decides
-/// where a profile's plugins and settings live from then on — which is not something to get wrong
-/// quietly, because moving it afterwards means moving an installation.
+/**
+ * Verifies the rule that decides whether a new instance keeps its own home.
+ */
 class DshIsolationPolicyTest {
 	@Test
 	void missingOrInvalidPolicyDefaultsToIsolation() {

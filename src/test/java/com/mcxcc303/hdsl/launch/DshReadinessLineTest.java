@@ -25,16 +25,10 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Tests for reading the address out of the upstream readiness line.
-///
-/// The address is not merely a sign that the server is up — it is **what the launcher opens**, and
-/// since the browser-trust fence it carries the credential the browser has to present. So the value
-/// matters, not just the match: a pattern that recognises the line and drops the token gives a
-/// launcher that waits correctly, reports the instance ready, and then opens a page that is refused.
-/// That is what happened, and it was invisible for as long as nothing looked at the value.
+/**
+ * Tests for reading the address out of the upstream readiness line.
+ */
 class DshReadinessLineTest {
-	/// The token a real 0.1.5-alpha.2 instance printed, kept verbatim: base64url, so it exercises the
-	/// `-` and `_` in the character class rather than only alphanumerics.
 	private static final String TOKEN = "dcuszlMez30wtcJpMkS1-VosQcMaTfgE7g4i_mc6Tq8";
 
 	@Test
@@ -52,8 +46,6 @@ class DshReadinessLineTest {
 
 	@Test
 	void theOlderSpellingsAreStillRead() {
-		// Releases before the fence print the address on its own, with or without a trailing slash,
-		// and those have to keep working: they are what every instance older than the fence says.
 		assertEquals("http://127.0.0.1:4061",
 		             DshProcess.parseWebUrl("dsh web: http://127.0.0.1:4061").orElseThrow().toString());
 		assertEquals("http://127.0.0.1:4061/",
@@ -71,8 +63,6 @@ class DshReadinessLineTest {
 
 	@Test
 	void whatIsNotAReadinessLineSaysSo() {
-		// The child prints a great deal that is not this. An address invented for a line that is not
-		// a readiness line would be a launcher opening a browser at nothing.
 		assertTrue(DshProcess.parseWebUrl("").isEmpty());
 		assertTrue(DshProcess.parseWebUrl("[INFO] starting up").isEmpty());
 		assertTrue(DshProcess.parseWebUrl("dsh web: http://0.0.0.0:3229/?token=" + TOKEN).isEmpty(),

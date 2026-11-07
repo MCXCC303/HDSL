@@ -28,7 +28,9 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The account contract: what it says, and what it refuses to say.
+/**
+ * The account contract: what it says, and what it refuses to say.
+ */
 class DshAccountContractTest {
 	@TempDir
 	private Path home;
@@ -56,9 +58,6 @@ class DshAccountContractTest {
 
 	@Test
 	void noNameWouldBeRefusedByTheHarness() throws Exception {
-		// The harness refuses these from any discovered .env and refuses by throwing, so one
-		// here would stop it from starting at all. The check is over the real contract rather
-		// than over a copy of it, which is the only version of this test worth having.
 		Map<String, String> withAccount = DshAccountContract.values(instance(),
 		                                                            new DshAccount("deepseek", "sk-test", null, null));
 		for (String name : withAccount.keySet()) {
@@ -101,11 +100,8 @@ class DshAccountContractTest {
 		assertTrue(written.startsWith("# my own file\nSOME_VAR=1\n"), written);
 		assertTrue(written.contains("HDSL_ACCOUNT_NAME=DeepSeek"), written);
 
-		// A second write replaces the block rather than appending another one, and leaves the
-		// person's lines exactly where they were.
 		Map<String, String> second = DshAccountContract.values(instance(), null);
 		String again = DshAccountContract.withBlock(written, second);
-		// One block, not two: the second write replaces the first.
 		int blocks = again.split("HDSL_ACCOUNT_CONTRACT=", -1).length - 1;
 		assertEquals(1, blocks, again);
 		assertTrue(again.startsWith("# my own file\nSOME_VAR=1\n"), again);

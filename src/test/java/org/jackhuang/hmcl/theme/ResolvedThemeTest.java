@@ -29,37 +29,20 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// The colour style somebody chose is the one the palette is generated from.
-///
-/// This pins a defect reported as "rainbow mode does not work". The style was read, stored and
-/// handed to MonetFX correctly — and then thrown away by the colour specification the scheme was
-/// asked for, because the library **does not refuse a style it has no definition for in that
-/// specification: it quietly generates a different one.** Measured on MonetFX 0.4.0, `RAINBOW`
-/// asked for as `SPEC_2025` comes back as the `FIDELITY` palette, while `getColorStyle()` still
-/// answers `Rainbow` — so every surface that reports which style is in force agreed with the
-/// person, and the colours on screen were another style's.
-///
-/// The assertion is made on the pair of values `ResolvedTheme` decides between, and on the whole
-/// of the generated stylesheet rather than on one colour, because "the style was ignored" is a
-/// statement about the palette and not about any single role in it.
+/**
+ * Verifies color scheme generation and specification version mapping for theme styles.
+ */
 class ResolvedThemeTest {
-    /// A colour seed of the launcher's own, so the assertion is about the style and not the seed.
     private static final ThemeColor SEED = ThemeColor.DEFAULT;
 
-    /// Builds the theme a person gets for a style.
-    ///
-    /// @param style the style
-    /// @return the resolved theme
     private static ResolvedTheme theme(ColorStyle style) {
         return new ResolvedTheme(SEED, Brightness.DEFAULT, style, Contrast.DEFAULT);
     }
 
-    /// The specification is the one the style is defined in, whichever that is.
     @Test
     void aStyleIsAskedForUnderASpecificationItIsDefinedIn() {
         for (ColorStyle style : ColorStyle.values()) {
             if (style == ColorStyle.DEFAULT) {
-                // Not a style a palette is generated from; the library resolves it itself.
                 continue;
             }
             ColorSpecVersion spec = ResolvedTheme.specVersionFor(style);
@@ -68,11 +51,6 @@ class ResolvedThemeTest {
         }
     }
 
-    /// Rainbow, which is the style that was reported, is generated as rainbow.
-    ///
-    /// Two things are asserted, and both of them were false before: the specification asked for
-    /// is one Rainbow exists in, and the palette is not the one Fidelity generates for the same
-    /// seed. The second is what a person sees; the first is what makes it true.
     @Test
     void rainbowIsNotSilentlyDrawnAsFidelity() {
         ResolvedTheme rainbow = theme(ColorStyle.RAINBOW);
@@ -90,11 +68,6 @@ class ResolvedThemeTest {
                 "a scheme generated from Rainbow is not the one generated from Fidelity");
     }
 
-    /// A style that exists in the newer specification is still drawn in it.
-    ///
-    /// The other half of the same rule: falling back for everything would have made the fix a
-    /// regression for the styles that are defined in both, and `TONAL_SPOT` is one — its two
-    /// palettes differ, so which one the launcher asks for is visible.
     @Test
     void aStyleThatExistsInTheNewerSpecificationKeepsIt() {
         assertEquals(ColorSpecVersion.SPEC_2025, ResolvedTheme.specVersionFor(ColorStyle.TONAL_SPOT));
@@ -102,8 +75,6 @@ class ResolvedThemeTest {
         ColorScheme requested = theme(ColorStyle.TONAL_SPOT).toColorScheme();
         assertEquals(ColorSpecVersion.SPEC_2025, requested.getSpecVersion());
 
-        // And the choice is not a formality for this style: the older specification would have
-        // drawn a different palette, so a policy that always fell back would be a change.
         ColorScheme older = ColorScheme.newBuilder()
                 .setPrimaryColorSeed(SEED.color())
                 .setColorStyle(ColorStyle.TONAL_SPOT)

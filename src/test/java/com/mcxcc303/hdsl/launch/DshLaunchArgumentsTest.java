@@ -24,16 +24,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for splitting a typed argument line.
-///
-/// The line is one text field standing in for two different argument groups — the launcher's flags
-/// come before the profile and the booted app's after it — so a wrong split produces a command that
-/// either fails to start or starts the wrong thing. Every case here is a shape somebody could type.
+/**
+ * Tests for splitting a typed argument line.
+ */
 class DshLaunchArgumentsTest {
-	/// Parses a line.
-	///
-	/// @param line the line
-	/// @return what it came to
 	private static DshLaunchArguments.Parsed parse(String line) {
 		return DshLaunchArguments.parse(line);
 	}
@@ -71,9 +65,6 @@ class DshLaunchArgumentsTest {
 
 	@Test
 	void thePortIsRefusedInBothSpellings() {
-		// `--port 1234` and `--port=1234` are the same request. Matching only the first spelling let
-		// the second through as an app argument, where it overrode the port the launcher had
-		// reserved — the one thing this refuses to allow, and a silent override at that.
 		for (String line : List.of("--port 1234", "--port=1234", "--port", "--port=0")) {
 			DshLaunchArguments.Parsed parsed = parse(line);
 			assertTrue(parsed.appArguments().isEmpty(),
@@ -93,9 +84,6 @@ class DshLaunchArgumentsTest {
 		             parsed.appArguments(),
 		             "the refusal does not take the rest of the line with it");
 
-		// Why it was refused is a sentence like every other the interface shows, read from the
-		// bundles rather than written into the code: it used to be Chinese, which is what every
-		// language but that one then read.
 		assertEquals(List.of(I18n.i18n("dsh.launch.refused.home", "DSH_HOME=/tmp/evil")), parsed.refusals());
 	}
 

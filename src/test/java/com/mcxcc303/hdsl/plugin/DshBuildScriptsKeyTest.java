@@ -34,30 +34,12 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Pins what a package waiting in `allowBuilds` is *named* by, and that answering it by that name is
-/// what makes its install script run.
-///
-/// The key pnpm writes is the package's **id**, not its name. It writes the name for a package that
-/// came from the registry, but for one that came from a file — which is how a plugin picked out of the
-/// file system is installed — it writes `build-script-probe@file:../../../pkg/….tgz`, because the
-/// version such a dependency resolves to is not a version. Reading that with the first colon as the
-/// separator yields `build-script-probe@file`, and then the approval the interface offers is for a
-/// package pnpm has never heard of: the answer is written, the entry pnpm reads stays undecided, the
-/// install fails again, and the id of the package that was actually refused is lost from the file.
-///
-/// What [DshBuildScriptsTest] pins is what happens to a profile with entries in it; what is pinned
-/// here is the shape of the entries themselves, and — in the last test — the whole loop against the
-/// real package manager rather than against strings.
-
-/// Needs pnpm, npm or a Node runtime on the machine, which is why it carries the `external` tag:
-/// `gradlew test` leaves it out and `gradlew test -Pexternal` runs it.
+/** Pins package naming in allowBuilds. */
 @Tag("external")
 class DshBuildScriptsKeyTest {
 
-	/// The profile of the instance these tests work in.
 	private static final String PROFILE = DshInstance.DEFAULT_PROFILE;
 
-	/// A profile whose package manager refused one package from the registry.
 	private static final String FROM_THE_REGISTRY = """
 			packages:
 			  - .
@@ -67,11 +49,6 @@ class DshBuildScriptsKeyTest {
 			  node-pty: set this to true or false
 			""";
 
-	/// What pnpm 11.24 actually wrote for a package installed from a file.
-	///
-	/// Recorded from a real run — `dsh plugin --profile web add file:…/dsh-postinstall-probe-1.0.0.tgz`
-	/// against a throwaway `DSH_HOME` — rather than written by hand from what the format is supposed to
-	/// be, because the shape of the key is the thing in question.
 	private static final String FROM_A_FILE = """
 			packages:
 			  - .
@@ -82,16 +59,8 @@ class DshBuildScriptsKeyTest {
 			  dsh-postinstall-probe@file:../../../pkg/dsh-postinstall-probe-1.0.0.tgz: set this to true or false
 			""";
 
-	/// The key in [#FROM_A_FILE], which is what has to survive being read and written back.
 	private static final String FILE_KEY = "dsh-postinstall-probe@file:../../../pkg/dsh-postinstall-probe-1.0.0.tgz";
 
-	/// Returns what a pnpm says its version is, so a skipped run names the package manager it saw.
-	///
-	/// Its version is the whole question when the two disagree about where a refused build script is
-	/// written, and a message saying only "nothing was recorded" leaves that to be guessed.
-	///
-	/// @param pnpm the pnpm
-	/// @return its version, or what running it said instead
 	private static String pnpmVersion(Path pnpm) {
 		try {
 			return DshCommand.run(List.of(pnpm.toString(), "--version"), null, null).text().trim();
@@ -100,11 +69,6 @@ class DshBuildScriptsKeyTest {
 		}
 	}
 
-	/// Packs a package whose install script leaves a file behind.
-	///
-	/// @param work where to pack it
-	/// @param npm  the npm to pack with
-	/// @return the tarball
 	private static Path packAProbeWithABuildScript(Path work, Path npm) throws Exception {
 		Path source = Files.createDirectories(work.resolve("build-script-probe"));
 		Files.writeString(source.resolve("package.json"), """
@@ -128,15 +92,6 @@ class DshBuildScriptsKeyTest {
 		return tarball;
 	}
 
-	/// Creates an instance whose home is the given directory and whose profile holds the given file.
-	///
-	/// A custom home rather than a created instance: what is under test here is the reading of a file,
-	/// and creating an instance needs a Node runtime on the machine to do it — [DshBuildScriptsTest]
-	/// is where the created-instance path is covered.
-	///
-	/// @param home      the home directory
-	/// @param workspace the profile's `pnpm-workspace.yaml`, or `null` to leave it out
-	/// @return the instance
 	private static DshInstance instance(Path home, String workspace) throws Exception {
 		DshInstance instance = new DshInstance("build-scripts-key-test",
 		                                       "0.1.6-alpha.2",
@@ -159,10 +114,6 @@ class DshBuildScriptsKeyTest {
 		return instance;
 	}
 
-	/// Returns an instance's `pnpm-workspace.yaml`.
-	///
-	/// @param instance the instance
-	/// @return the file
 	private static Path profileFile(DshInstance instance) throws Exception {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile()).resolve("pnpm-workspace.yaml");
 	}

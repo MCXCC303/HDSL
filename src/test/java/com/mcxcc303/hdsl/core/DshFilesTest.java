@@ -34,18 +34,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies the two ways removing a tree the launcher owns used to fail.
-///
-/// Both were measured before they were written down: the transplanted
-/// `FileUtils#deleteDirectory` leaves the whole tree behind when it meets a
-/// read-only entry, and it deletes what is on the *other* side of a junction
-/// because every Java API calls a junction a directory. An instance folder is a
-/// package manager's tree, so it has both.
+/**
+ * Verifies deleting directory trees with read-only files and junctions.
+ */
 class DshFilesTest {
-	/// Builds a small tree shaped like the inside of an instance folder.
-	///
-	/// @param root the folder to build in
-	/// @return the tree's root, which is named `instance`
 	private static Path instanceTree(Path root) throws IOException {
 		Path instance = root.resolve("instance");
 		Path packageDirectory = instance.resolve("dsh/node_modules/pkg");
@@ -57,16 +49,6 @@ class DshFilesTest {
 		return instance;
 	}
 
-	/// Marks an entry read-only the way a package manager does on Windows.
-	///
-	/// The DOS attribute is a Windows filesystem feature. Elsewhere the JDK has no such view at all
-	/// and `Files#setAttribute` throws `UnsupportedOperationException: View 'dos' not available`
-	/// instead of quietly doing nothing — which is how three tests of this class failed on the macOS
-	/// runners. What is asked here is the *file store*, not the operating system's name: the same
-	/// rule the rest of this suite follows, and it skips exactly where the attribute is not there
-	/// while still running where it is.
-	///
-	/// @param path the entry to mark
 	private static void markReadOnly(Path path) throws IOException {
 		Assumptions.assumeTrue(Files.getFileStore(path).supportsFileAttributeView("dos"),
 		                       "this file store has no DOS attribute view to mark an entry read-only with");
@@ -94,11 +76,6 @@ class DshFilesTest {
 		assertFalse(Files.exists(instance), "a read-only directory must not stop the removal");
 	}
 
-	/// The junction is made with `mklink /J`, which is what a package manager
-	/// uses on Windows where a symbolic link needs a privilege it does not have.
-	///
-	/// Jumped over rather than entered: entering it deletes files the launcher
-	/// never listed, which no permission check would catch.
 	@Test
 	void aJunctionInsideTheTreeIsNotFollowed(@TempDir Path root) throws Exception {
 		Assumptions.assumeTrue(OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS,
@@ -159,7 +136,6 @@ class DshFilesTest {
 		assertFalse(Files.exists(instance), "a deep tree is a package manager's normal tree");
 	}
 
-	/// The names the test above relies on are the ones an instance really has.
 	@Test
 	void anInstanceFolderIsRemovedWhole(@TempDir Path root) throws Exception {
 		DshInstance instance = DshInstanceManager.create("dsh-files-test",
@@ -181,16 +157,10 @@ class DshFilesTest {
 			assertFalse(Files.exists(directory), "the instance has to be gone, home and all");
 			assertFalse(DshInstanceManager.exists(instance.id()));
 		} finally {
-			// This instance lives in the folder the whole suite shares, so leaving it behind changes
-			// what every test after this one sees there. That is not hypothetical: on the macOS
-			// runners the `dos` attribute above failed, the instance stayed, and the next test to look
-			// at that folder — [org.jackhuang.hmcl.setting.DshInstancesWiringTest], which waits for an
-			// empty folder to select nothing — failed fifteen seconds later for a reason of its own.
 			if (DshInstanceManager.exists(instance.id())) {
 				try {
 					DshInstanceManager.delete(instance.id());
 				} catch (DshException ignored) {
-					// The test's own cleanup: a failure here would hide the real one.
 				}
 			}
 		}

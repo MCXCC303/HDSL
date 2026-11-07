@@ -26,24 +26,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies how the registry's document is read and arranged.
-///
-/// The arrangement is what the page draws: which versions fit the harness an instance runs, which were
-/// written for another one, and which said nothing at all. The last of those is the reason this is
-/// pinned rather than eyeballed — a version that declares nothing must not be counted as fitting, and
-/// must not disappear either, because the harness has an exemption for a version that does not fit,
-/// which makes "does not fit" something to show rather than something to hide.
+/** Verifies how the registry document is read and arranged. */
 class DshPluginVersionsTest {
-	/// The harness version the instance in these tests runs.
 	private static final String HARNESS = "0.1.7-rc.1";
-
-	/// The packages that harness ships, as an instance's installation holds them.
 	private static final Map<String, String> CORE = Map.of("@deepseek-ai/dsh-settings", "0.1.7-rc.1");
-
-	/// A document in the shape the registry serves, holding the cases that matter: a version written
-	/// for a later harness, versions written for this one, one that named only the framework, and one
-	/// whose declaration spans two older harness versions — which is the one that has to be listed
-	/// under both.
 	private static final String DOCUMENT = """
 			{
 			  "dist-tags": { "latest": "0.24.1", "beta": "0.22.0", "dev": "0.21.0-dev.1" },
@@ -88,17 +74,10 @@ class DshPluginVersionsTest {
 			}
 			""";
 
-	/// Returns the versions one group holds.
-	///
-	/// @param group the group
-	/// @return the versions
 	private static List<String> versionsOf(DshPluginVersions.Group group) {
 		return group.versions().stream().map(DshPluginVersions.Published::version).toList();
 	}
 
-	/// Reads the document these tests work on.
-	///
-	/// @return the document
 	private static JsonObject document() {
 		return JsonParser.parseString(DOCUMENT).getAsJsonObject();
 	}

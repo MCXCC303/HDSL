@@ -21,14 +21,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What a pack does with a plugin an instance installed from a file.
-///
-/// A profile records a local installation as the path it was given, and a path on one machine is not
-/// something another machine can install from. A pack therefore carries the files — the tarball the
-/// instance keeps — and puts them back into the next instance's own plugin directory, where they are
-/// a local installation like any other. A plugin installed from a **directory** is the one that does
-/// not travel: that is somebody working on it, and the profile points at their directory rather than
-/// holding a copy. These pin the two halves of that: finding the files, and writing them out again.
+/** Verifies pack bundle handling for plugins installed from local files. */
 class DshPluginBundleTest {
 
 	private static PackManifest.Manifest manifest(PackManifest.Plugin plugin) {
@@ -60,11 +53,6 @@ class DshPluginBundleTest {
 		return object;
 	}
 
-	/// Builds a gzipped tar holding a `package/package.json`, the way `pnpm pack` writes one.
-	///
-	/// @param name    the package name
-	/// @param version the package version
-	/// @return the archive's bytes
 	private static byte[] pack(String name, String version) throws Exception {
 		String manifest = """
 				{"name":"%s","version":"%s"}
@@ -77,11 +65,6 @@ class DshPluginBundleTest {
 		return out.toByteArray();
 	}
 
-	/// Builds one tar entry.
-	///
-	/// @param name the entry's name
-	/// @param body the entry's bytes
-	/// @return the header and body, padded to a block
 	private static byte[] entry(String name, byte[] body) {
 		byte[] block = new byte[512];
 		byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
@@ -211,10 +194,6 @@ class DshPluginBundleTest {
 		             " directory is reached through /var, and only one of the two spellings is real");
 	}
 
-	/// A junction is what the package manager makes on Windows, where a symbolic link needs a
-	/// privilege it may not have. It is a link to every other program on the machine and a plain
-	/// directory to Java, so a launcher that asked only about symbolic links would read straight
-	/// through it and pack somebody's working tree.
 	@Test
 	void aWindowsJunctionIsALinkToo(@TempDir Path directory) throws Exception {
 		Assumptions.assumeTrue(OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS,

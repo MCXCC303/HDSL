@@ -33,27 +33,14 @@ import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What "copy this instance" is made of.
-///
-/// A duplicate is written by describing the original as a pack and installing that pack into the
-/// copy, so "does the copy have the plugins" and "does the copy have the sessions" are answered by
-/// what a pack carries and refuses to carry. Installing a pack needs a package manager and a
-/// registry, which a test cannot assume; *describing* one needs neither, and that is the half where
-/// the decision lives — a copy that was made empty was made empty here.
+/**
+ * Verifies duplicating an instance by describing it as a pack.
+ */
 class DshInstanceDuplicateTest {
-	/// The instance a copy is made from.
 	private static final String SOURCE_ID = "duplicate-source";
-
-	/// The instance a copy is made into.
 	private static final String TARGET_ID = "duplicate-target";
-
-	/// The workspace slug the fixture session lives under.
 	private static final String SLUG = "-home-user-project";
 
-	/// Creates an instance whose home the tests can fill.
-	///
-	/// @param id the instance id
-	/// @return the instance
 	private static DshInstance makeInstance(String id) throws Exception {
 		Path workspace = Files.createTempDirectory("duplicate-home");
 		return DshInstanceManager.create(id,
@@ -66,27 +53,16 @@ class DshInstanceDuplicateTest {
 		                                 Map.of());
 	}
 
-	/// Returns an instance's profile directory.
-	///
-	/// @param instance the instance
-	/// @return the directory
 	private static Path profileDirectory(DshInstance instance) throws Exception {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile());
 	}
 
-	/// Writes a profile manifest.
-	///
-	/// @param instance the instance
-	/// @param body     the manifest
 	private static void writeProfile(DshInstance instance, String body) throws Exception {
 		Path directory = profileDirectory(instance);
 		Files.createDirectories(directory);
 		Files.writeString(directory.resolve("package.json"), body);
 	}
 
-	/// Writes a session into a home, in the shape the harness keeps them in.
-	///
-	/// @param home the `DSH_HOME`
 	private static void writeSession(Path home) throws Exception {
 		Path directory = home.resolve("sessions").resolve(SLUG).resolve("session-1");
 		Files.createDirectories(directory);
@@ -94,7 +70,6 @@ class DshInstanceDuplicateTest {
 		Files.writeString(directory.resolve("session.lock"), "");
 	}
 
-	/// Removes the instances the tests made.
 	@AfterEach
 	void removeInstances() {
 		for (String id : List.of(SOURCE_ID, TARGET_ID)) {

@@ -21,23 +21,14 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/// What a value looks like once it is written into a settings file.
-///
-/// The rule is that a value is quoted unless it is provably safe as a plain scalar, because the
-/// failure it prevents is silent in the other direction: `@scope/name` written plain is not a
-/// package name with an at sign in front of it, it is a file the harness cannot parse — and the
-/// harness reads these files while it starts, so the launch dies rather than the value being wrong.
+/**
+ * Tests for YAML scalar value formatting.
+ */
 class YamlScalarTest {
 	@Test
 	void aValueYamlWouldReadAsSomethingElseIsQuoted() {
-		// The case this exists for is a package name written into an injected setting:
-		// `@deepseek-ai/…` in plain text is not a name with an at sign in front of it, it is a file
-		// the harness cannot parse — and the harness reads these files as it starts, so the launch
-		// dies rather than a value being wrong.
 		assertEquals("\"@deepseek-ai/dsh-web-search-deepseek\"", YamlScalar.of("@deepseek-ai/dsh-web-search-deepseek"));
 		assertEquals("\"true\"", YamlScalar.of("true"));
-		// And the other half of the rule, which is what keeps this from rewriting a file the
-		// launcher does not own: what YAML already reads as the same text is left alone.
 		assertEquals("0.1.7-rc.1", YamlScalar.of("0.1.7-rc.1"));
 		assertEquals("a@b", YamlScalar.of("a@b"), "the rule is about the first character");
 	}

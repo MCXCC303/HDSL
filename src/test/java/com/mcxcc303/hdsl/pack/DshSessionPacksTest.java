@@ -39,29 +39,13 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that a pack of sessions arrives intact, and that a pack which would
-/// stop the harness from starting is refused.
-///
-/// Three rules decide whether the harness can read a session where it is put, and
-/// all three fail by refusing to start rather than by degrading: the directory a
-/// log sits in has to be the one its own working directory identifies, the log's
-/// compression has to match what the home is configured for, and a log's first
-/// compressed frame has to be the header line by itself. This launcher has no
-/// decompressor, so the only way to satisfy all three is to copy the bytes — which
-/// is what these tests are about.
+/**
+ * Verifies importing and exporting session packs.
+ */
 class DshSessionPacksTest {
-	/// The instance sessions are exported from.
 	private static final String SOURCE_ID = "pack-source";
-
-	/// The instance a pack is read into.
 	private static final String TARGET_ID = "pack-target";
 
-	/// Returns bytes standing in for a compressed log.
-	///
-	/// The content is never interpreted: the point of a pack is that it copies
-	/// what is there, and the launcher has no decompressor to interpret it with.
-	///
-	/// @return the bytes
 	private static byte[] logBytes() {
 		byte[] bytes = new byte[512];
 		for (int i = 0; i < bytes.length; i++) {
@@ -70,19 +54,12 @@ class DshSessionPacksTest {
 		return bytes;
 	}
 
-	/// Creates a session directory inside an instance's home.
-	///
-	/// @param instance  the instance
-	/// @param slug      the project directory
-	/// @param sessionId the session id
-	/// @return the session directory
 	private static Path sessionDirectory(DshInstance instance, String slug, String sessionId) throws Exception {
 		Path directory = instance.homeDirectory().resolve("sessions").resolve(slug).resolve(sessionId);
 		Files.createDirectories(directory);
 		return directory;
 	}
 
-	/// Removes the instances the tests made.
 	@AfterEach
 	void removeInstances() {
 		for (String id : List.of(SOURCE_ID, TARGET_ID)) {
@@ -274,10 +251,6 @@ class DshSessionPacksTest {
 		Files.deleteIfExists(notAPack);
 	}
 
-	/// Creates an instance whose home the tests can fill.
-	///
-	/// @param id the instance id
-	/// @return the instance
 	private DshInstance makeInstance(String id) throws Exception {
 		Path source = Files.createTempDirectory("pack-home");
 		return DshInstanceManager.create(id,

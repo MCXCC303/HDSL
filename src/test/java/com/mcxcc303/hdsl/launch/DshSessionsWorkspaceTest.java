@@ -35,45 +35,25 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that importing sessions brings their projects with them.
-///
-/// The harness groups its history by workspace and keeps that grouping in
-/// `storages/workspace.json`, apart from the sessions themselves. Bringing the
-/// sessions over without it leaves every conversation in the interface's
-/// ungrouped bucket: the logs are all there and the titles are all there, and
-/// nothing says which project each one was about — which reads as an import that
-/// lost most of what it copied.
+/**
+ * Verifies that importing sessions brings their projects with them.
+ */
 class DshSessionsWorkspaceTest {
-	/// The instance the merges are made into.
 	private static final String INSTANCE_ID = "workspace-merge";
 
-	/// A folder for the source home's sessions.
 	@TempDir
 	Path sourceHome;
 
-	/// Writes a workspace registry into a home.
-	///
-	/// @param home the home
-	/// @param json the registry
 	private static void writeRegistry(Path home, String json) throws Exception {
 		Path file = home.resolve("storages").resolve("workspace.json");
 		Files.createDirectories(file.getParent());
 		Files.writeString(file, json);
 	}
 
-	/// Reads the workspace registry of a home.
-	///
-	/// @param home the home
-	/// @return the registry
 	private static JsonObject readRegistry(Path home) throws Exception {
 		return JsonUtils.fromJsonFile(home.resolve("storages").resolve("workspace.json"), JsonObject.class);
 	}
 
-	/// Returns the session ids a workspace holds.
-	///
-	/// @param registry the registry
-	/// @param id       the workspace id
-	/// @return its session ids
 	private static List<String> sessionsOf(JsonObject registry, String id) {
 		return registry.getAsJsonObject("tables")
 		               .getAsJsonObject("workspaces")
@@ -85,7 +65,6 @@ class DshSessionsWorkspaceTest {
 		               .toList();
 	}
 
-	/// Removes the instance the test made.
 	@AfterEach
 	void removeInstance() {
 		try {
@@ -95,9 +74,6 @@ class DshSessionsWorkspaceTest {
 		}
 	}
 
-	/// Creates the instance a merge is made into.
-	///
-	/// @return the instance
 	private DshInstance makeInstance() throws Exception {
 		return DshInstanceManager.create(INSTANCE_ID,
 		                                 "1.0.0",

@@ -61,10 +61,11 @@ import java.util.concurrent.TimeUnit;
 import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Exercises scrolling through real JavaFX event dispatch and laid-out control skins.
+/**
+ * Verifies scrolling behavior through JavaFX event dispatch and control skins.
+ */
 @NotNullByDefault
 final class ScrollUtilsTest {
-    /// Initializes skin animation policy using temporary in-memory settings without accessing persisted settings.
     @BeforeAll
     static void initializeAnimationPolicy() throws Exception {
         System.setProperty("hdsl.scroll.speed", "1");
@@ -81,7 +82,6 @@ final class ScrollUtilsTest {
         }
     }
 
-    /// Touch deltas are immediate, independent on both axes, and respect custom value ranges.
     @Test
     void touchTracksPixels() throws Exception {
         onFxThread(() -> {
@@ -101,7 +101,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Gesture phase markers identify even large, line-labelled trackpad deltas as continuous input.
     @Test
     void trackpadUsesGestureLifecycle() throws Exception {
         onFxThread(() -> {
@@ -122,7 +121,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Horizontal lists map indirect vertical gestures to their length, while touch remains directional.
     @Test
     void horizontalFlowMapsTrackpadGestures() throws Exception {
         onFxThread(() -> {
@@ -147,7 +145,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Wheel distance follows the event magnitude and finishes without a generated fling.
     @Test
     void wheelPreservesDistanceAndStops() throws Exception {
         onFxThread(() -> {
@@ -165,7 +162,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Multiple wheel inputs share the next animation frame without losing accepted distance.
     @Test
     void wheelBurstsWaitForAnimationFrame() throws Exception {
         onFxThread(() -> {
@@ -186,7 +182,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Unmarked pixel-only wheel events, including GTK input, are animated after a finished gesture too.
     @Test
     void pixelOnlyWheelRemainsAnimated() throws Exception {
         onFxThread(() -> {
@@ -215,7 +210,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Display-scaled deltas retain wheel animation and the same pixel speed across controls.
     @Test
     void scaledWheelRemainsAnimated() throws Exception {
         onFxThread(() -> {
@@ -240,7 +234,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Layout with unchanged viewport dimensions preserves queued wheel movement and gesture state.
     @Test
     void layoutPreservesScrolling() throws Exception {
         onFxThread(() -> {
@@ -261,7 +254,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A viewport resize still discards movement queued for the previous dimensions.
     @Test
     void viewportResizeCancelsWheel() throws Exception {
         onFxThread(() -> {
@@ -275,7 +267,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Reversing direction discards the previous queued movement instead of fighting it.
     @Test
     void wheelReversalCancelsOldDirection() throws Exception {
         onFxThread(() -> {
@@ -290,7 +281,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Reversing at an edge cancels queued movement even before the first animation pulse.
     @Test
     void wheelReversalAtBoundaryCancelsQueue() throws Exception {
         onFxThread(() -> {
@@ -325,7 +315,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A reversal handed to an ancestor cannot leave the inner pane moving the opposite way.
     @Test
     void nestedWheelReversalCancelsInnerQueue() throws Exception {
         onFxThread(() -> {
@@ -351,7 +340,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Descendant consumption cannot hide a wheel reversal from an ancestor's queued animation.
     @Test
     void nestedWheelReversalCancelsOuterQueue() throws Exception {
         onFxThread(() -> {
@@ -375,7 +363,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A pane already queued to an edge passes the next wheel input to its ancestor before a pulse.
     @Test
     void nestedWheelHandsOffAfterQueueReachesEdge() throws Exception {
         onFxThread(() -> {
@@ -409,7 +396,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A nested virtual list also reserves the remaining pixels when its boundary cells are visible.
     @Test
     void nestedFlowHandsOffAfterQueueReachesEdge() throws Exception {
         onFxThread(() -> {
@@ -449,7 +435,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A flow observes direct input consumed by its nested pane and still delivers child mouse drags.
     @Test
     void nestedTouchDoesNotAlsoPanOuterFlow() throws Exception {
         onFxThread(() -> {
@@ -481,7 +466,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Early outer panning is eligible only for the first direct event, even if an inner pane consumes it.
     @Test
     void nestedTouchDiscardsConsumedPanningCredit() throws Exception {
         onFxThread(() -> {
@@ -513,7 +497,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A nested dispatch cannot borrow or erase the panning credit of the direct event already in progress.
     @Test
     void panningCreditIsIsolatedDuringReentrantScroll() throws Exception {
         onFxThread(() -> {
@@ -537,7 +520,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// The inner consumer deducts native movement already applied by its outer virtual flow.
     @Test
     void nestedTouchSharesAncestorPanningCredit() throws Exception {
         onFxThread(() -> {
@@ -577,7 +559,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Thumb dragging preserves different grab offsets and uses only the thumb's available travel.
     @Test
     void floatingScrollbarPreservesTouchGrabOffset() throws Exception {
         onFxThread(() -> {
@@ -623,7 +604,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A thumb press keeps its grab offset when gesture recognition picks the track as its target.
     @Test
     void floatingScrollbarPreservesGrabWhenGestureTargetsTrack() throws Exception {
         onFxThread(() -> {
@@ -667,7 +647,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// The application's floating skin responds to direct input on the thumb and track in both orientations.
     @Test
     void floatingScrollbarHandlesTouch() throws Exception {
         ScrollPane @Unmodifiable [] panes = onFxThread(() -> {
@@ -729,7 +708,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Floating touch handlers respect custom ranges and bindings, leave wheels alone, and detach on disposal.
     @Test
     void floatingScrollbarTouchLifecycle() throws Exception {
         onFxThread(() -> {
@@ -765,7 +743,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Virtual-flow panning before recognition is counted only once in either orientation.
     @Test
     void virtualFlowDeductsPanningBeforeRecognition() throws Exception {
         onFxThread(() -> {
@@ -789,7 +766,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Recognition preserves both axes across repeated native drags and variable-size cell recycling.
     @Test
     void virtualFlowMeasuresPanningAcrossCells() throws Exception {
         onFxThread(() -> {
@@ -830,7 +806,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Recognition deducts only available native movement, and release clears that credit.
     @Test
     void virtualFlowPanningCreditRespectsEdgesAndRelease() throws Exception {
         onFxThread(() -> {
@@ -851,7 +826,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A mouse press cancels wheel movement and stale native inertia, but allows fresh input.
     @Test
     void pressingStopsScrolling() throws Exception {
         onFxThread(() -> {
@@ -868,7 +842,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Synthesized mouse dragging must not reapply a touchscreen gesture through a pannable skin.
     @Test
     void touchDoesNotAlsoPanWithMouse() throws Exception {
         onFxThread(() -> {
@@ -896,7 +869,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// The first direct delta includes movement already applied before native gesture recognition.
     @Test
     void touchDeductsPanningBeforeRecognition() throws Exception {
         onFxThread(() -> {
@@ -927,7 +899,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A delta already applied by native panning is consumed without reaching ancestors a second time.
     @Test
     void fullyPannedTouchDeltaDoesNotBubble() throws Exception {
         onFxThread(() -> {
@@ -945,7 +916,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Releasing the pointer, changing position, or starting a new press discards old panning credit.
     @Test
     void previousPanningDoesNotAffectNewInput() throws Exception {
         onFxThread(() -> {
@@ -970,7 +940,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Touch-generated drags reach slider thumbs even when the surrounding pane also scrolls.
     @Test
     void touchPreservesSliderDragging() throws Exception {
         onFxThread(() -> {
@@ -1006,7 +975,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Virtual-flow panning filters do not prevent touch dragging inside a cell control.
     @Test
     void touchPreservesVirtualCellDragging() throws Exception {
         onFxThread(() -> {
@@ -1028,7 +996,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Direct input on either scrollbar or its track retains native touch-position semantics.
     @Test
     void touchPreservesScrollbarPositioning() throws Exception {
         onFxThread(() -> {
@@ -1061,7 +1028,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// External position changes and detaching a pane prevent queued animation from moving it later.
     @Test
     void externalChangesCancelWheel() throws Exception {
         onFxThread(() -> {
@@ -1078,7 +1044,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Content may initially be absent, be replaced, or be removed without duplicate or stale handlers.
     @Test
     void contentLifecycleAndRepeatedInstallation() throws Exception {
         onFxThread(() -> {
@@ -1104,7 +1069,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Nested panes retain priority and hand new movement to the ancestor after reaching an edge.
     @Test
     void nestedPanesScrollFromInsideOut() throws Exception {
         onFxThread(() -> {
@@ -1128,7 +1092,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Unused inertia reaches the ancestor until the tail expires or a press cancels it.
     @Test
     void nestedPanesForwardLiveInertia() throws Exception {
         ScrollPane @Unmodifiable [] panes = onFxThread(() -> {
@@ -1167,7 +1130,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A new gesture allows the ancestor to receive inertia even if all finger movement stayed inside.
     @Test
     void nestedPanesAcceptInertiaAsFirstMovement() throws Exception {
         onFxThread(() -> {
@@ -1196,7 +1158,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Inertia keeps its original age when the inner pane reaches its boundary mid-tail.
     @Test
     void nestedPanesPreserveInertiaAge() throws Exception {
         long[] started = new long[2];
@@ -1236,7 +1197,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Boundary handoff uses the original dispatch, preserving filters, handlers, and event targets.
     @Test
     void unusedScrollPassesAncestorsOnce() throws Exception {
         onFxThread(() -> {
@@ -1265,7 +1225,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Indirect scrolling over blank viewport space preserves the native scrollbar visibility timer.
     @Test
     void blankViewportPreservesScrollbarVisibility() throws Exception {
         ScrollPane @Unmodifiable [] panes = onFxThread(() -> {
@@ -1304,7 +1263,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Replacing a skin restores its old dispatcher and installs scrolling on the new viewport.
     @Test
     void paneSkinReplacementPreservesScrolling() throws Exception {
         onFxThread(() -> {
@@ -1334,7 +1292,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A viewport filter may dispatch another scroll before the original event finishes.
     @Test
     void viewportSupportsReentrantScroll() throws Exception {
         onFxThread(() -> {
@@ -1354,7 +1311,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Completed dispatch and expired skin animations do not retain a detached scrolling pane.
     @Test
     void detachedPaneIsCollectibleAfterScroll() throws Exception {
         WeakReference<ScrollPane> reference = onFxThread(() -> {
@@ -1372,7 +1328,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Horizontal lists retain native vertical wheel movement for cells taller than the viewport.
     @Test
     void horizontalFlowScrollsTallCellsWithWheel() throws Exception {
         onFxThread(() -> {
@@ -1412,7 +1367,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Ordinary wheel distance is consistent across panes, cell sizes, orientations, and line-unit metadata.
     @Test
     void wheelDistanceIsConsistentAcrossControls() throws Exception {
         onFxThread(() -> {
@@ -1438,7 +1392,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Page-sized wheel input retains its viewport unit instead of receiving the ordinary wheel multiplier.
     @Test
     void pageScrollingKeepsViewportDistance() throws Exception {
         onFxThread(() -> {
@@ -1455,7 +1408,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A fresh variable-size flow completes its first queued movement across animation and layout pulses.
     @Test
     void virtualFlowFirstWheelSurvivesLayoutPulses() throws Exception {
         onFxThread(() -> {
@@ -1508,7 +1460,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Navigation targeted at the owning list cancels its flow's pending wheel movement.
     @Test
     void virtualFlowNavigationInterruptsWheel() throws Exception {
         onFxThread(() -> {
@@ -1535,7 +1486,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A content replacement in a position listener cannot revive the frame's cancelled wheel distance.
     @Test
     void contentReplacementDuringWheelFrameDiscardsPendingMovement() throws Exception {
         onFxThread(() -> {
@@ -1567,7 +1517,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Variable-size flows pass the second page to ancestors when the first page already reserves the edge.
     @Test
     void variableFlowHandsOffWhenQueueReachesUnseenEdge() throws Exception {
         onFxThread(() -> {
@@ -1623,7 +1572,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Small wheel inputs do not measure every row of a large variable-height list.
     @Test
     void variableFlowBoundsMeasurementToRequestedDistance() throws Exception {
         onFxThread(() -> {
@@ -1654,7 +1602,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Fixed-size flows reserve unseen end cells for queued movement before the first animation pulse.
     @Test
     void virtualFlowHandsOffWhenQueueReachesUnseenEdge() throws Exception {
         onFxThread(() -> {
@@ -1686,7 +1633,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Rapid page inputs retain their full distance, including a multi-page event and reversal.
     @Test
     void virtualFlowPreservesQueuedPages() throws Exception {
         onFxThread(() -> {
@@ -1716,7 +1662,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Virtualized scrolling tracks gestures in either orientation and uses the shared wheel speed.
     @Test
     void virtualFlowSupportsTouchAndWheel() throws Exception {
         onFxThread(() -> {
@@ -1737,7 +1682,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Native inertia has a bounded tail and does not leak through the original skin after it expires.
     @Test
     void nativeInertiaExpires() throws Exception {
         ScrollPane pane = onFxThread(() -> {
@@ -1756,7 +1700,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// A diagonal gesture also scrolls wide virtualized rows before touch scrollbars become visible.
     @Test
     void virtualFlowTracksBothAxes() throws Exception {
         onFxThread(() -> {
@@ -1771,7 +1714,6 @@ final class ScrollUtilsTest {
         });
     }
 
-    /// Creates a fixed-size scroll surface, avoiding layout-dependent content resizing.
     private static Region content(double width, double height) {
         Region result = new Region();
         result.setMinSize(width, height);
@@ -1779,7 +1721,6 @@ final class ScrollUtilsTest {
         return result;
     }
 
-    /// Creates an installed pane with a real skin and overflowing content.
     private static ScrollPane pane(double width, double height) {
         ScrollPane result = new ScrollPane(content(width, height));
         ScrollUtils.addSmoothScrolling(result);
@@ -1787,7 +1728,6 @@ final class ScrollUtilsTest {
         return result;
     }
 
-    /// Creates nested installed panes with independent overflow on both axes, inner pane first.
     private static ScrollPane @Unmodifiable [] nestedPanes() {
         ScrollPane inner = new ScrollPane(content(600, 900));
         inner.setPrefSize(200, 180);
@@ -1802,12 +1742,10 @@ final class ScrollUtilsTest {
         return new ScrollPane[]{inner, outer};
     }
 
-    /// Creates a laid-out flow with uniform cells for pixel displacement assertions.
     private static VirtualFlow<?> flow(boolean vertical) {
         return flow(vertical, false);
     }
 
-    /// Creates a flow with optional cross-axis overflow.
     private static VirtualFlow<?> flow(boolean vertical, boolean wide) {
         ListView<String> list = new ListView<>();
         list.setOrientation(vertical ? Orientation.VERTICAL : Orientation.HORIZONTAL);
@@ -1821,7 +1759,6 @@ final class ScrollUtilsTest {
         return result;
     }
 
-    /// Attaches a control to a scene and lays it out without displaying a window.
     private static void layout(Region node) {
         node.setManaged(false);
         Pane root = new Pane(node);
@@ -1832,7 +1769,6 @@ final class ScrollUtilsTest {
         node.layout();
     }
 
-    /// Converts pane values back to pixel displacement for assertions.
     private static double offset(ScrollPane pane, boolean horizontal) {
         Node content = requireNonNull(pane.getContent());
         return horizontal
@@ -1842,7 +1778,6 @@ final class ScrollUtilsTest {
                 * (content.getLayoutBounds().getHeight() - pane.getViewportBounds().getHeight());
     }
 
-    /// Dispatches a platform-style scroll event with optional line units and gesture flags.
     private static void send(Node target, EventType<ScrollEvent> type, double dx, double dy,
                              boolean direct, boolean inertia, boolean lines) {
         target.fireEvent(new ScrollEvent(type, 10, 10, 10, 10, false, false, false, false,
@@ -1851,12 +1786,10 @@ final class ScrollUtilsTest {
                 lines ? Math.signum(dy) * 3 : 0, direct ? 1 : 0, new PickResult(target, 10, 10)));
     }
 
-    /// Sends direct positioning input at scene coordinates to a grabbed thumb or track.
     private static void sendDirectAt(Node target, double x, double y) {
         sendDirectAt(target, ScrollEvent.SCROLL, x, y);
     }
 
-    /// Sends a direct gesture lifecycle event at the recognition point's scene coordinates.
     private static void sendDirectAt(Node target, EventType<ScrollEvent> type, double x, double y) {
         target.fireEvent(new ScrollEvent(type, x, y, x, y,
                 false, false, false, false, true, false, 5, 5, 5, 5,
@@ -1864,7 +1797,6 @@ final class ScrollUtilsTest {
                 ScrollEvent.VerticalTextScrollUnits.NONE, 0, 1, new PickResult(target, x, y)));
     }
 
-    /// Dispatches wheel input whose pixel and text deltas have been divided by the display scale.
     private static void sendScaledWheel(Node target, double scale) {
         target.fireEvent(new ScrollEvent(ScrollEvent.SCROLL, 10, 10, 10, 10,
                 false, false, false, false, false, false,
@@ -1874,7 +1806,6 @@ final class ScrollUtilsTest {
                 0, new PickResult(target, 10, 10)));
     }
 
-    /// Dispatches wheel input with an explicit page count independent of its pixel delta.
     private static void sendPages(Node target, double pages) {
         target.fireEvent(new ScrollEvent(ScrollEvent.SCROLL, 10, 10, 10, 10,
                 false, false, false, false, false, false, 0, pages * 40, 0, pages * 40,
@@ -1882,36 +1813,30 @@ final class ScrollUtilsTest {
                 ScrollEvent.VerticalTextScrollUnits.PAGES, pages, 0, new PickResult(target, 10, 10)));
     }
 
-    /// Creates mouse input for interrupting animation or checking synthesized touch compatibility.
     private static MouseEvent mouse(Node target, EventType<MouseEvent> type, boolean synthesized) {
         double position = type == MouseEvent.MOUSE_DRAGGED ? -20 : 10;
         return mouseAt(target, type, synthesized, position, position);
     }
 
-    /// Creates mouse input at explicit scene coordinates, independent of content scrolling.
     private static MouseEvent mouseAt(Node target, EventType<MouseEvent> type, boolean synthesized, double x, double y) {
         return new MouseEvent(type, x, y, x, y, MouseButton.PRIMARY, 1,
                 false, false, false, false, true, false, false, synthesized, false, true,
                 new PickResult(target, x, y));
     }
 
-    /// Uses a distinct skin class so JavaFX 17 also performs an actual replacement.
     @NotNullByDefault
     private static final class ReplacementScrollPaneSkin extends ScrollPaneSkin {
-        /// Creates a native scroll pane skin with a distinct runtime type.
         private ReplacementScrollPaneSkin(ScrollPane pane) {
             super(pane);
         }
     }
 
-    /// Completes the installed wheel animation while keeping tests independent of pulse timing.
     private static void finishWheel(Node node) {
         @Nullable ScrollController controller = ScrollUtils.controller(node);
         if (controller != null)
             controller.wheel.handle(System.nanoTime() + TimeUnit.SECONDS.toNanos(1));
     }
 
-    /// Runs an operation and propagates assertion failures from the JavaFX application thread.
     private static <T> T onFxThread(Callable<T> action) throws Exception {
         FutureTask<T> task = new FutureTask<>(action);
         Platform.runLater(task);

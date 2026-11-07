@@ -26,15 +26,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the rule an instance name has to satisfy to become a directory.
-///
-/// The rule is one rule for all three platforms the launcher runs on, so what it
-/// refuses is checked here rather than left to the platform the test happens to
-/// run on: a name that is only legal on Linux is exactly the name that has to be
-/// refused, because that is the one that breaks when the folder is carried to a
-/// Windows machine.
+/**
+ * Verifies rules for instance name validation.
+ */
 class DshPathsTest {
-	/// The names an instance may be called.
 	private static final List<String> ACCEPTED = List.of("default",
 	                                                     "e2e1",
 	                                                     "my instance",          // a space inside is a space Windows keeps
@@ -45,7 +40,6 @@ class DshPathsTest {
 	                                                     "dsh_2",
 	                                                     "a~b");                 // '~' only matters as a whole segment
 
-	/// The names that must be refused, and the reason each one breaks.
 	private static final List<String> REFUSED = List.of("",                     // empty names no directory
 	                                                    ".",
 	                                                    "..",
@@ -107,9 +101,6 @@ class DshPathsTest {
 		assertTrue(refused.getMessage().contains("instance id"), refused.getMessage());
 	}
 
-	/// The rule is not decorative: what it accepts, the filesystem of the
-	/// machine running the test can actually create, and what it refuses for a
-	/// reason Windows owns is refused even there.
 	@Test
 	void whatTheRuleAcceptsCanBeCreated(@TempDir Path root) throws Exception {
 		for (String name : ACCEPTED) {

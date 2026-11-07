@@ -30,30 +30,12 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Pins what the launcher does with a runtime that answers `--version` badly.
-///
-/// The reported failure: a CI run said `Node.js was not found on PATH` about a Node.js that was on
-/// `PATH`, a hundred milliseconds after the same test had read that very version, and the run went
-/// red on a machine whose toolchain was fine. What is measured here is the reading of the answer,
-/// because the message can only ever be as good as what stands behind it.
-///
-/// Every "executable" below is a script — that is the only way to produce the three answers that
-/// matter (fails once and then answers, answers nothing, never succeeds) on every platform.
-
-/// Needs pnpm, npm or a Node runtime on the machine, which is why it carries the `external` tag:
-/// `gradlew test` leaves it out and `gradlew test -Pexternal` runs it.
+/**
+ * Pins what the launcher does with a runtime that answers --version badly.
+ */
 @Tag("external")
 class DshNodeRuntimeTest {
 
-	/// Writes a runnable program for this platform.
-	///
-	/// A batch file on Windows and a shell script elsewhere, because those are the two things that
-	/// can be started by name from `ProcessBuilder` on each.
-	///
-	/// @param directory where to write it
-	/// @param name      the file name, without an extension
-	/// @param lines     the body
-	/// @return the program
 	private static Path executable(Path directory, String name, List<String> lines) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
 			Path file = directory.resolve(name + ".cmd");

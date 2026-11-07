@@ -10,17 +10,9 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What a pack carries of a home's settings, and what it must leave behind.
-///
-/// The harness keeps one section per plugin in `settings.yaml`, and that file is most of what "the
-/// same environment" means for a plugin: a sidebar's custom CSS, a workstation's switches. It is also
-/// where a plugin that wants an API key puts it, and where a tunnel token in fact is — so the two
-/// halves of this are equally load-bearing: the settings have to arrive, and the credentials have to
-/// stay.
+/** Verifies what a pack carries of settings.yaml and what it leaves behind. */
 class DshPluginSettingsTest {
 
-	/// A settings file shaped like a real one: a block scalar full of CSS, a section the launcher's own
-	/// account plumbing owns, a literal secret, and a credential that is only a *name*.
 	private static final String SETTINGS = """
 			ui-onboarding:
 			  welcomeNoticeVersion: 2026-08-13.1

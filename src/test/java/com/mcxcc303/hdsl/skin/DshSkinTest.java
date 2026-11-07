@@ -30,19 +30,10 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for reading and normalising a skin.
-///
-/// The skin format is the part of this feature with rules that are not visible in a picture. A skin
-/// is 64x64 **or** the older 64x32, and the older one is not merely smaller: its limbs are stored in
-/// one place and have to be mirrored into another before anything can draw them. Getting that wrong
-/// looks like a broken skin rather than a broken program, so it is worth pinning.
+/**
+ * Tests for reading and normalising skin textures.
+ */
 class DshSkinTest {
-	/// Writes a PNG of the given size.
-	///
-	/// @param file   where to write it
-	/// @param width  the width
-	/// @param height the height
-	/// @param argb   the colour to fill it with
 	private static void writePng(Path file, int width, int height, int argb) throws Exception {
 		BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
 		for (int y = 0; y < height; y++) {
@@ -53,10 +44,6 @@ class DshSkinTest {
 		ImageIO.write(image, "png", file.toFile());
 	}
 
-	/// Reads a skin from a file the way the launcher does.
-	///
-	/// @param file the file
-	/// @return the normalised skin
 	private static NormalizedSkin normalize(Path file) throws Exception {
 		Image image = new Image(Files.newInputStream(file));
 		return new NormalizedSkin(image);
@@ -78,9 +65,6 @@ class DshSkinTest {
 
 	@Test
 	void anOldSkinIsGrownToTheCurrentFormat() throws Exception {
-		// 64x32 is the format before the second layer existed. Its legs and arms are stored once and
-		// have to be copied, mirrored, into where the current format keeps them — leaving it at
-		// 64x32 would draw the limbs in the wrong places rather than not draw them.
 		Path file = Files.createTempFile("skin", ".png");
 		writePng(file, 64, 32, 0xFF884422);
 
@@ -96,8 +80,6 @@ class DshSkinTest {
 
 	@Test
 	void aScaledSkinIsAcceptedAndItsScaleReported() throws Exception {
-		// Skins are found in multiples of the format, and the original reads the multiple so the
-		// coordinates it indexes with stay in the same units.
 		Path file = Files.createTempFile("skin", ".png");
 		writePng(file, 128, 128, 0xFF112233);
 
@@ -110,9 +92,6 @@ class DshSkinTest {
 
 	@Test
 	void somethingThatIsNotASkinIsRefused() throws Exception {
-		// The rules are the width being a multiple of 64 and the height being the width or half of
-		// it. A picture that keeps neither is refused rather than cropped or stretched: showing a
-		// wrongly shaped picture as a skin would hide the fact that the wrong file was picked.
 		Path square = Files.createTempFile("skin", ".png");
 		writePng(square, 32, 32, 0xFFFFFFFF);
 		assertThrows(InvalidSkinException.class, () -> normalize(square));
@@ -132,9 +111,6 @@ class DshSkinTest {
 
 	@Test
 	void aSkinIsAskedForWithoutASize() throws Exception {
-		// The 3D renderer refuses an image that was decoded to a requested size, because it cannot
-		// tell one from a picture that was assembled. This is the property that decides whether the
-		// model is drawn with a texture or left white, so it is checked rather than assumed.
 		Path file = Files.createTempFile("skin", ".png");
 		writePng(file, 64, 64, 0xFF445566);
 
@@ -147,9 +123,6 @@ class DshSkinTest {
 
 	@Test
 	void theBundledSkinsArePresentAndReadable() throws Exception {
-		// Read without the toolkit: the file has to be in the jar, and a missing one would only
-		// show up as a blank model in one dialog. All nine are checked, on both bodies, because all
-		// eighteen are reachable — the account's own identity decides which one is drawn.
 		for (DefaultSkin skin : DefaultSkin.values()) {
 			for (boolean slim : new boolean[]{false, true}) {
 				String path = "/assets/img/skin/" + (slim ? "slim/" : "wide/") + skin.name().toLowerCase(Locale.ROOT) +
@@ -163,10 +136,6 @@ class DshSkinTest {
 
 	@Test
 	void everyAccountHasItsOwnDefaultSkin() {
-		// The original's rule, and the reason "nothing chosen" is still a face: one of nine skins on
-		// one of two bodies, picked by the account's identity. Both halves are checked — that a
-		// picture always comes back, and that the two bodies are both reachable, since a rule that
-		// only ever returned the wide one would look right for most accounts.
 		Set<Object> seen = new HashSet<>();
 		boolean sawSlim = false;
 		boolean sawWide = false;
@@ -199,11 +168,6 @@ class DshSkinTest {
 
 	@Test
 	void theModelIsNeverHandedAPreNormalisedAtlas() throws Exception {
-		// `SkinCanvas.updateSkin` does nothing at all unless the picture reports no requested size,
-		// which is how the renderer tells a picture that was decoded from one that was assembled.
-		// A WritableImage — which is what normalising produces — always reports the size it was
-		// made with, so handing the model a normalised atlas draws nothing: the shape is left white
-		// and no error is raised anywhere. Both halves are pinned, because the bug is invisible.
 		Image bundled = DefaultSkin.STEVE.image(false);
 		assertNotNull(bundled, "the bundled skins must be readable");
 		assertEquals(0, (int) bundled.getRequestedWidth(), "a bundled skin must reach the model as it was read");
@@ -224,8 +188,6 @@ class DshSkinTest {
 
 	@Test
 	void whatIsNotAnImageIsRefusedBeforeItIsKept() throws Exception {
-		// `setFrom` reads the file, and a file that is not a PNG must not be copied over a skin that
-		// works: a mistyped path would otherwise leave the launcher with no skin at all.
 		Path notAnImage = Files.createTempFile("skin", ".png");
 		Files.writeString(notAnImage, "this is not a PNG");
 

@@ -26,7 +26,9 @@ import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for what an account is: a key, the vendor it is for, and the name it is known by.
+/**
+ * Tests for what an account is: a key, the vendor it is for, and the name it is known by.
+ */
 class DshAccountTest {
 	@Test
 	void anAccountIsNamedByItsVendorAndItsLabel() {

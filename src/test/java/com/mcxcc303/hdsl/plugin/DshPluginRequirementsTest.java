@@ -29,11 +29,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the rule that decides whether a plugin is shown for an instance.
-///
-/// The ranges are the ones plugins really publish, prereleases and alternatives
-/// included, and getting them wrong hides plugins from the list — which is why the
-/// rule this launcher uses is the one npm itself uses.
+/** Verifies the rule that decides whether a plugin is shown for an instance. */
 class DshPluginRequirementsTest {
 	@Test
 	void alternativesAreTriedInTurn() {

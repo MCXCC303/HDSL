@@ -38,17 +38,17 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies interaction continuity and state restoration.
+/**
+ * Verifies interaction continuity and state restoration for {@link InteractionLayer}.
+ */
 @NotNullByDefault
 public final class InteractionLayerTest {
 
-    /// Starts the toolkit for this class, or skips the class where it cannot run.
     @BeforeAll
     static void startToolkit() {
         FxToolkit.requireRunning();
     }
 
-    /// Selection remains visible after pointer feedback ends, and selected controls still respond to presses.
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void pointerFeedbackRestoresPersistentState(boolean selected) throws Exception {
@@ -81,7 +81,6 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// Retargeting hover to press preserves the displayed tint and the linear rate.
     @Test
     void retargetingPreservesLinearRate() throws Exception {
         onFxThread(() -> {
@@ -102,7 +101,6 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// Early release reverses immediately; a second press continues from the fading tint.
     @Test
     void rapidClicksRemainContinuous() throws Exception {
         onFxThread(() -> {
@@ -129,7 +127,6 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// Reset clears a held press without losing selection or focus; disabled animation settles immediately.
     @Test
     void resetPreservesSelectionAndFocus() throws Exception {
         onFxThread(() -> {
@@ -161,7 +158,6 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// Theme paint and corner changes preserve interaction progress; hidden paint remains pickable.
     @Test
     void appearanceChangesPreserveFeedback() throws Exception {
         onFxThread(() -> {
@@ -189,7 +185,6 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// Completion notifies once; reset cancels silently and disabling animation reports settlement.
     @Test
     void settlementCallbackFollowsCompletion() throws Exception {
         onFxThread(() -> {
@@ -211,7 +206,6 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// Reversing selection mid-fade is continuous and reset retains the latest selection.
     @Test
     void interruptedSelectionRemainsContinuous() throws Exception {
         onFxThread(() -> {
@@ -236,22 +230,17 @@ public final class InteractionLayerTest {
         });
     }
 
-    /// A generous completion interval, independent of the visual timing tokens.
     private static final long SECOND = 1_000_000_000L;
 
-    /// A short sampling interval for observing uninterrupted and interrupted fades.
     private static final long SAMPLE = 10_000_000L;
 
-    /// Tolerance for comparing independently sampled opacity values.
     private static final double EPSILON = 1e-12;
 
-    /// Advances well past a normal feedback transition and verifies it stops.
     private static void settleAnimation(InteractionLayer layer, long startedAt) {
         layer.advance(startedAt + SECOND);
         assertFalse(layer.isStateTransitioning());
     }
 
-    /// Creates an animated layer whose pulses are controlled entirely by each test.
     private static InteractionLayer createLayer() {
         InteractionLayer layer = new InteractionLayer(false);
         layer.setAnimationEnabled(true);
@@ -259,7 +248,6 @@ public final class InteractionLayerTest {
         return layer;
     }
 
-    /// Runs assertions on the JavaFX thread and propagates failures to the test worker.
     private static void onFxThread(Runnable action) throws Exception {
         FutureTask<@Nullable Void> task = new FutureTask<>(action, null);
         Platform.runLater(task);

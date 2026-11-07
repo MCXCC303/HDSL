@@ -33,21 +33,12 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the Agent Client Protocol client against a stub peer.
-///
-/// The streaming path is the part that cannot be exercised against the real
-/// server without a model credential, so it is pinned here instead: framing,
-/// request correlation, notification dispatch and shutdown.
+/**
+ * Verifies the Agent Client Protocol client against a stub peer.
+ */
 class DshAcpClientTest {
-	/// Where the stub runs: a directory that exists on the platform running the test.
-	///
-	/// The child is started with this as its working directory, so `/tmp` — the
-	/// obvious spelling — is a directory name Windows has not got.
 	private static final Path TEMP = Path.of(System.getProperty("java.io.tmpdir"));
 
-	/// Builds a throwaway instance descriptor; the transport is supplied explicitly.
-	///
-	/// @return the instance
 	private static DshInstance testInstance() {
 		return new DshInstance("test",
 		                       "0.0.0",
@@ -65,9 +56,6 @@ class DshAcpClientTest {
 		                       0L);
 	}
 
-	/// Builds the command that runs the stub on the current test classpath.
-	///
-	/// @return the command
 	private static List<String> stubCommand() {
 		return List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
 		               "-cp",

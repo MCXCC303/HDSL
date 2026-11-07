@@ -41,222 +41,174 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies that making an instance reaches the interface.
-///
-/// This is the reported defect, pinned: an instance created by the wizard was
-/// on disk but the list still said the folder held nothing, and the home page
-/// still said nothing was selected, until somebody pressed refresh. Both are
-/// consequences of a page having to go and look; here the page — represented by
-/// the repository and the selected-instance property it publishes — is told.
+/**
+ * Integration tests verifying that instance creation and deletion events propagate to the UI model.
+ */
 class DshInstancesWiringTest {
-    /// Creates an instance the way the install wizard does.
-    ///
-    /// @param id the instance id
-    /// @return the instance
-    private static DshInstance createAsWizard(String id) throws Exception {
-        DshInstance instance = DshInstanceManager.create(id, "1.0.0", DshInstance.DEFAULT_PROFILE,
-                Path.of(System.getProperty("java.io.tmpdir")), DshHomeMode.ISOLATED, null,
-                List.of(), Map.of());
-        assertNotNull(instance);
-        return instance;
-    }
 
-    /// Removes an instance and everything it owns.
-    ///
-    /// @param id the instance id
-    private static void remove(String id) throws Exception {
-        DshInstanceManager.delete(id);
-    }
+	private static DshInstance createAsWizard(String id) throws Exception {
+		DshInstance instance = DshInstanceManager.create(id, "1.0.0", DshInstance.DEFAULT_PROFILE,
+				Path.of(System.getProperty("java.io.tmpdir")), DshHomeMode.ISOLATED, null,
+				List.of(), Map.of());
+		assertNotNull(instance);
+		return instance;
+	}
 
-    /// Reads the folder and waits for the read to be published.
-    ///
-    /// Publishing goes through the interface thread whenever one is running,
-    /// so looking straight after reading races the publication. The latch is
-    /// counted down by the publication itself, whichever thread it lands on.
-    ///
-    /// @param repository the repository to read
-    private static void refreshAndWait(DshInstanceRepository repository) throws Exception {
-        CountDownLatch published = new CountDownLatch(1);
-        repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
-        repository.refresh();
-        if (!published.await(15, TimeUnit.SECONDS)) {
-            throw new AssertionError("Timed out waiting for the read to be published");
-        }
-    }
+	private static void remove(String id) throws Exception {
+		DshInstanceManager.delete(id);
+	}
 
-    /// Waits until the folder publishes a snapshot that names — or stops
-    /// naming — the given instance.
-    ///
-    /// Making and removing instances publishes through the interface thread
-    /// whenever one is running, exactly as an explicit read does, so the same
-    /// waiting applies. The listener goes on before the write is awaited, and
-    /// the state is also read once through it, so a publication that already
-    /// happened counts as much as one still to come; the
-    /// `java.util.concurrent` hand-off carries the memory visibility a re-read
-    /// of the property would not promise.
-    ///
-    /// @param repository the folder to watch
-    /// @param id         the instance to wait for
-    /// @param present    whether to wait for it to be listed or to be gone
-    private static void awaitListing(DshInstanceRepository repository, String id, boolean present) throws Exception {
-        CountDownLatch done = new CountDownLatch(1);
-        repository.snapshotProperty().addListener((observable, was, now) -> {
-            if (now.instances().stream().anyMatch(i -> i.id().equals(id)) == present) {
-                done.countDown();
-            }
-        });
-        if (repository.getSnapshot().instances().stream().anyMatch(i -> i.id().equals(id)) == present) {
-            done.countDown();
-        }
-        if (!done.await(15, TimeUnit.SECONDS)) {
-            throw new AssertionError("Timed out waiting for the folder to "
-                    + (present ? "list " : "drop ") + id);
-        }
-    }
+	private static void refreshAndWait(DshInstanceRepository repository) throws Exception {
+		CountDownLatch published = new CountDownLatch(1);
+		repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
+		repository.refresh();
+		if (!published.await(15, TimeUnit.SECONDS)) {
+			throw new AssertionError("Timed out waiting for the read to be published");
+		}
+	}
 
-    /// Waits until something is selected.
-    ///
-    /// @see #awaitSelectionOf
-    private static void awaitSelection() throws Exception {
-        CountDownLatch done = new CountDownLatch(1);
-        GameDirectoryManager.selectedInstanceProperty().addListener((observable, was, now) -> {
-            if (now != null) {
-                done.countDown();
-            }
-        });
-        if (GameDirectoryManager.getSelectedInstance() != null) {
-            done.countDown();
-        }
-        if (!done.await(15, TimeUnit.SECONDS)) {
-            throw new AssertionError("Timed out waiting for a selection to be published");
-        }
-    }
+	private static void awaitListing(DshInstanceRepository repository, String id, boolean present) throws Exception {
+		CountDownLatch done = new CountDownLatch(1);
+		repository.snapshotProperty().addListener((observable, was, now) -> {
+			if (now.instances().stream().anyMatch(i -> i.id().equals(id)) == present) {
+				done.countDown();
+			}
+		});
+		if (repository.getSnapshot().instances().stream().anyMatch(i -> i.id().equals(id)) == present) {
+			done.countDown();
+		}
+		if (!done.await(15, TimeUnit.SECONDS)) {
+			throw new AssertionError("Timed out waiting for the folder to "
+					+ (present ? "list " : "drop ") + id);
+		}
+	}
 
-    /// Waits until the selection is the given instance, or nothing.
-    ///
-    /// @param id the instance to wait for, or `null` to wait for no selection
-    private static void awaitSelectionOf(@Nullable String id) throws Exception {
-        CountDownLatch done = new CountDownLatch(1);
-        GameDirectoryManager.selectedInstanceProperty().addListener((observable, was, now) -> {
-            if (Objects.equals(now == null ? null : now.id(), id)) {
-                done.countDown();
-            }
-        });
-        DshInstance current = GameDirectoryManager.getSelectedInstance();
-        if (Objects.equals(current == null ? null : current.id(), id)) {
-            done.countDown();
-        }
-        if (!done.await(15, TimeUnit.SECONDS)) {
-            // What it is, rather than only that it is not what was asked for: a bare timeout on this
-            // one sent somebody looking for a threading bug when the answer was that the folder still
-            // held an instance another test had failed to remove.
-            DshInstance now = GameDirectoryManager.getSelectedInstance();
-            throw new AssertionError("Timed out waiting for the selection to become " + id
-                    + "; it is " + (now == null ? "nothing" : now.id())
-                    + ", and the folder holds " + GameDirectoryManager.getSelectedRepository()
-                    .getInstances().stream().map(DshInstance::id).toList());
-        }
-    }
+	private static void awaitSelection() throws Exception {
+		CountDownLatch done = new CountDownLatch(1);
+		GameDirectoryManager.selectedInstanceProperty().addListener((observable, was, now) -> {
+			if (now != null) {
+				done.countDown();
+			}
+		});
+		if (GameDirectoryManager.getSelectedInstance() != null) {
+			done.countDown();
+		}
+		if (!done.await(15, TimeUnit.SECONDS)) {
+			throw new AssertionError("Timed out waiting for a selection to be published");
+		}
+	}
 
-    @Test
-    void anInstanceMadeByTheWizardIsListedWithoutBeingAskedFor() throws Exception {
-        DshInstanceRepository repository = GameDirectoryManager.getSelectedRepository();
-        refreshAndWait(repository);
-        int before = repository.getInstances().size();
+	private static void awaitSelectionOf(@Nullable String id) throws Exception {
+		CountDownLatch done = new CountDownLatch(1);
+		GameDirectoryManager.selectedInstanceProperty().addListener((observable, was, now) -> {
+			if (Objects.equals(now == null ? null : now.id(), id)) {
+				done.countDown();
+			}
+		});
+		DshInstance current = GameDirectoryManager.getSelectedInstance();
+		if (Objects.equals(current == null ? null : current.id(), id)) {
+			done.countDown();
+		}
+		if (!done.await(15, TimeUnit.SECONDS)) {
+			DshInstance now = GameDirectoryManager.getSelectedInstance();
+			throw new AssertionError("Timed out waiting for the selection to become " + id
+					+ "; it is " + (now == null ? "nothing" : now.id())
+					+ ", and the folder holds " + GameDirectoryManager.getSelectedRepository()
+					.getInstances().stream().map(DshInstance::id).toList());
+		}
+	}
 
-        DshInstance created = createAsWizard("wiring-made-by-the-wizard");
-        try {
-            awaitListing(repository, created.id(), true);
-            assertEquals(before + 1, repository.getInstances().size(),
-                    "the folder has to publish what was written to it, without a refresh");
-            assertTrue(repository.getInstances().stream().anyMatch(i -> i.id().equals(created.id())));
-        } finally {
-            remove(created.id());
-        }
+	@Test
+	void anInstanceMadeByTheWizardIsListedWithoutBeingAskedFor() throws Exception {
+		DshInstanceRepository repository = GameDirectoryManager.getSelectedRepository();
+		refreshAndWait(repository);
+		int before = repository.getInstances().size();
 
-        awaitListing(repository, created.id(), false);
-        assertEquals(before, repository.getInstances().size(),
-                "removing one has to reach the interface the same way");
-    }
+		DshInstance created = createAsWizard("wiring-made-by-the-wizard");
+		try {
+			awaitListing(repository, created.id(), true);
+			assertEquals(before + 1, repository.getInstances().size(),
+					"the folder has to publish what was written to it, without a refresh");
+			assertTrue(repository.getInstances().stream().anyMatch(i -> i.id().equals(created.id())));
+		} finally {
+			remove(created.id());
+		}
 
-    @Test
-    void aFolderWithNothingSelectedChoosesWhatTheWizardMade() throws Exception {
-        // The launcher is started with an empty folder, which is the state the
-        // report starts from: nothing is selected anywhere.
-        settings().getSelectedInstance().clear();
+		awaitListing(repository, created.id(), false);
+		assertEquals(before, repository.getInstances().size(),
+				"removing one has to reach the interface the same way");
+	}
 
-        DshInstance created = createAsWizard("wiring-first-instance");
-        try {
-            awaitSelectionOf(created.id());
-            DshInstance selected = GameDirectoryManager.getSelectedInstance();
-            assertNotNull(selected, "the home page must have something to act on");
-            assertEquals(created.id(), selected.id(),
-                    "the instance just made is the one the launch button targets");
-        } finally {
-            remove(created.id());
-        }
+	@Test
+	void aFolderWithNothingSelectedChoosesWhatTheWizardMade() throws Exception {
+		settings().getSelectedInstance().clear();
 
-        awaitSelectionOf(null);
-        assertNull(GameDirectoryManager.getSelectedInstance(),
-                "an empty folder leaves nothing selected");
-    }
+		DshInstance created = createAsWizard("wiring-first-instance");
+		try {
+			awaitSelectionOf(created.id());
+			DshInstance selected = GameDirectoryManager.getSelectedInstance();
+			assertNotNull(selected, "the home page must have something to act on");
+			assertEquals(created.id(), selected.id(),
+					"the instance just made is the one the launch button targets");
+		} finally {
+			remove(created.id());
+		}
 
-    @Test
-    void aSelectionMadeAnywhereReachesTheHomePage() throws Exception {
-        DshInstance first = createAsWizard("wiring-selection-a");
-        DshInstance second = createAsWizard("wiring-selection-b");
-        try {
-            // Something is chosen already — the newest instance, chosen by the
-            // folder itself, once that choice has been published. What the
-            // list's radio button then does is choose the other one, and the
-            // home page is expected to follow without being navigated to again.
-            awaitSelection();
-            DshInstance current = GameDirectoryManager.getSelectedInstance();
-            assertNotNull(current);
-            DshInstance other = current.id().equals(first.id()) ? second : first;
+		awaitSelectionOf(null);
+		assertNull(GameDirectoryManager.getSelectedInstance(),
+				"an empty folder leaves nothing selected");
+	}
 
-            List<String> seen = new java.util.ArrayList<>();
-            GameDirectoryManager.selectedInstanceProperty().addListener(
-                    (observable, was, now) -> seen.add(now == null ? null : now.id()));
+	@Test
+	void aSelectionMadeAnywhereReachesTheHomePage() throws Exception {
+		DshInstance first = createAsWizard("wiring-selection-a");
+		DshInstance second = createAsWizard("wiring-selection-b");
+		try {
+			awaitSelection();
+			DshInstance current = GameDirectoryManager.getSelectedInstance();
+			assertNotNull(current);
+			DshInstance other = current.id().equals(first.id()) ? second : first;
 
-            GameDirectoryManager.setSelectedInstance(InstanceStore.find(other.id()));
+			List<String> seen = new java.util.ArrayList<>();
+			GameDirectoryManager.selectedInstanceProperty().addListener(
+					(observable, was, now) -> seen.add(now == null ? null : now.id()));
 
-            assertEquals(List.of(other.id()), seen);
-        } finally {
-            remove(first.id());
-            remove(second.id());
-        }
-    }
+			GameDirectoryManager.setSelectedInstance(InstanceStore.find(other.id()));
 
-    @Test
-    void theFolderTheLauncherOwnsIsTheDefaultOne() {
-        assertEquals(DshPaths.INSTANCES.toAbsolutePath().normalize(),
-                GameDirectoryManager.selected().directory(),
-                "with nothing configured, the launcher's own folder is what is shown");
-    }
+			assertEquals(List.of(other.id()), seen);
+		} finally {
+			remove(first.id());
+			remove(second.id());
+		}
+	}
 
-    @Test
-    void theSelectionWrittenBeforeSelectionsWerePerFolderStillCounts() {
-        LauncherSettings settings = new LauncherSettings();
-        SettingsManager.applyLegacySelection(settings, "an-instance-from-an-older-launcher");
+	@Test
+	void theFolderTheLauncherOwnsIsTheDefaultOne() {
+		assertEquals(DshPaths.INSTANCES.toAbsolutePath().normalize(),
+				GameDirectoryManager.selected().directory(),
+				"with nothing configured, the launcher's own folder is what is shown");
+	}
 
-        assertEquals("an-instance-from-an-older-launcher",
-                settings.getSelectedInstance(GameDirectory.DEFAULT_ID),
-                "the one selection an older launcher kept belonged to the folder it owns");
+	@Test
+	void theSelectionWrittenBeforeSelectionsWerePerFolderStillCounts() {
+		LauncherSettings settings = new LauncherSettings();
+		SettingsManager.applyLegacySelection(settings, "an-instance-from-an-older-launcher");
 
-        // A launcher that has moved on must not have the old value written back
-        // over a choice made since.
-        LauncherSettings migrated = new LauncherSettings();
-        migrated.setSelectedInstance(GameDirectory.DEFAULT_ID, "chosen-since");
-        SettingsManager.applyLegacySelection(migrated, "an-instance-from-an-older-launcher");
-        assertEquals("chosen-since", migrated.getSelectedInstance(GameDirectory.DEFAULT_ID));
-    }
+		assertEquals("an-instance-from-an-older-launcher",
+				settings.getSelectedInstance(GameDirectory.DEFAULT_ID),
+				"the one selection an older launcher kept belonged to the folder it owns");
 
-    @Test
-    void theDefaultFolderIsWhereAnInstanceGoes() throws Exception {
-        assertTrue(Files.isDirectory(DshPaths.INSTANCES) || Files.createDirectories(DshPaths.INSTANCES) != null);
-        Path instanceDirectory = DshPaths.instanceDirectory("wiring-path-check");
-        assertEquals(DshPaths.INSTANCES.resolve("wiring-path-check"), instanceDirectory);
-        FileUtils.deleteDirectory(instanceDirectory);
-    }
+		LauncherSettings migrated = new LauncherSettings();
+		migrated.setSelectedInstance(GameDirectory.DEFAULT_ID, "chosen-since");
+		SettingsManager.applyLegacySelection(migrated, "an-instance-from-an-older-launcher");
+		assertEquals("chosen-since", migrated.getSelectedInstance(GameDirectory.DEFAULT_ID));
+	}
+
+	@Test
+	void theDefaultFolderIsWhereAnInstanceGoes() throws Exception {
+		assertTrue(Files.isDirectory(DshPaths.INSTANCES) || Files.createDirectories(DshPaths.INSTANCES) != null);
+		Path instanceDirectory = DshPaths.instanceDirectory("wiring-path-check");
+		assertEquals(DshPaths.INSTANCES.resolve("wiring-path-check"), instanceDirectory);
+		FileUtils.deleteDirectory(instanceDirectory);
+	}
 }

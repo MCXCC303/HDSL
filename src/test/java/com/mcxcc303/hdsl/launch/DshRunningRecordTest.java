@@ -42,14 +42,11 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What one launcher writes down about an instance, and what another launcher reads.
-///
-/// This is the difference between "nothing is running" and "I did not start it": the registry in
-/// [DshProcessManager] is a map in one JVM, and the record on disk is what a second launcher — the
-/// command line run in a terminal while the window is up — has to go on.
+/**
+ * What one launcher writes down about an instance, and what another launcher reads.
+ */
 class DshRunningRecordTest {
 
-	/// The address a running harness serves, key and all.
 	private static final URI ADDRESS = URI.create("http://127.0.0.1:3567/?token=s3cret");
 
 	@Test
@@ -149,12 +146,10 @@ class DshRunningRecordTest {
 		assertTrue(refused.getMessage().contains("another launcher"), refused.getMessage());
 	}
 
-	/// Returns when this process began, which is what a record of it has to say.
 	private static long began() {
 		return ProcessHandle.current().info().startInstant().orElseGet(Instant::now).toEpochMilli();
 	}
 
-	/// Builds an instance whose own directory is the one given.
 	private static DshInstance instanceIn(Path directory) {
 		return new DshInstance("test-running",
 		                       "0.0.0",

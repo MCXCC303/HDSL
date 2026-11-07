@@ -30,17 +30,17 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies pixel queue behavior independently of control skins and input event dispatch.
+/**
+ * Verifies wheel scroll animation and pixel queue behavior.
+ */
 @NotNullByDefault
 final class WheelScrollAnimationTest {
 
-    /// Starts the toolkit for this class, or skips the class where it cannot run.
     @BeforeAll
     static void startToolkit() {
         System.setProperty("hdsl.scroll.speed", "1");
         FxToolkit.requireRunning();
     }
-    /// Regular wheel input converges to a steady speed instead of replaying a fast start on every notch.
     @Test
     void regularInputMaintainsSteadySpeed() throws Exception {
         onFxThread(() -> {
@@ -84,7 +84,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Retargeting preserves velocity on both sides of an input arriving between regular animation pulses.
     @Test
     void additionalInputDoesNotJumpVelocity() throws Exception {
         onFxThread(() -> {
@@ -110,7 +109,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Input between pulses advances the same trajectory regardless of the rendering cadence.
     @Test
     void inputTimingIsIndependentOfPulseCadence() throws Exception {
         onFxThread(() -> {
@@ -140,7 +138,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Reversing a moving axis clears its forward velocity while preserving the other axis's distance.
     @Test
     void reversalDiscardsExistingVelocity() throws Exception {
         onFxThread(() -> {
@@ -165,7 +162,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Retargeting after partial playback preserves every accepted pixel across unequal frame intervals.
     @Test
     void retargetingPreservesDistance() throws Exception {
         onFxThread(() -> {
@@ -190,7 +186,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// An unapplied queue reserves boundary space, so another event can fall through to an ancestor.
     @Test
     void pendingMovementReservesBounds() throws Exception {
         onFxThread(() -> {
@@ -211,7 +206,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Losing space on one axis during playback leaves the other axis's accepted distance intact.
     @Test
     void shrinkingBoundsOnlyStopsBlockedAxis() throws Exception {
         onFxThread(() -> {
@@ -234,7 +228,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Reversing at a boundary cancels that axis even when no new movement can be accepted.
     @Test
     void reversalCancelsOnlyOpposingAxis() throws Exception {
         onFxThread(() -> {
@@ -255,7 +248,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Cancellation releases the old queue while allowing the same animation to accept fresh input.
     @Test
     void cancelledMovementDoesNotResume() throws Exception {
         onFxThread(() -> {
@@ -280,7 +272,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// A synchronous cancellation cannot leave old pixels for the next wheel input or move the other axis.
     @Test
     void cancellationDuringFrameDiscardsRemainingMovement() throws Exception {
         onFxThread(() -> {
@@ -311,7 +302,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// The final frame of an old animation cannot stop or overwrite a replacement queued by a listener.
     @Test
     void replacementDuringFrameSurvivesOldCompletion() throws Exception {
         onFxThread(() -> {
@@ -340,7 +330,6 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Input accepted during a frame accumulates only the pixels that have not yet been applied.
     @Test
     void inputDuringFramePreservesAcceptedDistance() throws Exception {
         onFxThread(() -> {
@@ -359,39 +348,30 @@ final class WheelScrollAnimationTest {
         });
     }
 
-    /// Executes manual frames between toolkit pulses and propagates failures to JUnit.
     private static void onFxThread(Runnable action) throws Exception {
         FutureTask<Boolean> task = new FutureTask<>(action, true);
         Platform.runLater(task);
         task.get(10, TimeUnit.SECONDS);
     }
 
-    /// Models a two-axis scrollable area without constructing any JavaFX controls.
     @NotNullByDefault
     private static final class Surface implements WheelScrollAnimation.Target {
-        /// Applied horizontal position in pixels.
         private double x;
 
-        /// Applied vertical position in pixels.
         private double y;
 
-        /// Mutable vertical boundary used to simulate content resizing during playback.
         private double maxY = 1000;
 
-        /// One-shot position listener invoked synchronously after movement.
         private @Nullable Runnable afterScroll;
 
-        /// Axis whose movement triggers the position listener.
         private boolean callbackHorizontal;
 
-        /// Bounds movement against each axis's remaining pixel range.
         @Override
         public double limit(boolean horizontal, double pixels) {
             double position = horizontal ? x : y;
             return MathUtils.clamp(pixels, -position, (horizontal ? 1000 : maxY) - position);
         }
 
-        /// Applies exactly the distance allowed by the current bounds.
         @Override
         public double scroll(boolean horizontal, double pixels) {
             double distance = limit(horizontal, pixels);

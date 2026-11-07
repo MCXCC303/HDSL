@@ -28,53 +28,39 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-/// Verifies how the plugin market finds the instance it was opened for.
-///
-/// The defect this belongs to: 下载 on an instance's own plugin list opened the market, whose picker
-/// follows the *launcher's selection* — and opening an instance does not select it, because the radio
-/// button in the list does that and the row opens the page. So the two came apart, and a plugin
-/// installed from one instance's page went into another: reported as installed into `0.1.7-rc.2-2` and
-/// appearing in `0.0.1-rc.5`, two instances in the same folder.
-///
-/// The page now points its picker at the instance it was opened for, matched **by id**: what the
-/// caller holds is the instance its page was built from, and what the picker holds was read from disk
-/// a moment later, so the two differ whenever anything about the instance has been written in between
-/// — and a picker asked to show a value it does not hold shows nothing at all.
+/**
+ * Tests verifying plugin market instance resolution and matching logic.
+ */
 class PluginMarketInstanceTest {
 
-    /// An instance, as the page's own read of the folder would give it.
-    ///
-    /// @param id  the instance id
-    /// @param port the port it was given
-    /// @return the instance
-    private static DshInstance instance(String id, int port) {
-        return new DshInstance(id, "0.1.7-rc.2", DshInstance.DEFAULT_PROFILE,
-                System.getProperty("java.io.tmpdir"), DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED,
-                null, List.of(), Map.of(), null, null, null, port, 0L);
-    }
+	private static DshInstance instance(String id, int port) {
+		return new DshInstance(id, "0.1.7-rc.2", DshInstance.DEFAULT_PROFILE,
+				System.getProperty("java.io.tmpdir"), DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED,
+				null, List.of(), Map.of(), null, null, null, port, 0L);
+	}
 
-    @Test
-    void theInstanceIsFoundByIdEvenWhenTheTwoCopiesDiffer() {
-        DshInstance held = instance("target", 3800);
-        DshInstance onDisk = instance("target", 4022);
+	@Test
+	void theInstanceIsFoundByIdEvenWhenTheTwoCopiesDiffer() {
+		DshInstance held = instance("target", 3800);
+		DshInstance onDisk = instance("target", 4022);
 
-        assertEquals(onDisk, PluginMarketPage.matchingInstance(List.of(instance("other", 1), onDisk), held),
-                "the picker's own copy is what gets selected, because that is the one it holds");
-    }
+		assertEquals(onDisk, PluginMarketPage.matchingInstance(List.of(instance("other", 1), onDisk), held),
+				"the picker's own copy is what gets selected, because that is the one it holds");
+	}
 
-    @Test
-    void anInstanceThatIsNotInTheListIsNotFound() {
-        assertNull(PluginMarketPage.matchingInstance(List.of(instance("other", 1)), instance("gone", 2)),
-                "an instance that is no longer in the list leaves the picker to its own choice");
-    }
+	@Test
+	void anInstanceThatIsNotInTheListIsNotFound() {
+		assertNull(PluginMarketPage.matchingInstance(List.of(instance("other", 1)), instance("gone", 2)),
+				"an instance that is no longer in the list leaves the picker to its own choice");
+	}
 
-    @Test
-    void theNameIsWhatIsMatchedRatherThanThePosition() {
-        DshInstance second = instance("second", 2);
+	@Test
+	void theNameIsWhatIsMatchedRatherThanThePosition() {
+		DshInstance second = instance("second", 2);
 
-        assertEquals(second, PluginMarketPage.matchingInstance(List.of(instance("first", 1), second),
-                        instance("second", 99)),
-                "the list is ordered newest first, so a picker that took its own first entry would be"
-                        + " wrong for every instance but one");
-    }
+		assertEquals(second, PluginMarketPage.matchingInstance(List.of(instance("first", 1), second),
+						instance("second", 99)),
+				"the list is ordered newest first, so a picker that took its own first entry would be"
+						+ " wrong for every instance but one");
+	}
 }

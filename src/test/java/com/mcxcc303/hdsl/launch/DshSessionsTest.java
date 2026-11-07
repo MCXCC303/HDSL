@@ -33,23 +33,13 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies session discovery and migration.
-///
-/// The fixtures are written in a temporary directory rather than against a real
-/// home: migration moves files, and a test must never reach the user's data.
+/**
+ * Verifies session discovery and migration.
+ */
 class DshSessionsTest {
-	/// The workspace slug the fixture sessions live under.
 	private static final String SLUG = "--home-user-project--";
-
-	/// The fixture session id.
 	private static final String SESSION_ID = "11111111-2222-3333-4444-555555555555";
 
-	/// Builds an instance whose home is a directory.
-	///
-	/// @param id      the instance id
-	/// @param home    the directory standing in for `DSH_HOME`
-	/// @param version the pinned version
-	/// @return the instance
 	private static DshInstance instance(String id, Path home, String version) {
 		return new DshInstance(id,
 		                       version,
@@ -67,23 +57,10 @@ class DshSessionsTest {
 		                       0L);
 	}
 
-	/// Writes a session directory and its projection-cache row.
-	///
-	/// @param home          the `DSH_HOME`
-	/// @param formatVersion the log format version
-	/// @param title         the title to record in the cache, or `null` for none
-	/// @throws IOException when the fixture cannot be written
 	private static void writeSession(Path home, int formatVersion, String title) throws IOException {
 		writeSession(home, SESSION_ID, formatVersion, title);
 	}
 
-	/// Writes a session directory and its projection-cache row under a given id.
-	///
-	/// @param home          the `DSH_HOME`
-	/// @param sessionId     the session id
-	/// @param formatVersion the log format version
-	/// @param title         the title to record in the cache, or `null` for none
-	/// @throws IOException when the fixture cannot be written
 	private static void writeSession(Path home, String sessionId, int formatVersion, String title) throws IOException {
 		Path directory = home.resolve("sessions").resolve(SLUG).resolve(sessionId);
 		Files.createDirectories(directory);

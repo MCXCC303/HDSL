@@ -32,26 +32,13 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests the manifest an install is described by.
-///
-/// The pinning is not a preference. DeepSeek Harness and its boot library are
-/// published together and a release whose libraries disagree with it fails at
-/// import, so a manifest that fails to hold them together produces a runtime that
-/// installs cleanly and does not start. It did: the override was written where npm
-/// reads it and pnpm does not, and nothing said so.
+/**
+ * Tests the manifest an install is described by.
+ */
 class DshManifestTest {
-	/// A temporary directory standing in for the install prefix.
 	@TempDir
 	private Path prefix;
 
-	/// The launcher is asked for the exact version, not a range.
-	///
-	/// A caret cannot express what these packages promise: the whole family is
-	/// published in lockstep, so `^0.1.6-alpha.1` resolves to alpha.2's libraries
-	/// and the tree comes out inconsistent.
-	///
-	/// @throws IOException  when the manifest cannot be read back
-	/// @throws DshException when the manifest cannot be written
 	@Test
 	void pinsTheLauncherExactly() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null, DshDependencyPolicy.LATEST);
@@ -63,15 +50,6 @@ class DshManifestTest {
 		             "the launcher should be pinned to the exact version");
 	}
 
-	/// The boot library is pinned where pnpm actually reads it.
-	///
-	/// Since pnpm 10 the settings it used to take from `package.json` live in
-	/// `pnpm-workspace.yaml`; a `pnpm` field in the manifest is ignored, and npm's
-	/// `overrides` field is not read by pnpm at all. Writing either leaves the
-	/// boot library free to resolve to whatever the launcher's own dependencies
-	/// ask for, which is a different version as soon as the two have diverged.
-	///
-	/// @throws IOException when the file cannot be read back
 	@Test
 	void pinsTheBootLibraryWherePnpmReadsIt() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null, DshDependencyPolicy.LATEST);
@@ -85,9 +63,6 @@ class DshManifestTest {
 		assertTrue(text.contains("0.1.6-alpha.1"), "held to the version asked for");
 	}
 
-	/// A boot library other than the launcher's own is written as given.
-	///
-	/// @throws IOException when the file cannot be read back
 	@Test
 	void writesTheBootLibraryItIsGiven() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "0.1.5-rc.2", null, DshDependencyPolicy.LATEST);
@@ -96,14 +71,6 @@ class DshManifestTest {
 		           "the override should say what was asked for, not the launcher's own version");
 	}
 
-	/// The pin is read from its own entry, not from a list that merely names the package.
-	///
-	/// `pnpm-workspace.yaml` holds both: a list of packages spelled `'@scope/name@1.2.3'` and the
-	/// `overrides:` mapping. The reader used to take the first line that contained the package name,
-	/// which is one of the list entries — and what it answered with still carried the `@` that
-	/// separated the two halves of that entry. An instance pinned that way exported a pack whose
-	/// pin was `@0.1.7-rc.1`, and installing that pack wrote a workspace file pnpm refused with
-	/// `bad indentation of a mapping entry`, because a plain scalar cannot begin with `@`.
 	@Test
 	void thePinIsReadFromItsOwnEntryAndNotFromAListOfPackages() {
 		String workspace = """
@@ -125,14 +92,6 @@ class DshManifestTest {
 		             "quotes around either half are the spelling, not the value");
 	}
 
-	/// A value YAML would read as an indicator is quoted, and an ordinary version is not.
-	///
-	/// The file is built by hand, so this is the one place that decides whether what it writes is
-	/// YAML at all. A package name begins with `@` and a pin may be a range or a protocol; both are
-	/// values a reader would otherwise take for syntax.
-	///
-	/// @throws IOException  when the file cannot be read back
-	/// @throws DshException when the manifest cannot be written
 	@Test
 	void aValueYamlWouldReadAsAnIndicatorIsQuoted() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "@0.1.7-rc.1", null, DshDependencyPolicy.LATEST);
@@ -142,10 +101,6 @@ class DshManifestTest {
 		           "a key and a value that start with @ are both quoted, not written as syntax: " + text);
 	}
 
-	/// A version needs no quotes, so the file keeps the shape a person reads.
-	///
-	/// @throws IOException  when the file cannot be read back
-	/// @throws DshException when the manifest cannot be written
 	@Test
 	void anOrdinaryVersionIsWrittenPlainly() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null, DshDependencyPolicy.LATEST);
@@ -155,12 +110,6 @@ class DshManifestTest {
 		assertFalse(text.contains("'0.1.6-alpha.1'"), "and is not quoted for no reason");
 	}
 
-	/// The boot library is named once, even though the policy also holds it.
-	///
-	/// It is one of the vendor's packages, so a policy that holds those names it — and the file then
-	/// carried `'@deepseek-ai/dsh-app-boot'` twice. pnpm refuses the whole workspace with
-	/// `duplicated mapping key`, which is a launcher that cannot install at all. The two are
-	/// therefore combined into one map before either file is written, and the caller's choice wins.
 	@Test
 	void theBootLibraryIsNamedOnceEvenWhenThePolicyAlsoHoldsIt() {
 		Map<String, String> held = new LinkedHashMap<>();
@@ -176,11 +125,6 @@ class DshManifestTest {
 		assertEquals("4.0.2", overrides.get("\u0040deepseek-ai/cordis"));
 	}
 
-	/// npm answers about a specifier with an array, and that is what has to be read.
-	///
-	/// Captured verbatim from `npm view @deepseek-ai/dsh@0.1.5-alpha.2 dependencies --json`, because
-	/// the shape is the whole point: the first version of this read only the object form, found
-	/// nothing in the array, and would have applied the policy to precisely nothing.
 	@Test
 	void theDependenciesAreReadFromTheShapeNpmActuallyAnswersWith() {
 		String answer = "[{\"commander\":\"^15.0.0\"," + "\"@deepseek-ai/cordis\":\"^4.0.2\"," +
@@ -193,7 +137,6 @@ class DshManifestTest {
 		assertEquals("4.0.2", HarnessInstaller.floorOf(declared.get("\u0040deepseek-ai/cordis").getAsString()));
 	}
 
-	/// A package that declares nothing, and an answer that is not JSON, both say "nothing to hold".
 	@Test
 	void anAnswerWithNoDependenciesIsNotAnError() {
 		assertNull(HarnessInstaller.declaredDependencies("[]"));
@@ -201,10 +144,6 @@ class DshManifestTest {
 		assertNull(HarnessInstaller.declaredDependencies("not json"));
 	}
 
-	/// Only the ranges that have a floor are read; the rest are left alone.
-	///
-	/// A range whose floor this cannot name must not be guessed at, and a dependency with no override
-	/// simply resolves freely — which is the policy's own answer for anything it does not hold.
 	@Test
 	void aFloorIsReadFromTheRangesThatHaveOne() {
 		assertEquals("4.0.2", HarnessInstaller.floorOf("^4.0.2"));
@@ -216,7 +155,6 @@ class DshManifestTest {
 		             "a prerelease floor is still a floor");
 	}
 
-	/// What cannot be read is not guessed at.
 	@Test
 	void aRangeWithNoReadableFloorIsLeftAlone() {
 		assertNull(HarnessInstaller.floorOf("*"));
@@ -228,11 +166,6 @@ class DshManifestTest {
 		assertNull(HarnessInstaller.floorOf(null));
 	}
 
-	/// The default holds the vendor's own packages and nothing else.
-	///
-	/// The plugin framework and the harness's libraries are published together in lockstep and have
-	/// broken a launch twice between them; a pack's own plugins are the author's business and are
-	/// left free.
 	@Test
 	void theDefaultPolicyHoldsOnlyTheVendorsOwnPackages() {
 		DshDependencyPolicy policy = DshDependencyPolicy.CORE_PINNED;

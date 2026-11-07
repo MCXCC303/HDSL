@@ -36,12 +36,9 @@ import java.util.zip.ZipFile;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies what a DSH-PackForge pack carries, and what it refuses to.
-///
-/// A pack is something people publish, so the filter is the part that matters most: an installed
-/// tree, a credential, a key or a nested archive that travelled would be a leak, and one that did
-/// not travel would only be a smaller pack. The container's shape matters too — the marker at the
-/// root and the files under `overrides/` are what an importer looks for.
+/**
+ * Verifies what a DSH-PackForge pack carries, and what it refuses to.
+ */
 class DshPackForgeTest {
 	@Test
 	void whatNeverTravels() {
@@ -150,14 +147,6 @@ class DshPackForgeTest {
 		}
 	}
 
-	/// The profile's own files sit at the root, and everything else under `overrides/`.
-	///
-	/// The two places are not a style: the installer copies the root files **before** it resolves
-	/// the dependencies and the overrides afterwards, so a `package.json` written under
-	/// `overrides/` arrives after the install that needed it — the pack then installs cleanly and
-	/// boots with none of its plugins.
-	///
-	/// @throws Exception when the pack cannot be written, read, or landed
 	@Test
 	void theProfilesOwnFilesSitAtTheRootAndTheRestUnderOverrides() throws Exception {
 		String id = "packforge-layout";

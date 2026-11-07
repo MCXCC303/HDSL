@@ -26,11 +26,9 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What a pack is not allowed to write.
-///
-/// A pack is an archive somebody else made, so these are the rules that stand between it and the
-/// machine it is installed on: where a member lands, which files hold credentials, and which
-/// members cannot be checked before they are on the disk.
+/**
+ * What a pack is not allowed to write.
+ */
 class DspackSafetyTest {
 
 	@Test

@@ -28,19 +28,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-/// Tests for working out what an instance's profile actually boots.
-///
-/// This is the difference between an instance that starts and an instance that appears to do
-/// nothing: the surface decides whether a port is reserved, whether `--no-open` is passed, and
-/// whether the launcher waits for a readiness line and opens a browser. Answering it from the
-/// profile's *name* is right until somebody writes a pack, because a pack's profile is named after
-/// the pack — `pokemon`, `codex` — and boots the browser app all the same.
+/**
+ * Verifies surface detection for instance profiles.
+ */
 class DshSurfaceTest {
-	/// Writes a profile manifest naming the given bundles.
-	///
-	/// @param home    the `DSH_HOME`
-	/// @param profile the profile
-	/// @param bundles the bundles
 	private static void writeProfile(Path home, String profile, List<String> bundles) throws Exception {
 		Path directory = home.resolve("profiles").resolve(profile);
 		Files.createDirectories(directory);
@@ -53,11 +44,6 @@ class DshSurfaceTest {
 		Files.writeString(directory.resolve("package.json"), json.toString());
 	}
 
-	/// Builds an instance whose home is a temporary directory.
-	///
-	/// @param home    the home
-	/// @param profile the profile
-	/// @return the instance
 	private static DshInstance instance(Path home, String profile) {
 		return new DshInstance("test",
 		                       "0.1.6-alpha.2",
@@ -77,7 +63,6 @@ class DshSurfaceTest {
 
 	@Test
 	void aPackProfileNamedAfterThePackStillBootsTheBrowser() throws Exception {
-		// The reported case: a pack's profile is called `pokemon` and layers the web app.
 		Path home = Files.createTempDirectory("home");
 		writeProfile(home, "pokemon", List.of("@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app", "dsh-wildmon"));
 
@@ -86,8 +71,6 @@ class DshSurfaceTest {
 
 	@Test
 	void theAppDecidesAndNotTheName() throws Exception {
-		// The converse, which is what makes the rule a rule rather than a special case for packs:
-		// a profile *called* `web` that does not layer the web app is not the browser surface.
 		Path home = Files.createTempDirectory("home");
 		writeProfile(home, "web", List.of("@deepseek-ai/dsh-base", "@deepseek-ai/dsh-headless"));
 

@@ -34,32 +34,18 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that an instance belongs to the folder the user is looking at.
-///
-/// This pins the reported defect: a person added a folder for their instances,
-/// installed one, and found it in the folder the launcher owns — while the
-/// instances already in the folder they added were listed from a manifest the
-/// launcher had never written and then managed as if they were somewhere else.
-///
-/// The two halves are one rule: which folder an instance is in is part of the
-/// instance, and it is the folder the launcher was pointed at when it was made.
+/**
+ * Verifies that an instance belongs to the folder the user is looking at.
+ */
 class DshInstanceFoldersTest {
-	/// The folder the interface is showing.
 	@TempDir
 	Path shown;
 
-	/// A second folder the launcher also looks in.
 	@TempDir
 	Path other;
 
-	/// The supplier that was in place before this test replaced it.
 	private Supplier<List<Path>> previous;
 
-	/// Creates an instance in a folder.
-	///
-	/// @param id     the instance id
-	/// @param folder the folder to make it in
-	/// @return the instance
 	private static DshInstance create(String id, Path folder) throws DshException {
 		return DshInstanceManager.create(id,
 		                                 "1.0.0",
@@ -73,10 +59,6 @@ class DshInstanceFoldersTest {
 		                                 folder);
 	}
 
-	/// Copies a folder, which is how a second instance with one name arrives.
-	///
-	/// @param from the folder to copy
-	/// @param to   where to put the copy
 	private static void copyFolder(Path from, Path to) throws Exception {
 		try (Stream<Path> walk = Files.walk(from)) {
 			for (Path path : walk.toList()) {
@@ -91,13 +73,11 @@ class DshInstanceFoldersTest {
 		}
 	}
 
-	/// Points the manager at the two folders, the shown one first.
 	@BeforeEach
 	void pointTheLauncherAtTheFolders() {
 		previous = InstanceFolders.setFolders(() -> List.of(shown, other));
 	}
 
-	/// Puts the folders back for the next test.
 	@AfterEach
 	void restoreTheFolders() {
 		InstanceFolders.setFolders(previous);
@@ -135,8 +115,6 @@ class DshInstanceFoldersTest {
 		           "every folder the launcher looks in is listed");
 	}
 
-	/// An instance made by another launcher, or by an older one, has a manifest
-	/// this launcher never wrote. The folder it was found in is the answer.
 	@Test
 	void aManifestWithNoRecordedFolderIsTakenFromWhereItWasFound() throws Exception {
 		DshInstance handWritten = new DshInstance("adopted",

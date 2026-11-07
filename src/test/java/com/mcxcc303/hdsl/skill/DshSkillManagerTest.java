@@ -34,7 +34,9 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The skill packs a DSH home holds, and the one frontmatter line that switches one off.
+/**
+ * The skill packs a DSH home holds, and the one frontmatter line that switches one off.
+ */
 class DshSkillManagerTest {
 	@TempDir
 	private Path home;

@@ -46,17 +46,18 @@ import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies cached flow measurements and configurable wheel speed independently of user preferences.
+/**
+ * Tests cached flow measurements and configurable wheel speed.
+ */
 @NotNullByDefault
 final class ScrollAdapterTest {
 
-    /// Starts the toolkit for this class, or skips the class where it cannot run.
     @BeforeAll
     static void startToolkit() {
         System.setProperty("hdsl.scroll.speed", "1");
         FxToolkit.requireRunning();
     }
-    /// Repeated wheel input extends measurements linearly rather than rescanning queued cells.
+
     @Test
     void variableFlowReusesMeasuredWheelRange() throws Exception {
         onFxThread(() -> {
@@ -97,14 +98,12 @@ final class ScrollAdapterTest {
         });
     }
 
-    /// Same-size model replacements and layout changes invalidate cached offscreen cell lengths.
     @Test
     void variableFlowInvalidatesMeasuredRange() throws Exception {
         onFxThread(() -> {
             ListView<Integer> list = new ListView<>();
             double[] scale = {1};
             list.setCellFactory(view -> new ListCell<>() {
-                /// Sizes each row from its model value, including reused measurement cells.
                 @Override
                 protected void updateItem(@Nullable Integer item, boolean empty) {
                     super.updateItem(item, empty);
@@ -148,7 +147,6 @@ final class ScrollAdapterTest {
         });
     }
 
-    /// Tree value changes invalidate offscreen measurements even when the expanded row count stays unchanged.
     @Test
     void treeFlowInvalidatesMeasuredRange() throws Exception {
         onFxThread(() -> {
@@ -159,7 +157,6 @@ final class ScrollAdapterTest {
             TreeView<Integer> tree = new TreeView<>(root);
             tree.setShowRoot(false);
             tree.setCellFactory(view -> new TreeCell<>() {
-                /// Sizes each tree row from its model value.
                 @Override
                 protected void updateItem(@Nullable Integer item, boolean empty) {
                     super.updateItem(item, empty);
@@ -182,7 +179,6 @@ final class ScrollAdapterTest {
         });
     }
 
-    /// Custom speed parsing remains testable independently of the test JVM's forced default.
     @Test
     void wheelSpeedSupportsCustomFactorsAndPercentages() {
         assertEquals(3, ScrollAdapter.readWheelSpeed(null));
@@ -201,7 +197,6 @@ final class ScrollAdapterTest {
         assertEquals(0.0003, ScrollAdapter.readWheelSpeed("0.000001"), 1e-12);
     }
 
-    /// Dispatches ordinary wheel pixels without advancing the animation clock.
     private static void sendWheel(Node target, double dx, double dy) {
         target.fireEvent(new ScrollEvent(ScrollEvent.SCROLL, 10, 10, 10, 10,
                 false, false, false, false, false, false, dx, dy, dx, dy,
@@ -209,7 +204,6 @@ final class ScrollAdapterTest {
                 ScrollEvent.VerticalTextScrollUnits.NONE, 0, 0, new PickResult(target, 10, 10)));
     }
 
-    /// Attaches a control to a scene and lays it out without displaying a window.
     private static void layout(Region node) {
         node.setManaged(false);
         Pane root = new Pane(node);
@@ -220,7 +214,6 @@ final class ScrollAdapterTest {
         node.layout();
     }
 
-    /// Runs an operation and propagates assertion failures from the JavaFX application thread.
     private static <T> T onFxThread(Callable<T> action) throws Exception {
         FutureTask<T> task = new FutureTask<>(action);
         Platform.runLater(task);

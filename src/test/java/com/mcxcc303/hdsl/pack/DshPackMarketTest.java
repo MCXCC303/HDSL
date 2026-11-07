@@ -32,14 +32,10 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for reading the market's index and for installing what it points at.
-///
-/// The index is somebody else's document and the archive is somebody else's file, so the two things
-/// worth pinning are that a shape the collector may legitimately write is understood, and that a
-/// shape an attacker may write is refused. Both are cheap to check here and expensive to discover in
-/// the field.
+/**
+ * Tests for reading the market's index and for installing what it points at.
+ */
 class DshPackMarketTest {
-	/// An index in the shape the collector actually writes, taken from the live document.
 	private static final String INDEX = """
 			{
 			  "schemaVersion": 2,
@@ -90,10 +86,6 @@ class DshPackMarketTest {
 			}
 			""";
 
-	/// Builds an archive with the given members.
-	///
-	/// @param members name and content pairs
-	/// @return the file
 	private static Path archive(String... members) throws IOException {
 		Path file = Files.createTempFile("pack", ".dspack");
 		try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(file), StandardCharsets.UTF_8)) {
@@ -106,10 +98,6 @@ class DshPackMarketTest {
 		return file;
 	}
 
-	/// Builds a well-formed container.
-	///
-	/// @param extraMembers appended after the marker and manifest
-	/// @return the file
 	private static Path container(String... extraMembers) throws IOException {
 		String[] base = {
 				"dspack.json",

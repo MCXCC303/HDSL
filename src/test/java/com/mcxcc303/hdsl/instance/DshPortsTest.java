@@ -33,13 +33,10 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the port policy that keeps an instance on one origin.
+/**
+ * Verifies the port policy that keeps an instance on one origin.
+ */
 class DshPortsTest {
-	/// Builds an instance with the given port policy.
-	///
-	/// @param mode the policy
-	/// @param port the remembered or fixed port
-	/// @return the instance
 	private static DshInstance instance(DshPortMode mode, int port) {
 		return new DshInstance("test",
 		                       "0.0.0",
@@ -57,10 +54,6 @@ class DshPortsTest {
 		                       0L);
 	}
 
-	/// Creates an instance that exists on disk, which is where the two port facts are kept.
-	///
-	/// @param id the instance id
-	/// @return the instance
 	private static DshInstance managedInstance(String id) throws Exception {
 		Path workspace = Files.createTempDirectory("ports-workspace");
 		DshInstance existing = InstanceStore.find(id);

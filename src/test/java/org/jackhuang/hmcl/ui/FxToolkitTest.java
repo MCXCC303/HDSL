@@ -27,19 +27,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// The two things [FxToolkit] decides, pinned where they can be measured.
-///
-/// The wait itself is the part that has to be right: on a machine whose toolkit never comes up it is
-/// what stands between a build that reports in a minute and one that holds a runner for an hour, and
-/// a wait that quietly answers "started" is a wait that does nothing. So it is measured with latches
-/// rather than trusted, and the toolkit this machine does have is asked for as the passing case.
+/**
+ * Tests for {@link FxToolkit} startup and timeout mechanisms.
+ */
 class FxToolkitTest {
 
     @Test
     void theToolkitOfThisMachineIsUsable() {
         FxToolkit.requireRunning();
-        // Asked twice: the second answer must be the cached one, because six classes share it and a
-        // machine that cannot run the toolkit must not pay the startup bound six times over.
         FxToolkit.requireRunning();
     }
 

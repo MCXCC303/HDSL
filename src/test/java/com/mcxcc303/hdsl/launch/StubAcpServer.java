@@ -27,31 +27,17 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 
-/// A minimal Agent Client Protocol peer used by the client tests.
-///
-/// DeepSeek Harness reserves ACP stdout for protocol frames and needs a real
-/// model credential before it will stream assistant text, so the streaming path
-/// cannot be observed against the real server in a test. This stub answers the
-/// same four calls and emits the same notifications, which is enough to verify
-/// the launcher's framing, request correlation and notification dispatch.
-///
-/// It is a test fixture, not a product component: it never leaves the test
-/// source set.
+/**
+ * A minimal Agent Client Protocol peer used by the client tests.
+ */
 public final class StubAcpServer {
-	/// The session id the stub hands out.
 	public static final String SESSION_ID = "stub-session";
-	/// The assistant text the stub streams, in two chunks.
 	public static final String[] CHUNKS = {"PON", "G"};
-	/// The stop reason the stub reports.
 	public static final String STOP_REASON = "end_turn";
 
 	private StubAcpServer() {
 	}
 
-	/// Serves one connection until stdin closes.
-	///
-	/// @param args ignored
-	/// @throws Exception when the streams cannot be used
 	public static void main(String[] args) throws Exception {
 		BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
 		BufferedWriter out = new BufferedWriter(new OutputStreamWriter(System.out, StandardCharsets.UTF_8));
@@ -94,12 +80,6 @@ public final class StubAcpServer {
 		}
 	}
 
-	/// Writes one JSON-RPC response.
-	///
-	/// @param out     the output stream
-	/// @param request the request being answered
-	/// @param result  the result object
-	/// @throws Exception when the stream cannot be written
 	private static void respond(BufferedWriter out, JsonObject request, JsonObject result) throws Exception {
 		JsonObject message = new JsonObject();
 		message.addProperty("jsonrpc", "2.0");
@@ -108,12 +88,6 @@ public final class StubAcpServer {
 		write(out, message);
 	}
 
-	/// Writes one `session/update` notification carrying assistant text.
-	///
-	/// @param out       the output stream
-	/// @param sessionId the session the chunk belongs to
-	/// @param text      the chunk
-	/// @throws Exception when the stream cannot be written
 	private static void notifyUpdate(BufferedWriter out, String sessionId, String text) throws Exception {
 		JsonObject content = new JsonObject();
 		content.addProperty("type", "text");
@@ -134,11 +108,6 @@ public final class StubAcpServer {
 		write(out, message);
 	}
 
-	/// Writes one frame and flushes it.
-	///
-	/// @param out     the output stream
-	/// @param message the message
-	/// @throws Exception when the stream cannot be written
 	private static void write(BufferedWriter out, JsonObject message) throws Exception {
 		out.write(message.toString());
 		out.write('\n');

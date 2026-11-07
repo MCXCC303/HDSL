@@ -33,39 +33,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies that renaming an instance moves the paths it recorded for its local plugins.
-///
-/// This pins the reported defect: a plugin installed from a file is recorded in the profile
-/// as an absolute `file:` specification pointing inside the instance, and every later
-/// operation on the profile resolves that path again — so after a rename the instance could
-/// not install a plugin, remove one, or repair itself, because the package manager stopped
-/// at a tarball that was no longer where the profile said it was. The installation itself was
-/// intact; only the name of the directory written down against it had changed.
+/** Verifies that renaming an instance moves the paths it recorded for its local plugins. */
 class DshLocalPluginPathsTest {
-	/// A local plugin, as the profile records one: the file the instance holds.
 	private static final String INSIDE = "dsh-example";
-
-	/// A plugin installed from a file that is not part of the instance.
 	private static final String OUTSIDE = "dsh-elsewhere";
-
-	/// A plugin installed from the registry, which has no path to move.
 	private static final String REGISTRY = "dsh-registry";
-
-	/// Where the file outside the instance lives. Nothing creates it: what matters is that
-	/// the rewrite leaves a specification it does not own exactly as it found it.
 	private static final Path ELSEWHERE = Path.of("/opt/plugins/dsh-elsewhere-9.9.9.tgz");
 
-	/// Writes the profile records a local installation leaves behind.
-	///
-	/// The manifest holds its paths the way a package manager writes them, which is JSON:
-	/// on Windows that means a backslash arrives doubled. The lockfile below is written the
-	/// way that same package manager quotes YAML, plainly — the two records of one
-	/// installation genuinely differ, and the rewrite has to reach both.
-	///
-	/// @param instance     the instance
-	/// @param oldDirectory the instance directory the records name
-	/// @return the manifest that was written
-	/// @throws Exception when the files cannot be written
 	private static String installLocalPlugin(DshInstance instance, Path oldDirectory) throws Exception {
 		Path profile = profileOf(instance);
 		Path plugins = oldDirectory.resolve(DshLocalPlugins.DIRECTORY);
@@ -97,23 +71,10 @@ class DshLocalPluginPathsTest {
 		return manifest;
 	}
 
-	/// Returns the profile directory of an instance.
-	///
-	/// @param instance the instance
-	/// @return the directory holding its profile
-	/// @throws Exception when the home cannot be resolved
 	private static Path profileOf(DshInstance instance) throws Exception {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile());
 	}
 
-	/// Returns what a package manager records for a local installation.
-	///
-	/// The specification is the path as it was given, which is what a rename invalidates. The
-	/// resolution beside it is relative to the profile, which is why the rewrite has nothing
-	/// to do about it.
-	///
-	/// @param directory the instance directory
-	/// @return the lockfile's text
 	private static String lockfileText(Path directory) {
 		return """
 				lockfileVersion: '9.0'
@@ -132,18 +93,6 @@ class DshLocalPluginPathsTest {
 		                      OUTSIDE, ELSEWHERE, INSIDE, INSIDE, INSIDE);
 	}
 
-	/// Returns the text a rewrite is expected to produce.
-	///
-	/// Both spellings of the directory are replaced, the plain one and the JSON-escaped
-	/// one, because the records hold both and neither is allowed to survive a rename.
-	/// The second form is only tried where it differs from the first — on Linux it does
-	/// not, and running the same replacement twice would move a record twice over, for
-	/// the new directory carries the old one inside it as a prefix.
-	///
-	/// @param text the text as it was
-	/// @param from the directory the paths were recorded against
-	/// @param to   the directory they belong to now
-	/// @return the text with those paths moved
 	private static String expected(String text, Path from, Path to) {
 		String moved = text.replace(from.toString(), to.toString());
 		String escapedFrom = jsonEscaped(from.toString());
@@ -153,24 +102,10 @@ class DshLocalPluginPathsTest {
 		return moved;
 	}
 
-	/// Escapes a path the way the manifest's JSON holds it.
-	///
-	/// @param path the path, in the platform's own separators
-	/// @return the path with its backslashes doubled, an identity on Linux
 	private static String jsonEscaped(String path) {
 		return path.replace("\\", "\\\\").replace("\"", "\\\"");
 	}
 
-	/// Asserts that every path the manifest records inside the instance exists.
-	///
-	/// This is the defect stated plainly: the profile has to keep naming a file that is there,
-	/// because that is what the next plugin operation resolves. The lines are matched with
-	/// forward slashes, because a manifest written on Windows holds its paths either way
-	/// and the assertion is about the file, not the spelling.
-	///
-	/// @param manifest  the profile manifest
-	/// @param directory the instance directory whose paths are checked
-	/// @throws Exception when it cannot be read
 	private static void assertResolves(Path manifest, Path directory) throws Exception {
 		String marker = "file:" + directory.toString().replace('\\', '/') + "/";
 		int checked = 0;
@@ -190,9 +125,6 @@ class DshLocalPluginPathsTest {
 		assertTrue(checked > 0, "the manifest has to keep naming the plugin the instance holds");
 	}
 
-	/// Removes the instances a test made, under every id it may have given them.
-	///
-	/// @param ids the ids
 	private static void remove(String... ids) {
 		for (String id : ids) {
 			try {
@@ -203,15 +135,10 @@ class DshLocalPluginPathsTest {
 		}
 	}
 
-	/// Returns an id no other test is using.
-	///
-	/// @param what what the test is about
-	/// @return the id
 	private static String newId(String what) {
 		return "test-local-paths-" + what + "-" + Long.toHexString(System.nanoTime());
 	}
 
-	/// Renames an instance whose home travels with it.
 	@Test
 	void aPluginTheInstanceHoldsFollowsItsRename() throws Exception {
 		String id = newId("isolated");
@@ -255,10 +182,6 @@ class DshLocalPluginPathsTest {
 		}
 	}
 
-	/// Renames an instance whose home is somebody else's directory.
-	///
-	/// The home does not move — but it recorded the instance's own files, so what it recorded
-	/// has to move even though nothing around it did.
 	@Test
 	void aHomeThatStaysPutStillLearnsWhereThePluginWent() throws Exception {
 		String id = newId("custom");
@@ -290,7 +213,6 @@ class DshLocalPluginPathsTest {
 		}
 	}
 
-	/// Leaves a profile that names nothing inside the instance completely alone.
 	@Test
 	void aProfileWithNoLocalPluginIsNotTouched() throws Exception {
 		String id = newId("untouched");
@@ -327,7 +249,6 @@ class DshLocalPluginPathsTest {
 		}
 	}
 
-	/// Names the packages whose records moved, and only those.
 	@Test
 	void onlyThePluginsTheInstanceHoldsAreReported() throws Exception {
 		String id = newId("reported");
@@ -356,11 +277,6 @@ class DshLocalPluginPathsTest {
 		}
 	}
 
-	/// Does not mistake another instance's directory for this one's.
-	///
-	/// A recorded path is a path and not a string: an instance called `a` being renamed must
-	/// not reach into a record that names `a-b`, for the same reason a package called `dsh-a`
-	/// must not take `dsh-ab`'s files.
 	@Test
 	void aDirectoryThatMerelyBeginsWithTheOldNameIsLeftAlone() {
 		String from = "/home/someone/.local/share/hdsl/instances/a";

@@ -6,11 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Where plugins are read from, now that a market is a market rather than a list of addresses.
-///
-/// A market whose request shape is its own cannot be reached by adding another address, which is
-/// what the list of addresses was for and why it is gone. What is left to choose is which market is
-/// read, and that choice is stored by id.
+/** Where plugins are read from. */
 class CatalogSourcesTest {
 	@Test
 	void theCommunityMarketIsReadFromItsHostAndThenFromNpm() {

@@ -43,49 +43,28 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies what a pack of an instance records, and in which order.
-///
-/// A pack is configuration: the harness version, the boot library it is paired
-/// with, and the profile's plugins. The plugin *order* is the part worth pinning
-/// down, because it is the order the harness applies patch layers in — a later
-/// bundle overrides an earlier one's rows, and a patch replaces a row's whole
-/// configuration — so a pack that loses it does not reproduce the instance it
-/// came from, it reproduces a different one.
+/**
+ * Verifies what a pack of an instance records, and in which order.
+ */
 class DshModpacksTest {
-	/// The instance an export is made from.
 	private static final String SOURCE_ID = "pack-config-source";
-
-	/// The instance a pack is restored into.
 	private static final String TARGET_ID = "pack-config-target";
 
-	/// Uses the same write the loader uses, without the resolve that follows it.
-	///
-	/// @param instance the instance
-	/// @param manifest the pack's manifest
 	private static void writeProfileManifestForTest(DshInstance instance, PackManifest.Manifest manifest)
 	throws Exception {
 		ModpackInstaller.writeProfileManifest(profileDirectory(instance).resolve("package.json"), manifest, Map.of());
 	}
 
-	/// Returns an instance's profile directory.
-	///
-	/// @param instance the instance
-	/// @return the directory
 	private static Path profileDirectory(DshInstance instance) throws Exception {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile());
 	}
 
-	/// Writes a profile manifest.
-	///
-	/// @param instance the instance
-	/// @param body     the manifest
 	private static void writeProfile(DshInstance instance, String body) throws Exception {
 		Path directory = profileDirectory(instance);
 		Files.createDirectories(directory);
 		Files.writeString(directory.resolve("package.json"), body);
 	}
 
-	/// Removes the instances the tests made.
 	@AfterEach
 	void removeInstances() {
 		for (String id : List.of(SOURCE_ID, TARGET_ID)) {
@@ -428,10 +407,6 @@ class DshModpacksTest {
 		Files.deleteIfExists(pack);
 	}
 
-	/// Creates an instance whose home the tests can fill.
-	///
-	/// @param id the instance id
-	/// @return the instance
 	private DshInstance makeInstance(String id) throws Exception {
 		Path source = Files.createTempDirectory("modpack-home");
 		return DshInstanceManager.create(id,

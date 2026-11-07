@@ -30,14 +30,11 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The lock that keeps one launcher to one home.
-///
-/// What is pinned here is the part one process cannot see for itself: that the lock a launcher takes
-/// is one another process cannot take, and that it is handed back when that process ends. The rest —
-/// the window taking it at start-up, a command taking it to write — is wiring around these answers.
+/**
+ * Tests verifying cross-process single-instance lock acquisition and release behavior.
+ */
 class LauncherLockTest {
 
-	/// The line the child process prints its answer on.
 	private static final String ANSWER = "LOCK:";
 
 	@Test
@@ -77,12 +74,6 @@ class LauncherLockTest {
 		assertEquals("taken", tryInAnotherProcess(file), "and a lock nobody holds is nobody's");
 	}
 
-	/// Who holds the lock is written beside it, not in it.
-	///
-	/// The distinction is invisible here and fatal on Windows, where a lock on a file is mandatory:
-	/// any other handle that reads the locked range is refused, so a note inside the lock could be
-	/// written by its holder and read by nobody. This test is the one that fails there if the note
-	/// ever moves back in.
 	@Test
 	void whoHoldsTheLockIsWrittenBesideIt(@TempDir Path directory) throws IOException {
 		Path file = directory.resolve("launcher.lock");
@@ -99,10 +90,6 @@ class LauncherLockTest {
 		assertTrue(lock.holder().isEmpty(), "and a lock nobody holds names nobody");
 	}
 
-	/// Runs the lock in a process of its own and returns what it made of it.
-	///
-	/// A process of its own is the whole point of the test: a lock that only this JVM respected would
-	/// be a flag, and the window and the command line are two JVMs.
 	private static String tryInAnotherProcess(Path file) throws IOException, InterruptedException {
 		List<String> command = new ArrayList<>(javaCommand());
 		command.add("-cp");
@@ -122,29 +109,20 @@ class LauncherLockTest {
 		             .orElseThrow(() -> new AssertionError("the child said nothing: " + output));
 	}
 
-	/// Builds the command that runs a JVM on this test's own classpath.
-	///
-	/// @return the command
 	private static List<String> javaCommand() {
 		return List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString());
 	}
 
-	/// Takes the lock, or does not, and says which.
 	public static final class TryLock {
 		private TryLock() {
 		}
 
-		/// Runs in a process of its own.
-		///
-		/// @param args the lock file to try
 		public static void main(String[] args) {
 			LauncherLock lock = new LauncherLock(Path.of(args[0]));
 			if (lock.acquire()) {
 				System.out.println(ANSWER + "taken");
 				return;
 			}
-			// Refused: what it can still do is say who refused it, which is what the note beside the
-			// lock is for.
 			String holder = lock.holder().map(who -> Long.toString(who.pid())).orElse("nobody");
 			System.out.println(ANSWER + "held:" + holder);
 		}

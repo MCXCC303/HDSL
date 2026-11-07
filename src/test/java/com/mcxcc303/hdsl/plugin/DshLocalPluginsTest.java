@@ -29,22 +29,8 @@ import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies what the launcher reads out of a packed plugin, and what it refuses.
-///
-/// A plugin file is an npm package, which is a gzipped tar; the launcher reads the
-/// one entry it needs out of it rather than taking a dependency the size of the
-/// launcher to do so, so that reading is what is pinned here. Whether a package
-/// declares a bundle patch is the other half: a package that does not is installed
-/// and then does nothing at all, which is worth saying before it is installed
-/// rather than after.
+/** Verifies reading and validation of packed plugin archives. */
 class DshLocalPluginsTest {
-	/// Builds a gzipped tar holding a `package/package.json`.
-	///
-	/// @param name    the package name
-	/// @param version the package version
-	/// @param patch   the bundle patch, or `null` for a package that declares none
-	/// @param readme  the contents of another entry, so the reader has to walk past one
-	/// @return the archive's bytes
 	private static byte[] pack(String name, String version, String patch, String readme) throws Exception {
 		String manifest = """
 				{"name":"%s","version":"%s"%s}
@@ -60,9 +46,6 @@ class DshLocalPluginsTest {
 		return out.toByteArray();
 	}
 
-	/// Builds a gzipped tar that holds no manifest at all.
-	///
-	/// @return the archive's bytes
 	private static byte[] packWithoutManifest() throws Exception {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		try (GZIPOutputStream gzip = new GZIPOutputStream(out)) {
@@ -72,11 +55,6 @@ class DshLocalPluginsTest {
 		return out.toByteArray();
 	}
 
-	/// Builds one tar entry.
-	///
-	/// @param name the entry's name
-	/// @param body the entry's bytes
-	/// @return the header and body, padded to a block
 	private static byte[] entry(String name, byte[] body) {
 		byte[] block = new byte[512];
 		byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);

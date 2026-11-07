@@ -25,11 +25,9 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the instance icon set is complete and resolvable.
-///
-/// The images are named by hand, so a typo is a silent blank icon in the
-/// chooser. This checks the name against the bundled resources instead, and
-/// requires the three DeepSeek Harness marks to lead the set.
+/**
+ * Verifies the instance icon set is complete and resolvable.
+ */
 class DshInstanceIconTest {
 	@Test
 	void everyIconResolvesToABundledImage() {

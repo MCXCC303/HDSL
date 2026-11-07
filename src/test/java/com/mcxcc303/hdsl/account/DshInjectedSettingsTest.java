@@ -31,14 +31,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// The two shapes a launch leaves in a home's own settings, and the note that puts them back.
-///
-/// What is being protected here is a file the launcher does not own. The harness writes it while it
-/// runs, the person edits it, and every line that is not one of the launcher's own has to come out
-/// of an edit exactly as it went in — which is why the edits are tested on their own, not only
-/// through a launch.
+/**
+ * Verifies injected settings and cleanup for launcher-managed routes.
+ */
 class DshInjectedSettingsTest {
-	/// A settings file with a person's own answers in it, and nothing of the launcher's.
 	private static final String THEIRS = """
 			ui-onboarding:
 			  welcomeNoticeVersion: 2026-08-13.1
@@ -51,8 +47,7 @@ class DshInjectedSettingsTest {
 			      models:
 			        - id: deepseek-v4-pro
 			""";
-	/// What the harness leaves behind after a launch built the route `MCXCC` and the person used it:
-	/// a default model naming that route, and a route block listing models with nothing else.
+
 	private static final String AFTER_A_LAUNCH = """
 			ui-onboarding:
 			  welcomeNoticeVersion: 2026-08-13.1
@@ -70,7 +65,7 @@ class DshInjectedSettingsTest {
 			          name: DeepSeek-V4.1-Flash
 			          contextWindow: 1048576
 			""";
-	/// A patch with the launcher's route for an account, and a supplier of the person's own.
+
 	private static final String PATCH_WITH_A_ROUTE = """
 			# mine
 			- id: llm-pi-ai

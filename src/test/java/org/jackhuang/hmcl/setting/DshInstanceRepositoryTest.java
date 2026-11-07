@@ -22,7 +22,6 @@ import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
-import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import com.mcxcc303.hdsl.instance.DshPortMode;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
@@ -43,212 +42,166 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-/// Verifies the selection rules a folder follows.
-///
-/// These are the rules that decide what the home page acts on, and the ones a
-/// page used to have to re-derive for itself — badly, because a page only ran
-/// its copy of them when somebody happened to refresh it.
+/**
+ * Tests for {@link DshInstanceRepository} selection and snapshot publication behavior.
+ */
 class DshInstanceRepositoryTest {
-    /// The folders the tests make instances in.
-    @TempDir
-    Path root;
 
-    /// A second folder, for the tests that need two.
-    @TempDir
-    Path otherRoot;
+	@TempDir
+	Path root;
 
-    /// Starts every test with nothing selected anywhere.
-    @BeforeEach
-    void clearSelection() {
-        settings().getSelectedInstance().clear();
-    }
+	@TempDir
+	Path otherRoot;
 
-    /// Writes an instance manifest into a folder, as the manager would.
-    ///
-    /// @param folder    the folder acting as an instances directory
-    /// @param id        the instance id
-    /// @param createdAt when the instance was made, which is what orders the list
-    /// @return the instance
-    private static DshInstance write(Path folder, String id, long createdAt) throws IOException {
-        DshInstance instance = new DshInstance(id, "1.0.0", DshInstance.DEFAULT_PROFILE,
-                folder.toString(), DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null,
-                List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), null,
-                DshPortMode.AUTO, 0, createdAt);
-        Path directory = folder.resolve(id);
-        Files.createDirectories(directory);
-        JsonUtils.writeToJsonFile(directory.resolve(InstanceStore.MANIFEST_NAME), instance);
-        return instance;
-    }
+	@BeforeEach
+	void clearSelection() {
+		settings().getSelectedInstance().clear();
+	}
 
-    /// Builds a repository over a folder.
-    ///
-    /// @param folder the folder
-    /// @return the repository
-    private static DshInstanceRepository repository(Path folder) {
-        return new DshInstanceRepository(GameDirectory.of(folder));
-    }
+	private static DshInstance write(Path folder, String id, long createdAt) throws IOException {
+		DshInstance instance = new DshInstance(id, "1.0.0", DshInstance.DEFAULT_PROFILE,
+				folder.toString(), DshNodeRuntime.SYSTEM, DshHomeMode.ISOLATED, null,
+				List.of(), Map.of(), DshInstanceIcon.DEFAULT.id(), null,
+				DshPortMode.AUTO, 0, createdAt);
+		Path directory = folder.resolve(id);
+		Files.createDirectories(directory);
+		JsonUtils.writeToJsonFile(directory.resolve(InstanceStore.MANIFEST_NAME), instance);
+		return instance;
+	}
 
-    /// Reads the folder and waits for the read and the choice that follows it to be published.
-    ///
-    /// A repository that is not on the interface thread publishes onto it, so looking straight after
-    /// reading races the publication — and whether a run's tests share a JVM with a started
-    /// interface is not this suite's to choose. The latch is what makes looking deterministic either
-    /// way: it is counted down by the publication itself, which is already over when the publication
-    /// was synchronous, and the `java.util.concurrent` hand-off carries the memory visibility a
-    /// polled property read would not promise.
-    ///
-    /// The choice is written down as part of publishing, a moment after the snapshot itself, so it is
-    /// waited for rather than assumed: a test that does not wait sees whichever of the two happened
-    /// to have run by then, which is a suite that passes or fails by machine load.
-    ///
-    /// @param repository the repository to read
-    private static void refresh(DshInstanceRepository repository) throws Exception {
-        CountDownLatch published = new CountDownLatch(1);
-        repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
-        repository.refresh();
-        if (!published.await(15, TimeUnit.SECONDS)) {
-            throw new AssertionError("Timed out waiting for the read to be published");
-        }
-        waitUntilSettled(repository);
-    }
+	private static DshInstanceRepository repository(Path folder) {
+		return new DshInstanceRepository(GameDirectory.of(folder));
+	}
 
-    /// Waits until the choice the read implies has been applied.
-    ///
-    /// The choice is applied where the snapshot is published, which is the interface thread when one
-    /// is running, so there is one frame between the two. What settles it is the property the pages
-    /// bind to, not the setting behind it: the setting is written first and a test that waits for
-    /// that is waiting for the half that is already done.
-    ///
-    /// @param repository the repository that has just been read
-    private static void waitUntilSettled(DshInstanceRepository repository) throws Exception {
-        long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(15);
-        while (System.currentTimeMillis() < deadline) {
-            if (repository.getSelectedInstance() != null) {
-                return;
-            }
-            if (repository.getInstances().isEmpty()
-                    && settings().getSelectedInstance(repository.getDirectory().id()) == null) {
-                // Nothing to choose, and the folder has stopped pointing at anything: that is the
-                // whole of what an empty folder has to say.
-                return;
-            }
-            Thread.sleep(20);
-        }
-        throw new AssertionError("Timed out waiting for the choice to be published");
-    }
+	private static void refresh(DshInstanceRepository repository) throws Exception {
+		CountDownLatch published = new CountDownLatch(1);
+		repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
+		repository.refresh();
+		if (!published.await(15, TimeUnit.SECONDS)) {
+			throw new AssertionError("Timed out waiting for the read to be published");
+		}
+		waitUntilSettled(repository);
+	}
 
-    @Test
-    void aSnapshotHoldsTheInstancesTheFolderHolds() throws Exception {
-        write(root, "alpha", 1L);
-        write(root, "beta", 2L);
+	private static void waitUntilSettled(DshInstanceRepository repository) throws Exception {
+		long deadline = System.currentTimeMillis() + TimeUnit.SECONDS.toMillis(15);
+		while (System.currentTimeMillis() < deadline) {
+			if (repository.getSelectedInstance() != null) {
+				return;
+			}
+			if (repository.getInstances().isEmpty()
+					&& settings().getSelectedInstance(repository.getDirectory().id()) == null) {
+				return;
+			}
+			Thread.sleep(20);
+		}
+		throw new AssertionError("Timed out waiting for the choice to be published");
+	}
 
-        DshInstanceRepository repository = repository(root);
-        refresh(repository);
+	@Test
+	void aSnapshotHoldsTheInstancesTheFolderHolds() throws Exception {
+		write(root, "alpha", 1L);
+		write(root, "beta", 2L);
 
-        assertEquals(List.of("beta", "alpha"),
-                repository.getInstances().stream().map(DshInstance::id).toList(),
-                "the newest instance leads, as the manager's own listing has it");
-    }
+		DshInstanceRepository repository = repository(root);
+		refresh(repository);
 
-    @Test
-    void aFolderReadAgainIsPublishedAgain() throws Exception {
-        write(root, "alpha", 1L);
+		assertEquals(List.of("beta", "alpha"),
+				repository.getInstances().stream().map(DshInstance::id).toList(),
+				"the newest instance leads, as the manager's own listing has it");
+	}
 
-        DshInstanceRepository repository = repository(root);
-        List<Long> published = new java.util.ArrayList<>();
-        repository.snapshotProperty().addListener(
-                (observable, was, now) -> published.add(now.revision()));
+	@Test
+	void aFolderReadAgainIsPublishedAgain() throws Exception {
+		write(root, "alpha", 1L);
 
-        refresh(repository);
-        refresh(repository);
+		DshInstanceRepository repository = repository(root);
+		List<Long> published = new java.util.ArrayList<>();
+		repository.snapshotProperty().addListener(
+				(observable, was, now) -> published.add(now.revision()));
 
-        // Reading a folder twice without it changing produces two equal reads,
-        // and a page that is only told about changes would never hear the
-        // second one — which is how the list went on showing the folder that had
-        // been selected before.
-        assertEquals(2, published.size(),
-                "every read has to reach the pages, even when the folder holds exactly what it held");
-    }
+		refresh(repository);
+		refresh(repository);
 
-    @Test
-    void aFolderWithNothingChosenChoosesItsFirstInstance() throws Exception {
-        write(root, "alpha", 1L);
-        write(root, "beta", 2L);
+		assertEquals(2, published.size(),
+				"every read has to reach the pages, even when the folder holds exactly what it held");
+	}
 
-        DshInstanceRepository repository = repository(root);
-        refresh(repository);
+	@Test
+	void aFolderWithNothingChosenChoosesItsFirstInstance() throws Exception {
+		write(root, "alpha", 1L);
+		write(root, "beta", 2L);
 
-        // This is what used to be missing: an instance the user just created was
-        // listed but not selected, so the home page still said there was none.
-        DshInstance selected = repository.getSelectedInstance();
-        assertNotNull(selected, "a folder holding instances must have one selected");
-        assertEquals("beta", selected.id());
-        assertEquals("beta", settings().getSelectedInstance(repository.getDirectory().id()),
-                "the choice has to be written down, or the next start forgets it");
-    }
+		DshInstanceRepository repository = repository(root);
+		refresh(repository);
 
-    @Test
-    void anEmptyFolderSelectsNothing() throws Exception {
-        DshInstanceRepository repository = repository(root);
-        refresh(repository);
+		DshInstance selected = repository.getSelectedInstance();
+		assertNotNull(selected, "a folder holding instances must have one selected");
+		assertEquals("beta", selected.id());
+		assertEquals("beta", settings().getSelectedInstance(repository.getDirectory().id()),
+				"the choice has to be written down, or the next start forgets it");
+	}
 
-        assertNull(repository.getSelectedInstance());
-        assertNull(settings().getSelectedInstance(repository.getDirectory().id()));
-    }
+	@Test
+	void anEmptyFolderSelectsNothing() throws Exception {
+		DshInstanceRepository repository = repository(root);
+		refresh(repository);
 
-    @Test
-    void aSelectionThatIsGoneIsReplaced() throws Exception {
-        write(root, "alpha", 1L);
-        DshInstance beta = write(root, "beta", 2L);
+		assertNull(repository.getSelectedInstance());
+		assertNull(settings().getSelectedInstance(repository.getDirectory().id()));
+	}
 
-        DshInstanceRepository repository = repository(root);
-        refresh(repository);
-        repository.setSelectedInstance(repository.getSnapshot().findInstance("alpha"));
-        assertEquals("alpha", repository.getSelectedInstance().id());
+	@Test
+	void aSelectionThatIsGoneIsReplaced() throws Exception {
+		write(root, "alpha", 1L);
+		DshInstance beta = write(root, "beta", 2L);
 
-        // The instance the selection names is deleted, as removing it from the
-        // list does; the folder must not keep pointing at something that is gone.
-        Files.delete(root.resolve("alpha").resolve(InstanceStore.MANIFEST_NAME));
-        refresh(repository);
+		DshInstanceRepository repository = repository(root);
+		refresh(repository);
+		repository.setSelectedInstance(repository.getSnapshot().findInstance("alpha"));
+		assertEquals("alpha", repository.getSelectedInstance().id());
 
-        assertNotNull(repository.getSelectedInstance());
-        assertEquals(beta.id(), repository.getSelectedInstance().id());
-    }
+		Files.delete(root.resolve("alpha").resolve(InstanceStore.MANIFEST_NAME));
+		refresh(repository);
 
-    @Test
-    void everyFolderRemembersItsOwnSelection() throws Exception {
-        DshInstance alpha = write(root, "alpha", 1L);
-        DshInstance gamma = write(otherRoot, "gamma", 2L);
+		assertNotNull(repository.getSelectedInstance());
+		assertEquals(beta.id(), repository.getSelectedInstance().id());
+	}
 
-        DshInstanceRepository first = repository(root);
-        refresh(first);
-        DshInstanceRepository second = repository(otherRoot);
-        refresh(second);
+	@Test
+	void everyFolderRemembersItsOwnSelection() throws Exception {
+		DshInstance alpha = write(root, "alpha", 1L);
+		DshInstance gamma = write(otherRoot, "gamma", 2L);
 
-        first.setSelectedInstance(alpha);
-        second.setSelectedInstance(gamma);
+		DshInstanceRepository first = repository(root);
+		refresh(first);
+		DshInstanceRepository second = repository(otherRoot);
+		refresh(second);
 
-        assertEquals(alpha.id(), first.getSelectedInstance().id());
-        assertEquals(gamma.id(), second.getSelectedInstance().id(),
-                "one folder's choice must not be read as the other's");
-    }
+		first.setSelectedInstance(alpha);
+		second.setSelectedInstance(gamma);
 
-    @Test
-    void choosingAnInstancePublishesIt() throws Exception {
-        DshInstance alpha = write(root, "alpha", 1L);
-        write(root, "beta", 2L);
+		assertEquals(alpha.id(), first.getSelectedInstance().id());
+		assertEquals(gamma.id(), second.getSelectedInstance().id(),
+				"one folder's choice must not be read as the other's");
+	}
 
-        DshInstanceRepository repository = repository(root);
-        refresh(repository);
-        assertEquals("beta", repository.getSelectedInstance().id(), "the newest one is chosen first");
+	@Test
+	void choosingAnInstancePublishesIt() throws Exception {
+		DshInstance alpha = write(root, "alpha", 1L);
+		write(root, "beta", 2L);
 
-        List<String> seen = new java.util.ArrayList<>();
-        repository.selectedInstanceProperty().addListener(
-                (observable, was, now) -> seen.add(now == null ? null : now.id()));
+		DshInstanceRepository repository = repository(root);
+		refresh(repository);
+		assertEquals("beta", repository.getSelectedInstance().id(), "the newest one is chosen first");
 
-        repository.setSelectedInstance(alpha);
+		List<String> seen = new java.util.ArrayList<>();
+		repository.selectedInstanceProperty().addListener(
+				(observable, was, now) -> seen.add(now == null ? null : now.id()));
 
-        assertEquals(List.of("alpha"), seen,
-                "the selection has to reach whoever is showing it, without being asked for");
-    }
+		repository.setSelectedInstance(alpha);
+
+		assertEquals(List.of("alpha"), seen,
+				"the selection has to reach whoever is showing it, without being asked for");
+	}
 }

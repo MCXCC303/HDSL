@@ -24,16 +24,8 @@ import java.util.Locale;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the plugin catalogue, and what installing from an entry means.
-///
-/// The catalogue is the community's, not the harness's, and its entries are not
-/// uniform: just under half of them publish no package and can only be installed
-/// from a repository, and a tenth point into a monorepo rather than at a
-/// repository root. Which specification an entry turns into is therefore the part
-/// worth pinning — an entry resolved the wrong way installs the wrong plugin, or
-/// installs nothing at all and says nothing about why.
+/** Verifies the plugin catalogue, and what installing from an entry means. */
 class CatalogParserTest {
-	/// A catalogue with one entry of every shape the real document holds.
 	private static final String CATALOGUE = """
 			{
 			  "name": "awesome-dsh-plugin",
@@ -56,10 +48,6 @@ class CatalogParserTest {
 			}
 			""";
 
-	/// Returns one entry of the fixture catalogue.
-	///
-	/// @param name the entry's name
-	/// @return the plugin
 	private static Catalog.Plugin plugin(String name) {
 		return CatalogParser.parse(CATALOGUE)
 		                    .plugins()

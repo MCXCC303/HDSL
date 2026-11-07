@@ -30,79 +30,62 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies that an inheritable row's mark reports which of the two is deciding.
-///
-/// The mark is the only thing that can. While a row follows the launcher it shows the launcher's
-/// value, so taking the setting over changes nothing on screen except the mark: a row whose mark
-/// stayed the same either way could not say whether pressing the globe again takes the setting over
-/// or hands it back. The custom-command rows were in exactly that state.
-///
-/// These rows are JavaFX controls, so the toolkit has to be running to build one. It is started
-/// once here and the work is done on its thread, which is what the controls expect.
+/**
+ * Tests verifying that inheritable controls update their indicator icon based on override state.
+ */
 class InheritMarkTest {
-    /// Starts the toolkit for this class, or skips the class where it cannot run.
-    @BeforeAll
-    static void startToolkit() {
-        FxToolkit.requireRunning();
-    }
 
-    @Test
-    void theTextFieldMarkFollowsTheOverrideState() throws Exception {
-        onFxThread(() -> {
-            LineInheritableTextField row = new LineInheritableTextField("Command before an instance starts");
+	@BeforeAll
+	static void startToolkit() {
+		FxToolkit.requireRunning();
+	}
 
-            row.setOverridden(false);
-            Object inherited = markOf(row);
-            assertNotNull(inherited, "the row has no mark beside its name");
+	@Test
+	void theTextFieldMarkFollowsTheOverrideState() throws Exception {
+		onFxThread(() -> {
+			LineInheritableTextField row = new LineInheritableTextField("Command before an instance starts");
 
-            row.setOverridden(true);
-            Object overridden = markOf(row);
-            assertNotSame(inherited, overridden, "the mark does not change when the row takes the setting over");
+			row.setOverridden(false);
+			Object inherited = markOf(row);
+			assertNotNull(inherited, "the row has no mark beside its name");
 
-            row.setOverridden(false);
-            assertNotSame(overridden, markOf(row), "the mark does not change back when the row follows again");
-        });
-    }
+			row.setOverridden(true);
+			Object overridden = markOf(row);
+			assertNotSame(inherited, overridden, "the mark does not change when the row takes the setting over");
 
-    @Test
-    void aToggleRowFlipsTheValueItIsShowing() throws Exception {
-        onFxThread(() -> {
-            LineInheritableSwitch row = new LineInheritableSwitch();
+			row.setOverridden(false);
+			assertNotSame(overridden, markOf(row), "the mark does not change back when the row follows again");
+		});
+	}
 
-            // Following the launcher: the row shows the launcher's answer, which is off here.
-            row.setOverridden(false);
-            row.setRawValue(false);
+	@Test
+	void aToggleRowFlipsTheValueItIsShowing() throws Exception {
+		onFxThread(() -> {
+			LineInheritableSwitch row = new LineInheritableSwitch();
 
-            row.fire();
-            assertTrue(row.isOverridden(), "pressing the row takes the setting over");
-            assertTrue(row.getRawValue(), "pressing a row that shows off turns it on");
+			row.setOverridden(false);
+			row.setRawValue(false);
 
-            // The case that did not work: the switch flipped the value it *showed*, so a second press
-            // computed the same answer again and the row could never be turned back off.
-            row.fire();
-            assertFalse(row.getRawValue(), "pressing it again turns it off");
+			row.fire();
+			assertTrue(row.isOverridden(), "pressing the row takes the setting over");
+			assertTrue(row.getRawValue(), "pressing a row that shows off turns it on");
 
-            row.fire();
-            assertTrue(row.getRawValue(), "and it keeps flipping");
-        });
-    }
+			row.fire();
+			assertFalse(row.getRawValue(), "pressing it again turns it off");
 
-    /// Runs a piece of work on the JavaFX thread and waits for it.
-    ///
-    /// @param work what to run
-    /// @throws Exception when the work threw
-    private static void onFxThread(Runnable work) throws Exception {
-        FutureTask<Void> task = new FutureTask<>(work, null);
-        Platform.runLater(task);
-        task.get(30, TimeUnit.SECONDS);
-    }
+			row.fire();
+			assertTrue(row.getRawValue(), "and it keeps flipping");
+		});
+	}
 
-    /// Reads the mark beside a row's name.
-    ///
-    /// @param row the row
-    /// @return the graphic the mark is showing, or `null` when there is no mark
-    private static Object markOf(LineComponent row) {
-        return row.getTitleTrailing() instanceof com.jfoenix.controls.JFXButton button
-                ? button.getGraphic() : null;
-    }
+	private static void onFxThread(Runnable work) throws Exception {
+		FutureTask<Void> task = new FutureTask<>(work, null);
+		Platform.runLater(task);
+		task.get(30, TimeUnit.SECONDS);
+	}
+
+	private static Object markOf(LineComponent row) {
+		return row.getTitleTrailing() instanceof com.jfoenix.controls.JFXButton button
+				? button.getGraphic() : null;
+	}
 }

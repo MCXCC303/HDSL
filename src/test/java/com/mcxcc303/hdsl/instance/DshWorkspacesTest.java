@@ -30,23 +30,13 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/// Verifies that sessions are grouped the way the harness stores them.
-///
-/// The slug directory a session lives under is the harness's own grouping, and
-/// it is the only one that cannot split a project in two: the readable path is a
-/// convenience read from a projection-cache row, never the grouping key.
+/**
+ * Verifies that sessions are grouped the way the harness stores them.
+ */
 class DshWorkspacesTest {
-	/// A home to build sessions in.
 	@TempDir
 	Path home;
 
-	/// Writes one session, with a projection-cache row when it names a path or title.
-	///
-	/// @param slug       the workspace slug
-	/// @param id         the session id
-	/// @param cwd        the working directory, or `null`
-	/// @param title      the title, or `null`
-	/// @param modifiedAt the last activity, in epoch milliseconds
 	private void writeSession(String slug, String id, @Nullable String cwd, @Nullable String title, long modifiedAt)
 	throws Exception {
 		Path directory = home.resolve("sessions").resolve(slug).resolve(id);

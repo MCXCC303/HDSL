@@ -30,28 +30,13 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// What a launch hands the harness for an account, and where it puts it.
-///
-/// The capacities matter as much as the address. A route the launcher writes is not in the
-/// harness's catalogue, so a model on it is the size the launcher says and nothing else — and
-/// `pi-ai`'s fallback for a model it cannot size is 256 Ki, a quarter of what the harness's own
-/// DeepSeek route gives the same model.
-///
-/// Where it goes matters more than either. An account's route used to travel as a `--patch` overlay,
-/// and an overlay's entry `config` **replaces** the profile's rather than merging with it — so the
-/// harness's configuration editor, which refuses a save that does not survive recomposition, could
-/// not save any supplier at all while an instance was launched with an account. The route is written
-/// into the profile's own patch layer now, which is the document that editor writes, and these tests
-/// are about that file's shape.
+/**
+ * Verifies account route configuration written for instance launches.
+ */
 class DshAccountRouteTest {
 	@TempDir
 	private Path home;
 
-	/// An account whose supplier served a model, which is what a route needs to be written.
-	///
-	/// The list is named on the account here rather than fetched, so that a test with no network
-	/// still has the thing a launch would have had. It is the account's own model, which is the one
-	/// fallback a route may use when the supplier cannot be reached.
 	private static DshAccount accountOn(String vendor) {
 		return new DshAccount(DshAccount.AccountKind.THIRD_PARTY, vendor, "sk-test", null, null, "a-model", null);
 	}
@@ -69,7 +54,6 @@ class DshAccountRouteTest {
 		}
 	}
 
-	/// The profile patch a launch of `test`'s profile would write into.
 	private Path patch(String text) throws Exception {
 		Path file = DshPluginPatch.patchFile(home, "web");
 		Files.createDirectories(file.getParent());
@@ -94,10 +78,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void aSupplierThePersonAddedArrivesWithItsAddress() {
-		// What the harness reads, and the half of the defect that was visible from outside: a route
-		// written without a `baseURL` is refused with "needs a baseURL; the installed catalog does
-		// not describe this route", because a route the launcher invents is not one the harness can
-		// look an address up for.
 		DshVendor added = DshVendor.discovered("opencode", "OpenCode", "https://api.opencode.ai/v1");
 		List<DshVendor> addedVendors = SettingsManager.settings().getCustomVendors();
 		addedVendors.add(added);
@@ -113,8 +93,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void theKeyTravelsInAVariableNamedAfterTheRoute() {
-		// One variable per route is what keeps a route left behind by one account from being handed
-		// the key of another: it names a variable nothing sets, so it fails instead.
 		String one = DshAccountRoute.environmentVariable("DeepSeek");
 		String two = DshAccountRoute.environmentVariable("SiliconFlow");
 
@@ -147,10 +125,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void aRouteWithNoModelsTheSupplierCouldBeAskedForIsRefusedRatherThanInvented() {
-		// What this replaced wrote a model called `default` whenever the list could not be read. The
-		// harness fills a route's models in only for a supplier it ships, and a route is named after
-		// the account, so there was nothing for it to fill in either: the launch failed anyway, with
-		// a sentence about a model nobody chose. Saying what happened is what the person can act on.
 		DshAccount noModel = new DshAccount(DshAccount.AccountKind.THIRD_PARTY,
 		                                    "openrouter",
 		                                    "sk-test",
@@ -171,10 +145,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void theRouteJoinsTheEntryTheHarnessItselfEdits() throws Exception {
-		// The whole reason this is a file edit rather than an overlay. The person's own supplier, the
-		// models they chose for it and the comments they wrote all have to survive, and the account's
-		// route has to end up **inside the same entry** — a second entry for `llm-pi-ai` would replace
-		// that entry's config instead of adding to it.
 		Path file = patch("""
 				                  # my own suppliers
 				                  - id: llm-pi-ai
@@ -204,8 +174,6 @@ class DshAccountRouteTest {
 		assertTrue(text.contains("    - id: mine\n"), text);
 		assertTrue(text.contains("- id: locale\n") && text.contains("    language: zh-Hans\n"),
 		           "and nothing else in the file moved: " + text);
-		// Where it went: a key of the same `providers` mapping, at the same indentation as the
-		// person's own route — not a second entry, and not another file.
 		int mine = text.indexOf("      MyOwn:");
 		int theirs = text.indexOf(
 				"      " + DshAccountRoute.prepare(accountOn("deepseek")).orElseThrow().route() + ":");
@@ -217,9 +185,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void theRendererdBlockDoesNotCarryTheRoutesOwnKey() {
-		// What shipped first put the key in the block *and* the patch writer added one, so the
-		// harness was handed `providers.MCXCC-sf1.MCXCC-sf1` — a route whose settings are a route,
-		// with no models where models are looked for, refused at boot with "resolves no models".
 		for (String vendor : List.of("deepseek", "openrouter")) {
 			String yaml = routeFor(vendor);
 
@@ -231,8 +196,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void theRouteIsWrittenAsOneKeyWithItsSettingsUnderIt() throws Exception {
-		// The shape the harness reads, at the indentation the file uses — the assertion the first
-		// version was missing, because it only looked for substrings that a doubled key also has.
 		Path file = patch("""
 				                  - id: llm-pi-ai
 				                    name: "@deepseek-ai/dsh-llm-pi-ai"
@@ -324,9 +287,6 @@ class DshAccountRouteTest {
 
 	@Test
 	void anEntryWrittenInlineIsSaidSoRatherThanRewritten() throws Exception {
-		// The harness's editor writes block style, so this is a hand edit — and one this will not
-		// parse and re-emit. Refusing with a sentence about the entry is what the person can act on;
-		// writing a second entry would take their suppliers away instead of adding one.
 		patch("""
 				      - id: llm-pi-ai
 				        config: {providers: {Mine: {apiKeyEnv: MY_KEY}}}
