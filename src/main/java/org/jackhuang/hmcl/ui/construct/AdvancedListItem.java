@@ -42,9 +42,19 @@ public class AdvancedListItem extends Control {
         BorderPane.setAlignment(graphic, alignment);
     }
 
+    /**
+     * Creates an item whose default skin turns background clicks into {@link #fire()}.
+     */
     public AdvancedListItem() {
         getStyleClass().add("advanced-list-item");
-        FXUtils.onClicked(this, () -> fireEvent(new ActionEvent()));
+    }
+
+    /**
+     * Fires this item's action unless the item is disabled.
+     */
+    public void fire() {
+        if (!isDisabled())
+            fireEvent(new ActionEvent(this, this));
     }
 
     private final ObjectProperty<Node> leftGraphic = new SimpleObjectProperty<>(this, "leftGraphic");

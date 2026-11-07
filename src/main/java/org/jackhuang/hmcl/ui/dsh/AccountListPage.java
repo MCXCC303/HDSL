@@ -118,6 +118,7 @@ public final class AccountListPage extends DecoratorAnimatedPage implements Deco
 	/// @return the picture
 	private static ImageContainer dshMark() {
 		ImageContainer mark = new ImageContainer(AdvancedListItem.LEFT_GRAPHIC_SIZE);
+		mark.setMouseTransparent(true);
 		mark.imageProperty()
 		    .bind(Bindings.createObjectBinding(AccountListPage::harnessMark, Themes.darkModeProperty()));
 		return mark;

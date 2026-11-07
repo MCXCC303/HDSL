@@ -37,6 +37,11 @@ public class AdvancedListItemSkin extends SkinBase<AdvancedListItem> {
         root.setPickOnBounds(false);
 
         RipplerContainer container = new RipplerContainer(root);
+        container.setOnAction(event -> {
+            // Consume the container's own action so it cannot reach this control's action handler as well.
+            event.consume();
+            skinnable.fire();
+        });
 
         TwoLineListItem item = new TwoLineListItem();
         root.setCenter(item);
