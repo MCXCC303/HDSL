@@ -24,7 +24,8 @@ import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
-import com.mcxcc303.hdsl.launch.DshProxyMode;
+import com.mcxcc303.hdsl.core.DshNetworkSettings;
+import com.mcxcc303.hdsl.core.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.NodeSource;
@@ -69,7 +70,15 @@ public final class SettingsManager {
 	// The lazily created window state singleton.
 	private static @Nullable LauncherState launcherState;
 
+	static {
+		DshNetworkSettings.setSupplier(SettingsManager::computeNetworkEnvironment);
+	}
+
 	private SettingsManager() {}
+
+	public static Map<String, String> computeNetworkEnvironment() {
+		return settings().computeNetworkEnvironment();
+	}
 
 	/**
 	 * Returns the process-wide window state, loading it on first use.

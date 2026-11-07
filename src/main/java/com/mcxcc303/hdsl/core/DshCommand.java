@@ -17,7 +17,6 @@
  */
 package com.mcxcc303.hdsl.core;
 
-import com.mcxcc303.hdsl.launch.DshNetworkSettings;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;

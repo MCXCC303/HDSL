@@ -18,7 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh.settings;
 
 import com.jfoenix.controls.*;
-import com.mcxcc303.hdsl.launch.DshProxyMode;
+import com.mcxcc303.hdsl.core.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.CatalogClient;
 import com.mcxcc303.hdsl.plugin.CatalogSources;
 import com.mcxcc303.hdsl.plugin.MarketSource;

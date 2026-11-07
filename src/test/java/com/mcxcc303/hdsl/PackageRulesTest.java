@@ -83,11 +83,8 @@ class PackageRulesTest {
 	/// It replaced a list of the forty-four edges the packages were allowed to have. That list could
 	/// say an edge was deliberate, and it could not say which of them were wrong: the wiring was
 	/// declared and the design was not checked, and every new package paid for it with an edit.
-	private static final Set<String> KNOWN_CIRCLES = Set.of("account<->plugin",
-	                                                        "core<->launch",
-	                                                        "harness<->instance",
+	private static final Set<String> KNOWN_CIRCLES = Set.of("harness<->instance",
 	                                                        "harness<->plugin",
-	                                                        "harness<->runtime",
 	                                                        "instance<->launch",
 	                                                        "instance<->pack",
 	                                                        "instance<->plugin");
@@ -283,12 +280,31 @@ class PackageRulesTest {
 		Set<String> edges = edges();
 		assertTrue(edges.stream().noneMatch(edge -> edge.endsWith("->cli")),
 		           "the command line is on top of the tree, and nothing below it may name it: " + edges);
-		for (String leaf : List.of("skill", "skin")) {
+		assertTrue(edges.stream().noneMatch(edge -> edge.startsWith("core->")),
+		           "core is the foundation and must not depend on other packages: " + edges);
+		for (String leaf : List.of("runtime", "skill", "skin")) {
 			List<String> out = edges.stream()
 			                        .filter(edge -> edge.startsWith(leaf + "->"))
 			                        .filter(edge -> !edge.equals(leaf + "->core"))
 			                        .toList();
 			assertTrue(out.isEmpty(), leaf + " is a leaf, so it names only core: " + out);
 		}
+	}
+
+	@Test
+	void coreDoesNotDependOnSettingsOrInterface() throws IOException {
+		List<String> offenders = new ArrayList<>();
+		Path coreDir = ROOT.resolve("core");
+		for (Path file : sources()) {
+			if (file.startsWith(coreDir)) {
+				String source = read(file);
+				for (String forbidden : List.of("org.jackhuang.hmcl.setting.", "org.jackhuang.hmcl.ui.")) {
+					if (source.contains(forbidden)) {
+						offenders.add(ROOT.relativize(file) + " uses " + forbidden);
+					}
+				}
+			}
+		}
+		assertTrue(offenders.isEmpty(), "core must not import settings or interface types: " + offenders);
 	}
 }

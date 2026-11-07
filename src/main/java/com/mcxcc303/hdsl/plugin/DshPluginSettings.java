@@ -17,7 +17,6 @@
  */
 package com.mcxcc303.hdsl.plugin;
 
-import com.mcxcc303.hdsl.account.DshDefaultModel;
 import com.mcxcc303.hdsl.core.DshException;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
