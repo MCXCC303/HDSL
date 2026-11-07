@@ -69,6 +69,8 @@ public final class InstanceSettingsPage extends ScrollPane {
 	private final Runnable onChanged;
 	/// The instance being edited, refreshed from storage after every write.
 	private DshInstance instance;
+	private boolean syncing;
+	private String lastSyncedPort = "";
 
 	/// Creates the settings tab.
 	///
@@ -593,6 +595,15 @@ public final class InstanceSettingsPage extends ScrollPane {
 		}
 	}
 
+	private int validPortOrDefault() {
+		int port = instance.portOrDefault();
+		if (port >= 1024 && port <= 65535) {
+			return port;
+		}
+		int auto = DshPorts.autoPort(instance);
+		return auto >= 1024 && auto <= 65535 ? auto : 0;
+	}
+
 	/// Builds the fixed-port entry.
 	///
 	/// The field and the hint are drawn from the stored instance rather than
@@ -606,10 +617,21 @@ public final class InstanceSettingsPage extends ScrollPane {
 		portRow.setTitle(i18n("dsh.instance.port.fixed"));
 
 		portField.setPrefWidth(80);
-		portField.setValidators(new NumberValidator(i18n("dsh.instance.port.invalid"), false));
+		portField.setValidators(new Validator(i18n("dsh.instance.port.invalid"), text -> {
+			if (text == null || text.isBlank()) {
+				return false;
+			}
+			try {
+				int val = Integer.parseInt(text.trim());
+				return DshPorts.validate(val) == null;
+			} catch (NumberFormatException e) {
+				return false;
+			}
+		}));
+		FXUtils.setValidateWhileTextChanged(portField, true);
 		portField.setOnAction(event -> applyPort(portField.getText()));
 		portField.focusedProperty().addListener((observable, was, focused) -> {
-			if (!focused) {
+			if (!focused && !syncing && !portField.getText().equals(lastSyncedPort)) {
 				applyPort(portField.getText());
 			}
 		});
@@ -633,7 +655,15 @@ public final class InstanceSettingsPage extends ScrollPane {
 		// directly, to point another tool at it, or to see which of two instances is which.
 		// Only its editability follows the mode.
 		portField.setDisable(!fixed);
-		portField.setText(instance.portOrDefault() > 0 ? Integer.toString(instance.portOrDefault()) : "");
+		int port = fixed ? validPortOrDefault() : instance.portOrDefault();
+		String text = port > 0 ? Integer.toString(port) : "";
+		syncing = true;
+		try {
+			portField.setText(text);
+			lastSyncedPort = text;
+		} finally {
+			syncing = false;
+		}
 		portField.setPromptText(i18n("dsh.instance.port.auto.none"));
 		portRow.setVisible(true);
 		portRow.setManaged(true);
@@ -643,21 +673,21 @@ public final class InstanceSettingsPage extends ScrollPane {
 	///
 	/// @param text the field text
 	private void applyPort(@Nullable String text) {
-		if (text == null || text.isBlank()) {
-			return;
-		}
-		Integer port;
-		try {
-			port = Integer.valueOf(text.trim());
-		} catch (NumberFormatException e) {
-			return;
+		Integer port = null;
+		if (text != null && !text.isBlank()) {
+			try {
+				port = Integer.valueOf(text.trim());
+			} catch (NumberFormatException ignored) {
+			}
 		}
 		String complaint = DshPorts.validate(port);
 		if (complaint != null) {
 			Controllers.dialog(complaint, i18n("dsh.instance.port.invalid"), MessageType.ERROR);
+			syncPortRow();
+			portField.validate();
 			return;
 		}
-		if (port == instance.portOrDefault()) {
+		if (port.intValue() == instance.portOrDefault()) {
 			return;
 		}
 		write(instance.withPortPolicy(DshPortMode.FIXED, port));

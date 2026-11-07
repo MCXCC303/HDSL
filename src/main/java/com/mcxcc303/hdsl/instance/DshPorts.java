@@ -230,7 +230,7 @@ public final class DshPorts {
 			return;
 		}
 		int port = instance.portOrDefault();
-		if (port > 0) {
+		if (port >= 1024 && port <= 65535) {
 			DshInstanceSettings.setAutoPort(instance, port);
 		}
 	}
@@ -250,12 +250,17 @@ public final class DshPorts {
 	public static DshInstance withMode(DshInstance instance, DshPortMode mode) throws DshException {
 		if (mode == DshPortMode.FIXED) {
 			keepAutoPort(instance);
-			// The field starts at the number the instance already has, so naming a port is an edit of
-			// a real one rather than a blank to fill in.
-			return instance.withPortPolicy(mode, instance.portOrDefault());
+			int port = instance.portOrDefault();
+			if (port < 1024 || port > 65535) {
+				port = autoPort(instance);
+				if (port < 1024 || port > 65535) {
+					port = reserve(instance.id());
+				}
+			}
+			return instance.withPortPolicy(mode, port);
 		}
 		int automatic = autoPort(instance);
-		if (automatic <= 0) {
+		if (automatic < 1024 || automatic > 65535) {
 			automatic = reserve(instance.id());
 			DshInstanceSettings.setAutoPort(instance, automatic);
 		}

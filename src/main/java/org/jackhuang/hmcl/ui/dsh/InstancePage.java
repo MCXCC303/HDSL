@@ -73,7 +73,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  */
 @NotNullByDefault
 public final class InstancePage extends DecoratorAnimatedPage implements DecoratorPage, PageAware {
-	private final DshInstance instance;
+	private DshInstance instance;
 
 	// The page state published to the window decorator.
 	private final ReadOnlyObjectWrapper<State> state;
@@ -113,11 +113,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		this.instance = instance;
 		this.state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n("instance.manage.manage.title", instance.id())));
 
-		settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(instance, this::refresh));
-		installersTab.setNodeSupplier(() -> new InstanceInstallersPage(instance));
-		sessionsTab.setNodeSupplier(() -> new WorkspaceListPage(instance));
-		pluginsTab.setNodeSupplier(() -> new PluginListPage(instance));
-		skillsTab.setNodeSupplier(() -> new SkillListPage(instance));
+		settingsTab.setNodeSupplier(() -> new InstanceSettingsPage(currentInstance(), this::refresh));
+		installersTab.setNodeSupplier(() -> new InstanceInstallersPage(currentInstance()));
+		sessionsTab.setNodeSupplier(() -> new WorkspaceListPage(currentInstance()));
+		pluginsTab.setNodeSupplier(() -> new PluginListPage(currentInstance()));
+		skillsTab.setNodeSupplier(() -> new SkillListPage(currentInstance()));
 
 		// keep this tab
 		tab = new TabHeader(transitionPane, settingsTab, installersTab, pluginsTab, skillsTab, sessionsTab);
@@ -157,7 +157,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 				                        SVG.PACKAGE2_FILL);
 
 		launchItem.getStyleClass().add("navigation-drawer-item");
-		launchItem.setOnAction(event -> testLaunch());
+		launchItem.setOnAction(event -> {
+			launchItem.requestFocus();
+			testLaunch();
+		});
 
 		AdvancedListBox actions = new AdvancedListBox()
 				.add(launchItem)
@@ -236,8 +239,17 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		tab.onPageHidden();
 	}
 
+	private DshInstance currentInstance() {
+		DshInstance fresh = InstanceStore.find(instance.id());
+		if (fresh != null) {
+			this.instance = fresh;
+		}
+		return this.instance;
+	}
+
 	@Override
 	public void refresh() {
+		currentInstance();
 		refreshPlugins();
 		refreshLaunchItem();
 	}
@@ -263,7 +275,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.FOLDER_OPEN,
 		                               i18n("dsh.instance.open_workspace"),
-		                               () -> revealQuietly(instance.workspacePath()),
+		                               () -> revealQuietly(currentInstance().workspacePath()),
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.FOLDER_COPY,
 		                               i18n("dsh.instance.open.sessions"),
@@ -288,7 +300,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	/// instance goes into it, which is the order the original asks in — and writing
 	/// it is what the last step does.
 	private void exportModpack() {
-		Controllers.getDecorator().startWizard(new ModpackExportWizardProvider(instance), i18n("modpack.wizard"));
+		Controllers.getDecorator().startWizard(new ModpackExportWizardProvider(currentInstance()), i18n("modpack.wizard"));
 	}
 
 	/// Shows the operations available on this instance.
@@ -309,7 +321,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		// not, the same as the instance list's menu — see [InstanceBrowser].
 		entries.add(new IconedMenuItem(SVG.PUBLIC,
 		                               i18n("dsh.instance.open_browser"),
-		                               () -> InstanceBrowser.open(instance),
+		                               () -> InstanceBrowser.open(currentInstance()),
 		                               popup));
 		// Right under the browser entry, because it is the other half of the same thing: the address
 		// the harness serves is behind a key, and reaching it from another window means carrying the
@@ -320,7 +332,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		                                              i18n("dsh.instance.copy_token"),
 		                                              this::copyLaunchToken,
 		                                              popup);
-		copyToken.setDisable(launchToken(instance).isEmpty());
+		copyToken.setDisable(launchToken(currentInstance()).isEmpty());
 		entries.add(copyToken);
 		entries.add(new IconedMenuItem(SVG.SCRIPT, i18n("dsh.instance.open_logs"), this::openLogs, popup));
 		entries.add(new IconedMenuItem(SVG.OUTPUT, i18n("dsh.instance.terminal"), this::openTerminal, popup));
@@ -339,7 +351,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
 	private @Nullable Path instanceDirectoryOrNull() {
 		try {
-			return instance.instanceDirectory();
+			return currentInstance().instanceDirectory();
 		} catch (DshException e) {
 			return null;
 		}
@@ -347,7 +359,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
 	private @Nullable Path homeChild(String name) {
 		try {
-			Path home = instance.homeDirectory();
+			Path home = currentInstance().homeDirectory();
 			return name.isEmpty() ? home : home.resolve(name);
 		} catch (DshException e) {
 			return null;
@@ -421,7 +433,8 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	/// the instance's own toolchain, in a shell where the harness can be run by hand.
 	private void openTerminal() {
 		try {
-			DshInstanceTerminal.open(instance, DshAccount.forInstance(instance));
+			DshInstance target = currentInstance();
+			DshInstanceTerminal.open(target, DshAccount.forInstance(target));
 		} catch (DshException e) {
 			LOG.warning("Could not open a terminal on " + instance.id(), e);
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
@@ -432,7 +445,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		// Test launch shows the output: the point of launching from here is to
 		// see what the program does, which is what the original's test game does
 		// too. Stopping it is the same action everywhere and shows nothing.
-		DshLaunchService.toggle(instance, this::refresh, true);
+		DshLaunchService.toggle(currentInstance(), this::refresh, true);
 	}
 
 	/// Puts the key the running harness asks for on the clipboard.
@@ -441,7 +454,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	/// instance stopped between the menu being drawn and the entry being pressed. Said rather than
 	/// swallowed: a copy that copied nothing looks exactly like one that worked.
 	private void copyLaunchToken() {
-		Optional<String> token = launchToken(instance);
+		Optional<String> token = launchToken(currentInstance());
 		if (token.isEmpty()) {
 			Controllers.showToast(i18n("dsh.instance.token_missing"));
 			return;
@@ -487,7 +500,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 
 		List<DshInstalledPlugins.Installed> plugins;
 		try {
-			plugins = DshInstalledPlugins.of(instance);
+			plugins = DshInstalledPlugins.of(currentInstance());
 		} catch (DshException e) {
 			pluginStatus.setText(e.getMessage());
 			return;
@@ -533,7 +546,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		                    i18n("dsh.instance.plugins.remove"),
 		                    () -> CompletableFuture.runAsync(() -> {
 			                    try {
-				                    DshPluginInstaller.remove(instance, name, null);
+				                    DshPluginInstaller.remove(currentInstance(), name, null);
 			                    } catch (DshException e) {
 				                    throw new CompletionException(e);
 			                    }

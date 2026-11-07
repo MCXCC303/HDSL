@@ -22,6 +22,7 @@ import com.mcxcc303.hdsl.account.DshAccountRoute;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshPorts;
+import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.instance.PortOccupant;
 import com.mcxcc303.hdsl.launch.DshLauncher;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
@@ -176,14 +177,16 @@ public final class DshLaunchService {
 	/// @param onDone     run once the action settles, or `null`
 	/// @param showOutput whether a launch should open the process's log window
 	public static void toggle(DshInstance instance, @Nullable Runnable onDone, boolean showOutput) {
-		switch (state(instance.id())) {
-			case STOPPED -> launch(instance, ignored -> {
+		DshInstance fresh = InstanceStore.find(instance.id());
+		DshInstance target = fresh != null ? fresh : instance;
+		switch (state(target.id())) {
+			case STOPPED -> launch(target, ignored -> {
 				if (onDone != null) {
 					onDone.run();
 				}
 			}, showOutput);
-			case STARTING, RUNNING -> stop(instance.id(), onDone);
-			case STOPPING -> LOG.info("Instance " + instance.id() + " is already stopping");
+			case STARTING, RUNNING -> stop(target.id(), onDone);
+			case STOPPING -> LOG.info("Instance " + target.id() + " is already stopping");
 		}
 	}
 
@@ -247,11 +250,13 @@ public final class DshLaunchService {
 	/// @param onDone     run after the launch settles, or `null`
 	/// @param showOutput whether to open the process's log window
 	public static void launch(DshInstance instance, @Nullable Consumer<DshProcess> onDone, boolean showOutput) {
+		DshInstance fresh = InstanceStore.find(instance.id());
+		DshInstance target = fresh != null ? fresh : instance;
 		// An instance that is still going down cannot come back up yet: it holds
 		// its port and its home until it has exited. Saying so is better than
 		// starting a second server that would have to take a different port.
-		if (DshProcessManager.isStopping(instance.id())) {
-			Controllers.dialog(i18n("dsh.launch.stopping", instance.id()), i18n("dsh.stop"), MessageType.WARNING);
+		if (DshProcessManager.isStopping(target.id())) {
+			Controllers.dialog(i18n("dsh.launch.stopping", target.id()), i18n("dsh.stop"), MessageType.WARNING);
 			return;
 		}
 
@@ -268,7 +273,7 @@ public final class DshLaunchService {
 			Controllers.navigate(new AccountListPage());
 			return;
 		}
-		if (!LAUNCHING.add(instance.id())) {
+		if (!LAUNCHING.add(target.id())) {
 			return;
 		}
 
@@ -306,8 +311,8 @@ public final class DshLaunchService {
 		// the end. Chained backwards, each step is finished — and its row marked done — before the
 		// next one begins, which is what a person watching expects to see.
 		Task<Void> account = new StageTask("dsh.launch.stage.account", null, () -> {
-			chosen[0] = DshAccount.forInstance(instance);
-			checkAccount(instance, chosen[0]);
+			chosen[0] = DshAccount.forInstance(target);
+			checkAccount(target, chosen[0]);
 			route[0] = DshAccountRoute.prepare(chosen[0]).orElse(null);
 		});
 		Task<Void> models = new StageTask("dsh.launch.stage.models", account, () -> {
@@ -316,8 +321,8 @@ public final class DshLaunchService {
 			}
 		});
 		Task<Void> starting = new StageTask("dsh.launch.stage.starting", models, () -> {
-			DshLauncher.LaunchPlan plan = DshLauncher.plan(instance, chosen[0], route[0]);
-			started[0] = DshProcessManager.launch(instance, chosen[0], plan);
+			DshLauncher.LaunchPlan plan = DshLauncher.plan(target, chosen[0], route[0]);
+			started[0] = DshProcessManager.launch(target, chosen[0], plan);
 		});
 		Task<Void> ready = new StageTask("dsh.launch.stage.ready", starting, () -> awaitReady(started[0]));
 
@@ -330,18 +335,18 @@ public final class DshLaunchService {
 		executor.addTaskListener(new TaskListener() {
 			@Override
 			public void onStop(boolean success, TaskExecutor stopped) {
-				boolean openLog = showOutput || SettingsManager.settings().showLogsFor(instance.id());
-				runInFX(() -> settle(instance, success, stopped.getException(), openLog, onDone, started[0]));
+				boolean openLog = showOutput || SettingsManager.settings().showLogsFor(target.id());
+				runInFX(() -> settle(target, success, stopped.getException(), openLog, onDone, started[0]));
 			}
 		});
 
 		TaskExecutorDialogPane progress = new TaskExecutorDialogPane(new TaskCancellationAction(it -> {
 			// Stopping waits for the child to drain, which is seconds the
 			// interface must not spend frozen on the launch dialog's behalf.
-			stop(instance.id(), null);
+			stop(target.id(), null);
 			it.fireEvent(new DialogCloseEvent());
 		}));
-		progress.titleProperty().set(i18n("dsh.launch.launching", instance.id()));
+		progress.titleProperty().set(i18n("dsh.launch.launching", target.id()));
 		progress.setExecutor(executor, true);
 		Controllers.dialog(progress);
 

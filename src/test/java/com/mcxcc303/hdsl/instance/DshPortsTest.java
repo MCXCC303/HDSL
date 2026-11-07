@@ -195,6 +195,41 @@ class DshPortsTest {
 	}
 
 	@Test
+	void switchingToFixedModeGuaranteesAValidPortRange() throws Exception {
+		DshInstance invalidPort = instance(DshPortMode.AUTO, 0);
+		DshInstance fixed = DshPorts.withMode(invalidPort, DshPortMode.FIXED);
+		assertTrue(fixed.portOrDefault() >= 1024 && fixed.portOrDefault() <= 65535,
+		           "switching to fixed must provide a valid port in [1024, 65535], got " + fixed.portOrDefault());
+		assertNull(DshPorts.validate(fixed.portOrDefault()));
+
+		DshInstance privilegedPort = instance(DshPortMode.AUTO, 80);
+		DshInstance fixedFromPrivileged = DshPorts.withMode(privilegedPort, DshPortMode.FIXED);
+		assertTrue(fixedFromPrivileged.portOrDefault() >= 1024 && fixedFromPrivileged.portOrDefault() <= 65535,
+		           "switching to fixed must replace out-of-range ports with a valid port");
+		assertNull(DshPorts.validate(fixedFromPrivileged.portOrDefault()));
+	}
+
+	@Test
+	void switchingBackToAutomaticRepairsAnInvalidRememberedPort() throws Exception {
+		DshInstance instance = managedInstance("ports-invalid-auto");
+		try {
+			DshInstanceSettings.setAutoPort(instance, 80);
+
+			DshInstance fixed = DshPorts.withMode(instance, DshPortMode.FIXED);
+			assertNull(DshPorts.validate(fixed.portOrDefault()),
+			           "the fixed port must be valid even when the remembered automatic port is not");
+
+			DshInstance automatic = DshPorts.withMode(fixed, DshPortMode.AUTO);
+			assertNull(DshPorts.validate(automatic.portOrDefault()),
+			           "switching back to automatic must not reuse the privileged remembered port");
+			assertEquals(automatic.portOrDefault(), DshInstanceSettings.autoPort(instance),
+			             "the repaired automatic port is the one written down");
+		} finally {
+			DshInstanceManager.delete(instance.id());
+		}
+	}
+
+	@Test
 	void theSurfacePassesTheResolvedPortThrough() {
 		// Only the browser surface serves HTTP, so only it takes a port.
 		assertEquals(List.of(), DshSurface.ACP.arguments(39000));
