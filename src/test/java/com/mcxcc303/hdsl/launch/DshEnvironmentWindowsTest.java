@@ -38,60 +38,27 @@ import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies that the environment the launcher is configured with really arrives in a child process
-/// on Windows.
-///
-/// A unit test that reads [DshLauncher#plan]'s map back answers a different question than the one
-/// that matters: what a person configures is an environment for a *process*, and the things that go
-/// wrong between the two are the platform's — a variable name that Windows will not carry, a value
-/// that arrives empty, a home that is quietly moved. So the child here is a real `node` started the
-/// way [DshProcess]'s own constructor starts one, running a stub that prints the environment it
-/// actually has, and every assertion is made against what that process printed about itself.
-///
-/// The stub takes the place of DeepSeek Harness at the instance's own entry point, so the plan is
-/// built by the real code: the same [DshLauncher#plan] the launcher calls, with the same instance,
-/// the same settings, and the same merge order.
+/**
+ * Verifies that the environment the launcher is configured with really arrives in a child process on Windows.
+ */
 class DshEnvironmentWindowsTest {
-	/// The instance these tests make and launch.
 	private static final String INSTANCE_ID = "environment-windows";
-
-	/// The profile the instance boots.
-	///
-	/// The ACP surface adds no flags of its own, so what the child receives is only what the plan
-	/// assembles — no port reservation and no capability probe in the way of the environment.
 	private static final String PROFILE = "acp";
 
-	/// Where the instance's own directory is made, one per test.
 	@TempDir
 	Path folder;
 
-	/// The instance's workspace, one per test.
 	@TempDir
 	Path workspace;
 
-	/// The folders the instance manager was pointed at before this test replaced them.
 	private Supplier<List<Path>> previousFolders;
-
-	/// The launcher-wide environment that was in place before this test replaced it.
 	private Map<String, String> previousGlobalEnvironment;
 
-	/// Skips a test when the launcher has no Node.js it may run the stub with.
-	///
-	/// The version range is part of the gate: a machine may hold a Node the launcher itself would
-	/// refuse, and refusing it is the launcher's own tested behaviour.
 	private static void requireNode() {
 		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
 		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
 	}
 
-	/// Writes the stub that stands in for DeepSeek Harness.
-	///
-	/// It prints, on one line each, the arguments it was given and every `DSH_`/`HDSL_` variable it
-	/// can see — so what the assertions read is the child's own view of its environment, not the
-	/// map the launcher passed to `ProcessBuilder`. It also answers the help request the launcher
-	/// makes about `--no-open`, which is what lets a real plan be built for a web instance.
-	///
-	/// @param instance the instance to install it into
 	private static void installProbeSurface(DshInstance instance) throws Exception {
 		Path script = instance.dshEntryPoint();
 		Files.createDirectories(script.getParent());
@@ -108,14 +75,6 @@ class DshEnvironmentWindowsTest {
 				""");
 	}
 
-	/// Runs a plan's own command in a real child and returns what the child said.
-	///
-	/// The three statements are the ones `DshProcess`'s constructor performs — the same command
-	/// list, the same working directory, the same environment — so what is observed here is what a
-	/// launch observes.
-	///
-	/// @param plan the plan
-	/// @return the child's exit code and output
 	private static Child run(DshLauncher.LaunchPlan plan) throws Exception {
 		ProcessBuilder builder = new ProcessBuilder(plan.command());
 		builder.directory(plan.workingDirectory().toFile());
@@ -131,24 +90,18 @@ class DshEnvironmentWindowsTest {
 		return new Child(child.exitValue(), output);
 	}
 
-	/// Points the manager at this test's own folder and remembers the launcher's environment.
 	@BeforeEach
 	void makeItIsolate() {
 		previousFolders = InstanceFolders.setFolders(() -> List.of(folder));
 		previousGlobalEnvironment = Map.copyOf(SettingsManager.settings().globalEnvironment());
 	}
 
-	/// Puts the launcher's environment and folders back, so one test does not decide the next.
 	@AfterEach
 	void putItBack() {
 		SettingsManager.settings().globalEnvironmentProperty().set(previousGlobalEnvironment);
 		InstanceFolders.setFolders(previousFolders);
 	}
 
-	/// Creates an instance whose entry point is a stub that reports what it was given.
-	///
-	/// @param environment the environment the instance is given
-	/// @return the instance
 	private DshInstance makeInstance(Map<String, String> environment) throws Exception {
 		requireNode();
 		DshInstance instance = DshInstanceManager.create(INSTANCE_ID,
@@ -165,12 +118,6 @@ class DshEnvironmentWindowsTest {
 		return instance;
 	}
 
-	/// The launcher-wide set and an instance's own set are one environment in the child, with the
-	/// instance's value winning where both name the same variable.
-	///
-	/// The launcher-wide text is put through [DshEnvironment#parse] because that is what the
-	/// interface does with what somebody types into the box — comments and blank lines and all — so
-	/// this is the whole way from the text field to the child process.
 	@Test
 	void theLauncherWideSetAndTheInstancesOwnBothReachTheChild() throws Exception {
 		SettingsManager.settings().globalEnvironmentProperty().set(DshEnvironment.parse("""
@@ -208,10 +155,6 @@ class DshEnvironmentWindowsTest {
 		             "and the instance's own home is what the child runs on");
 	}
 
-	/// An instance that adds nothing of its own runs with the launcher's set.
-	///
-	/// This is what "follow the launcher" has to mean for the environment: an instance whose own
-	/// map is empty must not wipe the launcher's by being laid over it.
 	@Test
 	void anInstanceWithNoSetOfItsOwnRunsWithTheLaunchers() throws Exception {
 		SettingsManager.settings()
@@ -227,21 +170,6 @@ class DshEnvironmentWindowsTest {
 		             "an instance that adds nothing of its own still inherits the launcher's set");
 	}
 
-	/// A `DSH_HOME` typed into an environment box does **not** move the instance's home.
-	///
-	/// This used to be the opposite, and it is the reason [DshEnvironment#of] refuses the name:
-	/// [DshLauncher#plan] stated the instance's own home and then laid the user's environment over
-	/// it, so a `DSH_HOME=...` line typed into either environment box reached the child and
-	/// overrode the home the launcher had resolved. The home is how one instance's profile,
-	/// credentials and sessions are kept away from another's, which is why
-	/// [DshLaunchArguments] refuses the same variable when it arrives as a launch argument — and
-	/// the two doors cannot disagree about what belongs to the launcher.
-	///
-	/// Both boxes are reachable from the interface with exactly this text: `InstanceDefaultsPage`
-	/// and `InstanceSettingsPage` store `DshEnvironment.parse(...)` without filtering anything out,
-	/// so the refusal has to be here, where the two of them meet.
-	///
-	/// @throws Exception when the instance cannot be made or the child cannot be run
 	@Test
 	void aVariableNamedDshHomeInTheEnvironmentCannotMoveTheInstancesHome() throws Exception {
 		Path decoy = folder.resolve("decoy-home");
@@ -263,11 +191,6 @@ class DshEnvironmentWindowsTest {
 		assertFalse(Files.exists(decoy), "nothing created it: the child was simply told to use it");
 	}
 
-	/// The refused name is refused whatever case it is written in, and from the instance too.
-	///
-	/// Windows treats an environment name without regard to case, so `dsh_home` is a second spelling
-	/// of the variable the launcher states — and it would win on the machine this launcher is used
-	/// on most. Both boxes are checked, because both reach the same place.
 	@Test
 	void theRefusalDoesNotCareAboutCaseOrWhichBoxItWasTypedIn() throws Exception {
 		DshInstance instance = makeInstance(Map.of("dsh_home", "C:\\somewhere-else"));
@@ -281,14 +204,6 @@ class DshEnvironmentWindowsTest {
 		            "a name that merely starts the same way is the person's");
 	}
 
-	/// The shapes a value can take are carried as they were written.
-	///
-	/// A Windows environment value is free text, so a `=` inside it, a space in the name and a
-	/// value that ends in one are all things somebody can type into the box. What must not happen
-	/// is one of them taking the rest of the set down with it: the instance would start with none
-	/// of its own settings and nothing would say so.
-	///
-	/// @throws Exception when the instance cannot be made or the child cannot be run
 	@Test
 	void avalueKeepsItsOwnShapeAndNeverTakesTheRestOfTheSetWithIt() throws Exception {
 		SettingsManager.settings().globalEnvironmentProperty().set(DshEnvironment.parse("""
@@ -315,14 +230,7 @@ class DshEnvironmentWindowsTest {
 		            "nothing but the variables themselves is in there");
 	}
 
-	/// What a real child process printed about itself.
-	///
-	/// @param exitCode the child's exit code
-	/// @param output   everything the child printed
 	private record Child(int exitCode, String output) {
-		/// Returns the arguments the child was given, in order, without the runtime and the script.
-		///
-		/// @return the arguments
 		List<String> arguments() {
 			List<String> arguments = new ArrayList<>();
 			for (String line : lines()) {
@@ -333,9 +241,6 @@ class DshEnvironmentWindowsTest {
 			return arguments;
 		}
 
-		/// Returns the child's own environment, as the child sees it.
-		///
-		/// @return the variables whose names begin with `DSH_` or `HDSL_`
 		Map<String, String> environment() {
 			Map<String, String> values = new LinkedHashMap<>();
 			for (String line : lines()) {
@@ -348,9 +253,6 @@ class DshEnvironmentWindowsTest {
 			return values;
 		}
 
-		/// Returns the child's output as lines, without any carriage return.
-		///
-		/// @return the lines
 		private List<String> lines() {
 			return List.of(output.replace("\r\n", "\n").split("\n"));
 		}

@@ -15,44 +15,33 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.mcxcc303.hdsl.launch;
+package com.mcxcc303.hdsl.core;
 
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-/// How the launcher reaches the network.
-///
-/// The original asks the same four things in the same order, and for the same reason: most people
-/// want whatever the system already uses, some want no proxy at all, and the rest have a host and a
-/// port to type. Which of them is chosen decides whether the two fields below mean anything.
+/**
+ * How the launcher reaches the network.
+ */
 @NotNullByDefault
 public enum DshProxyMode {
-	/// Whatever the system is configured to use, which is to say nothing of the launcher's own.
 	SYSTEM("system"),
-
-	/// No proxy, even if the system has one.
 	NONE("none"),
-
-	/// An HTTP proxy at a host and port.
 	HTTP("http"),
-
-	/// A SOCKS proxy at a host and port.
 	SOCKS("socks");
 
-	/// The value the setting is stored as.
 	private final String id;
 
-	/// Creates a mode.
-	///
-	/// @param id the stored value
 	DshProxyMode(String id) {
 		this.id = id;
 	}
 
-	/// Reads a stored value.
-	///
-	/// @param value the stored value, or `null`
-	/// @return the mode, or [DshProxyMode#SYSTEM] when it is not one
+	/**
+	 * Reads a stored value.
+	 *
+	 * @param value the stored value, or {@code null}
+	 * @return the mode, or {@link #SYSTEM} when invalid or {@code null}
+	 */
 	public static DshProxyMode of(@Nullable String value) {
 		if (value != null) {
 			for (DshProxyMode mode : values()) {
@@ -64,16 +53,13 @@ public enum DshProxyMode {
 		return SYSTEM;
 	}
 
-	/// Returns the value the setting is stored as.
-	///
-	/// @return the id
 	public String id() {
 		return id;
 	}
 
-	/// Returns whether this mode needs a host and a port.
-	///
-	/// @return whether it does
+	/**
+	 * Returns whether this mode requires a host and port.
+	 */
 	public boolean usesAddress() {
 		return this == HTTP || this == SOCKS;
 	}

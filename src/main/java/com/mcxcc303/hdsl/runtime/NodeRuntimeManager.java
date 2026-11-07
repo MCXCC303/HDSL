@@ -25,7 +25,6 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.core.Semver;
-import com.mcxcc303.hdsl.harness.VersionOrder;
 import kala.compress.archivers.ArchiveEntry;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
@@ -70,7 +69,7 @@ public final class NodeRuntimeManager {
 	/**
 	 * Returns the platform tag used in Node distribution file names.
 	 *
-	 * @return `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `darwin-x64` or `darwin-arm64`
+	 * @return {@code linux-x64}, {@code linux-arm64}, {@code win-x64}, {@code win-arm64}, {@code darwin-x64} or {@code darwin-arm64}
 	 * @throws DshException when the current system has no Node build
 	 */
 	public static String platformTag() throws DshException {
@@ -93,8 +92,8 @@ public final class NodeRuntimeManager {
 	/**
 	 * Returns the entry the release index lists for a platform tag.
 	 *
-	 * @param platform the tag from [NodeRuntimeManager#platformTag]
-	 * @return the name to look for in the index `files` array
+	 * @param platform the tag from {@link #platformTag}
+	 * @return the name to look for in the index {@code files} array
 	 */
 	static String indexTag(String platform) {
 		return switch (platform) {
@@ -137,7 +136,7 @@ public final class NodeRuntimeManager {
 		} catch (IOException e) {
 			LOG.warning("Failed to enumerate installed Node runtimes in " + root, e);
 		}
-		runtimes.sort(Comparator.comparing(NodeRuntime::version, VersionOrder::compareVersions).reversed());
+		runtimes.sort(Comparator.comparing(NodeRuntime::version, Semver::compare).reversed());
 		return runtimes;
 	}
 
@@ -163,7 +162,7 @@ public final class NodeRuntimeManager {
 
 	/**
 	 * Reads the release schedule the Node.js project publishes.<br>
-	 * The key is the major version, or `major.minor` for 0.x releases.
+	 * The key is the major version, or {@code major.minor} for 0.x releases.
 	 *
 	 * @return the schedule by release line
 	 */
@@ -273,16 +272,16 @@ public final class NodeRuntimeManager {
 			                             scheduleMap.get(familyVer)));
 		}
 
-		releases.sort(Comparator.comparing(NodeRelease::version, VersionOrder::compareVersions).reversed());
+		releases.sort(Comparator.comparing(NodeRelease::version, Semver::compare).reversed());
 		return releases;
 	}
 
 	/**
-	 * Installs a Node release
+	 * Installs a Node release.
 	 *
-	 * @param version the version to install, with or without a leading `v`
+	 * @param version the version to install, with or without a leading {@code v}
 	 * @param source  where to fetch the archive from
-	 * @param onStage receives a short progress description, or `null`
+	 * @param onStage receives a short progress description, or {@code null}
 	 * @return the installed runtime
 	 * @throws DshException when the download or extraction fails
 	 */
@@ -353,7 +352,7 @@ public final class NodeRuntimeManager {
 	 * Installs the pnpm a managed runtime needs to run DeepSeek Harness.
 	 *
 	 * @param runtime the freshly installed runtime
-	 * @param onStage receives progress lines, or `null`
+	 * @param onStage receives progress lines, or {@code null}
 	 */
 	private static void provisionPnpm(NodeRuntime runtime, @Nullable Consumer<String> onStage) {
 		Path npm = NodeRuntime.npmIn(runtime.directory());

@@ -24,7 +24,7 @@ import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
-import com.mcxcc303.hdsl.launch.DshProxyMode;
+import com.mcxcc303.hdsl.core.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.NodeSource;
@@ -50,13 +50,8 @@ import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/*
- * Owns the single [LauncherSettings] instance and persists it to disk.
- *
- * Persistence is deliberately explicit rather than reflective: the settings
- * object holds JavaFX properties, which serialise poorly, so a plain
- * serialisable snapshot is written instead. This keeps the on-disk format
- * stable and easy to migrate as HDSL grows.
+/**
+ * Owns the process-wide {@link LauncherSettings} instance and persists it to disk.
  */
 @NotNullByDefault
 public final class SettingsManager {
@@ -87,7 +82,7 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Reads persisted window geometry into `state`, ignoring a missing file.
+	 * Reads persisted window geometry into {@code state}, ignoring a missing file.
 	 *
 	 * @param state the state to populate
 	 */
@@ -151,10 +146,6 @@ public final class SettingsManager {
 
 	/**
 	 * Resolves a stored theme colour.
-	 * <p>
-	 * Older settings files hold one of the standard colour names; the current
-	 * format holds the colour itself as `#RRGGBB`, which is what lets a colour
-	 * chosen in the picker survive a restart. Both are accepted.
 	 *
 	 * @param stored the stored name or hex value
 	 * @return the resolved colour, or the default when the value is unusable
@@ -185,12 +176,9 @@ public final class SettingsManager {
 
 	/**
 	 * Renders a background colour for the settings file.
-	 * <p>
-	 * Only a flat colour is stored: the appearance page's pickers produce one, and a
-	 * gradient in a settings file would be a value nothing can edit.
 	 *
-	 * @param paint the colour, or `null`
-	 * @return its hex form, or `null` when there is nothing to store
+	 * @param paint the colour, or {@code null}
+	 * @return its hex form, or {@code null} when there is nothing to store
 	 */
 	private static @Nullable String paintToString(@Nullable Paint paint) {
 		if (!(paint instanceof Color color)) {
@@ -203,10 +191,10 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Reads a background colour written by [SettingsManager#paintToString].
+	 * Reads a background colour written by {@link #paintToString(Paint)}.
 	 *
 	 * @param value the stored hex string
-	 * @return the colour, or `null` when it cannot be read
+	 * @return the colour, or {@code null} when it cannot be read
 	 */
 	private static javafx.scene.paint.@Nullable Paint paintOf(String value) {
 		try {
@@ -219,22 +207,13 @@ public final class SettingsManager {
 
 	/**
 	 * Writes the current launcher settings to disk.
-	 * <p>
-	 * Failures are logged rather than propagated so that a read-only home
-	 * directory cannot make the launcher unusable.
 	 */
 	public static void save() {
 		writeSnapshot(Snapshot.of(settings()));
 	}
 
 	/**
-	 * Adds a folder to the settings file, and selects it, in one read-modify-write.
-	 * <p>
-	 * This is how a folder is added from the command line. It is written into the file as that file
-	 * is on disk, rather than out of this process's copy of the settings: the copy was read when the
-	 * process started and holds every other setting as it was then, so publishing it would put back
-	 * whatever the window changed in between. The caller holds the launcher's lock, so nothing else
-	 * is writing while this runs.
+	 * Adds a folder to the settings file and selects it.
 	 *
 	 * @param path the folder to add
 	 * @return the entry for it, the one already there or a new one
@@ -271,13 +250,7 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Writes a snapshot to the settings file.
-	 * <p>
-	 * Through a file beside it and a move, rather than over it. Writing over it means truncating it
-	 * first, and a reader that arrives in between — another launcher reading the settings at
-	 * start-up, which is the usual case — opens a file that is empty or half written: for this file
-	 * that is no accounts, no API keys, nothing. Through a move, what a reader opens is either the
-	 * file as it was or the file as it is, whole either way.
+	 * Writes a snapshot to the settings file atomically via a temporary file.
 	 *
 	 * @param snapshot the snapshot to write
 	 */
@@ -314,9 +287,7 @@ public final class SettingsManager {
 		try {
 			Files.move(written, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 		} catch (AtomicMoveNotSupportedException e) {
-			// A filesystem that cannot do it atomically — a network mount, some Windows
-			// configurations — still gets the replacement, and with it the part that matters most:
-			// the reader opens one file or the other, never a half-written one.
+			// Fall back to non-atomic replacement if atomic move is not supported.
 			LOG.info("Moving " + written + " into place atomically is not supported here", e);
 			Files.move(written, target, StandardCopyOption.REPLACE_EXISTING);
 		}
@@ -335,13 +306,9 @@ public final class SettingsManager {
 
 	/**
 	 * Applies the selection written before selections were kept per folder.
-	 * <p>
-	 * A launcher that kept one selection for the whole program was showing one
-	 * folder, so the value belongs to the folder it owns. A value already chosen
-	 * since is left alone: it is the newer answer.
 	 *
 	 * @param settings the settings to update
-	 * @param legacyId the instance id an older launcher stored, or `null`
+	 * @param legacyId the instance id an older launcher stored, or {@code null}
 	 */
 	static void applyLegacySelection(LauncherSettings settings, @Nullable String legacyId) {
 		if (legacyId == null || settings.getSelectedInstance(GameDirectory.DEFAULT_ID) != null) {
@@ -351,11 +318,7 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * The serialisable view of [LauncherSettings].
-	 * <p>
-	 * Every field is nullable so that a partially written or older file still
-	 * loads; missing values keep the defaults already present in
-	 * [LauncherSettings].
+	 * Serializable snapshot of {@link LauncherSettings}.
 	 */
 	private static final class Snapshot {
 		@SerializedName("selectedThemePackId")
@@ -445,7 +408,7 @@ public final class SettingsManager {
 		@SerializedName("accounts")
 		private @Nullable List<AccountSnapshot> accounts;
 
-		// The suppliers added by address, in the order they were added.
+		// Added custom vendors.
 		private @Nullable List<VendorSnapshot> vendors;
 
 		@SerializedName("activeAccountKey")
@@ -499,7 +462,7 @@ public final class SettingsManager {
 		@SerializedName("marketSource")
 		private @Nullable String marketSource;
 
-		// The catalogue skills are searched in, by [SkillSource#id], or absent for the community's own index.
+		// The catalogue skills are searched in, by SkillSource id, or absent for the default index.
 		@SerializedName("skillSource")
 		private @Nullable String skillSource;
 
@@ -756,10 +719,7 @@ public final class SettingsManager {
 							        account.label(),
 							        account.model(),
 							        new DshSkinChoice(
-									        // Read through the forgiving reader rather than the enum's own:
-									        // a name this launcher does not know — a file written by a later
-									        // version, or one edited by hand — must not stop the whole
-									        // settings file from loading.
+									        // Use forgiving parser to tolerate unknown enum names.
 									        Objects.requireNonNullElse(DshSkinChoice.Type.fromStorage(account.skinType()),
 									                                   DshSkinChoice.Type.DEFAULT),
 									        DshSkinChoice.TextureModel.fromStorage(account.skinModel()),
@@ -769,9 +729,7 @@ public final class SettingsManager {
 			}
 			if (vendors != null) {
 				for (VendorSnapshot vendor : vendors) {
-					// A supplier with no address cannot be routed, so a row that has lost one — a
-					// hand-edited file, or a version that wrote it differently — is dropped rather
-					// than offered as something that cannot work.
+					// Ignore custom vendors without a base URL.
 					if (vendor.baseUrl() == null || vendor.baseUrl().isBlank()) {
 						continue;
 					}
@@ -815,8 +773,7 @@ public final class SettingsManager {
 				settings.isolationPolicyProperty().set(DshIsolationPolicy.of(newInstanceIsolationPolicy));
 			} else if (isolationPolicy != null) {
 				DshIsolationPolicy legacyPolicy = DshIsolationPolicy.of(isolationPolicy);
-				// Only the creation default changes. Existing instances still resolve their
-				// recorded homeMode, including GLOBAL's unchanged defaultHomeMode setting.
+				// Migrate legacy policy setting for new instances.
 				settings.isolationPolicyProperty()
 				        .set(legacyPolicy == DshIsolationPolicy.WITH_PLUGINS
 				             ? DshIsolationPolicy.ALWAYS
@@ -827,9 +784,7 @@ public final class SettingsManager {
 			}
 			if (debugLog != null) {
 				settings.debugLogProperty().set(debugLog);
-				// The switch decides whether lines are written, so the logger has to be
-				// told as well: without this it stays as the interface left it, which
-				// after a restart is off.
+				// Update logger debug state.
 				org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(debugLog);
 			}
 			if (preLaunchCommand != null) {
@@ -845,8 +800,7 @@ public final class SettingsManager {
 				settings.packMarketUrlProperty().set(packMarketUrl);
 			}
 			if (dependencyPolicy != null) {
-				// A name this launcher does not know is left at the default rather than refusing the
-				// whole settings file: a policy is a preference, and losing it costs one choice.
+				// Ignore unknown dependency policy names and fall back to default.
 				try {
 					settings.dependencyPolicyProperty().set(DshDependencyPolicy.valueOf(dependencyPolicy));
 				} catch (IllegalArgumentException e) {
@@ -891,30 +845,15 @@ public final class SettingsManager {
 			}
 		}
 
-		/**
-		 * One account as it is stored.
-		 *
-		 * @param vendorId the vendor's id
-		 * @param apiKey   the key
-		 * @param baseUrl  the endpoint, for a vendor whose address is per account
-		 * @param label    what the person calls it
-		 */
 		private record AccountSnapshot(@Nullable DshAccount.AccountKind kind, String vendorId, String apiKey,
 		                               @Nullable String baseUrl, @Nullable String label, @Nullable String model,
 		                               @Nullable String skinType, @Nullable String skinModel, @Nullable String skinPath,
 		                               @Nullable String skinCapePath) {}
 
-		/**
-		 * A supplier somebody added by address.
-		 * <p>
-		 * All five fields, because all five are what the harness needs to route it: the id becomes
-		 * the route name, the address is where the calls go, the protocol is what the route
-		 * declares, and the variable is where the key is read from.
-		 */
 		private record VendorSnapshot(String id, String displayName, String apiKeyEnv, String api, String baseUrl) {}
 	}
 
-	// The serializable view of [LauncherState].
+	// The serializable view of LauncherState.
 	private static final class StateSnapshot {
 		@SerializedName("x")
 		private @Nullable Double x;

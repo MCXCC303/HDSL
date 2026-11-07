@@ -19,7 +19,6 @@ package com.mcxcc303.hdsl.plugin;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.mcxcc303.hdsl.account.DshProfilePatch;
 import com.mcxcc303.hdsl.core.DshException;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -39,27 +38,9 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Switches an installed plugin on and off in a profile's own patch layer.
-///
-/// DeepSeek Harness composes a profile from its bundles' layers and then from
-/// the profile's `cordis.patch.yml`. A bundle switches **itself** off by a row
-/// there —
-///
-/// ```yaml
-/// - id: better-sidebar
-///   disabled: true
-/// ```
-///
-/// — which the loader re-applies on every boot. The row id is the loader entry
-/// the package inserts, not the package name, so the package's own bundle patch
-/// is what says which rows are its; a bundle patch may also carry rows that only
-/// **reconfigure** other plugins, and writing `disabled: true` onto those would
-/// take a neighbour down with it. That distinction is why [insertedIds] reads
-/// only rows nested under an `insert:` block.
-///
-/// The patch file is the person's, so it is edited by appending and by removing
-/// exactly the block this class wrote, never by reparsing and re-emitting it: a
-/// hand-written `!!js` expression or comment survives intact.
+/**
+ * Switches an installed plugin on and off in a profile's own patch layer.
+ */
 @NotNullByDefault
 public final class DshPluginPatch {
 	public static final String PATCH_NAME = "cordis.patch.yml";
@@ -75,19 +56,40 @@ public final class DshPluginPatch {
 
 	private DshPluginPatch() {}
 
-	/// Matches a whole `- id: X` + `disabled: true` block for one id.
 	private static Pattern disableBlock(String id) {
 		return Pattern.compile("(?m)^- id: ['\"]?" + Pattern.quote(id) + "['\"]?\\r?\\n  disabled: true\\r?\\n");
 	}
 
+	/**
+	 * Returns the directory for a profile.
+	 *
+	 * @param home    the {@code DSH_HOME}
+	 * @param profile the profile name
+	 * @return the profile directory
+	 */
 	public static Path profileDirectory(Path home, String profile) {
 		return home.resolve("profiles").resolve(profile);
 	}
 
+	/**
+	 * Returns the patch file path for a profile.
+	 *
+	 * @param home    the {@code DSH_HOME}
+	 * @param profile the profile name
+	 * @return the patch file path
+	 */
 	public static Path patchFile(Path home, String profile) {
 		return profileDirectory(home, profile).resolve(PATCH_NAME);
 	}
 
+	/**
+	 * Returns the loader row IDs inserted by a package.
+	 *
+	 * @param home        the {@code DSH_HOME}
+	 * @param profile     the profile name
+	 * @param packageName the package name
+	 * @return the inserted row IDs
+	 */
 	public static List<String> insertedIds(Path home, String profile, String packageName) {
 		return insertedRows(home, profile, packageName).stream().map(Row::id).toList();
 	}
@@ -119,28 +121,27 @@ public final class DshPluginPatch {
 		return List.copyOf(rows);
 	}
 
-	/// Returns the entry ids the profile's own patch layer disables.
-	///
-	/// @param home    the `DSH_HOME`
-	/// @param profile the profile's name
-	/// @return the disabled ids, or an empty set when there is no patch file
-	/// @throws DshException when the patch file cannot be read
+	/**
+	 * Returns the entry IDs disabled in the profile's patch layer.
+	 *
+	 * @param home    the {@code DSH_HOME}
+	 * @param profile the profile's name
+	 * @return the disabled IDs, or an empty set when there is no patch file
+	 * @throws DshException when the patch file cannot be read
+	 */
 	public static Set<String> disabledIds(Path home, String profile) throws DshException {
 		return disabledIdsIn(read(patchFile(home, profile)));
 	}
 
-	/// Switches every row a package inserts on or off.
-	///
-	/// Disabling appends a `disabled: true` block per row; enabling removes the
-	/// block again, so a row the package itself holds down with an expression
-	/// (an aggregate guard, for instance) is left exactly as the package wrote
-	/// it.
-	///
-	/// @param home        the `DSH_HOME`
-	/// @param profile     the profile's name
-	/// @param packageName the package to switch
-	/// @param enabled     whether it should run
-	/// @throws DshException when the package has no rows, or the patch file cannot be written
+	/**
+	 * Switches all rows inserted by a package on or off.
+	 *
+	 * @param home        the {@code DSH_HOME}
+	 * @param profile     the profile's name
+	 * @param packageName the package to switch
+	 * @param enabled     whether the plugin should be enabled
+	 * @throws DshException when the package has no rows or the patch cannot be written
+	 */
 	public static void setEnabled(Path home, String profile, String packageName, boolean enabled) throws DshException {
 		List<String> ids = insertedIds(home, profile, packageName);
 		if (ids.isEmpty()) {
@@ -158,10 +159,6 @@ public final class DshPluginPatch {
 		write(file, text);
 	}
 
-	/// Returns the rows a package declares through `dsh.bundle.patch`.
-	///
-	/// @param directory the package directory
-	/// @return the declared patch file, or `null` when the manifest names none
 	private static @Nullable Path declaredPatch(Path directory) {
 		try {
 			JsonObject manifest = JsonParser.parseString(Files.readString(directory.resolve("package.json"),
@@ -195,11 +192,6 @@ public final class DshPluginPatch {
 		}
 	}
 
-	/**
-	 * Reads a patch file, tolerating absence.
-	 *
-	 * @return the text, or `null` when it is not a readable regular file
-	 */
 	private static @Nullable String readIfFile(Path file) {
 		if (!Files.isRegularFile(file)) {
 			return null;
@@ -285,10 +277,12 @@ public final class DshPluginPatch {
 		if (id != null && seen.add(id)) rows.add(new Row(id, name));
 	}
 
-	/// Reads the ids a patch layer disables.
-	///
-	/// @param text the patch text
-	/// @return the ids carrying a `disabled: true` flag
+	/**
+	 * Reads the IDs that a patch layer disables.
+	 *
+	 * @param text the patch text
+	 * @return the IDs carrying a {@code disabled: true} flag
+	 */
 	static Set<String> disabledIdsIn(String text) {
 		Set<String> disabled = new LinkedHashSet<>();
 		String[] lines = text.split("\\r?\\n", -1);
@@ -317,12 +311,6 @@ public final class DshPluginPatch {
 		return disabled;
 	}
 
-	/// Appends a disable block unless the id is disabled already.
-	///
-	/// @param text the patch text
-	/// @param id   the row id
-	/// @return the updated text
-	/// @throws DshException when the file cannot take another entry
 	private static String appendDisable(String text, String id) throws DshException {
 		if (disabledIdsIn(text).contains(id)) {
 			return text;
@@ -330,30 +318,19 @@ public final class DshPluginPatch {
 		return appendEntry(text, "- id: " + id + "\n  disabled: true\n");
 	}
 
-	/// Removes the disable block for an id, restoring the empty-list placeholder.
-	///
-	/// @param text the patch text
-	/// @param id   the row id
-	/// @return the updated text
 	private static String removeDisable(String text, String id) {
 		String without = disableBlock(id).matcher(text).replaceFirst("");
 		return without.equals(text) ? text : withPlaceholderRestored(without);
 	}
 
-	/// Appends one top-level entry, keeping the file a single YAML array.
-	///
-	/// The profile template ships an empty `[]` placeholder, and appending after
-	/// it would make two top-level elements in one document — the exact YAML
-	/// error a hand-edit runs into. The placeholder is commented out instead,
-	/// and [withPlaceholderRestored] puts it back when the last entry goes.
-	///
-	/// Shared with [DshProfilePatch], which appends a row for an entry the file
-	/// does not mention yet: the placeholder is the same trap for both.
-	///
-	/// @param text  the patch text
-	/// @param block the entry to append
-	/// @return the updated text
-	/// @throws DshException when the file is not an entry list
+	/**
+	 * Appends a top-level YAML entry while preserving the array structure.
+	 *
+	 * @param text  the patch text
+	 * @param block the entry to append
+	 * @return the updated patch text
+	 * @throws DshException when the file structure prevents appending
+	 */
 	public static String appendEntry(String text, String block) throws DshException {
 		if (text.trim().isEmpty()) {
 			return block;
@@ -379,15 +356,12 @@ public final class DshPluginPatch {
 		return endWithNewline(text) + block;
 	}
 
-	/// Puts the empty-list placeholder back when nothing else is left.
-	///
-	/// Appending the first entry comments the template's `[]` out, so removing
-	/// the last one leaves a file of pure comments — not a top-level array, and
-	/// a profile the loader refuses to boot. Switching a plugin off and on again
-	/// would otherwise brick the profile.
-	///
-	/// @param text the patch text
-	/// @return the text, with a placeholder when it holds no entries
+	/**
+	 * Restores the empty list placeholder when no entries remain in the patch text.
+	 *
+	 * @param text the patch text
+	 * @return the text with placeholder restored if empty
+	 */
 	static String withPlaceholderRestored(String text) {
 		if (!text.replaceAll("(?m)^[ \\t]*#.*$", "").trim().isEmpty()) {
 			return text;
@@ -403,11 +377,6 @@ public final class DshPluginPatch {
 		return text.endsWith("\n") ? text : text + "\n";
 	}
 
-	/// Reads a patch file, treating absence as an empty file.
-	///
-	/// @param file the file
-	/// @return the text, or an empty string
-	/// @throws DshException when the file exists but cannot be read
 	private static String read(Path file) throws DshException {
 		if (!Files.isRegularFile(file)) {
 			return "";
@@ -419,11 +388,6 @@ public final class DshPluginPatch {
 		}
 	}
 
-	/// Writes a file the harness may be reading, through a staging file.
-	///
-	/// @param file the file
-	/// @param text what to put in it
-	/// @throws DshException when it cannot be written
 	private static void write(Path file, String text) throws DshException {
 		try {
 			Files.createDirectories(file.getParent());

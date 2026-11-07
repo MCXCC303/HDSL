@@ -21,7 +21,7 @@ import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.account.DshVendor;
 import com.mcxcc303.hdsl.instance.*;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
-import com.mcxcc303.hdsl.launch.DshProxyMode;
+import com.mcxcc303.hdsl.core.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
@@ -41,14 +41,8 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Map;
 import java.util.Objects;
 
-/*
- * Holds the appearance-related launcher settings consumed by the transplanted
- * theme engine.
- *
- * This is the HDSL counterpart of HMCL's much larger `LauncherSettings`.
- * Only the fields the ported `theme` and window-chrome code actually reads are
- * kept; everything that described Java runtimes, memory limits, game
- * directories or download sources is gone.
+/**
+ * Launcher settings for appearance, runtime defaults, and environment configuration.
  */
 @NotNullByDefault
 public final class LauncherSettings {
@@ -76,17 +70,17 @@ public final class LauncherSettings {
 	// Appearance-override key for the background opacity.
 	public static final String THEME_APPEARANCE_BACKGROUND_OPACITY = "backgroundOpacity";
 
-	// The theme pack and theme the user selected, or `null` to follow the default.
+	// The theme pack and theme the user selected, or null to follow the default.
 	private final ObjectProperty<@Nullable ThemeReference> selectedTheme = new SimpleObjectProperty<>(
 			DEFAULT_THEME_REFERENCE);
 
 	// The set of appearance keys the user has explicitly overridden.
 	private final ObservableSet<String> themeAppearanceOverrides = FXCollections.observableSet();
 
-	// The theme brightness mode: `auto`, `light` or `dark`.
+	// The theme brightness mode: auto, light, or dark.
 	private final StringProperty themeBrightnessMode = new SimpleStringProperty("auto");
 
-	// The custom theme color used when [#themeColorTypeProperty] is `CUSTOM`.
+	// The custom theme color used when themeColorTypeProperty is CUSTOM.
 	private final ObjectProperty<ThemeColor> customThemeColor = new SimpleObjectProperty<>(ThemeColor.DEFAULT);
 
 	// The source used to choose the Monet theme color seed.
@@ -124,21 +118,12 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * Returns the address the plugin catalogue is read from.
-	 * <p>
-	 * <p>
-	 * The plugin market plugins are read from, named by [MarketSource#id].
-	 * <p>
-	 * A market rather than a list of addresses: what a market is asked for, and what it answers,
-	 * is that market's own business — one serves a document, the next may serve something else —
-	 * so choosing one is choosing a market, not a place to look.
-	 * <p>
-	 * Empty for a launcher that has never been asked, which reads the community's.
+	 * Configured plugin market source identifier.
 	 */
 	private final javafx.beans.property.StringProperty marketSource = new javafx.beans.property.SimpleStringProperty("");
 
 	/**
-	 * Returns the plugin market, chosen by id.
+	 * Returns the plugin market source identifier property.
 	 *
 	 * @return the property
 	 */
@@ -181,17 +166,8 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * How much of a new instance's dependency tree is held to the versions the harness declares.
-	 * <p>
-	 * Read when a harness is installed, and only then: an instance already on disk keeps the tree it
-	 * was installed with, so changing this decides what the **next** install does rather than
-	 * rewriting what is there. That is the honest behaviour — the alternative would be reinstalling
-	 * a working instance because somebody opened a settings page.
-	 * <p>
-	 * Defaults to [DshDependencyPolicy#CORE_PINNED], and that default is the
-	 * point of the setting: the harness's own ranges let a package the launcher never chose arrive
-	 * underneath it, which has twice stopped an instance from starting. Shipping "whatever resolves"
-	 * as the default would be shipping that.
+	 * How much of a new instance's dependency tree is pinned to versions declared by the harness.
+	 * Defaults to {@link DshDependencyPolicy#CORE_PINNED}.
 	 */
 	private final javafx.beans.property.ObjectProperty<DshDependencyPolicy> dependencyPolicy = new javafx.beans.property.SimpleObjectProperty<>(
 			DshDependencyPolicy.CORE_PINNED);
@@ -251,23 +227,15 @@ public final class LauncherSettings {
 
 	/**
 	 * Returns what the launcher does with itself once an instance is running.
-	 * <p>
-	 * The launcher's own answer, without consulting any instance. This is what is
-	 * stored, so it must be the value the row shows rather than what an instance
-	 * happens to resolve to.
 	 *
-	 * @return the choice, never `null`
+	 * @return the choice, never {@code null}
 	 */
 	public DshLauncherVisibility launcherVisibility() {
 		DshLauncherVisibility choice = launcherVisibility.get();
 		return choice == null ? DshLauncherVisibility.KEEP : choice;
 	}
 
-	/**
-	 * The variables every instance runs with, unless it sets its own.
-	 * <p>
-	 * Edited as lines of `NAME=VALUE`, because that is what people paste into a box.
-	 */
+	// The variables every instance runs with, unless it sets its own.
 	private final ObjectProperty<Map<String, String>> globalEnvironment = new SimpleObjectProperty<>(Map.of());
 
 	/**
@@ -282,14 +250,14 @@ public final class LauncherSettings {
 	/**
 	 * Returns the variables every instance runs with.
 	 *
-	 * @return the variables, never `null`
+	 * @return the variables, never {@code null}
 	 */
 	public Map<String, String> globalEnvironment() {
 		Map<String, String> variables = globalEnvironment.get();
 		return variables == null ? Map.of() : variables;
 	}
 
-	// Whether the cache folder was chosen rather than left where the launcher puts it.
+	// Whether the cache folder was explicitly configured.
 	private final BooleanProperty cacheDirectoryCustom = new SimpleBooleanProperty(false);
 
 	/**
@@ -402,18 +370,9 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * Returns the proxy downloads go through.
-	 * <p>
-	 * <p>
-	 * Returns the proxy secure downloads go through.
-	 * <p>
-	 * <p>
-	 * Returns the hosts reached without a proxy.
-	 * <p>
-	 * <p>
-	 * Returns how many downloads may happen at once.
+	 * Returns the maximum number of concurrent downloads.
 	 *
-	 * @return the property, `null` for the tool's own choice
+	 * @return the property, or {@code null} for default
 	 */
 	public ObjectProperty<@Nullable Integer> downloadConcurrencyProperty() {
 		return downloadConcurrency;
@@ -489,7 +448,7 @@ public final class LauncherSettings {
 	// The user-selected flat background paint.
 	private final ObjectProperty<@Nullable Paint> customBackgroundPaint = new SimpleObjectProperty<>();
 
-	// The background opacity in the range `0..1`.
+	// The background opacity in the range 0..1.
 	private final DoubleProperty backgroundOpacity = new SimpleDoubleProperty(1.0);
 
 	// The cache policy for network background images.
@@ -499,7 +458,7 @@ public final class LauncherSettings {
 	// The background source used when the primary source cannot be resolved.
 	private final ObjectProperty<BackgroundType> backgroundFallbackType = new SimpleObjectProperty<>(BackgroundType.BUILTIN);
 
-	// The paint used when the fallback background source is `PAINT`.
+	// The paint used when the fallback background source is PAINT.
 	private final ObjectProperty<Paint> backgroundFallbackPaint = new SimpleObjectProperty<>(Color.WHITE);
 
 	// When the background is loaded relative to the window becoming visible.
@@ -521,7 +480,7 @@ public final class LauncherSettings {
 	// The key for the instance each game directory has chosen.
 	public static final String SELECTED_INSTANCE = "selectedInstance";
 
-	// The font family used by the interface, or `null` for the platform default.
+	// The font family used by the interface, or null for the platform default.
 	public static final String LAUNCHER_FONT_FAMILY = "launcherFontFamily";
 
 	// The font family used by the log view, or empty for the default.
@@ -530,21 +489,10 @@ public final class LauncherSettings {
 	// The font size used by the log view.
 	private final DoubleProperty logFontSize = new SimpleDoubleProperty(12);
 
-	/**
-	 * How the launcher draws text.
-	 * <p>
-	 * Read before the toolkit starts rather than while it runs: the property it becomes
-	 * is one the renderer reads as it initialises, so the choice takes effect at the next
-	 * start — which is what the row says.
-	 */
+	// How the launcher draws text.
 	private final ObjectProperty<FontAntiAliasing> fontAntiAliasing = new SimpleObjectProperty<>(FontAntiAliasing.AUTO);
 
-	/**
-	 * The arguments a new instance is launched with, as one line.
-	 * <p>
-	 * A default rather than a setting the launcher itself obeys: what an instance runs is its own
-	 * list, and this is what an instance that has stated nothing of its own shows and follows.
-	 */
+	// The default arguments a new instance is launched with.
 	private final StringProperty defaultLaunchArguments = new SimpleStringProperty("");
 
 	/**
@@ -559,7 +507,7 @@ public final class LauncherSettings {
 	/**
 	 * Returns the arguments a new instance is launched with.
 	 *
-	 * @return the line, never `null`
+	 * @return the line, never {@code null}
 	 */
 	public String defaultLaunchArguments() {
 		String value = defaultLaunchArguments.get();
@@ -567,12 +515,7 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * The accounts this machine has been given.
-	 * <p>
-	 * A DeepSeek Harness account is a key and the vendor it belongs to; the original stores logins
-	 * it performs on the user's behalf, and this stands in the same place. Kept in the launcher's
-	 * own settings — which already holds this machine's proxy password — and never written into an
-	 * instance, a profile or a pack.
+	 * Configured DeepSeek Harness accounts.
 	 */
 	private final javafx.collections.ObservableList<DshAccount> accounts = javafx.collections.FXCollections.observableArrayList();
 
@@ -586,13 +529,7 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * The suppliers this machine has been told about, beside the ones the launcher offers.
-	 * <p>
-	 * A person pastes the address of a service that is not in the dropdown — an aggregator of their
-	 * own, a gateway inside their network — and it joins the list of ways to add an account, so the
-	 * next account on it is two fields rather than the same address typed again. Kept here rather
-	 * than in a file of its own because there is no more to one than the four things the harness
-	 * needs in order to route it.
+	 * User-configured custom vendors.
 	 */
 	private final javafx.collections.ObservableList<DshVendor> customVendors = javafx.collections.FXCollections.observableArrayList();
 
@@ -606,11 +543,7 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * Returns every supplier the interface should offer: the launcher's own, then the added ones.
-	 * <p>
-	 * The launcher's own lead, because they are the ones that need nothing typed. An added supplier
-	 * whose id one of them already uses is left out: two rows for one supplier, one of which cannot
-	 * be told from the other, is worse than ignoring the second.
+	 * Returns all available vendors, combining built-in vendors followed by custom vendors.
 	 *
 	 * @return the list
 	 */
@@ -625,15 +558,7 @@ public final class LauncherSettings {
 		return java.util.List.copyOf(all);
 	}
 
-	/**
-	 * Which account the launcher uses, by its key, or empty.
-	 * <p>
-	 * A named choice rather than a position. The list's first entry used to *be* the answer, which
-	 * meant choosing an account moved it: the list reordered itself under the pointer, and every
-	 * reader had to remember that "first" meant "in force". A key can name an account that has moved,
-	 * or been removed — in which case there is no choice, which is a state the launcher should be
-	 * able to be in rather than one it has to hide by keeping a stale row.
-	 */
+	// Which account the launcher uses, by its key, or empty.
 	private final javafx.beans.property.StringProperty activeAccountKey = new javafx.beans.property.SimpleStringProperty(
 			"");
 
@@ -657,12 +582,9 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * Returns the account the launcher uses.
-	 * <p>
-	 * A chosen account that is gone falls back to the first one, because a launcher with exactly one
-	 * account means it for everything and does not need to be told so.
+	 * Returns the account the launcher uses, falling back to the first configured account.
 	 *
-	 * @return the account, or `null` when there are none
+	 * @return the account, or {@code null} when none are configured
 	 */
 	public @Nullable DshAccount activeAccount() {
 		java.util.List<DshAccount> all = getAccounts();
@@ -692,20 +614,14 @@ public final class LauncherSettings {
 	/**
 	 * Returns how the launcher draws text.
 	 *
-	 * @return the choice, never `null`
+	 * @return the choice, never {@code null}
 	 */
 	public FontAntiAliasing fontAntiAliasing() {
 		FontAntiAliasing choice = fontAntiAliasing.get();
 		return choice == null ? FontAntiAliasing.AUTO : choice;
 	}
 
-	/**
-	 * The language the interface speaks.
-	 * <p>
-	 * Stored here rather than only in the internationalisation helper because that helper
-	 * keeps its choice in memory: without a setting to write it to, choosing a language
-	 * lasted until the launcher was closed.
-	 */
+	// The language the interface uses.
 	private final ObjectProperty<SupportedLocale> language = new SimpleObjectProperty<>(SupportedLocale.DEFAULT);
 
 	/**
@@ -717,26 +633,16 @@ public final class LauncherSettings {
 		return language;
 	}
 
-	// Whether animations are disabled; `null` follows the platform setting.
+	// Whether animations are disabled; null follows the platform setting.
 	private final ObjectProperty<@Nullable Boolean> animationDisabled = new SimpleObjectProperty<>();
 
 	/**
-	 * Where Node.js distributions are fetched from.
-	 * <p>
-	 * The one download this launcher makes that does not come from npm, and
-	 * therefore the one that cannot be redirected by the user's `.npmrc`: a
-	 * network that reaches a mirror of npm but not `nodejs.org` can run
-	 * DeepSeek Harness and install plugins, and still be unable to install a
-	 * runtime to run it with.
+	 * Download source for Node.js runtime distributions.
 	 */
 	private final ObjectProperty<NodeSource> nodeSource = new SimpleObjectProperty<>(NodeSource.OFFICIAL);
 
 	/**
-	 * The instance the launch button targets, keyed by game directory id.
-	 * <p>
-	 * The original keeps one selection per game directory rather than one for
-	 * the whole launcher: switching folders is switching collections of
-	 * instances, and a collection remembers what was chosen in it.
+	 * Selected instance identifier for each game directory, keyed by directory ID.
 	 */
 	private final ObservableMap<String, String> selectedInstance = FXCollections.observableHashMap();
 
@@ -809,7 +715,7 @@ public final class LauncherSettings {
 	/**
 	 * Returns the interface font family property.
 	 *
-	 * @return the font family property, whose value may be `null`
+	 * @return the font family property, whose value may be {@code null}
 	 */
 	public ObjectProperty<@Nullable String> launcherFontFamilyProperty() {
 		return launcherFontFamily;
@@ -1105,9 +1011,6 @@ public final class LauncherSettings {
 
 	/**
 	 * Returns whether animations are disabled.
-	 * <p>
-	 * When the user has not expressed a preference this reports `false`; the
-	 * platform preference is applied by the window layer instead.
 	 *
 	 * @return whether animations are disabled
 	 */
@@ -1134,11 +1037,9 @@ public final class LauncherSettings {
 	}
 
 	/**
-	 * Returns the selected instance of every game directory.
-	 * <p>
-	 * Owned by [GameDirectoryManager]; code outside it should not write here.
+	 * Returns the map of selected instance IDs keyed by game directory ID.
 	 *
-	 * @return the observable map from game directory id to instance id
+	 * @return observable map of game directory ID to instance ID
 	 */
 	public ObservableMap<String, String> getSelectedInstance() {
 		return selectedInstance;
@@ -1147,8 +1048,8 @@ public final class LauncherSettings {
 	/**
 	 * Returns the instance selected in a game directory.
 	 *
-	 * @param gameDirectoryId the game directory id, or `null`
-	 * @return the instance id, or `null` when nothing is chosen there
+	 * @param gameDirectoryId the game directory ID, or {@code null}
+	 * @return the instance ID, or {@code null} if none is selected
 	 */
 	public @Nullable String getSelectedInstance(@Nullable String gameDirectoryId) {
 		return gameDirectoryId == null ? null : selectedInstance.get(gameDirectoryId);
@@ -1156,12 +1057,9 @@ public final class LauncherSettings {
 
 	/**
 	 * Records the instance selected in a game directory.
-	 * <p>
-	 * A `null` instance clears the entry, which is what an empty directory
-	 * leaves behind.
 	 *
-	 * @param gameDirectoryId the game directory id, or `null` to do nothing
-	 * @param instanceId      the instance id, or `null` to clear
+	 * @param gameDirectoryId the game directory ID, or {@code null} to do nothing
+	 * @param instanceId      the instance ID, or {@code null} to clear
 	 */
 	public void setSelectedInstance(@Nullable String gameDirectoryId, @Nullable String instanceId) {
 		if (gameDirectoryId == null) {

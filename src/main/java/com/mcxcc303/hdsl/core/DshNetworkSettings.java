@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.mcxcc303.hdsl.launch;
+package com.mcxcc303.hdsl.core;
 
 import org.jackhuang.hmcl.setting.LauncherSettings;
 import org.jackhuang.hmcl.setting.SettingsManager;
@@ -26,25 +26,19 @@ import org.jetbrains.annotations.Nullable;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/// The network settings every child process is given.
-///
-/// Downloads happen in whatever the package manager runs — reading a version list, resolving a
-/// profile, installing a plugin, fetching a package — and a package manager is configured through
-/// the environment it inherits. So the settings live here and are merged into every child this
-/// launcher starts, in one place rather than at each call site: a proxy that applied to some
-/// downloads and not others would be worse than no setting at all, because nothing would say which
-/// ones went where.
-///
-/// Empty settings contribute nothing, so a launcher nobody configured starts its children with
-/// exactly the environment it always did.
+/**
+ * Network environment configuration for child processes.
+ */
 @NotNullByDefault
 public final class DshNetworkSettings {
 	private DshNetworkSettings() {
 	}
 
-	/// Returns the variables the launcher's network settings contribute.
-	///
-	/// @return the variables, empty when nothing is configured
+	/**
+	 * Returns environment variables contributed by launcher network settings.
+	 *
+	 * @return the environment variables, empty when nothing is configured
+	 */
 	public static Map<String, String> environment() {
 		Map<String, String> environment = new LinkedHashMap<>();
 		try {
@@ -54,11 +48,10 @@ public final class DshNetworkSettings {
 			                    : settings.proxyModeProperty().get();
 			switch (mode) {
 				case SYSTEM -> {
-					// Nothing: whatever the system uses is what a child inherits anyway.
+					// Inherit default system proxy configuration.
 				}
 				case NONE -> {
-					// Said out loud, because a child that inherits a proxy from the system would
-					// otherwise keep using one after being told not to.
+					// Explicitly clear proxy variables so system defaults are not inherited.
 					environment.put("HTTP_PROXY", "");
 					environment.put("HTTPS_PROXY", "");
 					environment.put("NO_PROXY", "*");
@@ -68,7 +61,7 @@ public final class DshNetworkSettings {
 					if (address != null) {
 						environment.put("HTTP_PROXY", address);
 						environment.put("HTTPS_PROXY", address);
-						// Some tools read only this one, and a SOCKS proxy is usually named here.
+						// ALL_PROXY is read by curl and various tools, especially for SOCKS proxies.
 						environment.put("ALL_PROXY", address);
 					}
 				}
@@ -76,25 +69,15 @@ public final class DshNetworkSettings {
 
 			Integer concurrency = settings.downloadConcurrencyProperty().get();
 			if (concurrency != null && concurrency > 0) {
-				// npm reads its configuration from the environment, and `maxsockets` is the key
-				// that decides how many requests it makes at once. The name matters: npm answers an
-				// unknown `npm_config_*` variable with a warning on **stdout**, which is the same
-				// stream the answers come back on.
+				// npm_config_maxsockets limits concurrent socket connections in npm.
 				environment.put("npm_config_maxsockets", Integer.toString(concurrency));
 			}
 		} catch (RuntimeException e) {
-			// A launcher whose settings cannot be read is not a reason to fail every command: it
-			// simply has no proxy, which is what an unconfigured one has too.
 			Logger.LOG.warning("Could not read the network settings", e);
 		}
 		return environment;
 	}
 
-	/// Builds the address of the proxy the settings describe.
-	///
-	/// @param settings the settings
-	/// @param mode     the chosen mode
-	/// @return the address, or `null` when there is no host to reach
 	private static @Nullable String address(LauncherSettings settings, DshProxyMode mode) {
 		String host = settings.proxyHostProperty().get();
 		if (host == null || host.isBlank()) {
@@ -112,16 +95,5 @@ public final class DshNetworkSettings {
 		String scheme = mode == DshProxyMode.SOCKS ? "socks5" : "http";
 		return scheme + "://" + credentials + host.trim()
 		       + (port == null || port.isBlank() ? "" : ":" + port.trim());
-	}
-
-	/// Adds a variable when it holds something.
-	///
-	/// @param environment the variables
-	/// @param name        the variable's name
-	/// @param value       its value, or `null` or blank for none
-	private static void add(Map<String, String> environment, String name, String value) {
-		if (value != null && !value.isBlank()) {
-			environment.put(name, value.trim());
-		}
 	}
 }
