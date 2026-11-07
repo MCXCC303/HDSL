@@ -44,7 +44,11 @@ public class AdvancedListItem extends Control {
 
     public AdvancedListItem() {
         getStyleClass().add("advanced-list-item");
-        FXUtils.onClicked(this, () -> fireEvent(new ActionEvent()));
+    }
+
+    public void fire() {
+        if (!isDisabled())
+            fireEvent(new ActionEvent(this, this));
     }
 
     private final ObjectProperty<Node> leftGraphic = new SimpleObjectProperty<>(this, "leftGraphic");
