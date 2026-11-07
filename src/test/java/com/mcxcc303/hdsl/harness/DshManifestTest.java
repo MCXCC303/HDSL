@@ -34,11 +34,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests the manifest an install is described by.
+ * <p>
+ * DeepSeek Harness and its boot library are published in lockstep. Mismatched library versions
+ * fail at module import time, so a manifest failing to pin them together produces an installation
+ * that installs cleanly but fails to launch.
  */
 class DshManifestTest {
 	@TempDir
 	private Path prefix;
 
+	/**
+	 * Verifies the launcher dependency is pinned to an exact version rather than a semver range.
+	 * A caret range like {@code ^0.1.6-alpha.1} resolves to {@code alpha.2} libraries, causing
+	 * version divergence and runtime import failure.
+	 */
 	@Test
 	void pinsTheLauncherExactly() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null, DshDependencyPolicy.LATEST);
@@ -50,6 +59,11 @@ class DshManifestTest {
 		             "the launcher should be pinned to the exact version");
 	}
 
+	/**
+	 * Verifies the boot library override is written to {@code pnpm-workspace.yaml}.
+	 * Since pnpm 10, overrides in {@code package.json} are ignored by pnpm; writing them to
+	 * package.json leaves the boot library unpinned and allows it to drift.
+	 */
 	@Test
 	void pinsTheBootLibraryWherePnpmReadsIt() throws IOException, DshException {
 		HarnessInstaller.writeManifest(prefix, "0.1.6-alpha.1", "0.1.6-alpha.1", null, DshDependencyPolicy.LATEST);
@@ -71,6 +85,12 @@ class DshManifestTest {
 		           "the override should say what was asked for, not the launcher's own version");
 	}
 
+	/**
+	 * Verifies that the pin is parsed from the {@code overrides:} map rather than package listings.
+	 * In {@code pnpm-workspace.yaml}, packages appear in {@code onlyBuiltDependencies} as {@code '@scope/pkg@1.2.3'}.
+	 * Reading the package list line previously preserved the leading {@code @}, which resulted in
+	 * invalid plain YAML scalars that pnpm rejected with syntax errors.
+	 */
 	@Test
 	void thePinIsReadFromItsOwnEntryAndNotFromAListOfPackages() {
 		String workspace = """

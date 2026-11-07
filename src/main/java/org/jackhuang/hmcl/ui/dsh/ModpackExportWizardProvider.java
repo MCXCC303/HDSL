@@ -44,7 +44,12 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Wizard provider for exporting an instance to a pack.
+/**
+ * Wizard provider for exporting an instance to a pack.
+ * <p>
+ * Guides the user through modpack export in three stages: choosing format,
+ * configuring pack metadata, and selecting included files/settings.
+ */
 @NotNullByDefault
 public final class ModpackExportWizardProvider implements WizardProvider {
 	public static final String NAME = "modpack.name";

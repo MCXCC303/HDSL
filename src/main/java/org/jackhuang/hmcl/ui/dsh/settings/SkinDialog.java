@@ -55,6 +55,18 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 /**
  * Dialog for selecting and customizing an account's skin and cape.
+ * <p>
+ * Layout architecture:
+ * <ul>
+ *   <li>The animated 3D model canvas sits in the center (260x260 {@link StackPane}),
+ *       while skin selection options are placed on the right.</li>
+ *   <li>The custom file options column ({@code right}) is dynamically added to or removed
+ *       from {@code body} rather than toggled via visibility, because a hidden node still occupies
+ *       its 230px width and 20px gap.</li>
+ *   <li>Three attributes are customizable: body model (wide/slim), skin texture, and cape texture.</li>
+ *   <li>Operates purely offline on local files and bundled skins (Steve/Alex), omitting third-party
+ *       network skin-lookup services.</li>
+ * </ul>
  */
 @NotNullByDefault
 public final class SkinDialog extends JFXDialogLayout {
@@ -69,6 +81,12 @@ public final class SkinDialog extends JFXDialogLayout {
 	private final VBox right = new VBox();
 	private final HBox body = new HBox(20);
 
+	/**
+	 * Keeps the preview's listener alive.
+	 * <p>
+	 * {@link FXUtils#observeWeak} registers a weak listener that would be garbage collected
+	 * without a strong reference held on this instance.
+	 */
 	@SuppressWarnings("unused")
 	private final InvalidationListener previewBinding;
 
@@ -265,6 +283,10 @@ public final class SkinDialog extends JFXDialogLayout {
 		canvas.updateSkin(picture, modelBox.getValue() == DshSkinChoice.TextureModel.SLIM, cape);
 	}
 
+	/**
+	 * Persists the user's choice: clearing customizations on {@code DEFAULT},
+	 * copying bundled textures, or copying external local skin/cape files into storage.
+	 */
 	private void confirm() {
 		Source source = skinItem.getSelectedData();
 		if (source == null) {
@@ -303,6 +325,14 @@ public final class SkinDialog extends JFXDialogLayout {
 		DshSkin.clearCape(account.key());
 	}
 
+	/**
+	 * Copies chosen skin and cape images into launcher storage.
+	 * Both files are duplicated rather than stored by path, ensuring custom skins
+	 * survive moving, renaming, or deleting the original external files.
+	 *
+	 * @return the skin choice to store
+	 * @throws DshException when a file is missing or invalid
+	 */
 	private DshSkinChoice keepFile() throws DshException {
 		String skinValue = skinSelector.getValue();
 		Path file = pathOf(skinValue);

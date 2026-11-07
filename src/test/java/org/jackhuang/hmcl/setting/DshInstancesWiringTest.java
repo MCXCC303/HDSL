@@ -43,6 +43,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Integration tests verifying that instance creation and deletion events propagate to the UI model.
+ * <p>
+ * Ensures newly created or deleted instances are automatically reflected in repository snapshots
+ * and active selection bindings without requiring manual refreshes.
+ * <p>
+ * <b>Diagnostic Note on Timeouts:</b> The 15-second latch timeouts in this suite (e.g. in {@code awaitSelectionOf(null)})
+ * are designed to fail fast when expected states fail to publish. A timeout here is frequently caused by
+ * <i>leaked instance directories on disk</i> left behind by a preceding test (such as {@code DshFilesTest} or
+ * {@code DshInstanceFoldersTest}), which prevents the directory from becoming empty and causes selection to resolve
+ * to the leaked instance rather than {@code null}. If timeouts occur on CI (e.g. macOS runners), inspect disk fixtures
+ * for uncleaned instance folders before assuming a threading deadlock.
  */
 class DshInstancesWiringTest {
 

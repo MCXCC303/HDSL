@@ -68,7 +68,13 @@ import java.util.Locale;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// The launcher home page.
+/**
+ * The launcher home page.
+ * <p>
+ * Features a navigation sidebar and a primary launch/stop control targeting the selected
+ * instance. The action button reflects the instance's state (launching when stopped, stopping
+ * when running) to prevent accidental concurrent server processes on the same home.
+ */
 @NotNullByDefault
 public final class MainPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
 	private static final String POPUP_KEY = "hdsl-popup";

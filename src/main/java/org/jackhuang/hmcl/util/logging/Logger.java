@@ -177,7 +177,10 @@ public final class Logger {
             return;
         }
 
-        // If the log file is already gone, avoid attempting compression.
+        // The raw file may already be gone: external cleanup or a test suite removing its
+        // temporary directory while the JVM is still exiting. This is not a failure to report;
+        // attempting compression on a missing file would throw NoSuchFileException on standard error
+        // at the end of an otherwise successful run.
         if (!Files.isRegularFile(logFile)) {
             logWriter.close();
             return;
@@ -254,7 +257,10 @@ public final class Logger {
             }
         });
         loggerThread.setName("HMCL Logger Thread");
-        // Must be a daemon thread so it does not prevent JVM shutdown.
+        // Must be a daemon thread: the only trigger that stops this thread is the shutdown hook,
+        // which only executes when the JVM is already exiting. If this thread were non-daemon,
+        // DestroyJavaVM would hang waiting for it while the thread waited on the shutdown hook,
+        // causing process hangs and leaving file locks open.
         loggerThread.setDaemon(true);
         loggerThread.start();
 
@@ -366,7 +372,10 @@ public final class Logger {
         log(Level.INFO, CallerFinder.getCaller(), msg, exception);
     }
 
-    // Whether debug lines are written.
+    /**
+     * Whether debug logging is enabled.
+     * Disabled by default to avoid flooding logs with diagnostic lines.
+     */
     private static volatile boolean debugEnabled;
 
     /**

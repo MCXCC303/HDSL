@@ -328,7 +328,9 @@ public final class PluginVersionList extends VBox {
 		};
 	}
 
-	// A heading, or a version under one
+	/**
+	 * Represents an entry in the version list: either an expandable category heading or a version row.
+	 */
 	private sealed interface Row permits HeadingRow, VersionRow {}
 
 	/**
@@ -365,7 +367,9 @@ public final class PluginVersionList extends VBox {
 	private record VersionRow(DshPluginVersions.Published published, DshPluginVersions.Fit fit,
 	                          boolean current) implements Row {}
 
-	// One row: a heading, or a version.
+	/**
+	 * List cell rendering either a collapsible group heading or an individual plugin version item.
+	 */
 	private final class RowCell extends MDListCell<Row> {
 		private final TwoLineListItem content = new TwoLineListItem();
 		private final StackPane mark = new StackPane();

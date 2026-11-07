@@ -35,7 +35,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Verifies deleting directory trees with read-only files and junctions.
+ * Verifies deleting directory trees containing read-only files and Windows junctions.
+ * <p>
+ * Ensures recursive deletion correctly clears read-only attributes before deleting files,
+ * and deletes junction points without recursively deleting target directories on the other side.
  */
 class DshFilesTest {
 	private static Path instanceTree(Path root) throws IOException {
@@ -157,6 +160,11 @@ class DshFilesTest {
 			assertFalse(Files.exists(directory), "the instance has to be gone, home and all");
 			assertFalse(DshInstanceManager.exists(instance.id()));
 		} finally {
+			// Crucial cleanup: this instance is created in the shared suite folder (DshPaths.INSTANCES).
+			// Leaking an instance folder on disk causes subsequent tests in the suite (notably
+			// org.jackhuang.hmcl.setting.DshInstancesWiringTest, which expects an empty folder to select null)
+			// to time out after 15 seconds. On macOS CI runners, failure to clean up here previously caused
+			// 15-second timeouts in DshInstancesWiringTest that were easily misdiagnosed as UI deadlocks.
 			if (DshInstanceManager.exists(instance.id())) {
 				try {
 					DshInstanceManager.delete(instance.id());

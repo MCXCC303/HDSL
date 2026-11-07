@@ -64,7 +64,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Lists the DeepSeek Harness instances managed by HDSL.
+/**
+ * Lists the DeepSeek Harness instances managed by HDSL.
+ * <p>
+ * An instance pins one installed {@code dsh} version together with its profile,
+ * working directory, and {@code DSH_HOME}. The page observes the selected game directory's
+ * {@link org.jackhuang.hmcl.setting.DshInstanceRepository} and updates dynamically when
+ * snapshots are published.
+ */
 @NotNullByDefault
 public final class InstancesPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(

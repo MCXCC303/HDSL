@@ -36,7 +36,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Wizard page for selecting the modpack format.
+/**
+ * Wizard page for selecting the modpack export format.
+ */
 @NotNullByDefault
 public final class ModpackTypePage extends VBox implements WizardPage {
 	private final WizardController controller;

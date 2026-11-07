@@ -108,6 +108,10 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
 
     /**
      * Adds an entry, creating missing parent directories.
+     * <p>
+     * Empty and {@code .} directory components are skipped. Entries with {@code ..} directory
+     * components, duplicate files, and file/directory conflicts are skipped with a warning.
+     * Parent directories created before a skipped entry is detected remain in the tree.
      *
      * @param entry the archive entry to add
      */
@@ -115,7 +119,13 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
         String name = entry.getName();
         Dir<E> dir = root;
 
-        // Reject path traversal and Windows separator injection before modifying the tree.
+        // The whole name is judged before any part is added, because every component is resolved
+        // by an extractor under its destination directory. Left-to-right tree creation adds directories
+        // as it visits them; without pre-validation, a path like "a/../../evil.txt" would create directory "a"
+        // before encountering the traversal.
+        // Windows backslash '\' must be checked upfront alongside '/': on Windows, an entry named
+        // "..\..\Startup\x.bat" contains no '/' at all and would otherwise appear as a single filename
+        // component to '/' splits while acting as path traversal to the Windows filesystem.
         if (!isOneRelativePath(name)) {
             LOG.warning("Invalid entry name: " + name);
             return;
@@ -169,6 +179,11 @@ public abstract class ArchiveFileTree<R, E extends ArchiveEntry> implements Clos
 
     /**
      * Reports whether an entry's name is a relative path that does not escape the destination.
+     * <p>
+     * Every component must be a valid path segment within the extraction directory.
+     * Empty components (consecutive slashes) and {@code .} are benign and stepped over.
+     * Path traversal via {@code ..}, embedded Windows separators {@code \}, and NUL characters
+     * (which truncate native paths in platform APIs) are rejected to prevent Zip Slip vulnerabilities.
      *
      * @param name the entry's name
      * @return whether the path is safe

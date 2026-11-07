@@ -60,7 +60,9 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Wizard page for selecting which instance files and settings to include in the exported pack.
+/**
+ * Wizard page for selecting which instance files, bundles, settings, and skills to include in the exported pack.
+ */
 @NotNullByDefault
 public final class ModpackFilesPage extends VBox implements WizardPage {
 	private final SettingsMap settings;

@@ -37,9 +37,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Verifies that archive file trees reject path traversal and entries resolving outside the target directory.
+ * <p>
+ * Ensures protection against Zip Slip attacks: entries attempting to escape the extraction directory
+ * via {@code ..} traversal or Windows {@code \} separator injections are excluded from the tree,
+ * while valid sibling entries unpack intact.
  */
 class ArchiveFileTreeTest {
 
+    /**
+     * Verifies that path-traversal entries are absent when traversing the archive tree.
+     * <p>
+     * Traversing the tree via {@code getRoot()} tests the exact path walk executed by extractors,
+     * unlike direct {@code getEntry()} lookups which read raw archive index entries.
+     */
     @Test
     void anEntryThatWouldLeaveTheDirectoryIsNotInTheTree(@TempDir Path directory) throws Exception {
         Map<String, String> entries = escaping();
@@ -62,6 +72,10 @@ class ArchiveFileTreeTest {
         }
     }
 
+    /**
+     * Verifies that every component in the reconstructed tree is a safe relative path segment.
+     * Checks that no segment steps out with {@code ..} or embeds Windows backslash {@code \} separators.
+     */
     @Test
     void everyNameInTheTreeIsOneComponentOfAPath(@TempDir Path directory) throws Exception {
         Map<String, String> entries = escaping();

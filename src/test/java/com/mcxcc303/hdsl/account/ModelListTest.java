@@ -25,6 +25,10 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Tests for reading model listings from vendors.
+ * <p>
+ * Custom vendors must have their model list queried directly from their HTTP endpoints.
+ * Defensively parses standard OpenAI-compatible lists, gateway maps, and refuses non-listing payloads
+ * (e.g. hosts that answer HTTP 200 with HTML or non-JSON bodies).
  */
 class ModelListTest {
 	@Test
@@ -75,6 +79,11 @@ class ModelListTest {
 		             "a value that is not an object is not a model");
 	}
 
+	/**
+	 * Verifies listing endpoint URL construction across API dialects.
+	 * OpenAI protocols list beside the base path (/models), whereas Anthropic Messages
+	 * lists under a /v1 root (/v1/models). Querying Anthropic at /models yields 404.
+	 */
 	@Test
 	void theListingAddressFollowsTheProtocol() {
 		assertEquals("https://api.opencode.ai/v1/models",
@@ -95,6 +104,14 @@ class ModelListTest {
 		             "a deployment path keeps its segments");
 	}
 
+	/**
+	 * Verifies that HTTP 200 alone does not qualify an endpoint as a model supplier.
+	 * <p>
+	 * Real-world defect pinned: {@code api.opencode.ai} returned HTTP 200 to every request path with body "Not Found".
+	 * Relying solely on status code led to creating accounts with zero routable models.
+	 * Validates that 2xx responses must contain an actual model listing structure, while 401/403
+	 * are accepted as valid API endpoints requiring credentials.
+	 */
 	@Test
 	void aStatusAloneDoesNotMakeAnAddressASupplier() {
 		DshAccount.Answer plainPage = new DshAccount.Answer(200, false);

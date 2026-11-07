@@ -54,7 +54,11 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-// Manages the Node.js runtimes HDSL can pin an instance to.
+/**
+ * Manages the Node.js runtimes HDSL can pin an instance to.
+ * <p>
+ * Displays managed local runtimes alongside system-detected Node installations on PATH.
+ */
 @NotNullByDefault
 public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRow> implements Refreshable {
 	private boolean busy;
@@ -144,6 +148,16 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}, null);
 	}
 
+	/**
+	 * One row in the runtime list representing an installed, detected, or missing Node.js runtime.
+	 *
+	 * @param title     the primary label
+	 * @param subtitle  the secondary label (path or requirement)
+	 * @param badge     the major version badge
+	 * @param tags      descriptive status tags (managed, system, supported, missing)
+	 * @param directory the runtime installation directory, or {@code null}
+	 * @param removable version string to uninstall, or {@code null} if not removable
+	 */
 	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
 	               @Nullable Path directory, @Nullable String removable) {
 
@@ -180,7 +194,9 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 	}
 
-	// toolbar above the runtime list.
+	/**
+	 * Toolbar and cell layout skin for the Node.js runtime list page.
+	 */
 	private static final class NodeRuntimesPageSkin extends ToolbarListPageSkin<NodeRow, NodeRuntimesPage> {
 		NodeRuntimesPageSkin(NodeRuntimesPage control) {
 			super(control);
@@ -203,6 +219,9 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 	}
 
+	/**
+	 * List cell rendering a Node.js runtime row with version badge, tags, and action buttons.
+	 */
 	private static final class NodeItemCell extends ListCell<NodeRow> {
 		private final Label badge = new Label();
 		private final TwoLineListItem content = new TwoLineListItem();

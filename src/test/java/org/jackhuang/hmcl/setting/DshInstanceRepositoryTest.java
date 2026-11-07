@@ -44,6 +44,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Tests for {@link DshInstanceRepository} selection and snapshot publication behavior.
+ * <p>
+ * Verifies instance sorting (newest first), selection persistence per game directory,
+ * automatic fallback selection when instances are deleted, and snapshot publication
+ * behavior across threads.
  */
 class DshInstanceRepositoryTest {
 
@@ -73,6 +77,13 @@ class DshInstanceRepositoryTest {
 		return new DshInstanceRepository(GameDirectory.of(folder));
 	}
 
+	/**
+	 * Scans the repository and waits for publication and selection reconciliation to settle.
+	 * <p>
+	 * When a JavaFX UI thread is active, publication is marshaled to the UI thread via
+	 * {@link javafx.application.Platform#runLater}. The latch ensures deterministic test
+	 * synchronization before asserting state.
+	 */
 	private static void refresh(DshInstanceRepository repository) throws Exception {
 		CountDownLatch published = new CountDownLatch(1);
 		repository.snapshotProperty().addListener((observable, was, now) -> published.countDown());
@@ -111,6 +122,13 @@ class DshInstanceRepositoryTest {
 				"the newest instance leads, as the manager's own listing has it");
 	}
 
+	/**
+	 * Verifies that successive rescans of an identical directory still publish distinct snapshots.
+	 * <p>
+	 * {@link DshInstanceRepository.Snapshot} incorporates a monotonically increasing {@code revision}
+	 * counter specifically so Java records (which compare structurally) do not suppress JavaFX
+	 * property invalidation listeners when directory contents remain unchanged.
+	 */
 	@Test
 	void aFolderReadAgainIsPublishedAgain() throws Exception {
 		write(root, "alpha", 1L);

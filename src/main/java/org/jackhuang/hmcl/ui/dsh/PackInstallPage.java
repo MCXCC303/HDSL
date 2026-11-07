@@ -57,7 +57,12 @@ import java.util.Locale;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Installs a pack from a local file, a URL, or the market.
+/**
+ * Installs a pack from a local file, a URL, or the market catalogue.
+ * <p>
+ * Supports drag-and-drop file import across the entire pane. Once an archive source is resolved,
+ * the container is validated and unpacked into a new instance profile.
+ */
 @NotNullByDefault
 public final class PackInstallPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(

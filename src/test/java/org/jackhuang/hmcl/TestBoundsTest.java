@@ -24,10 +24,25 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
- * Verifies that test timeout bounds and execution settings match JUnit engine configuration.
+ * Pins that timeout bounds on this test suite use valid configuration keys recognized by JUnit.
+ * <p>
+ * <b>Historical Incident:</b> The suite timeout was originally configured as
+ * {@code junit.jupiter.execution.timeout.method.default}. JUnit does not recognize this property key
+ * and ignores it silently. Consequently, when a CI runner failed to bring up the JavaFX toolkit, the build
+ * hung undetected for 76 minutes without triggering a timeout.
+ * <p>
+ * This class serves as a tripwire ensuring:
+ * <ul>
+ *   <li>The global timeout uses the valid key {@code junit.jupiter.execution.timeout.default} (120s).</li>
+ *   <li>Thread dumps are enabled upon timeout ({@code junit.jupiter.execution.timeout.threaddump.enabled}).</li>
+ *   <li>The invalid key {@code junit.jupiter.execution.timeout.method.default} is explicitly asserted {@code null}.</li>
+ * </ul>
  */
 class TestBoundsTest {
 
+	/**
+	 * Verifies that the global test execution timeout is set in JUnit's recognized format.
+	 */
 	@Test
 	void everyTestAndLifecycleMethodIsBounded() {
 		String bound = System.getProperty("junit.jupiter.execution.timeout.default");
@@ -36,12 +51,19 @@ class TestBoundsTest {
 		assertEquals("120s", bound, "the bound is the one the build sets, in JUnit's own spelling");
 	}
 
+	/**
+	 * Verifies that thread dumps are generated when a test execution timeout occurs.
+	 */
 	@Test
 	void aTestThatReachesItsBoundIsReportedWithItsStacks() {
 		assertEquals("true", System.getProperty("junit.jupiter.execution.timeout.threaddump.enabled"),
 				"a timeout without a thread dump says that something hung and not what did");
 	}
 
+	/**
+	 * Asserts that the typo'd property {@code junit.jupiter.execution.timeout.method.default} is null.
+	 * JUnit silently ignores this key, which previously caused builds to hang indefinitely.
+	 */
 	@Test
 	void theNameJUnitDoesNotReadIsNotTheOneUsed() {
 		assertNull(System.getProperty("junit.jupiter.execution.timeout.method.default"),

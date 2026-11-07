@@ -23,7 +23,18 @@ import javafx.scene.image.Image;
 import org.jetbrains.annotations.NotNullByDefault;
 
 /**
- * Utility to render player skin face avatars onto a canvas.
+ * Utility to render player skin face avatars onto a canvas with deterministic 2D skin viewport and upscaling math.
+ * <p>
+ * Rendering follows the Minecraft skin atlas format:
+ * <ul>
+ *   <li><b>Two-layer rendering:</b> The head consists of a base face at atlas coordinate {@code (8,8)}
+ *       and an outer hat/hair overlay at {@code (40,8)}. Both layers must be rendered to avoid losing hairstyles and accessories.</li>
+ *   <li><b>Face inset offset:</b> The base face is inset by 1/18th of the canvas size ({@code Math.round(size / 18.0)}),
+ *       while the overlay layer is drawn edge-to-edge. Drawing the base edge-to-edge makes the head fill the frame and appear distorted.</li>
+ *   <li><b>Resolution scaling:</b> Atlas coordinate offsets are multiplied by {@code scale = skin.getWidth() / 64}
+ *       to support high-resolution skins (e.g. 128x128 or larger) without cropping to the top-left corner.</li>
+ *   <li><b>Nearest-neighbor scaling:</b> {@link GraphicsContext#setImageSmoothing(boolean)} is disabled to preserve crisp pixel art.</li>
+ * </ul>
  */
 @NotNullByDefault
 public final class AccountAvatar {
@@ -31,10 +42,10 @@ public final class AccountAvatar {
 	}
 
 	/**
-	 * Draws a skin's head onto the given canvas, rendering both base and overlay layers.
+	 * Draws one skin's head, filling the canvas with base and overlay layers.
 	 *
 	 * @param canvas canvas to render onto
-	 * @param skin   skin texture image
+	 * @param skin   skin texture image at any valid scale
 	 */
 	public static void draw(Canvas canvas, Image skin) {
 		GraphicsContext graphics = canvas.getGraphicsContext2D();

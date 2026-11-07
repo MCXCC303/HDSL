@@ -42,11 +42,18 @@ import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 public final class DshInstanceRepository {
 
 	/**
-	 * Immutable snapshot of instances in a directory at a specific revision.
+	 * One read of a folder: the instances it held at that moment.
+	 * <p>
+	 * The {@code revision} is a monotonically increasing counter that distinguishes
+	 * successive reads. Because Java records compare structurally, rescanning a directory
+	 * with unchanged contents produces a snapshot {@code equals} to the current one.
+	 * JavaFX properties, bindings, and change listeners treat equal values as no change at all.
+	 * The monotonic revision guarantees that every rescan publishes a distinct snapshot
+	 * identity and fires change listeners even when instances and selections are structurally identical.
 	 *
 	 * @param directory directory described by this snapshot
 	 * @param instances instances contained, newest first
-	 * @param revision  sequential read counter
+	 * @param revision  sequential read counter distinguishing successive reads
 	 */
 	public record Snapshot(GameDirectory directory, List<DshInstance> instances, long revision) {
 
@@ -158,6 +165,10 @@ public final class DshInstanceRepository {
 
 	/**
 	 * Reconciles the persisted selection against current instances.
+	 * <p>
+	 * A persisted selection naming an instance that no longer exists is cleared.
+	 * If the folder has instances but none is selected, the first instance is chosen
+	 * so a newly created or first-scanned instance becomes active immediately.
 	 */
 	public void refreshSelectedInstance() {
 		@Nullable String persistedId = selectedInstanceId.get();
@@ -175,6 +186,12 @@ public final class DshInstanceRepository {
 
 	/**
 	 * Rescans the directory and publishes a new snapshot.
+	 * <p>
+	 * Safe to call from any thread: the directory scan happens on the calling thread,
+	 * while snapshot publication and selection reconciliation are dispatched to the
+	 * JavaFX Application Thread via {@link Platform#runLater(Runnable)} when called off the FX thread.
+	 * In headless environments (tests or CLI) where JavaFX is not initialized, publication falls
+	 * back to running synchronously on the calling thread.
 	 */
 	public void refresh() {
 		List<DshInstance> instances = InstanceStore.listIn(directory.directory());

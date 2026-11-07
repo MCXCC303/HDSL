@@ -52,7 +52,12 @@ import java.util.concurrent.CompletionException;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Browses the community's modpack market and allows installing packs.
+/**
+ * Browses the community's modpack market and allows installing packs.
+ * <p>
+ * Fetches the entire market index in a single remote document and performs filtering,
+ * category sorting, and pagination locally in-memory.
+ */
 @NotNullByDefault
 public final class PackMarketPage extends StackPane implements DecoratorPage, Refreshable {
 	private static final int PAGE_SIZE = 24;

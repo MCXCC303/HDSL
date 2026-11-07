@@ -49,6 +49,11 @@ public final class WindowsNativeUtils {
 
     /**
      * Returns the native window handle of a JavaFX stage.
+     * <p>
+     * The handle travels through internal JavaFX implementation classes — {@code Window}
+     * to its peer, the peer to the platform window, the platform window to its native handle —
+     * which is why access goes through method handles rather than typed calls: the classes
+     * are internal and must stay optional at compile time.
      *
      * @param stage the stage
      * @return the HWND, or empty when it cannot be reached
@@ -81,6 +86,21 @@ public final class WindowsNativeUtils {
     /**
      * Installs permanent window listeners that keep AppUserModel relaunch properties in sync
      * with the stage's native HWND lifecycle.
+     * <p>
+     * JavaFX may destroy and recreate the native {@code HWND} across {@code hide()} / {@code show()} cycles
+     * (for example with {@code HIDE_AND_REOPEN}). Properties are therefore applied on every
+     * {@link WindowEvent#WINDOW_SHOWN} and removed with {@code VT_EMPTY} on every
+     * {@link WindowEvent#WINDOW_HIDING}, as required by
+     * <a href="https://learn.microsoft.com/windows/win32/api/shellapi/nf-shellapi-shgetpropertystoreforwindow">SHGetPropertyStoreForWindow</a>.
+     * <p>
+     * All native calls and handlers MUST run on the JavaFX Application Thread: {@code IPropertyStore}
+     * is a single-threaded COM interface, and JavaFX initializes COM on the UI thread on Windows.
+     * <p>
+     * The properties themselves only matter when the launcher runs from its {@code .exe}: a taskbar
+     * pin, a jump-list entry and the taskbar's own launch shortcut all relaunch what these
+     * properties name, and without them Windows pins the {@code java.exe} the jar was handed to
+     * instead of the launcher's own executable. A jar run through {@code java -jar}, or a non-Windows
+     * run, leaves the stage alone.
      *
      * @param stage the primary launcher stage
      */
@@ -116,6 +136,9 @@ public final class WindowsNativeUtils {
 
     /**
      * Writes AppUserModel relaunch properties for the current native window of the given stage.
+     * <p>
+     * Successful {@link IPropertyStore#SetValue} calls on a window property store take effect
+     * immediately; no {@code Commit} is required or useful.
      *
      * @param stage           the stage whose native window receives the properties
      * @param relaunchCommand the {@code PKEY_AppUserModel_RelaunchCommand} value
@@ -153,7 +176,8 @@ public final class WindowsNativeUtils {
     }
 
     /**
-     * Removes AppUserModel relaunch properties from the current native window before it is hidden.
+     * Removes AppUserModel relaunch properties from the current native window before it is hidden,
+     * writing {@code VT_EMPTY} in reverse order so ID is removed before relaunch metadata.
      *
      * @param stage the stage whose native window is about to be destroyed or hidden
      */

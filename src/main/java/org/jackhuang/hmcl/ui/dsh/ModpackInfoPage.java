@@ -42,7 +42,9 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Wizard page for editing modpack metadata (name, version, author, description).
+/**
+ * Wizard page for editing modpack metadata (name, version, author, description, and URLs).
+ */
 @NotNullByDefault
 public final class ModpackInfoPage extends VBox implements WizardPage {
 	private final WizardController controller;

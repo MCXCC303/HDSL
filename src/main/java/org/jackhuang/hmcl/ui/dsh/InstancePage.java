@@ -342,6 +342,13 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}));
 	}
 
+	/**
+	 * Copies this instance into a newly created instance.
+	 * <p>
+	 * The duplication serializes and re-imports the instance via pack composition
+	 * (version, profile, plugin list, patch layer, local plugins, settings, and skills).
+	 * Operations run asynchronously inside a {@link ProgressDialog} to keep the UI responsive.
+	 */
 	private void duplicateInstance() {
 		String newId = DshInstanceManager.nextId(instance.id());
 		PluginInstalls.runCreating(i18n("dsh.instance.duplicating", instance.id()),
@@ -350,6 +357,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		                           null);
 	}
 
+	/**
+	 * Opens a native terminal on this instance configured with its execution environment and toolchains.
+	 * Provides a fallback diagnostic channel for harnesses that fail to start from the UI.
+	 */
 	private void openTerminal() {
 		try {
 			DshInstanceTerminal.open(instance, DshAccount.forInstance(instance));
@@ -359,10 +370,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}
 	}
 
+	/**
+	 * Starts or stops this instance in test mode.
+	 * Unlike normal background launch, test launch surfaces the log window so output is visible immediately.
+	 */
 	private void testLaunch() {
 		DshLaunchService.toggle(instance, this::refresh, true);
 	}
 
+	/**
+	 * Copies the running harness's web authentication token to the system clipboard.
+	 * Surfaces a warning if the process stopped before the token could be retrieved.
+	 */
 	private void copyLaunchToken() {
 		Optional<String> token = launchToken(instance);
 		if (token.isEmpty()) {
@@ -372,6 +391,14 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		FXUtils.copyText(token.get(), i18n("dsh.instance.token_copied"));
 	}
 
+	/**
+	 * Deletes this instance after confirmation, navigating away upon completion.
+	 * <p>
+	 * Removal runs in a background {@link ProgressDialog}: active child processes
+	 * must be terminated and drained, and directory trees are deleted with retry loops.
+	 * Running this synchronously on the JavaFX Application Thread would freeze UI repainting
+	 * and trigger OS "Not Responding" alerts.
+	 */
 	private void removeInstance() {
 		String id = instance.id();
 		Controllers.confirm(i18n("dsh.instance.remove.confirm", id), i18n("dsh.instance.remove"), () -> {
@@ -390,6 +417,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}, null);
 	}
 
+	/**
+	 * Rebuilds the plugin list from the profile manifest on disk.
+	 * Displays user-installed packages, excluding internal core bundle packages.
+	 */
 	private void refreshPlugins() {
 		pluginList.getContent().clear();
 

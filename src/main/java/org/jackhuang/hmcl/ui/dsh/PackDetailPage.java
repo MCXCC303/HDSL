@@ -51,7 +51,13 @@ import java.util.concurrent.CompletableFuture;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-// Displays details for a community pack and allows installing it.
+/**
+ * Displays details for a community pack and allows installing it.
+ * <p>
+ * Manifest and README documents are loaded lazily. Installation executes in three discrete phases:
+ * downloading and verifying the archive (size and SHA-256), inspecting the container format, and
+ * unpacking into a newly generated instance profile.
+ */
 @NotNullByDefault
 public final class PackDetailPage extends DecoratorAnimatedPage implements DecoratorPage, Refreshable {
 	private final DshPackMarket.Entry entry;

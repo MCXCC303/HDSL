@@ -268,7 +268,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 		           .startWizard(new DshInstallWizardProvider(release.version()), i18n("dsh.instance.create"));
 	}
 
-	// What a load is doing; selects which pane contentPane shows.
+	/**
+	 * State of asynchronous release loading; dictates which pane {@code contentPane} displays.
+	 */
 	private enum Status {
 		LOADING, SUCCESS, FAILED
 	}

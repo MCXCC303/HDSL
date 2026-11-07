@@ -57,7 +57,9 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-// Browses the community's published skills and either installs one into an instance or saves it as an archive.
+/**
+ * Browses the community's published skills and either installs one into an instance or saves it as an archive.
+ */
 @NotNullByDefault
 public final class SkillMarketPage extends StackPane implements Refreshable {
 	private static final int LIMIT = 50;

@@ -31,7 +31,19 @@ import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Verifies build script approval prompts and policy handling. */
+/**
+ * Verifies that packages with native build scripts awaiting user confirmation trigger approval prompts.
+ * <p>
+ * <b>Reported Defect:</b> Manual build approval was never prompted regardless of plugin configuration.
+ * Previously, approval checks waited for the package manager to fail with a non-zero exit code.
+ * However, pnpm 11 writes pending packages into {@code allowBuilds} with placeholder strings
+ * ("set this to true or false") and <i>exits with status 0</i> (success) by default unless
+ * {@code strictDepBuilds} is explicitly configured. Consequently, checking exit codes alone caused the
+ * prompt to be skipped completely.
+ * <p>
+ * These tests verify inspection of {@code pnpm-workspace.yaml}'s {@code allowBuilds} map rather than exit code.
+ * Requires Node.js or pnpm on PATH; marked with {@code @Tag("external")}.
+ */
 @Tag("external")
 class DshPluginBuildApprovalTest {
 	private static final String ID = "build-approval-test";
@@ -94,6 +106,11 @@ class DshPluginBuildApprovalTest {
 		return instance.homeDirectory().resolve("profiles").resolve(instance.profile()).resolve("pnpm-workspace.yaml");
 	}
 
+	/**
+	 * Resets installation approval state before each test.
+	 * Decisions already prompted are tracked in-memory per process; starting a fresh installation
+	 * clears this set so tests do not leak approval state into sibling test runs.
+	 */
 	@BeforeEach
 	void newInstallation() {
 		DshPluginInstaller.beginInstallation();
