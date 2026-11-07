@@ -33,13 +33,12 @@ import org.jetbrains.annotations.Nullable;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.Deque;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -47,85 +46,47 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// A running DeepSeek Harness child process.
-///
-/// The launcher keeps the process in the foreground of its own bookkeeping
-/// rather than detaching it: the browser surface is a long-lived server that
-/// the user starts and stops from the launcher, and the launcher must never
-/// leave an orphan behind when it exits.
-///
-/// Readiness is taken from the line upstream prints once the configuration tree
-/// has settled and the required entries have been audited:
-/// `dsh web: http://127.0.0.1:<port>/?token=<token>`. That line is the only
-/// stdout contract the launcher relies on.
-///
-/// The token arrived with the browser-trust fence; the earliest releases print the same line
-/// without it (`dsh web: http://127.0.0.1:<port>`). Both are the same announcement, so both are
-/// accepted — a launcher that insisted on the token showed those versions as starting for ever,
-/// because the line it was waiting for is one they never learned to print.
+/**
+ * Manages the lifecycle, output, and readiness of a DeepSeek Harness child process.
+ * <p>
+ * The process remains attached to the launcher so it can be stopped and its
+ * output collected. Web readiness is detected from the upstream `dsh web:` line.
+ */
 @NotNullByDefault
 public final class DshProcess {
-	/// How long the child is given to drain before it is killed.
-	///
-	/// Matches upstream's own bounded shutdown, so a graceful stop and a
-	/// signal-initiated stop take the same time.
+	// Maximum time to wait for a graceful shutdown before forcing termination.
 	public static final Duration SHUTDOWN_GRACE = Duration.ofSeconds(5);
 
-	/// Additional grace after a forced kill before the handle gives up waiting.
+	// Maximum time to wait after requesting forced termination.
 	private static final Duration FORCE_GRACE = Duration.ofSeconds(2);
 
-	/// The readiness line for the browser surface, including its optional LAN suffix.
-	///
-	/// Three spellings are in the wild, and all three have to be read:
-	///
-	/// ```text
-    /// dsh web: http://127.0.0.1:4061                            ← before the browser-trust fence
-    /// dsh web: http://127.0.0.1:4061/
-    /// dsh web: http://127.0.0.1:4061/?token=…                  ← with the fence
-    /// ```
-	///
-	/// **The token is part of the address, not decoration on it.** It is the credential the browser
-	/// presents, and a version behind the fence refuses a request without one — so the capture has to
-	/// take it. It very nearly did not: the first spelling of this pattern put the query in a
-	/// *non-capturing* group, which matched the token and then threw it away, and every address the
-	/// launcher stored was one that could not authenticate. Nothing showed it while the releases in
-	/// use printed no token at all, because there was then nothing to lose.
-	///
-	/// The trailing slash and the token are matched together (`/?` then an optional query) rather
-	/// than as two independent optionals, because that is how they occur: a bare slash with no token
-	/// is the older spelling, and a query without a slash has never been printed.
+	// How long the pump threads are given to hand over what the child left in its pipes.
+	private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(2);
+
+	// Matches the browser readiness announcement and captures its URL.
 	private static final Pattern WEB_READY = Pattern.compile(
-			"^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+/?(?:\\?token=[A-Za-z0-9_-]+)?)"
-			+ "\\s*(?:\\(LAN:.*\\))?$");
-	/// How many log lines are retained for the log window.
+			"^dsh web:\\s+(http://127\\.0\\.0\\.1:\\d+/?(?:\\?token=[A-Za-z0-9_-]+)?)" + "\\s*(?:\\(LAN:.*\\))?$");
 	private static final int MAX_LOG_LINES = 2000;
 	private final DshLauncher.LaunchPlan plan;
 	private final ManagedProcess process;
 	private final Instant startedAt = Instant.now();
 	private final Deque<String> logLines = new ArrayDeque<>();
-	/// The same output in the form HMCL's log window consumes.
-	///
-	/// Kept alongside the string deque rather than converted on demand: the
-	/// window is opened while the process is running and appends as lines
-	/// arrive, so it needs the list to grow under it.
 	private final CircularArrayList<LogLine> windowLogs = new CircularArrayList<>();
+	private final List<Consumer<LogLine>> logListeners = new CopyOnWriteArrayList<>();
 	private final Object logLock = new Object();
 	private volatile State state = State.STARTING;
 	private volatile @Nullable URI webUrl;
 	private volatile int exitCode = Integer.MIN_VALUE;
 	private volatile @Nullable Consumer<String> logSink;
 	private volatile @Nullable Consumer<State> stateListener;
-	/// Whether the launcher asked this process to stop.
-	///
-	/// An instance that is stopped while it is still coming up exits before it
-	/// has reported ready, which is indistinguishable from a failure by the exit
-	/// alone. This is what tells the two apart, so stopping a launch in progress
-	/// is not reported as one that failed.
 	private volatile boolean stopRequested;
-	/// Starts a child process for a plan.
-	///
-	/// @param plan the launch plan
-	/// @throws DshException when the process cannot be started
+
+	/**
+	 * Starts a child process for a plan.
+	 *
+	 * @param plan the launch plan
+	 * @throws DshException when the process cannot be started
+	 */
 	private DshProcess(DshLauncher.LaunchPlan plan) throws DshException {
 		this.plan = plan;
 
@@ -140,35 +101,27 @@ public final class DshProcess {
 		}
 
 		appendLog("$ " + plan.commandLine());
-		this.process.pumpInputStream(line -> onOutput(line, false));
-		this.process.pumpErrorStream(line -> onOutput(line, true));
+		this.process.pumpInputStream(line -> onOutput(line, false), StandardCharsets.UTF_8);
+		this.process.pumpErrorStream(line -> onOutput(line, true), StandardCharsets.UTF_8);
 
-		// What another launcher needs in order to see this instance the way this one does, written
-		// down before the harness has said a word: the pid is the fact, and the address joins it as
-		// soon as the harness reports one.
 		recordRunning(null);
-
 		Lang.thread(this::awaitExit, "DSH process waiter", true);
 
-		if (!plan.surface().isWeb()) {
-			// Non-server surfaces are ready as soon as they are running.
-			transitionTo(State.READY);
-		}
+		// Non-server surfaces are ready as soon as they are running.
+		if (!plan.surface().isWeb()) transitionTo(State.READY);
+
 	}
 
-	/// Reads the browser address out of a readiness line.
-	///
-	/// A method of its own so that the three spellings above can be tested without a child process:
-	/// the pattern is the whole of the parsing, and the bug it carried was invisible for exactly as
-	/// long as nothing checked the *value* it produced.
-	///
-	/// @param line one line of child output
-	/// @return the address, or empty when the line is not a readiness line
+	/**
+	 * Parses the URL from a browser readiness announcement.
+	 *
+	 * @param line one line of child output
+	 * @return the URL, or empty if the line is not a valid announcement
+	 */
 	static Optional<URI> parseWebUrl(String line) {
 		Matcher matcher = WEB_READY.matcher(line.trim());
-		if (!matcher.matches()) {
-			return Optional.empty();
-		}
+		if (!matcher.matches()) return Optional.empty();
+
 		try {
 			return Optional.of(new URI(matcher.group(1)));
 		} catch (URISyntaxException e) {
@@ -177,46 +130,38 @@ public final class DshProcess {
 		}
 	}
 
-	/// Starts a child process for an instance.
-	///
-	/// @param instance the instance to launch
-	/// @return the running handle
-	/// @throws DshException when the plan cannot be built or the process cannot start
+	/**
+	 * Starts a child process for an instance.
+	 *
+	 * @param instance the instance to launch
+	 * @return the running handle
+	 * @throws DshException when the plan cannot be built or the process cannot start
+	 */
 	public static DshProcess start(DshInstance instance) throws DshException {
 		return start(instance, null);
 	}
 
-	/// Starts an instance, handing the harness an account if one was chosen.
-	///
-	/// @param instance the instance
-	/// @param account  the account, or `null` for none
-	/// @return the started process
-	/// @throws DshException when it cannot be started
+	/**
+	 * Starts an instance, with an HDSL account if chosen.
+	 *
+	 * @param instance the instance
+	 * @param account  the account, or `null` for none
+	 * @return the started process
+	 * @throws DshException when it cannot be started
+	 */
 	public static DshProcess start(DshInstance instance, @Nullable DshAccount account) throws DshException {
 		return startPrepared(instance, DshLauncher.plan(instance, account));
 	}
 
-	/// Starts an instance from a plan that has already been built.
-	///
-	/// @param instance the instance
-	/// @param plan     the plan
-	/// @return the started process
-	/// @throws DshException when it cannot be started
+	/**
+	 * Starts an instance from a plan that has already been built.
+	 *
+	 * @param instance the instance
+	 * @param plan     the plan
+	 * @return the started process
+	 * @throws DshException when it cannot be started
+	 */
 	public static DshProcess startPrepared(DshInstance instance, DshLauncher.LaunchPlan plan) throws DshException {
-		// The launcher's own debug switch is **not** touched here, and it used to be: this ran
-		// `setDebugEnabled(settings().debugLogFor(instance.id()))`, which reads the instance's own
-		// answer first — so launching one instance that had debug logging switched on turned it on
-		// for the whole launcher, and nothing ever turned it back off. `debugLogFor` is still what
-		// an instance's own page shows and stores; what it cannot be is a per-instance setting,
-		// because the logger it governs is a launcher-wide object with one file and one flag. The
-		// switch that matters for a launch is applied once, at startup, from the launcher's own
-		// setting ([org.jackhuang.hmcl.Launcher#startLogging]).
-		//
-		// What an instance's own debug lines are, then, is its child process's output — and that
-		// is not lost: it goes to the instance's log window and into the crash report either way.
-		//
-		// Whatever was asked to happen before this instance starts happens first, and a
-		// failure stops the launch: it was asked for, and starting anyway would ignore it.
 		DshCustomCommands.run(instance,
 		                      SettingsManager.settings().preLaunchCommandFor(instance.id()),
 		                      "pre-launch",
@@ -225,10 +170,6 @@ public final class DshProcess {
 		try {
 			return new DshProcess(plan);
 		} catch (DshException | RuntimeException e) {
-			// The note the plan wrote is the only thing a failed launch leaves behind, and putting
-			// back what it disturbed — the account's route in the profile patch, and the two shapes
-			// in the home's own settings — is the whole of this cleanup. A launch that never got as
-			// far as a process has no state listener to do it, so it is done here.
 			try {
 				DshInjectedSettings.settle(plan.instance());
 			} catch (DshException settleFailure) {
@@ -239,117 +180,91 @@ public final class DshProcess {
 		}
 	}
 
-	/// Returns the instance this process runs.
-	///
-	/// @return the instance
 	public DshInstance instance() {
 		return plan.instance();
 	}
 
-	/// Returns the plan this process was started from.
-	///
-	/// @return the launch plan
 	public DshLauncher.LaunchPlan plan() {
 		return plan;
 	}
 
-	/// Returns the current lifecycle state.
-	///
-	/// @return the state
 	public State state() {
 		return state;
 	}
 
-	/// Returns the child's process id.
-	///
-	/// @return the pid of the harness
 	public long pid() {
 		return process.getProcess().pid();
 	}
 
-	/// Writes down that this process is running, and what it is serving.
-	///
-	/// @param url the address the harness reported, or `null` while there is none
 	private void recordRunning(@Nullable URI url) {
-		DshRunningRecord.write(plan.instance(),
-		                       pid(),
-		                       plan.port(),
-		                       url,
-		                       plan.surface(),
-		                       startedAt.toEpochMilli());
+		DshRunningRecord.write(plan.instance(), pid(), plan.port(), url, plan.surface(), startedAt.toEpochMilli());
 	}
 
-	/// Returns the readiness URL, once the browser surface has reported one.
-	///
-	/// @return the URL, or empty while starting or for non-server surfaces
 	public Optional<URI> webUrl() {
 		return Optional.ofNullable(webUrl);
 	}
 
-	/// Returns the process exit code.
-	///
-	/// @return the exit code, or empty while the process is still running
 	public Optional<Integer> exitCode() {
 		return exitCode == Integer.MIN_VALUE ? Optional.empty() : Optional.of(exitCode);
 	}
 
-	/// Returns whether the child is still running.
-	///
-	/// @return whether the process is alive
 	public boolean isRunning() {
 		return process.isRunning();
 	}
 
-	/// Returns how long the process has been running.
-	///
-	/// @return the elapsed time since start
 	public Duration uptime() {
 		return Duration.between(startedAt, Instant.now());
 	}
 
-	/// Returns a snapshot of the retained log lines.
-	///
-	/// @return the log lines, oldest first
-	/// Returns the process's output in HMCL's log-window form.
-	/// @return the lines, live: the window appends to what it is given
-	public CircularArrayList<LogLine> windowLogs() {
-		return windowLogs;
+	/**
+	 * Returns the process's output for HMCL's log window, copied under the lock the pumps write with.
+	 */
+	public List<LogLine> windowLogs() {
+		synchronized (logLock) {
+			return List.copyOf(windowLogs);
+		}
 	}
 
-	/// Returns the underlying managed process.
-	///
-	/// Exposed so HMCL's log window can be reused as-is: it needs only a process
-	/// it can ask whether it is running and tell to stop.
-	///
-	/// @return the managed process
+	/**
+	 * Subscribes to log output and returns the lines collected before subscription.
+	 * <p>
+	 * The snapshot and subscription are performed under the same lock, so output
+	 * cannot be lost or delivered twice across the handover. The listener runs on
+	 * a stream-pump thread and must not block; UI updates must be dispatched separately.
+	 *
+	 * @param listener receives subsequent log lines
+	 * @return the initial snapshot and an unsubscribe action
+	 */
+	public LogFeed followLogs(Consumer<LogLine> listener) {
+		Objects.requireNonNull(listener, "listener");
+		synchronized (logLock) {
+			List<LogLine> initial = List.copyOf(windowLogs);
+			logListeners.add(listener);
+			return new LogFeed(initial, () -> logListeners.remove(listener));
+		}
+	}
+
 	public ManagedProcess managedProcess() {
 		return process;
 	}
 
-	public List<String> logLines() {
-		synchronized (logLock) {
-			return List.copyOf(logLines);
-		}
-	}
-
-	/// Installs a sink that receives every subsequent log line.
-	///
-	/// The sink is called from the stream-pump threads, so a user interface
-	/// must re-post onto its own thread. Only one sink is supported; the log
-	/// window owns it.
-	///
-	/// @param sink the sink, or `null` to detach
+	/**
+	 * Installs a sink for subsequent output lines.
+	 * <p>
+	 * The sink runs on a stream-pump thread. Only one sink is supported.
+	 */
 	public void setLogSink(@Nullable Consumer<String> sink) {
 		this.logSink = sink;
 	}
 
-	/// Installs a listener notified on every state transition.
-	///
-	/// A listener installed **after** the process has already ended is told about that ending at once.
-	/// The listener is what reports a crash, and the process is started before its listener is
-	/// attached — a child that dies in that window would otherwise end in silence.
-	///
-	/// @param listener the listener, or `null` to detach
+	/**
+	 * Installs a listener for lifecycle transitions.
+	 * <p>
+	 * If the process has already reached a terminal state, the listener is
+	 * notified immediately.
+	 *
+	 * @param listener the listener, or `null` to detach
+	 */
 	public void setStateListener(@Nullable Consumer<State> listener) {
 		this.stateListener = listener;
 		if (listener != null && (state == State.STOPPED || state == State.FAILED)) {
@@ -357,23 +272,20 @@ public final class DshProcess {
 		}
 	}
 
-	/// Stops the process, allowing upstream's bounded drain before killing it.
-	///
-	/// Safe to call from any thread and repeatedly.
+	/**
+	 * Stops the process gracefully, forcing termination if it does not exit in time.
+	 * <p>
+	 * The process's descendants are also terminated. Safe to call repeatedly.
+	 */
 	public void stop() {
-		// The command that follows an instance runs once it has gone, whether it was
-		// stopped or had already ended: what it is for is knowing that a session is over.
 		DshCustomCommands.runQuietly(plan.instance(),
 		                             SettingsManager.settings().postExitCommandFor(plan.instance().id()),
 		                             "post-exit",
 		                             null);
 		stopRequested = true;
-		if (!isRunning()) {
-			return;
-		}
+		if (!isRunning()) return;
+
 		Process raw = process.getProcess();
-		// DeepSeek Harness spawns helper processes of its own; collect them
-		// before the parent goes away, then take the whole tree down.
 		List<ProcessHandle> descendants = raw.descendants().toList();
 		raw.destroy();
 		try {
@@ -387,28 +299,16 @@ public final class DshProcess {
 			raw.destroyForcibly();
 		}
 		for (ProcessHandle descendant : descendants) {
-			if (descendant.isAlive()) {
-				descendant.destroy();
-			}
+			if (descendant.isAlive()) descendant.destroy();
 		}
 	}
 
-	/// Reports whether the launcher asked this process to stop.
-	///
-	/// @return whether a stop was requested
 	public boolean isStopRequested() {
 		return stopRequested;
 	}
 
-	/// Records a log line, notifying the sink.
-	///
-	/// @param line  the text
-	/// @param error whether it arrived on stderr
 	private void onOutput(String line, boolean error) {
-		appendLog(line);
-		synchronized (logLock) {
-			windowLogs.add(new LogLine(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO));
-		}
+		record(line, error ? Log4jLevel.ERROR : Log4jLevel.INFO);
 		if (plan.surface().isWeb() && webUrl == null) {
 			detectReadiness(line);
 		}
@@ -422,40 +322,54 @@ public final class DshProcess {
 		}
 	}
 
-	/// Parses the upstream readiness line for the browser surface.
-	///
-	/// @param line one line of child output
 	private void detectReadiness(String line) {
 		Optional<URI> parsed = parseWebUrl(line);
-		if (parsed.isEmpty()) {
-			return;
-		}
+		if (parsed.isEmpty()) return;
+
 		webUrl = parsed.get();
 		recordRunning(webUrl);
 		transitionTo(State.READY);
 	}
 
-	/// Appends a line to the bounded log buffer.
-	///
-	/// @param line the text to record
-	private void appendLog(String line) {
+	private void record(String line, Log4jLevel level) {
+		LogLine entry = new LogLine(line, level);
+		List<Consumer<LogLine>> listeners;
 		synchronized (logLock) {
 			logLines.addLast(line);
 			while (logLines.size() > MAX_LOG_LINES) {
 				logLines.removeFirst();
 			}
+			windowLogs.add(entry);
+			while (windowLogs.size() > MAX_LOG_LINES) {
+				windowLogs.removeFirst();
+			}
+			listeners = List.copyOf(logListeners);
+		}
+		for (Consumer<LogLine> listener : listeners) {
+			try {
+				listener.accept(entry);
+			} catch (RuntimeException e) {
+				LOG.warning("Log listener failed", e);
+			}
 		}
 	}
 
-	/// Waits for the child to exit and records the outcome.
+	private void appendLog(String line) {
+		record(line, Log4jLevel.INFO);
+	}
+
 	private void awaitExit() {
 		try {
 			int code = process.getProcess().waitFor();
 			exitCode = code;
+
+			try {
+				process.awaitRelatedThreads(DRAIN_TIMEOUT);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
 			process.destroyRelatedThreads();
-			// The instance is not running any more, and this is the one path every ending takes —
-			// whatever the exit code, and whether or not anybody attached a state listener. The
-			// record describes a process that is gone from here on.
+
 			DshRunningRecord.delete(plan.instance());
 			appendLog("Process exited with code " + code);
 			transitionTo(state == State.READY ? State.STOPPED : (code == 0 ? State.STOPPED : State.FAILED));
@@ -464,37 +378,47 @@ public final class DshProcess {
 		}
 	}
 
-	/// Publishes a state transition.
-	///
-	/// @param next the new state
 	private void transitionTo(State next) {
 		state = next;
 		Consumer<State> listener = stateListener;
-		if (listener != null) {
-			try {
-				listener.accept(next);
-			} catch (RuntimeException e) {
-				LOG.warning("State listener failed", e);
-			}
+		if (listener == null) return;
+
+		try {
+			listener.accept(next);
+		} catch (RuntimeException e) {
+			LOG.warning("State listener failed", e);
 		}
 	}
 
-	/// Returns the working directory sessions are scoped to.
-	///
-	/// @return the working directory
 	public Path workingDirectory() {
 		return plan.workingDirectory();
 	}
 
-	/// The lifecycle of a launched process.
+	// The lifecycle of a launched process.
 	public enum State {
-		/// Started, but the readiness line has not arrived yet.
+		/**
+		 * The process has started but has not reported readiness.
+		 */
 		STARTING,
-		/// Reported ready. Only the browser surface reaches this state.
+		/**
+		 * The process has reported readiness.
+		 */
 		READY,
-		/// Exited on its own.
+		/**
+		 * The process exited without being classified as a startup failure.
+		 */
 		STOPPED,
-		/// Could not be started, or exited before reporting ready.
+		/**
+		 * The process exited before readiness with a non-zero exit code.
+		 */
 		FAILED
 	}
+
+	/**
+	 * A follower's starting snapshot and a handle that ends the subscription.
+	 *
+	 * @param initial     the lines collected before the subscription
+	 * @param unsubscribe stops the subscription; safe to call more than once
+	 */
+	public record LogFeed(List<LogLine> initial, Runnable unsubscribe) {}
 }

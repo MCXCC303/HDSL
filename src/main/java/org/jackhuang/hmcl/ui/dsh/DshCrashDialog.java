@@ -41,7 +41,6 @@ import org.jackhuang.hmcl.theme.Themes;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.LogLine;
-import org.jackhuang.hmcl.ui.LogWindow;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
@@ -62,74 +61,18 @@ import java.util.Locale;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// What is shown when an instance does not come up.
-///
-/// The original's own crash window, section for section and sentence for sentence
-/// (`GameCrashWindow`), with the one substitution the two programs need: where it says the game,
-/// this says the instance, because an instance is what this launcher starts — the same window, for
-/// the same reason, about the same kind of thing.
-///
-/// The original's shape, in its order, and it is a **window** rather than a dialog because the
-/// original's is: a crash is something that happened to a program, not a question being asked about
-/// one, and it stays on the screen to be read, copied from, and compared against the log window
-/// beside it.
-///
-/// ```text
-/// ┌ 实例意外退出 ─────────────────────────────┐   ← the window's own title
-/// │ 实例非正常退出。请查看日志文件，或联系他人寻求帮助。 │   ← the banner, in the accent colour
-/// │ 启动器   实例     DeepSeek Harness  操作系统  架构 │   ← a name with its value under it
-/// │ HDSL pokemon  0.1.5-alpha.2      Linux    x86-64
-/// │                                                │   ← whatever `os.name` and the platform
-/// │                                                │      detector report on this machine
-/// │ 配置                                             │
-/// │ pokemon · 独立 DSH_HOME
-/// │ 实例文件夹路径                                    │
-/// │ /home/thf/.local/share/hdsl/instances/pokemon     │
-/// │ 崩溃原因                                         │
-/// │ 实例非正常退出。请查看日志文件，或联系他人寻求帮助。
-/// │ <the last of the output>
-/// │ 请不要将本界面截图或拍照给他人！…                  │
-/// │ [导出崩溃信息] [日志] [帮助]                       │   ← at the left, as the original has them
-/// └──────────────────────────────────────────────────┘
-/// ```
-///
-/// Two of those are worth keeping deliberately rather than by habit. The **feedback paragraph** is
-/// the original telling people not to post screenshots and to send the exported file instead — it
-/// exists because a screenshot of a crash is a picture of a stack trace nobody can search. And the
-/// **reason** is a sentence rather than the raw output: the log is one press away for whoever wants
-/// it, but the window's job is to say what happened first.
-///
-/// The one thing this has that the original does not is the **tail of the output** under the
-/// reason. The original's reason comes from an analyser that reads the log and names the cause for
-/// common failures; there is no analyser for this launcher's instances yet, so the honest substitute
-/// is the end of what the process said — which is where a stack trace's last lines are, and which is
-/// what an analyser would have read anyway.
+/**
+ * Displays diagnostic information when an instance fails to start or exits abnormally.
+ */
 @NotNullByDefault
 public final class DshCrashDialog extends Stage {
-	/// How many lines of output the window carries.
-	///
-	/// Enough for a stack trace and the sentence that follows it, and few enough that the window is
-	/// still about the failure. The log window is where the rest is.
 	private static final int TAIL_LINES = 24;
 
-	/// The instance that did not come up.
 	private final DshInstance instance;
-
-	/// The process, or `null` when it never started.
 	private final @Nullable DshProcess process;
-
-	/// What is known about why.
 	private final String reason;
-
-	/// What the banner says, in the original's own words for how the process died.
 	private final String banner;
 
-	/// Creates the window.
-	///
-	/// @param instance the instance that did not come up
-	/// @param banner   what the banner says
-	/// @param reason   what is known about why
-	/// @param process  the process, or `null` when it never started
 	private DshCrashDialog(DshInstance instance, String banner, String reason, @Nullable DshProcess process) {
 		this.instance = instance;
 		this.banner = banner;
@@ -142,11 +85,6 @@ public final class DshCrashDialog extends Stage {
 		VBox root = new VBox();
 		root.getStyleClass().add("game-crash-window");
 
-		// Held in a variable, which is the whole of why the buttons were floating in the middle: the
-		// original grows its **details block** to take the space it is given, which is what pins the
-		// toolbar to the bottom. Calling a builder twice — once to set the grow and once to add the
-		// node — sets it on one node and adds a different one, so nothing grew and the toolbar sat
-		// wherever the text happened to end.
 		Node details = details();
 		VBox.setVgrow(details, Priority.ALWAYS);
 
@@ -159,72 +97,43 @@ public final class DshCrashDialog extends Stage {
 
 		root.getChildren().setAll(banner(), factsPane(), details, toolBar);
 
-		// The original's own three lines, and the middle one is the whole answer to "does it follow
-		// the theme": the crash window is **not** styled separately. It loads the launcher's
-		// stylesheets like every other window, so it takes the theme colour, the brightness mode and
-		// the font that are in force — and the classes below are the ones the transplanted
-		// stylesheet already carries rules for, which is why none of this needed new CSS.
 		setScene(new Scene(root, 800, 480));
 		StyleSheets.init(getScene());
 		Themes.applyNativeDarkMode(this);
 	}
 
-	/// Shows the window for an instance whose process ended badly.
-	///
-	/// @param instance the instance
-	/// @param banner   what the banner says
-	/// @param reason   what is known about why
-	/// @param process  the process, or `null` when it never started
+	/**
+	 * Shows the crash window for an instance.
+	 */
 	public static void show(DshInstance instance, String banner, String reason, @Nullable DshProcess process) {
 		new DshCrashDialog(instance, banner, reason, process).show();
 	}
 
-	/// Builds one name-and-value pair, as the original builds each of its own.
-	///
-	/// @param name  the name
-	/// @param value the value
-	/// @return the row
 	private static TwoLineListItem fact(String name, String value) {
 		TwoLineListItem item = new TwoLineListItem();
-		// The original's own class for these, which is what gives the name its dimmer, smaller
-		// treatment and the value its brighter one.
 		item.getStyleClass().setAll("two-line-item-second-large");
 		item.setTitle(name);
 		item.setSubtitle(value);
 		return item;
 	}
 
-	/// Writes how long the instance ran.
-	///
-	/// @param process the process
-	/// @return the text
 	private static String duration(DshProcess process) {
 		Duration ran = process.uptime();
 		long seconds = Math.max(ran.getSeconds(), 0);
-		if (seconds < 60) {
-			return seconds + "s";
-		}
-		if (seconds < 3600) {
-			return (seconds / 60) + "m " + (seconds % 60) + "s";
-		}
+		if (seconds < 60) return seconds + "s";
+
+		if (seconds < 3600) return (seconds / 60) + "m " + (seconds % 60) + "s";
+
 		return (seconds / 3600) + "h " + ((seconds % 3600) / 60) + "m";
 	}
 
-	/// Reports whether an exit is worth telling somebody about.
-	///
-	/// A process that was asked to stop and stopped is not a failure, and neither is one that ended
-	/// cleanly after being ready — that is a person closing a server.
-	///
-	/// Note that `DshProcess` records the exit of a process that had been **ready** as `STOPPED`
-	/// whatever its exit code, so the state alone cannot answer this and the exit code has to be
-	/// asked for as well. Testing for `FAILED` instead misses exactly the case this was written for.
-	///
-	/// @param process the process
-	/// @return whether to show the crash window
+	/**
+	 * A ready process is recorded as STOPPED regardless of its exit code,
+	 * so the exit code must also be checked.
+	 */
 	public static boolean isCrash(DshProcess process) {
-		if (process.isStopRequested()) {
-			return false;
-		}
+		if (process.isStopRequested()) return false;
+
 		return switch (process.state()) {
 			case FAILED -> true;
 			case STOPPED -> process.exitCode().orElse(0) != 0;
@@ -232,33 +141,10 @@ public final class DshCrashDialog extends Stage {
 		};
 	}
 
-	/// Says how the process ended, for the reason line.
-	///
-	/// The banner is the original's sentence and this is the fact under it: the banner says the
-	/// instance exited abnormally, and this says with what — a code, or the signal that killed it.
-	///
-	/// @param process the process
-	/// @return the description
 	public static String describe(DshProcess process) {
-		// The original's own sentence for the case where its analyser could not name a cause, which
-		// is every case here: there is no analyser for this launcher's instances yet, so saying so —
-		// and saying where the answer is — is the honest answer, and it is the original's own words
-		// for exactly this situation rather than a sentence invented here.
-		//
-		// The exit code is **not** repeated into this line: it is a fact, and it has a place of its
-		// own in the block above. Putting it here made the reason read as a second copy of the
-		// banner with the code stuck on the end.
 		return i18n("game.crash.reason.unknown");
 	}
 
-	/// Returns the banner, in the original's own words for how the process died.
-	///
-	/// The original has one sentence per ending — `launch.failed.exited_abnormally` for a non-zero
-	/// exit and `launch.failed.sigkill` for a signal — and they are reused here with the game read as
-	/// the instance, because being killed is looked for in a different place from exiting.
-	///
-	/// @param process the process
-	/// @return the banner
 	public static String bannerOf(DshProcess process) {
 		Integer code = process.exitCode().orElse(null);
 		if (code != null && code < 0) {
@@ -267,33 +153,16 @@ public final class DshCrashDialog extends Stage {
 		return i18n("dsh.crash.exited_abnormally");
 	}
 
-	/// Builds the banner.
-	///
-	/// The original's own first line, on the surface the original puts it on: the whole width, in the
-	/// accent colour, because it is the one sentence that has to be read before anything else is.
-	///
-	/// @return the banner
 	private Node banner() {
 		Label title = new Label(banner);
 		HBox.setHgrow(title, Priority.ALWAYS);
 
 		HBox pane = new HBox(title);
 		pane.setAlignment(Pos.CENTER);
-		// The original's own three classes, which is what makes this the accent-coloured bar: it is
-		// the launcher's *second toolbar*, not a bar invented for this window.
 		pane.getStyleClass().addAll("jfx-tool-bar-second", "depth-1", "padding-8");
 		return pane;
 	}
 
-	/// Builds the block of names with their values under them.
-	///
-	/// The original's own row of `TwoLineListItem`s: a name, and its value on the line below, laid
-	/// **across** rather than down — which reads as a description of one thing rather than as a
-	/// table of many. The first row is what the launcher and the machine are, and the second is what
-	/// the instance is, which is the same division the original makes between its own facts and the
-	/// game's.
-	///
-	/// @return the block
 	private Node factsPane() {
 		HBox pane = new HBox(8);
 		pane.setPadding(new Insets(8));
@@ -320,17 +189,9 @@ public final class DshCrashDialog extends Stage {
 		                   ? "-"
 		                   : Integer.toString(process.exitCode().get())));
 
-		VBox both = new VBox(pane, second);
-		return both;
+		return new VBox(pane, second);
 	}
 
-	/// Builds the block under the facts: where the instance lives, and why it stopped.
-	///
-	/// The original's own arrangement — the folder, then the reason under its own heading, then the
-	/// paragraph — with one addition, the tail of the output, which the original does not need
-	/// because its analyser has already read the log and named the cause.
-	///
-	/// @return the block
 	private Node details() {
 		VBox pane = new VBox(8);
 		pane.setPadding(new Insets(8));
@@ -340,8 +201,6 @@ public final class DshCrashDialog extends Stage {
 		Label reasonTitle = new Label(i18n("game.crash.reason"));
 		reasonTitle.getStyleClass().add("two-line-item-second-large-title");
 
-		// The original's own flow and class: `crash-reason-text-flow` is what the transplanted
-		// stylesheet colours, and a `Text` inside it is how the theme reaches the text.
 		TextFlow reasonFlow = new TextFlow(new Text(reason));
 		reasonFlow.getStyleClass().add("crash-reason-text-flow");
 
@@ -350,7 +209,6 @@ public final class DshCrashDialog extends Stage {
 		if (!tail.isEmpty()) {
 			Label output = new Label(tail);
 			output.getStyleClass().add("dsh-crash-log");
-			// Not wrapped: a stack trace's indentation is how it is read.
 			output.setWrapText(false);
 			reasonBox.getChildren().add(output);
 		}
@@ -359,41 +217,22 @@ public final class DshCrashDialog extends Stage {
 		reasonPane.setFitToWidth(true);
 		reasonPane.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
 		reasonPane.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-		// A height of its own rather than "whatever is left". The original's reason block is two
-		// lines, so its layout ends well above the toolbar and the leftover height collects below
-		// it; a block that instead absorbs the slack drags the paragraph after it — and this
-		// window's paragraph is the last line of the window — down against the buttons. Bounding
-		// this keeps the shape the original has: everything from the top, a gap, then the toolbar.
 		reasonPane.setPrefHeight(120);
-		// Started at the end, because the end is where a failure says what it was: the last lines of
-		// a stack trace, and the sentence after them.
 		javafx.application.Platform.runLater(() -> reasonPane.setVvalue(1.0));
 
-		// The original's own paragraph, which exists because a screenshot of a crash is a picture of
-		// a stack trace that nobody can search, and because whoever is helping needs the file.
 		TextFlow feedback = new TextFlow();
 		feedback.getStyleClass().add("crash-reason-text-flow");
 		feedback.getChildren().addAll(FXUtils.parseSegment(i18n("dsh.crash.feedback"), Controllers::onHyperlinkAction));
 
 		pane.getChildren().setAll(folder, reasonTitle, reasonPane, feedback);
 
-		// **No grow here**, and that is the original's arrangement rather than an omission: it grows
-		// this whole block and nothing inside it, so the leftover height collects at the *bottom* of
-		// the block, above the toolbar. Growing the reason pane instead — which is what this did —
-		// makes the pane eat the slack and pushes the paragraph under it down to the toolbar, so the
-		// last line of the window ends up at the bottom edge with the buttons rather than under the
-		// reason it belongs to.
+		// Grow the details block, not the reason pane, to keep the feedback text above the toolbar.
 		return pane;
 	}
 
-	/// Builds the button that writes the report out, which the paragraph above points at.
-	///
-	/// @return the button
 	private Node exportButton() {
 		JFXButton export = FXUtils.newRaisedButton(i18n("dsh.crash.export"));
 
-		// The original's own wrapper: the export reads a file and writes one, and the spinner is
-		// what says it is doing something rather than nothing.
 		StackPane spinner = new StackPane(export);
 		spinner.getStyleClass().add("small-spinner-pane");
 
@@ -401,26 +240,18 @@ public final class DshCrashDialog extends Stage {
 		return spinner;
 	}
 
-	/// Builds the button that opens the log window.
-	///
-	/// @return the button
 	private JFXButton logButton() {
 		JFXButton log = FXUtils.newRaisedButton(i18n("logwindow.title"));
-		// With no process there is no window to open, and a button that does nothing is worse than
-		// one that says so.
 		log.setDisable(process == null);
 		log.setOnAction(event -> {
 			if (process != null) {
-				new LogWindow(process.managedProcess(), process.windowLogs(), process.instance().id()).show();
+				DshLaunchService.openLogWindow(process);
 			}
 		});
 		FXUtils.installFastTooltip(log, i18n("dsh.crash.view_log"));
 		return log;
 	}
 
-	/// Builds the button that opens the place to ask somebody.
-	///
-	/// @return the button
 	private JFXButton helpButton() {
 		JFXButton help = FXUtils.newRaisedButton(i18n("help"));
 		help.setOnAction(event -> FXUtils.openLink(Metadata.HOMEPAGE_URL));
@@ -428,17 +259,9 @@ public final class DshCrashDialog extends Stage {
 		return help;
 	}
 
-	/// Returns the instance's own directory, which is what the original shows as the game folder.
-	///
-	/// The instance's own answer, not the folder the launcher owns: an instance read out of a
-	/// folder somebody added lives in that folder, and this row is where a person looks to find
-	/// the files of the instance that just fell over. Answered from the launcher's own layout it
-	/// named `<user home>/instances/<id>` for every instance alive — measured against a real
-	/// install, a crash report for an instance living in `D:\HDSHL\1\codex` said its folder was
-	/// `C:\Users\…\AppData\Roaming\.hdsl\instances\codex`, which is not merely a wrong path but
-	/// one that does not exist, and it is exported to a file and pasted into bug reports.
-	///
-	/// @return the path, or a note that it could not be resolved
+	/**
+	 * Returns the instance's actual directory, which may differ from the launcher's default instance path.
+	 */
 	private String instanceDirectory() {
 		try {
 			return instance.instanceDirectory().toString();
@@ -447,7 +270,9 @@ public final class DshCrashDialog extends Stage {
 		}
 	}
 
-	/** Writes the failure out to a file. Log files use {@link DshPermissions} to protect */
+	/**
+	 * Writes a crash report with restricted file permissions.
+	 */
 	private void export() {
 		StringBuilder text = new StringBuilder();
 		text.append(i18n("dsh.crash.title")).append('\n');
@@ -491,16 +316,12 @@ public final class DshCrashDialog extends Stage {
 		}
 	}
 
-	/// Returns the last of the process's output.
-	///
-	/// @return the text, or empty when there is nothing to show
 	private String tail() {
-		if (process == null) {
-			return "";
-		}
+		if (process == null) return "";
+
+		StringBuilder text = new StringBuilder();
 		List<LogLine> lines = List.copyOf(process.windowLogs());
 		int from = Math.max(0, lines.size() - TAIL_LINES);
-		StringBuilder text = new StringBuilder();
 		for (LogLine line : lines.subList(from, lines.size())) {
 			text.append(line.getLog()).append('\n');
 		}

@@ -2,6 +2,9 @@
  * Hello Minecraft! Launcher
  * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
  *
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -80,11 +83,7 @@ public final class LogWindow extends Stage {
 
     private final LogWindowImpl impl;
     private final ManagedProcess gameProcess;
-
-    /// The instance these lines came from, or `null` when they came from none.
-    ///
-    /// Only the name of an export uses it, and an export is a file somebody has to be able to tell
-    /// apart from the others in the folder: the instance is what says which one it is.
+    private final Runnable terminateAction;
     private final @Nullable String instanceId;
 
     public LogWindow(ManagedProcess gameProcess) {
@@ -100,7 +99,15 @@ public final class LogWindow extends Stage {
     /// @param gameProcess the process whose output is shown
     /// @param logs        the lines already collected
     /// @param instanceId  the instance the lines came from, or `null`
-    public LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs, @Nullable String instanceId) {
+    private LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs, @Nullable String instanceId) {
+        this(gameProcess, logs, instanceId, null);
+    }
+
+    /// Creates the window with an explicit action for its terminate button.
+    public LogWindow(ManagedProcess gameProcess,
+                     CircularArrayList<LogLine> logs,
+                     @Nullable String instanceId,
+                     @Nullable Runnable terminateAction) {
         Themes.applyNativeDarkMode(this);
 
         this.logs = logs;
@@ -116,6 +123,7 @@ public final class LogWindow extends Stage {
         }
 
         this.gameProcess = gameProcess;
+        this.terminateAction = terminateAction != null ? terminateAction : gameProcess::stop;
 
         FXUtils.addMacOSCloseWindowHandler(this, () -> !gameProcess.isRunning());
     }
@@ -222,7 +230,13 @@ public final class LogWindow extends Stage {
         }
 
         private void onTerminateGame() {
-            LogWindow.this.gameProcess.stop();
+            thread(() -> {
+                try {
+                    LogWindow.this.terminateAction.run();
+                } catch (RuntimeException e) {
+                    LOG.warning("Failed to stop the process from its log window", e);
+                }
+            });
         }
 
         private void onClear() {
@@ -415,7 +429,13 @@ public final class LogWindow extends Stage {
                 exportLogsButton.setOnAction(e -> getSkinnable().onExportLogs());
 
                 JFXButton terminateButton = new JFXButton(i18n("logwindow.terminate_game"));
-                terminateButton.setOnAction(e -> getSkinnable().onTerminateGame());
+                terminateButton.setOnAction(e -> {
+                    // One request per window. The stop the instance hands in is asynchronous and
+                    // only ends with the process, which would otherwise leave the button live for
+                    // the whole shutdown grace and let a second click run the stop twice.
+                    terminateButton.setDisable(true);
+                    getSkinnable().onTerminateGame();
+                });
 
                 // HDSL launches Node processes, so the JVM jstack dump action
                 // has no meaning here and is not offered.

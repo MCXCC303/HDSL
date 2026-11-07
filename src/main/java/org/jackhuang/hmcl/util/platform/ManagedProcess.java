@@ -2,6 +2,9 @@
  * Hello Minecraft! Launcher
  * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
  *
+ * HDSL
+ * Copyright (C) 2026  HDSL contributors
+ *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -17,10 +20,10 @@
  */
 package org.jackhuang.hmcl.util.platform;
 
-import org.jackhuang.hmcl.util.platform.StreamPump;
 import org.jackhuang.hmcl.util.Lang;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
@@ -30,8 +33,6 @@ import java.util.function.Predicate;
 /// The managed process.
 ///
 /// @author huangyuhui
-/// <!-- @see org.jackhuang.hmcl.launch.ExitWaiter -->
-/// @see org.jackhuang.hmcl.launch.StreamPump
 public final class ManagedProcess {
     private final ReentrantLock lock = new ReentrantLock();
     private final Process process;
@@ -154,11 +155,20 @@ public final class ManagedProcess {
     }
 
     public void pumpInputStream(Consumer<String> onLogLine) {
-        addRelatedThread(Lang.thread(new StreamPump(process.getInputStream(), onLogLine, OperatingSystem.NATIVE_CHARSET), "ProcessInputStreamPump", true));
+        pumpInputStream(onLogLine, OperatingSystem.NATIVE_CHARSET);
+    }
+
+    public void pumpInputStream(Consumer<String> onLogLine, Charset charset) {
+        addRelatedThread(Lang.thread(new StreamPump(process.getInputStream(), onLogLine, charset), "ProcessInputStreamPump", true));
     }
 
     public void pumpErrorStream(Consumer<String> onLogLine) {
-        addRelatedThread(Lang.thread(new StreamPump(process.getErrorStream(), onLogLine, OperatingSystem.NATIVE_CHARSET), "ProcessErrorStreamPump", true));
+        pumpErrorStream(onLogLine, OperatingSystem.NATIVE_CHARSET);
+    }
+
+    // Pumps the error stream in a stated charset.
+    public void pumpErrorStream(Consumer<String> onLogLine, Charset charset) {
+        addRelatedThread(Lang.thread(new StreamPump(process.getErrorStream(), onLogLine, charset), "ProcessErrorStreamPump", true));
     }
 
     /**
