@@ -362,9 +362,7 @@ public final class DshProcess {
 		try {
 			int code = process.getProcess().waitFor();
 			exitCode = code;
-			// The child is gone, but what it wrote last may still be in the pipe. The readers are
-			// waited for before they are interrupted, so the last line — often the interesting
-			// one — reaches the live window and the crash export.
+
 			try {
 				process.awaitRelatedThreads(DRAIN_TIMEOUT);
 			} catch (InterruptedException e) {
@@ -381,10 +379,10 @@ public final class DshProcess {
 	}
 
 	private void transitionTo(State next) {
+		state = next;
 		Consumer<State> listener = stateListener;
 		if (listener == null) return;
 
-		state = next;
 		try {
 			listener.accept(next);
 		} catch (RuntimeException e) {
