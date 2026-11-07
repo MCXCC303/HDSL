@@ -23,8 +23,7 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceListing;
 import com.mcxcc303.hdsl.instance.InstanceStore;
-import javafx.application.Platform;
-import org.jackhuang.hmcl.ui.dsh.DshCrashDialog;
+import java.util.function.Consumer;
 import org.jackhuang.hmcl.util.logging.Logger;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -67,12 +66,17 @@ public final class DshProcessManager {
 	/// empty registry and start a second server on the same home, which races
 	/// the profile files and leaves the extra process untracked.
 	private static final Object LAUNCH_LOCK = new Object();
+	private static volatile @Nullable Consumer<DshProcess> exitListener;
 
 	static {
 		Runtime.getRuntime().addShutdownHook(new Thread(DshProcessManager::stopAll, "HDSL shutdown"));
 	}
 
 	private DshProcessManager() {
+	}
+
+	public static void setExitListener(@Nullable Consumer<DshProcess> listener) {
+		exitListener = listener;
 	}
 
 	/// Launches an instance, or returns the one already running for it.
@@ -176,11 +180,13 @@ public final class DshProcessManager {
 					// for its own purposes "it was up and now it is not" is the same thing either
 					// way. So a crash after a successful start arrives here as `STOPPED`, and
 					// testing for `FAILED` misses exactly the case this dialog was written for.
-					if (DshCrashDialog.isCrash(process)) {
-						Platform.runLater(() -> DshCrashDialog.show(instance,
-						                                            DshCrashDialog.bannerOf(process),
-						                                            DshCrashDialog.describe(process),
-						                                            process));
+					Consumer<DshProcess> listener = exitListener;
+					if (listener != null) {
+						try {
+							listener.accept(process);
+						} catch (RuntimeException e) {
+							LOG.warning("Exit listener failed", e);
+						}
 					}
 				}
 			});

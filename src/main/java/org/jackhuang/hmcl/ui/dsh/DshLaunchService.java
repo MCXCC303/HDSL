@@ -85,6 +85,21 @@ public final class DshLaunchService {
 	/// user would be told the launch failed at the moment they cancelled it.
 	private static final Set<String> CANCELLED = ConcurrentHashMap.newKeySet();
 
+	static {
+		DshProcessManager.setExitListener(process -> {
+			if (DshCrashDialog.isCrash(process)) {
+				try {
+					runInFX(() -> DshCrashDialog.show(process.instance(),
+					                                  DshCrashDialog.bannerOf(process),
+					                                  DshCrashDialog.describe(process),
+					                                  process));
+				} catch (IllegalStateException e) {
+					LOG.warning("Could not show crash dialog", e);
+				}
+			}
+		});
+	}
+
 	private DshLaunchService() {
 	}
 

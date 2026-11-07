@@ -64,8 +64,7 @@ class PackageRulesTest {
 	                                                                 "skin/NormalizedSkin.java",
 	                                                                 "instance/DshInstanceIcon.java",
 	                                                                 "instance/DshInstanceIcons.java",
-	                                                                 "launch/DshProcess.java",
-	                                                                 "launch/DshProcessManager.java");
+	                                                                 "launch/DshProcess.java");
 
 	/// What the split had to widen from package-private to public, so that the members are known.
 	///
@@ -90,7 +89,7 @@ class PackageRulesTest {
 	                                                        "instance<->plugin");
 
 	/// What an import of this domain looks like, the name captured without the prefix.
-	private static final Pattern IMPORTED = Pattern.compile("^import (?:static )?com\\.mcxcc303\\.hdsl\\.([\\w.]+);",
+	private static final Pattern IMPORTED = Pattern.compile("^import (?:static )?com\\.mcxcc303\\.hdsl\\.([\\w.*]+);",
 	                                                        Pattern.MULTILINE);
 
 	/// The files of the domain layer.
