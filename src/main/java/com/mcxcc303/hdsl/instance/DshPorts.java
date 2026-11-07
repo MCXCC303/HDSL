@@ -200,8 +200,14 @@ public final class DshPorts {
 	public static DshInstance withMode(DshInstance instance, DshPortMode mode) throws DshException {
 		if (mode == DshPortMode.FIXED) {
 			keepAutoPort(instance);
-			// Start fixed port field from existing instance port.
-			return instance.withPortPolicy(mode, instance.portOrDefault());
+			int port = instance.portOrDefault();
+			if (port < 1024 || port > 65535) {
+				port = autoPort(instance);
+				if (port < 1024 || port > 65535) {
+					port = reserve(instance.id());
+				}
+			}
+			return instance.withPortPolicy(mode, port);
 		}
 		int automatic = autoPort(instance);
 		if (automatic <= 0) {

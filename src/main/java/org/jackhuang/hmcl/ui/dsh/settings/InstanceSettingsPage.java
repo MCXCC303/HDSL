@@ -431,11 +431,38 @@ public final class InstanceSettingsPage extends ScrollPane {
 		}
 	}
 
+	private int validPortOrDefault() {
+		int port = instance.portOrDefault();
+		if (port >= 1024 && port <= 65535) {
+			return port;
+		}
+		int auto = DshPorts.autoPort(instance);
+		if (auto >= 1024 && auto <= 65535) {
+			return auto;
+		}
+		try {
+			return DshPorts.reserve(instance.id());
+		} catch (DshException e) {
+			return 3081;
+		}
+	}
+
 	private LineTextPane buildPortRow() {
 		portRow.setTitle(i18n("dsh.instance.port.fixed"));
 
 		portField.setPrefWidth(80);
-		portField.setValidators(new NumberValidator(i18n("dsh.instance.port.invalid"), false));
+		portField.setValidators(new Validator(i18n("dsh.instance.port.invalid"), text -> {
+			if (text == null || text.isBlank()) {
+				return false;
+			}
+			try {
+				int val = Integer.parseInt(text.trim());
+				return DshPorts.validate(val) == null;
+			} catch (NumberFormatException e) {
+				return false;
+			}
+		}));
+		FXUtils.setValidateWhileTextChanged(portField, true);
 		portField.setOnAction(event -> applyPort(portField.getText()));
 		portField.focusedProperty().addListener((observable, was, focused) -> {
 			if (!focused) {
@@ -451,28 +478,29 @@ public final class InstanceSettingsPage extends ScrollPane {
 	private void syncPortRow() {
 		boolean fixed = instance.hasOwnPortMode() && instance.portMode() == DshPortMode.FIXED;
 		portField.setDisable(!fixed);
-		portField.setText(instance.portOrDefault() > 0 ? Integer.toString(instance.portOrDefault()) : "");
+		int port = fixed ? validPortOrDefault() : instance.portOrDefault();
+		portField.setText(port > 0 ? Integer.toString(port) : "");
 		portField.setPromptText(i18n("dsh.instance.port.auto.none"));
 		portRow.setVisible(true);
 		portRow.setManaged(true);
 	}
 
 	private void applyPort(@Nullable String text) {
-		if (text == null || text.isBlank()) {
-			return;
-		}
-		Integer port;
-		try {
-			port = Integer.valueOf(text.trim());
-		} catch (NumberFormatException e) {
-			return;
+		Integer port = null;
+		if (text != null && !text.isBlank()) {
+			try {
+				port = Integer.valueOf(text.trim());
+			} catch (NumberFormatException ignored) {
+			}
 		}
 		String complaint = DshPorts.validate(port);
 		if (complaint != null) {
 			Controllers.dialog(complaint, i18n("dsh.instance.port.invalid"), MessageType.ERROR);
+			syncPortRow();
+			portField.validate();
 			return;
 		}
-		if (port == instance.portOrDefault()) {
+		if (port.intValue() == instance.portOrDefault()) {
 			return;
 		}
 		write(instance.withPortPolicy(DshPortMode.FIXED, port));

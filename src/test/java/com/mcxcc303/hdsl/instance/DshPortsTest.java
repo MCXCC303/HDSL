@@ -188,6 +188,21 @@ class DshPortsTest {
 	}
 
 	@Test
+	void switchingToFixedModeGuaranteesAValidPortRange() throws Exception {
+		DshInstance invalidPort = instance(DshPortMode.AUTO, 0);
+		DshInstance fixed = DshPorts.withMode(invalidPort, DshPortMode.FIXED);
+		assertTrue(fixed.portOrDefault() >= 1024 && fixed.portOrDefault() <= 65535,
+		           "switching to fixed must provide a valid port in [1024, 65535], got " + fixed.portOrDefault());
+		assertNull(DshPorts.validate(fixed.portOrDefault()));
+
+		DshInstance privilegedPort = instance(DshPortMode.AUTO, 80);
+		DshInstance fixedFromPrivileged = DshPorts.withMode(privilegedPort, DshPortMode.FIXED);
+		assertTrue(fixedFromPrivileged.portOrDefault() >= 1024 && fixedFromPrivileged.portOrDefault() <= 65535,
+		           "switching to fixed must replace out-of-range ports with a valid port");
+		assertNull(DshPorts.validate(fixedFromPrivileged.portOrDefault()));
+	}
+
+	@Test
 	void theSurfacePassesTheResolvedPortThrough() {
 		// Only the browser surface serves HTTP, so only it takes a port.
 		assertEquals(List.of(), DshSurface.ACP.arguments(39000));

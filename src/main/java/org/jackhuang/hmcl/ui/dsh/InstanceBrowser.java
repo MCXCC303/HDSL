@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshPorts;
+import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshProcess;
 import com.mcxcc303.hdsl.launch.DshProcessManager;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -44,13 +45,15 @@ public final class InstanceBrowser {
 	 * @param instance the instance
 	 */
 	public static void open(DshInstance instance) {
-		if (instance.portOrDefault() <= 0) {
+		DshInstance fresh = InstanceStore.find(instance.id());
+		DshInstance target = fresh != null ? fresh : instance;
+		if (target.portOrDefault() <= 0) {
 			Controllers.dialog(i18n("dsh.instance.port.auto.none"),
 			                   i18n("message.error"),
 			                   MessageDialogPane.MessageType.ERROR);
 			return;
 		}
-		Optional<DshProcess> running = DshProcessManager.find(instance.id());
-		FXUtils.openLink(DshPorts.openAddress(instance, running.flatMap(DshProcess::webUrl).orElse(null)).toString());
+		Optional<DshProcess> running = DshProcessManager.find(target.id());
+		FXUtils.openLink(DshPorts.openAddress(target, running.flatMap(DshProcess::webUrl).orElse(null)).toString());
 	}
 }
