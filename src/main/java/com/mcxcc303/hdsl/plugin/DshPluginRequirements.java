@@ -40,49 +40,27 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Works out whether a plugin fits the harness an instance runs.
-///
-/// A plugin declares what it needs in its `peerDependencies`, and those are the
-/// harness's own packages — a marketplace plugin asks for
-/// `@deepseek-ai/dsh-settings: ^0.1.0-rc.7 || ^0.1.1-rc.2 || ^0.1.2-alpha.2`. The
-/// harness an instance runs ships exact versions of exactly those packages, so the
-/// two can be compared without asking anybody: what the instance has is read from its
-/// own installation, and what the plugin wants is what it published.
-///
-/// This decides *what is shown* and nothing else. A plugin that does not fit an
-/// instance is still installable, because the launcher is not the one who knows
-/// better — a person may be installing it to then move the instance, or may know
-/// something the ranges do not say.
+/**
+ * Evaluates whether a plugin's requirements fit the core harness versions of an instance.
+ */
 @NotNullByDefault
 public final class DshPluginRequirements {
-	/// The prefix the harness's own packages share.
 	private static final String CORE_PREFIX = "@deepseek-ai/";
-
-	/// The harness's own package: the name plugins declare most, and the one every range is
-	/// read against.
 	private static final String HARNESS = CORE_PREFIX + "dsh";
-
-	/// The ranges that mean "whatever runtime this is installed into".
 	private static final List<String> WORKSPACE = List.of("workspace:^", "workspace:~", "workspace:*");
-
-	/// The dash between the two ends of a hyphen range, npm's \`1.2.3 - 2.3.4\`.
 	private static final Pattern HYPHEN = Pattern.compile("\\s+-\\s+");
-	/// The packages read so far, by harness version.
 	private static final Map<String, Map<String, String>> PUBLISHED_CORE_VERSIONS = new ConcurrentHashMap<>();
-	/// The versions read so far, per instance and version.
 	private static final Map<String, Map<String, String>> CORE_VERSIONS = new ConcurrentHashMap<>();
 
 	private DshPluginRequirements() {
 	}
 
-	/// Reads the versions of the harness's packages that a published version ships.
-	///
-	/// Asked of the registry, once per version and remembered, for the case the picker
-	/// offers a version the machine does not have: what that release can run is what it
-	/// declares it depends on.
-	///
-	/// @param version the harness version
-	/// @return the package versions, empty when they cannot be read
+	/**
+	 * Reads the versions of harness packages that a published version ships.
+	 *
+	 * @param version the harness version
+	 * @return the package versions, empty when they cannot be read
+	 */
 	public static Map<String, String> coreVersionsOf(String version) {
 		Map<String, String> cached = PUBLISHED_CORE_VERSIONS.get(version);
 		if (cached != null) {
@@ -90,8 +68,7 @@ public final class DshPluginRequirements {
 		}
 
 		Map<String, String> versions = new LinkedHashMap<>();
-		// The harness's own package does not depend on itself, so it is never among the
-		// dependencies below — and it is the name plugins declare most.
+		// The harness package does not depend on itself, so it is added directly
 		versions.put(HARNESS, version);
 		JsonObject dependencies = DshPackageRegistry.dependencies(HARNESS, version);
 		for (Map.Entry<String, JsonElement> entry : dependencies.entrySet()) {
@@ -105,15 +82,12 @@ public final class DshPluginRequirements {
 		return result;
 	}
 
-	/// Reads the versions of the harness's packages that an instance holds.
-	///
-	/// Read from the instance's own installation rather than from the registry: what an
-	/// instance can run is what it has, and it has an exact set of these packages. The
-	/// answer is remembered per instance version, because it cannot change while the
-	/// instance does not.
-	///
-	/// @param instance the instance
-	/// @return the package versions, empty when they cannot be read
+	/**
+	 * Reads the versions of the harness's packages that an instance holds.
+	 *
+	 * @param instance the instance
+	 * @return the package versions, empty when they cannot be read
+	 */
 	public static Map<String, String> coreVersions(DshInstance instance) {
 		String key = instance.id() + "@" + instance.version();
 		Map<String, String> cached = CORE_VERSIONS.get(key);
@@ -136,11 +110,13 @@ public final class DshPluginRequirements {
 		return versions;
 	}
 
-	/// Reads the versions of the harness's packages that an installation holds.
-	///
-	/// @param manifest the manifest of the harness's own package in that installation
-	/// @return the versions, by package name, empty when there is no installation to read
-	/// @throws IOException when the manifest is there and cannot be read
+	/**
+	 * Reads the versions of the harness's packages that an installation holds.
+	 *
+	 * @param manifest the manifest of the harness's own package in that installation
+	 * @return the versions, by package name, empty when there is no installation to read
+	 * @throws IOException when the manifest is there and cannot be read
+	 */
 	static Map<String, String> readCoreVersions(Path manifest) throws IOException {
 		if (!Files.isRegularFile(manifest)) {
 			return Map.of();
@@ -152,9 +128,6 @@ public final class DshPluginRequirements {
 
 		Map<String, String> versions = new LinkedHashMap<>();
 		if (root.has("version") && root.get("version").isJsonPrimitive()) {
-			// This package does not depend on itself, so the loop below never sees it, yet
-			// it is the name plugins declare most and the version the harness reads a range
-			// against: one plugin asking for `>=0.1.7-rc.2` is asking about exactly this.
 			versions.put(HARNESS, root.get("version").getAsString());
 		}
 		if (root.has("dependencies") && root.get("dependencies").isJsonObject()) {
@@ -169,10 +142,8 @@ public final class DshPluginRequirements {
 
 	/**
 	 * Returns what a manifest requires of the harness's own packages.
-	 * <p>
-	 * The harness's own packages are the ones under `@deepseek-ai/`.
 	 *
-	 * @param peerDependencies the manifest's peer dependencies, or `null`
+	 * @param peerDependencies the manifest's peer dependencies, or {@code null}
 	 * @return the requirements, empty when the manifest names none
 	 */
 	public static JsonObject coreRequirements(@Nullable JsonObject peerDependencies) {
@@ -192,7 +163,7 @@ public final class DshPluginRequirements {
 	/**
 	 * Reports whether a plugin fits the versions an instance holds.
 	 *
-	 * @param peerDependencies the plugin's peer dependencies, or `null`
+	 * @param peerDependencies the plugin's peer dependencies, or {@code null}
 	 * @param coreVersions     the versions of the harness's packages the instance has
 	 * @return whether every requirement that can be judged is satisfied
 	 */
@@ -200,9 +171,6 @@ public final class DshPluginRequirements {
 		for (Map.Entry<String, JsonElement> entry : coreRequirements(peerDependencies).entrySet()) {
 			String held = coreVersions.get(entry.getKey());
 			if (held == null) {
-				// A package the instance does not have says nothing about whether the
-				// plugin fits: it may be one the harness folds into another, and
-				// guessing would hide plugins for no reason.
 				continue;
 			}
 			if (!satisfies(entry.getValue().getAsString(), held)) {
@@ -212,24 +180,13 @@ public final class DshPluginRequirements {
 		return true;
 	}
 
-	/// Reports whether a version satisfies an npm range.
-	///
-	/// The ranges plugins publish are the ones a package manager writes: alternatives
-	/// separated by `||`, each a version, a caret or tilde range, or a comparison.
-	///
-	/// The rules are npm's, and they are applied the way the harness applies them: before it
-	/// installs a plugin it asks npm's own `semver` with `includePrerelease`, so a prerelease
-	/// is an ordinary version here too. That is what makes `>=0.1.7-rc.2` refuse `0.1.7-rc.1`
-	/// — the two agree on every number and differ only in the part that tells them apart —
-	/// and what keeps `<0.2.0` from refusing one merely for being a prerelease.
-	///
-	/// Two answers are the harness's own rather than npm's: `workspace:^`, `workspace:~` and
-	/// `workspace:*` mean "the runtime this is installed into", so whatever is asking
-	/// satisfies them, and an empty requirement is refused outright, which npm reads as `*`.
-	///
-	/// @param range   the range
-	/// @param version the version
-	/// @return whether it satisfies
+	/**
+	 * Reports whether a version satisfies an npm range.
+	 *
+	 * @param range   the range
+	 * @param version the version
+	 * @return whether it satisfies
+	 */
 	public static boolean satisfies(String range, String version) {
 		if (range == null || version == null || range.isBlank() || version.isBlank()) {
 			return false;
@@ -249,17 +206,8 @@ public final class DshPluginRequirements {
 		return false;
 	}
 
-	/// Reports whether a version satisfies one alternative of a range.
-	///
-	/// An alternative is comparators separated by spaces, and every one of them has to hold:
-	/// npm writes a conjunction that way, `>=0.1.0-rc.0 <0.2.0`.
-	///
-	/// @param alternative the alternative
-	/// @param version     the version
-	/// @return whether it satisfies
 	private static boolean satisfiesAlternative(String alternative, String version) {
 		if (alternative.isEmpty()) {
-			// An empty alternative is every version: npm reads `>=0.1.0 ||` as `*`.
 			return true;
 		}
 		Matcher dash = HYPHEN.matcher(alternative);
@@ -276,15 +224,6 @@ public final class DshPluginRequirements {
 		                       version);
 	}
 
-	/// Splits an alternative into comparators, putting an operator back together with its version.
-	///
-	/// npm allows whitespace between the two — \`>= 1.0.0\`, \`<=  2.0.0\`, \`~ 1.0\` — and writing a range
-	/// that way is ordinary. Split on whitespace alone, the operator is left as a comparator of its
-	/// own, nothing satisfies it, and a plugin whose range is written that way is hidden from every
-	/// instance.
-	///
-	/// @param alternative the alternative
-	/// @return its comparators, the operator of each joined to its version
 	private static List<String> comparatorsOf(String alternative) {
 		List<String> comparators = new ArrayList<>();
 		String operator = null;
@@ -302,16 +241,11 @@ public final class DshPluginRequirements {
 			}
 		}
 		if (operator != null) {
-			// An operator with nothing after it names no version, which satisfies nothing.
 			comparators.add(operator);
 		}
 		return comparators;
 	}
 
-	/// Reports whether a comparator is an operator and nothing else.
-	///
-	/// @param token the comparator
-	/// @return whether it names no version
 	private static boolean isOperatorAlone(String token) {
 		for (int i = 0; i < token.length(); i++) {
 			if ("^~<>=vV".indexOf(token.charAt(i)) < 0) {
@@ -321,17 +255,6 @@ public final class DshPluginRequirements {
 		return !token.isEmpty();
 	}
 
-	/// Reports whether a version lies between the two ends of a hyphen range.
-	///
-	/// npm reads `1.2.3 - 2.3.4` as `>=1.2.3-0 <2.3.5-0`: one end is a floor and the other a
-	/// ceiling, and each is moved out by the smallest step there is — the floor down to a
-	/// prerelease of itself, the ceiling up to the next patch, or to the prerelease it names
-	/// when it names one, which is then a version of its own and is let in.
-	///
-	/// @param from    the floor
-	/// @param to      the ceiling
-	/// @param version the version
-	/// @return whether it lies between them
 	private static boolean satisfiesHyphen(String from, String to, String version) {
 		if (!isBound(from) || !isBound(to)) {
 			return false;
@@ -339,7 +262,6 @@ public final class DshPluginRequirements {
 		int floors = countOf(from);
 		int ceilings = countOf(to);
 		if (floors == 0 && ceilings == 0) {
-			// `x - x` names nothing at either end, which npm cannot read either.
 			return false;
 		}
 
@@ -369,22 +291,11 @@ public final class DshPluginRequirements {
 		return compare(held, release(named[0], named[1], named[2] + 1)) < 0;
 	}
 
-	/// Reports whether a version satisfies one comparator.
-	///
-	/// A caret holds from the version it names up to the next change of the leftmost non-zero
-	/// part it names, and a tilde up to the next minor. A version that stops short of naming
-	/// all three numbers is read the way npm reads one: `^0.1` and `~1.2` are ranges, and a
-	/// bare `0.1` is the range up to the next minor. `*` is every version.
-	///
-	/// @param comparator the comparator
-	/// @param version    the version
-	/// @return whether it satisfies
 	private static boolean satisfiesComparator(String comparator, String version) {
 		if (comparator.isEmpty()) {
 			return false;
 		}
 		if (comparator.startsWith("~>")) {
-			// npm's older spelling of `~`, which it still reads and a range may still be written in.
 			comparator = "~" + comparator.substring(2).trim();
 		}
 		if (isWildcard(comparator)) {
@@ -395,7 +306,6 @@ public final class DshPluginRequirements {
 		if (first == '^' || first == '~') {
 			String base = comparator.substring(1).trim();
 			if (isWildcard(base)) {
-				// `^*` and `~*` are every version, npm's reading of a range that names none.
 				return true;
 			}
 			if (!isBound(base)) {
@@ -406,8 +316,6 @@ public final class DshPluginRequirements {
 				return false;
 			}
 			int[] named = parse(base).numbers();
-			// A range that leaves a number out starts at a prerelease of the version it does
-			// name — npm's `-0`, as in `^1.2` holding `1.2.0-rc.1`, which `>=1.2.0` does not.
 			Semver lower = count == 3 ? parse(base) : release(named[0], named[1], named[2]);
 			return within(version, lower, upperBound(first == '^', count, named));
 		}
@@ -418,7 +326,6 @@ public final class DshPluginRequirements {
 			                  : comparator.substring(0, 1);
 			String base = comparator.substring(operator.length()).trim();
 			if (isWildcard(base)) {
-				// npm reads `>=*` as every version and `>*` as `<0.0.0-0`, which is none.
 				return !operator.equals(">") && !operator.equals("<");
 			}
 			if (!isBound(base)) {
@@ -429,10 +336,6 @@ public final class DshPluginRequirements {
 				return false;
 			}
 			if (count < 3) {
-				// A bound that does not name all three numbers is about a line rather than about a
-				// version, which is how npm reads both a number left out and an `x` written where
-				// one belongs: `<=0.7.x` is everything in the 0.7 line, and `>1.2` is everything
-				// past the 1.2 line — not `>1.2.0`, which would hold 1.2.8.
 				int[] named = parse(base).numbers();
 				int above = compare(parse(version), plain(named[0], named[1], named[2]));
 				int below = compare(parse(version), upperBound(false, count, named));
@@ -455,8 +358,6 @@ public final class DshPluginRequirements {
 		}
 
 		if (!isBound(comparator)) {
-			// Nothing a version could be, so nothing satisfies it — which is npm's answer for
-			// `latest`, and for anything else it cannot read as a range.
 			return false;
 		}
 		int count = countOf(comparator);
@@ -473,21 +374,12 @@ public final class DshPluginRequirements {
 	 * Reports whether a comparator names no version at all.
 	 *
 	 * @param text the comparator
-	 * @return whether it is `*`, `x` or `X`
+	 * @return whether it is {@code "*"}, {@code "x"} or {@code "X"}
 	 */
 	public static boolean isWildcard(String text) {
 		return text.equals("*") || text.equals("x") || text.equals("X");
 	}
 
-	/// Reports whether a version is one npm could read.
-	///
-	/// A range may leave a number out and may write an `x` where one belongs, but a fourth
-	/// number, a stray dash or a word where a number belongs is not a range at all: npm
-	/// answers nothing for one, and reading `1.2.3.4` as `1.2.3` would let a plugin that
-	/// declares it look like it fits when the harness is certain to refuse it.
-	///
-	/// @param version the version
-	/// @return whether it could be one
 	private static boolean isBound(String version) {
 		String clean = compared(version);
 		String[] halves = clean.split("-", 2);
@@ -514,10 +406,6 @@ public final class DshPluginRequirements {
 		return true;
 	}
 
-	/// Reports whether a string is one npm allows among a prerelease's identifiers.
-	///
-	/// @param identifier the identifier
-	/// @return whether it is letters, numbers and dashes
 	private static boolean isIdentifier(String identifier) {
 		for (int i = 0; i < identifier.length(); i++) {
 			char c = identifier.charAt(i);
@@ -528,27 +416,11 @@ public final class DshPluginRequirements {
 		return true;
 	}
 
-	/// Reports whether a version lies inside the half-open range a comparator draws.
-	///
-	/// @param version the version
-	/// @param lower   the first version inside it
-	/// @param upper   the first version past it
-	/// @return whether it is inside
 	private static boolean within(String version, Semver lower, Semver upper) {
 		Semver held = parse(version);
 		return compare(held, lower) >= 0 && compare(held, upper) < 0;
 	}
 
-	/// Returns the first version past the ones a caret or tilde range holds.
-	///
-	/// The bound names the prerelease `0`, npm's way of writing the first version outside
-	/// rather than the last one inside: `^0.1.7-rc.2` is `>=0.1.7-rc.2 <0.2.0-0`, which keeps
-	/// `0.2.0-rc.1` out while `0.2.0` is simply past it.
-	///
-	/// @param caret whether the range is a caret
-	/// @param count how many numbers the range named, one to three
-	/// @param named the numbers it named, the ones it left out read as zero
-	/// @return the version the range stops at
 	private static Semver upperBound(boolean caret, int count, int[] named) {
 		if (!caret) {
 			return count >= 2 ? release(named[0], named[1] + 1, 0) : release(named[0] + 1, 0, 0);
@@ -562,34 +434,14 @@ public final class DshPluginRequirements {
 		return release(named[0], named[1], named[2] + 1);
 	}
 
-	/// Returns a version with no pre-release part, which is where a line of versions starts.
-	///
-	/// npm moves the ends of a range out to a pre-release of themselves — that is what
-	/// [#release] writes — and where it does not, the version has to be the release itself to be
-	/// inside: the floor of `1.2.x` is `>=1.2.0`, so `1.2.0-rc` is under it.
-	///
-	/// @param major the major
-	/// @param minor the minor
-	/// @param patch the patch
-	/// @return the version
 	private static Semver plain(int major, int minor, int patch) {
 		return new Semver(major, minor, patch, null);
 	}
 
-	/// Returns a version with the prerelease npm puts at the foot of a bound it made up.
-	///
-	/// @param major the major
-	/// @param minor the minor
-	/// @param patch the patch
-	/// @return the version, as in `0.2.0-0`
 	private static Semver release(int major, int minor, int patch) {
 		return new Semver(major, minor, patch, List.of("0"));
 	}
 
-	/// Counts the numbers a version names, `1.x` naming one and `1.2` two.
-	///
-	/// @param version the version
-	/// @return one to three, or none when it names no number at all
 	private static int countOf(String version) {
 		String clean = compared(version);
 		int count = 0;
@@ -602,19 +454,10 @@ public final class DshPluginRequirements {
 		return Math.min(count, 3);
 	}
 
-	/** Reads a version the way npm reads a range's operand */
 	private static Semver parse(String version) {
 		return Semver.parsePartial(version);
 	}
 
-	/// Returns a version with the parts npm does not compare taken off it.
-	///
-	/// A leading \`v\` is decoration, and build metadata — everything from a \`+\` — says how a build
-	/// was made rather than which version it is: npm reads \`v1.2.3+build\` as \`1.2.3\`, so a plugin
-	/// asking for \`^1.2.3+build\` is asking for the same line as \`^1.2.3\`.
-	///
-	/// @param version the version as it was written
-	/// @return the version as it is compared
 	private static String compared(String version) {
 		String clean = version.trim();
 		if (clean.startsWith("v") || clean.startsWith("V")) {
@@ -624,10 +467,6 @@ public final class DshPluginRequirements {
 		return build < 0 ? clean : clean.substring(0, build);
 	}
 
-	/// Reports whether a pre-release identifier is a number.
-	///
-	/// @param identifier the identifier
-	/// @return whether it is one
 	private static boolean isNumber(String identifier) {
 		if (identifier.isEmpty()) {
 			return false;
@@ -645,3 +484,4 @@ public final class DshPluginRequirements {
 		return left.compareTo(right);
 	}
 }
+

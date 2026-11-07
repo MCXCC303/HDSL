@@ -35,7 +35,7 @@ public final class HarnessCommands {
 	private HarnessCommands() {}
 
 	/**
-	 * The `harness list` command.
+	 * The {@code harness list} command.
 	 *
 	 * @param invocation the parsed invocation
 	 * @param out        the stream for normal output
@@ -58,7 +58,7 @@ public final class HarnessCommands {
 	}
 
 	/**
-	 * The `harness versions` command
+	 * The {@code harness versions} command.
 	 *
 	 * @param invocation the parsed invocation
 	 * @param out        the stream for normal output

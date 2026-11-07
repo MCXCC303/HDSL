@@ -28,57 +28,44 @@ import java.util.Set;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// What a version is, and which of two comes first.
-///
-/// The harness and its packages are versioned separately, and the question the launcher keeps
-/// asking is whether one release is old enough to predate another — for the lockstep package the
-/// client and the harness have to agree on, and for the floor a package's own range declares.
+/**
+ * Version ordering and lockstep package compatibility resolution.
+ */
 @NotNullByDefault
 public final class VersionOrder {
-	/// The package the web application depends on with its own version line.
-	///
-	/// `@deepseek-ai/dsh-web-app@X` requires this package at `^X`, and it is
-	/// published separately, so a harness release whose twin here was never
-	/// published cannot be installed: the registry has nothing to satisfy the
-	/// requirement, and pnpm stops with `ERR_PNPM_NO_MATCHING_VERSION`. That is why
-	/// an instance can move to some published versions and not to others, and why
-	/// the version list says which is which before somebody tries one.
+	/**
+	 * The package the web application depends on with its own version line.
+	 */
 	public static final String LOCKSTEP_PACKAGE = "@deepseek-ai/dsh-client-ui-sidebar-documentpreview";
 
 	private VersionOrder() {
 	}
 
-	/// Reports whether a harness version predates the lockstep package entirely.
-	///
-	/// The package was introduced partway through the harness's history, so a release
-	/// older than it cannot depend on it: a version without a twin there is not
-	/// missing anything, and marking it was wrong — an old release installs perfectly
-	/// well, as 0.0.1 did.
-	///
-	/// @param version the harness version
-	/// @param oldest  the oldest published version of the lockstep package, or `null`
-	/// @return whether the harness version is older than the package
+	/**
+	 * Reports whether a harness version predates the lockstep package entirely.
+	 *
+	 * @param version the harness version
+	 * @param oldest  the oldest published version of the lockstep package, or {@code null}
+	 * @return whether the harness version is older than the package
+	 */
 	public static boolean predatesLockstep(String version, @Nullable String oldest) {
 		return oldest != null && compareVersions(version, oldest) < 0;
 	}
 
-	/// Returns the published versions of the package the harness is published with.
-	///
-	/// @return the versions, or an empty set when the registry cannot be reached —
-	///         in which case nothing is marked, because not knowing is not the same
-	///         as knowing something is missing
+	/**
+	 * Returns the published versions of the package the harness is published with.
+	 *
+	 * @return the versions, or an empty set when the registry cannot be reached
+	 */
 	public static Set<String> lockstepVersions() {
 		return lockstepVersionsAndOldest().versions();
 	}
 
-	/// Reads the lockstep package's versions and its oldest one.
-	///
-	/// The oldest matters because the package was introduced partway through the
-	/// harness's history: a harness release older than it cannot depend on it, so a
-	/// version without a twin there is not missing anything. Marking those was wrong
-	/// — an old release installs perfectly well — and this is what tells them apart.
-	///
-	/// @return what the registry holds, or nothing when it cannot be reached
+	/**
+	 * Reads the lockstep package's versions and its oldest one.
+	 *
+	 * @return what the registry holds, or empty when unreachable
+	 */
 	public static Lockstep lockstepVersionsAndOldest() {
 		try {
 			DshNodeRuntime runtime = HarnessInstaller.requireRuntime();
@@ -110,10 +97,12 @@ public final class VersionOrder {
 		return Semver.compare(left, right);
 	}
 
-	/// The published versions of the lockstep package, and the oldest of them.
-	///
-	/// @param versions the published versions
-	/// @param oldest   the oldest published version, or `null`
+	/**
+	 * The published versions of the lockstep package and its oldest release.
+	 *
+	 * @param versions the published versions
+	 * @param oldest   the oldest published version, or {@code null}
+	 */
 	public record Lockstep(Set<String> versions, @Nullable String oldest) {
 	}
 }

@@ -79,7 +79,7 @@ final class Commands {
 		 * Returns the parameter of this name.
 		 *
 		 * @param name the spelling, without the leading dashes
-		 * @return the parameter, or `null` when this command takes none of that name
+		 * @return the parameter, or {@code null} when this command takes none of that name
 		 */
 		@Nullable Parameter parameter(String name) {
 			for (Parameter parameter : parameters) {
@@ -313,8 +313,8 @@ final class Commands {
 	/**
 	 * Returns the command a spelling names.
 	 *
-	 * @param spelling the words the command is typed as, such as `instance create`
-	 * @return the command, or `null` when no command is spelled that way
+	 * @param spelling the words the command is typed as, such as {@code instance create}
+	 * @return the command, or {@code null} when no command is spelled that way
 	 */
 	static @Nullable Command find(String spelling) {
 		return BY_SPELLING.get(spelling);

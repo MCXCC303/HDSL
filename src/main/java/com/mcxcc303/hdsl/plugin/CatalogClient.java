@@ -50,28 +50,22 @@ import java.util.zip.GZIPInputStream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Reading the catalogue: every configured source in order, the copy kept of each, and the npm
-/// registry and cache directory the reads go through.
-///
-/// A source that does not answer is reported rather than fatal, and its last good copy is served
-/// instead — which is what makes the third read of a catalogue as good as the first on a network
-/// that has gone away.
+/**
+ * Reads the catalogue from configured sources, manages local caching, and resolves npm registries.
+ */
 @NotNullByDefault
 public final class CatalogClient {
-	/// The catalogue the launcher last read, if it read one.
 	private static volatile @Nullable Catalog lastCatalog;
 
 	private CatalogClient() {
 	}
 
-	/// Looks a package up in the catalogue the launcher last read.
-	///
-	/// The catalogue is already held for the market page, so a page that wants to
-	/// describe one plugin can ask for it rather than fetching four megabytes of
-	/// entries again.
-	///
-	/// @param packageName the npm package name
-	/// @return the entry, or empty when the catalogue does not hold it
+	/**
+	 * Looks a package up in the catalogue the launcher last read.
+	 *
+	 * @param packageName the npm package name
+	 * @return the entry, or empty when the catalogue does not hold it
+	 */
 	public static Optional<Plugin> find(String packageName) {
 		Catalog catalog = lastCatalog;
 		if (catalog == null || packageName == null || packageName.isBlank()) {
@@ -85,32 +79,23 @@ public final class CatalogClient {
 		return Optional.empty();
 	}
 
-	/// Reads the catalogue from every source that answers.
-	///
-	/// @return the catalogue
-	/// @throws DshException when no source could be read and no copy was kept
+	/**
+	 * Reads the catalogue from every source that answers.
+	 *
+	 * @return the catalogue
+	 * @throws DshException when no source could be read and no copy was kept
+	 */
 	public static Catalog fetch() throws DshException {
 		return fetch(CatalogSources.sources());
 	}
 
-	/// Reads the catalogue from the given sources, in the given order.
-	///
-	/// Every source that answers contributes its entries, and one that does not
-	/// is reported in [Catalog#unreadable] rather than failing the read: a
-	/// catalogue made of several places is worth having precisely when one of
-	/// them is down. Each source's own copy is kept as it arrives, so an
-	/// unreachable source can still be shown from the last time it answered —
-	/// which is what makes the *third* read of a mutli-source catalogue as good
-	/// as the first on a network that has gone away.
-	///
-	/// The order is the tie-break: two sources listing the same plugin are one
-	/// plugin, and the one that comes first is the one kept. The list the user
-	/// arranged is therefore the order of authority, and putting a mirror first
-	/// is how somebody says "prefer this one".
-	///
-	/// @param sources the sources to read
-	/// @return the catalogue
-	/// @throws DshException when no source could be read and no copy was kept
+	/**
+	 * Reads the catalogue from the given sources, in the given order.
+	 *
+	 * @param sources the sources to read
+	 * @return the catalogue
+	 * @throws DshException when no source could be read and no copy was kept
+	 */
 	public static Catalog fetch(List<String> sources) throws DshException {
 		List<Catalog> answered = new ArrayList<>();
 		List<String> unreadable = new ArrayList<>();
@@ -126,9 +111,6 @@ public final class CatalogClient {
 			} catch (IOException | RuntimeException direct) {
 				String kept = readCached(cached);
 				if (kept != null) {
-					// Worth more than nothing, and worth saying: a launcher that
-					// cannot reach a catalogue can still show what it showed
-					// yesterday, and the person can see that is what happened.
 					LOG.info("The plugin catalogue at " + source + " could not be read (" + direct.getMessage() +
 					         "); using the copy kept at " + cached);
 					try {
@@ -136,8 +118,7 @@ public final class CatalogClient {
 						unreadable.add(source);
 						continue;
 					} catch (RuntimeException stale) {
-						// The copy is not a catalogue any more. Fall through to
-						// the failure it stands for.
+						// Ignored if cached copy is invalid
 					}
 				}
 				LOG.info("The plugin catalogue at " + source + " could not be read: " + direct.getMessage());
@@ -147,10 +128,7 @@ public final class CatalogClient {
 		}
 
 		if (answered.isEmpty()) {
-			// Nothing answered, so the rescue is tried: the same document, through
-			// a registry rather than a host. It is read *only* here — reading it
-			// beside a source that answered would be reading the same catalogue
-			// twice, and every source costs a couple of megabytes.
+			// Fall back to npm rescue source if all configured sources failed
 			String rescue = CatalogSources.fallbackSource();
 			if (sources.stream().noneMatch(rescue::equalsIgnoreCase)) {
 				Path cached = cachedFile(rescue);
@@ -169,7 +147,7 @@ public final class CatalogClient {
 							lastCatalog = catalog;
 							return catalog;
 						} catch (RuntimeException stale) {
-							// The copy is not a catalogue any more.
+							// Ignored if cached copy is invalid
 						}
 					}
 					reasons.add(rescue + " (" + viaNpm.getMessage() + ")");
@@ -184,11 +162,6 @@ public final class CatalogClient {
 		return catalog;
 	}
 
-	/// Reads one source's document.
-	///
-	/// @param source an address or an npm package name
-	/// @return the catalogue document
-	/// @throws IOException when it cannot be read
 	private static String readSource(String source) throws IOException {
 		if (CatalogSources.isPackageSource(source)) {
 			return fetchFromNpm(source);
@@ -196,10 +169,6 @@ public final class CatalogClient {
 		return NetworkUtils.doGet(URI.create(source.trim()));
 	}
 
-	/// Keeps a copy of the catalogue so a later fetch has something to fall back on.
-	///
-	/// @param cached where to keep it
-	/// @param body   the catalogue
 	private static void keepCopy(Path cached, String body) {
 		try {
 			Files.createDirectories(cached.getParent());
@@ -209,17 +178,6 @@ public final class CatalogClient {
 		}
 	}
 
-	/// Reads the catalogue out of an npm package that publishes one.
-	///
-	/// Two requests: the package's metadata names the archive, and the archive holds the same
-	/// `plugins.json` the community host serves. Both go to the registry the machine's own `npm`
-	/// is configured to use, which is why this works on a network where the community host does
-	/// not.
-	///
-	/// @param packageName the package to read, which is [NPM_CATALOG_PACKAGE] unless a source named
-	///                    another one
-	/// @return the catalogue
-	/// @throws IOException when either request fails or the archive holds no catalogue
 	private static String fetchFromNpm(String packageName) throws IOException {
 		String registry = npmRegistry();
 		String metadataUrl = registry + "/" + packageName + "/latest";
@@ -233,8 +191,7 @@ public final class CatalogClient {
 
 		byte[] archive = downloadBytes(URI.create(tarball.getAsString()));
 
-		// The tar reader wants the whole archive rather than a stream, so the gzip layer is taken
-		// off first. The catalogue is about a megabyte compressed, which is a fine size to hold.
+		// Decompress gzip layer before reading tar entries
 		byte[] tar;
 		try (InputStream unzipped = new GZIPInputStream(new ByteArrayInputStream(archive))) {
 			tar = unzipped.readAllBytes();
@@ -251,14 +208,6 @@ public final class CatalogClient {
 		throw new IOException("the archive holds no plugins.json");
 	}
 
-	/// Downloads an address into memory.
-	///
-	/// The catalogue's archive is small and is parsed from a byte array, so it is read whole
-	/// rather than spilled to a file that would then have to be cleaned up.
-	///
-	/// @param uri the address
-	/// @return its body
-	/// @throws IOException when it cannot be read
 	private static byte[] downloadBytes(URI uri) throws IOException {
 		URLConnection connection = NetworkUtils.createConnection(uri);
 		if (connection instanceof HttpURLConnection http) {
@@ -269,14 +218,11 @@ public final class CatalogClient {
 		}
 	}
 
-	/// Returns the registry the machine's npm is configured to use.
-	///
-	/// Read from `npm config get registry` rather than from a file, because that is the command
-	/// whose answers npm itself acts on: it accounts for the project's `.npmrc`, the user's, the
-	/// global one and the built-in default, in the order npm does. Falling back to the public
-	/// registry keeps this working when npm is missing.
-	///
-	/// @return the registry's base address, without a trailing slash
+	/**
+	 * Returns the registry the machine's npm is configured to use.
+	 *
+	 * @return the registry's base address, without a trailing slash
+	 */
 	public static String npmRegistry() {
 		try {
 			DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
@@ -287,9 +233,7 @@ public final class CatalogClient {
 				                                                  "registry"));
 				if (result.isSuccess()) {
 					String configured = result.text().strip();
-					// npm prints a warning on the same stream when it dislikes something, so the
-					// answer is the last line that looks like an address rather than the whole
-					// output.
+					// Take the last valid URL line from npm output
 					for (String line : configured.lines().toList().reversed()) {
 						String candidate = line.strip();
 						if (candidate.startsWith("http://") || candidate.startsWith("https://")) {
@@ -307,9 +251,11 @@ public final class CatalogClient {
 		return "https://registry.npmjs.org";
 	}
 
-	/// Returns the directory the launcher keeps fetched catalogues in.
-	///
-	/// @return the directory, which may not exist
+	/**
+	 * Returns the directory the launcher keeps fetched catalogues in.
+	 *
+	 * @return the directory, which may not exist
+	 */
 	public static Path cacheDirectory() {
 		try {
 			LauncherSettings settings = SettingsManager.settings();
@@ -323,13 +269,12 @@ public final class CatalogClient {
 		return DshPaths.CATALOG;
 	}
 
-	/// Returns the file one address's copy is kept in.
-	///
-	/// The name comes from the address, so pointing the launcher at another catalogue does not
-	/// overwrite the copy of the first one.
-	///
-	/// @param url the address
-	/// @return the file, which may not exist
+	/**
+	 * Returns the file one address's copy is kept in.
+	 *
+	 * @param url the address
+	 * @return the file, which may not exist
+	 */
 	public static Path cachedFile(String url) {
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -343,10 +288,6 @@ public final class CatalogClient {
 		}
 	}
 
-	/// Reads a kept copy.
-	///
-	/// @param file the file
-	/// @return its text, or `null` when it is not there or cannot be read
 	private static @Nullable String readCached(Path file) {
 		try {
 			return Files.isRegularFile(file) ? Files.readString(file) : null;
@@ -355,9 +296,11 @@ public final class CatalogClient {
 		}
 	}
 
-	/// Removes every kept copy.
-	///
-	/// @return how many files were removed
+	/**
+	 * Removes every kept copy.
+	 *
+	 * @return how many files were removed
+	 */
 	public static int clearCache() {
 		Path directory = cacheDirectory();
 		if (!Files.isDirectory(directory)) {
@@ -382,3 +325,4 @@ public final class CatalogClient {
 		return removed;
 	}
 }
+

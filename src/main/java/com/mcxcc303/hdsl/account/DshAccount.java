@@ -41,66 +41,36 @@ import java.util.Map;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
-/// An account: a vendor and the key that is allowed to speak for it.
-///
-/// The original's accounts are logins it performs on the user's behalf; there is no login here,
-/// because DeepSeek Harness is not a service with accounts — it is a program that talks to whichever
-/// model supplier it is configured with. So the thing that stands in the same place is a key: what
-/// the launcher can hold, check, and hand to an instance.
-///
-/// The key is kept in the launcher's own settings, which already holds this machine's proxy
-/// password. It is not written into an instance, a profile or a pack.
-///
-/// @param vendorId the vendor's id, which is also the route name in the harness
-/// @param apiKey   the key
-/// @param baseUrl  the endpoint, for a vendor whose address is per account; empty otherwise
-/// @param label    what the person calls this account, for telling two of them apart
+/**
+ * Model supplier account definition, credentials, and verification routines.
+ *
+ * @param kind     the account kind (official, third-party, or offline)
+ * @param vendorId the vendor identifier and harness route name
+ * @param apiKey   the API key credential
+ * @param baseUrl  custom endpoint URL, or {@code null}
+ * @param label    user-defined display label, or {@code null}
+ * @param model    default model identifier, or {@code null}
+ * @param skin     custom skin choice, or {@code null}
+ */
 public record DshAccount(
-		/// Which kind of account this is.
-		///
-		/// A kind rather than a flag, because the two answer different questions. An **official** or
-		/// **third-party** account is a key: the launcher hands it to the harness so the harness can
-		/// talk to a supplier, and it is worth checking that the key still works before a launch. An
-		/// **offline** account is a name and a face: nothing is handed to anybody, nothing is
-		/// checked, and what it is for is being able to launch the harness the way it was configured
-		/// by hand — which is a real arrangement and not an omission, the same way the original's
-		/// offline mode lets somebody play without a login.
 		AccountKind kind, String vendorId, String apiKey, @Nullable String baseUrl, @Nullable String label,
-		/// The model the harness should start with on this account's route, or empty.
-		///
-		/// Empty is a real answer and the default one: which model a route offers is the vendor's
-		/// catalogue to describe, and the harness refuses to start on a default it cannot resolve,
-		/// so a name invented here would turn a convenience into a launch that fails.
 		@Nullable String model,
-
-		/// How this account's skin was chosen.
-		///
-		/// Stored as the *choice* rather than as the picture, as the original does: a picture alone
-		/// cannot answer "which of the launcher's own skins is this", and so cannot draw the chooser
-		/// in the state it was left in. Empty means the body's own default.
 		@Nullable DshSkinChoice skin) {
 
-	/// How long a key check is given.
 	private static final Duration TIMEOUT = Duration.ofSeconds(20);
-	/// How the launcher's own requests name themselves.
-	///
-	/// The harness identifies itself on every request it makes to a supplier, in the same shape:
-	/// `product/version (+homepage)`. A request that names nobody is the one a proxy or a gateway is
-	/// most willing to turn away, and this machine's launcher being the caller is something the
-	/// supplier may as well be told.
 	private static final String USER_AGENT =
 			Metadata.NAME + "/" + Metadata.VERSION + " (+" + Metadata.HOMEPAGE_URL + ")";
-	/// The protocol whose listing lives under a `/v1` root rather than beside the address.
 	private static final String ANTHROPIC_API = "anthropic-messages";
-	/// The largest model-list page Anthropic's public endpoint accepts.
 	private static final int ANTHROPIC_MODEL_LIMIT = 1000;
 
-	/// Creates an official or third-party account with no model named.
-	///
-	/// @param vendorId the vendor's id
-	/// @param apiKey   the key
-	/// @param baseUrl  the endpoint, or `null`
-	/// @param label    what the person calls it, or `null`
+	/**
+	 * Creates an official or third-party account without a configured default model.
+	 *
+	 * @param vendorId the vendor identifier
+	 * @param apiKey   the API key
+	 * @param baseUrl  the endpoint URL, or {@code null}
+	 * @param label    display label, or {@code null}
+	 */
 	public DshAccount(String vendorId, String apiKey, @Nullable String baseUrl, @Nullable String label) {
 		this(vendorId.equals(DshVendor.offered().get(0).id()) ? AccountKind.OFFICIAL : AccountKind.THIRD_PARTY,
 		     vendorId,
@@ -111,13 +81,15 @@ public record DshAccount(
 		     null);
 	}
 
-	/// Creates an account of a stated kind, naming no model.
-	///
-	/// @param kind     the kind
-	/// @param vendorId the vendor's id
-	/// @param apiKey   the key
-	/// @param baseUrl  the endpoint, or `null`
-	/// @param label    what the person calls it, or `null`
+	/**
+	 * Creates an account of a specified kind without a configured default model.
+	 *
+	 * @param kind     the account kind
+	 * @param vendorId the vendor identifier
+	 * @param apiKey   the API key
+	 * @param baseUrl  the endpoint URL, or {@code null}
+	 * @param label    display label, or {@code null}
+	 */
 	public DshAccount(AccountKind kind,
 	                  String vendorId,
 	                  String apiKey,
@@ -126,38 +98,32 @@ public record DshAccount(
 		this(kind, vendorId, apiKey, baseUrl, label, null, null);
 	}
 
-	/// Creates an offline account: a name, and nothing to check or hand over.
-	///
-	/// @param label the name
-	/// @return the account
+	/**
+	 * Creates an offline account with no API key or remote endpoints.
+	 *
+	 * @param label the account label
+	 * @return the offline account
+	 */
 	public static DshAccount offline(String label) {
 		return new DshAccount(AccountKind.OFFLINE, "offline", "", null, label, null, null);
 	}
 
-	/// Reports whether a name can be used as a route name in the harness.
-	///
-	/// The name an account is given becomes the name of the supplier the harness is handed, so it
-	/// has to be something the harness can address: letters, digits, and the three separators a
-	/// route name is made of. A space would arrive as two arguments' worth of something the harness
-	/// cannot find, and a colon would end the YAML key early.
-	///
-	/// @param name the name
-	/// @return whether it may be used
+	/**
+	 * Reports whether a name can be used as a harness route identifier.
+	 *
+	 * @param name the candidate name
+	 * @return true if valid as a route identifier
+	 */
 	public static boolean isUsableName(@Nullable String name) {
 		return name != null && name.matches("[A-Za-z0-9][A-Za-z0-9._-]*");
 	}
 
-	/// Asks an address for its model list, without a key.
-	///
-	/// This is what tells a person who pasted an address that is not in the catalogue whether they
-	/// have found a supplier or mistyped a hostname. The call is the one every OpenAI-compatible
-	/// service has — `{address}/models`, the protocol the supplier being added will speak — and both
-	/// halves of the answer are read, because either alone says the wrong thing: a status without a
-	/// body accepts a page that answers `200` to everything, and a body without a status cannot tell
-	/// "wants a key" from "nothing is listening".
-	///
-	/// @param baseUrl the address, without `/models`
-	/// @return what it answered
+	/**
+	 * Queries an endpoint's model listing without providing an API key.
+	 *
+	 * @param baseUrl the base endpoint URL
+	 * @return the response answer
+	 */
 	public static Answer ask(String baseUrl) {
 		if (baseUrl == null || baseUrl.isBlank()) {
 			return new Answer(-1, false);
@@ -191,15 +157,12 @@ public record DshAccount(
 		}
 	}
 
-	/// Reports whether an answer's body is a model listing.
-	///
-	/// The **shape** and not the contents: a listing with no models in it is still a listing, and a
-	/// supplier that hides its models until it is given a key answers with one. A body that is not
-	/// JSON, or is JSON that holds neither a `data` array nor a `models` object, is a page or an
-	/// error message — not something a model list can be read out of.
-	///
-	/// @param body the answer
-	/// @return whether it is a listing
+	/**
+	 * Reports whether a response body parses as a JSON model listing.
+	 *
+	 * @param body the response body
+	 * @return true if containing models array or object
+	 */
 	static boolean looksLikeAListing(@Nullable String body) {
 		if (body == null || body.isBlank()) {
 			return false;
@@ -221,18 +184,13 @@ public record DshAccount(
 		}
 	}
 
-	/// Returns the address a supplier lists its models at.
-	///
-	/// The protocols do not agree on where that is, and the harness's own discovery module is the
-	/// authority on the difference: an OpenAI protocol lists at `{baseURL}/models`, while Anthropic
-	/// Messages lists at `{root}/v1/models`, the root being the address without its trailing slashes
-	/// and without one trailing `/v1` — gateway documentation publishes both spellings of the same
-	/// root. Asking Anthropic's dialect at `{baseURL}/models` is a 404, and a 404 here is a route
-	/// with no models at all. The query bound is Anthropic's own, and one page is read.
-	///
-	/// @param address the account's endpoint
-	/// @param api     the wire protocol the supplier speaks
-	/// @return the address to list from
+	/**
+	 * Constructs the full models listing URL for an address and protocol.
+	 *
+	 * @param address the endpoint URL
+	 * @param api     the wire protocol name
+	 * @return the models listing URL
+	 */
 	static String listingUrl(String address, String api) {
 		String base = address.replaceAll("/+$", "");
 		if (!ANTHROPIC_API.equals(api)) {
@@ -242,15 +200,12 @@ public record DshAccount(
 		return root + "/v1/models?limit=" + ANTHROPIC_MODEL_LIMIT;
 	}
 
-	/// Reads what a vendor said about a request it refused.
-	///
-	/// The fields services put their reason in and no others: `message`, `error.message`, or a bare
-	/// `error` string. A body that is a page rather than an answer carries none of them. What it says
-	/// is passed on whole — it is shown in a dialog, where the length costs nothing — on one line,
-	/// because a reason broken across lines reads worse than one that is not.
-	///
-	/// @param body the answer
-	/// @return what it said, or `null` when it said nothing readable
+	/**
+	 * Extracts an error message from a refused response body.
+	 *
+	 * @param body the response body
+	 * @return the extracted message, or {@code null}
+	 */
 	static @Nullable String saidIn(@Nullable String body) {
 		if (body == null || body.isBlank()) {
 			return null;
@@ -278,10 +233,6 @@ public record DshAccount(
 		}
 	}
 
-	/// Returns a reason held in one JSON value, when it is one.
-	///
-	/// @param element the value
-	/// @return the text, or `null` when there is none
 	private static @Nullable String saidInValue(@Nullable JsonElement element) {
 		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
 			return null;
@@ -290,16 +241,12 @@ public record DshAccount(
 		return value.isBlank() ? null : value;
 	}
 
-	/// Reads model ids out of what a listing endpoint answered.
-	///
-	/// Two shapes are read, because two are published: the `data` array OpenAI-compatible services
-	/// share, and the `models` map some gateways expose instead. In the map the **key** is the id —
-	/// that is what the harness's own reader takes it for — and an entry's own `id` is read only
-	/// where the key says nothing. Anything else is not a model list, and saying so by returning
-	/// nothing is better than writing a model the harness will fail to find.
-	///
-	/// @param body the answer
-	/// @return the ids, or empty when the body is not a model list
+	/**
+	 * Extracts model identifiers from a response body.
+	 *
+	 * @param body the response body
+	 * @return list of model identifiers
+	 */
 	static List<String> readModelIds(@Nullable String body) {
 		if (body == null || body.isBlank()) {
 			return List.of();
@@ -324,8 +271,6 @@ public record DshAccount(
 					for (Map.Entry<String, JsonElement> entry : models.getAsJsonObject().entrySet()) {
 						JsonElement value = entry.getValue();
 						if (value == null || !value.isJsonObject()) {
-							// What the harness's own reader skips, for the same reason: a value that
-							// is not an object describes no model.
 							continue;
 						}
 						String key = entry.getKey();
@@ -339,10 +284,6 @@ public record DshAccount(
 		}
 	}
 
-	/// Returns the `id` an entry carries, or `null` when it carries none.
-	///
-	/// @param entry the entry
-	/// @return the id
 	private static @Nullable String idOf(JsonObject entry) {
 		JsonElement id = entry.get("id");
 		if (id == null || !id.isJsonPrimitive() || !id.getAsJsonPrimitive().isString()) {
@@ -352,28 +293,18 @@ public record DshAccount(
 		return text.isBlank() ? null : text;
 	}
 
-	/// Adds an id to a list, once, ignoring one that is not an id.
-	///
-	/// @param ids the list
-	/// @param id  the candidate, or `null`
 	private static void addModelId(List<String> ids, @Nullable String id) {
 		if (id != null && !id.isBlank() && !ids.contains(id)) {
 			ids.add(id);
 		}
 	}
 
-	/// Returns the account an instance launches with.
-	///
-	/// The instance's own choice wins; then the account the person selected on the accounts page;
-	/// then the first one the launcher holds. A person with one account means it for everything, and
-	/// making them repeat that per instance would be asking a question with one answer.
-	///
-	/// The selection is read here because it is the whole of what choosing an account does. It used
-	/// to stop at the list's first entry, which made "use the offline account" a choice that changed
-	/// nothing: the launch went on using whichever account happened to be stored first, key and all.
-	///
-	/// @param instance the instance
-	/// @return the account, or `null` when there is none to use
+	/**
+	 * Resolves the account configured for an instance launch.
+	 *
+	 * @param instance the target instance
+	 * @return the account to launch with, or {@code null}
+	 */
 	public static @Nullable DshAccount forInstance(DshInstance instance) {
 		try {
 			List<DshAccount> accounts = SettingsManager.settings().getAccounts();
@@ -387,8 +318,6 @@ public record DshAccount(
 						return account;
 					}
 				}
-				// The account it named is gone. Falling back to another would launch with a key
-				// nobody chose, so it launches with none and says so.
 				Logger.LOG.warning("Instance " + instance.id() + " names an account that no longer exists: " + chosen);
 				return null;
 			}
@@ -400,75 +329,76 @@ public record DshAccount(
 		}
 	}
 
-	/// Returns the skin choice, never `null`.
-	///
-	/// @return the choice, or the default one
+	/**
+	 * Returns the configured skin choice, or the default choice if unset.
+	 *
+	 * @return the skin choice
+	 */
 	public DshSkinChoice skinOrDefault() {
 		return skin == null ? DshSkinChoice.DEFAULT : skin;
 	}
 
-	/// Returns a copy with a different skin.
-	///
-	/// @param newSkin the choice
-	/// @return the copy
+	/**
+	 * Returns a copy of this account with an updated skin choice.
+	 *
+	 * @param newSkin the new skin choice
+	 * @return updated account copy
+	 */
 	public DshAccount withSkin(DshSkinChoice newSkin) {
 		return new DshAccount(kind, vendorId, apiKey, baseUrl, label, model, newSkin);
 	}
 
-	/// The vendor this account is for.
-	///
-	/// @return the vendor, or `null` when the id names one this launcher does not offer
+	/**
+	 * Resolves the vendor definition for this account.
+	 *
+	 * @return the vendor, or {@code null} if unknown
+	 */
 	public @Nullable DshVendor vendor() {
 		return DshVendor.byId(vendorId);
 	}
 
-	/// Reports whether this account has anything to hand to the harness.
-	///
-	/// An offline account does not: it is a name and a face, and the launcher must not write a route
-	/// for it, must not set a default model for it, and must not put a key in the child's
-	/// environment. Everything that touches the harness asks this first.
-	///
-	/// @return whether a key travels with this account
+	/**
+	 * Reports whether this account carries a usable API key credential.
+	 *
+	 * @return true if non-offline and API key is present
+	 */
 	public boolean carriesAKey() {
 		return kind != AccountKind.OFFLINE && apiKey != null && !apiKey.isBlank();
 	}
 
-	/// Returns the key that names this account.
-	///
-	/// The vendor id and the label together: a vendor may be used twice with two keys, and the
-	/// label is what tells them apart. Stored on an instance to say which account it launches with,
-	/// so it has to survive being written to a file and read back.
-	///
-	/// @return the key
+	/**
+	 * Returns the unique key identifying this account in settings.
+	 *
+	 * @return compound key string
+	 */
 	public String key() {
 		return vendorId + (label == null || label.isBlank() ? "" : "|" + label.trim());
 	}
 
-	/// Returns the model this account names, or empty.
-	///
-	/// @return the model id
+	/**
+	 * Returns the configured model identifier, or an empty string if unset.
+	 *
+	 * @return the model identifier
+	 */
 	public String modelOrDefault() {
 		return model == null ? "" : model.trim();
 	}
 
-	/// Reports whether this account is the one a key names.
-	///
-	/// @param key the key, or `null`
-	/// @return whether they are the same account
+	/**
+	 * Reports whether this account matches the specified storage key.
+	 *
+	 * @param key the candidate key
+	 * @return true if matching
+	 */
 	public boolean matchesKey(@Nullable String key) {
 		return key != null && key.equals(key());
 	}
 
-	/// Returns the endpoint to talk to.
-	///
-	/// The account's own address wins, so an account can point at a gateway the launcher has never
-	/// heard of; otherwise the address is the vendor's. **The vendor's** includes the suppliers
-	/// somebody added by address, which are not among the ones the launcher ships and so have to be
-	/// looked for where they are kept. Without that second place an account made on a supplier
-	/// somebody added reaches a launch with no address at all: the route is written without a
-	/// `baseURL`, the harness refuses it, and the key it carries cannot even be checked.
-	///
-	/// @return the address, or `null` when neither is known
+	/**
+	 * Returns the resolved endpoint URL for this account.
+	 *
+	 * @return endpoint URL, or {@code null}
+	 */
 	public @Nullable String endpoint() {
 		if (baseUrl != null && !baseUrl.isBlank()) {
 			return baseUrl.trim();
@@ -485,9 +415,11 @@ public record DshAccount(
 		return null;
 	}
 
-	/// Returns what the interface shows for this account.
-	///
-	/// @return the name
+	/**
+	 * Returns the display name shown in the user interface.
+	 *
+	 * @return display name
+	 */
 	public String displayName() {
 		if (label != null && !label.isBlank()) {
 			return label.trim();
@@ -496,9 +428,11 @@ public record DshAccount(
 		return vendor == null ? vendorId : vendor.displayName();
 	}
 
-	/// Returns the key with everything but its ends hidden, for showing on a row.
-	///
-	/// @return the masked key
+	/**
+	 * Returns a masked representation of the API key for display.
+	 *
+	 * @return masked key string
+	 */
 	public String maskedKey() {
 		String key = apiKey == null ? "" : apiKey.trim();
 		if (key.length() <= 8) {
@@ -507,18 +441,11 @@ public record DshAccount(
 		return key.substring(0, 4) + "••••" + key.substring(key.length() - 4);
 	}
 
-	/// Checks the key against the vendor.
-	///
-	/// Done here rather than by asking the harness, and that is not a shortcut: the harness answers
-	/// out of a local catalogue for a vendor it knows and never makes the request, so asking it
-	/// would report success for any string. What actually decides is the vendor's own `/models`
-	/// endpoint, which is the smallest call that requires a valid key and does not spend anything.
-	///
-	/// The distinction that matters is between "the vendor says no" and "the vendor could not be
-	/// reached": only the first means the key is wrong, and a network that cannot reach the endpoint
-	/// must not be reported as a bad key.
-	///
-	/// @return what the check found
+	/**
+	 * Validates the API key by querying the vendor's models listing endpoint.
+	 *
+	 * @return the validation result
+	 */
 	public Check check() {
 		String address = endpoint();
 		if (address == null || address.isBlank()) {
@@ -548,9 +475,6 @@ public record DshAccount(
 				HttpResponse<String> response = client.send(request.build(), HttpResponse.BodyHandlers.ofString());
 				int status = response.statusCode();
 				if (status >= 200 && status < 300) {
-					// The status alone is not the answer: a host that replies `200 Not Found` to
-					// every path would otherwise be reported as a reachable supplier with a working
-					// key. What says the key worked is a model list coming back.
 					return looksLikeAListing(response.body())
 					       ? new Check(Outcome.VALID,
 					                   i18n("dsh.account.check.valid"))
@@ -558,20 +482,12 @@ public record DshAccount(
 					                   i18n("dsh.account.check.no_listing", String.valueOf(status), url));
 				}
 				if (status == 401 || status == 403) {
-					// What this can and cannot say. An address that did not accept the key is not the
-					// same thing as a key that is wrong, and the status does not tell them apart: one
-					// service answers the identical `401 Token is invalid.` to a request with no key,
-					// with a wrong one, and with a key issued for its other region — the last of which
-					// is a correct key at an address that will never take it. So the sentence names
-					// both possibilities, and repeats whatever the vendor was willing to say.
 					String said = saidIn(response.body());
 					return new Check(Outcome.REJECTED,
 					                 i18n("dsh.account.check.not_accepted",
 					                      String.valueOf(status),
 					                      said == null ? "" : said));
 				}
-				// 404 and 400 are the endpoint answering, which is not the same as the key being
-				// wrong: some gateways do not serve a model list at all.
 				if (status == 404 || status == 400 || status == 405) {
 					return new Check(Outcome.UNKNOWN,
 					                 i18n("dsh.account.check.no_listing", String.valueOf(status), url));
@@ -579,8 +495,6 @@ public record DshAccount(
 				return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.http", String.valueOf(status)));
 			}
 		} catch (IOException e) {
-			// A connection failure often carries no message at all — `ConnectException` from a
-			// closed port says nothing — so the exception's own name is the more useful half.
 			String why =
 					e.getMessage() == null || e.getMessage().isBlank() ? e.getClass().getSimpleName() : e.getMessage();
 			return new Check(Outcome.UNREACHABLE, i18n("dsh.account.check.unreachable", url, why));
@@ -593,21 +507,11 @@ public record DshAccount(
 		}
 	}
 
-	/// Asks the vendor which models it serves.
-	///
-	/// The same call the key check makes — the one endpoint every OpenAI-compatible service has — but
-	/// the answer is read instead of the status. The launcher needs it because a **route it writes
-	/// itself is not in the harness's catalogue**, so the harness cannot fill in that route's model
-	/// list the way it does for a vendor it knows; a route with no models cannot be registered at
-	/// all, so the list has to come from somewhere. Asking the vendor is the same place the harness
-	/// would have got it.
-	///
-	/// **Failure is not an error here.** A launch must not depend on a supplier answering: a network
-	/// that cannot reach it today may reach it tomorrow, and the caller falls back to a name it can
-	/// at least register. Only a 2xx with a readable list is an answer; everything else is "no
-	/// answer", which is why this returns a list rather than throwing.
-	///
-	/// @return the model ids the vendor named, in the order it named them, or empty
+	/**
+	 * Queries the remote vendor for available model identifiers.
+	 *
+	 * @return list of model identifiers served by the vendor
+	 */
 	public List<String> fetchModels() {
 		String address = endpoint();
 		if (address == null || address.isBlank()) {
@@ -649,65 +553,54 @@ public record DshAccount(
 		}
 	}
 
-	/// Which kind of account this is.
-	///
-	/// The names are pinned rather than left to the enum's own spelling, because they are written to
-	/// a file: a rename in the code would otherwise be a rename of the stored format, and every
-	/// account on disk would stop being readable. `THIRD_PARTY` is `third-party` for the same reason
-	/// it is not `thirdParty` — the file is read by people as well as by this program.
+	/**
+	 * Account kind classification.
+	 */
 	public enum AccountKind {
-		/// The vendor the harness itself is built around, added as the leading choice.
 		@SerializedName("official")
 		OFFICIAL,
 
-		/// A supplier somebody asked for by name.
 		@SerializedName("third-party")
 		THIRD_PARTY,
 
-		/// A name and a skin, with nothing handed to the harness and nothing checked.
 		@SerializedName("offline")
 		OFFLINE
 	}
 
-	/// What a key check found.
+	/**
+	 * Key validation check outcome.
+	 */
 	public enum Outcome {
-		/// The vendor accepted the key.
 		VALID,
-		/// The vendor refused the key.
 		REJECTED,
-		/// The endpoint could not be reached, or cannot answer this question.
 		UNREACHABLE,
-		/// The endpoint answered but does not offer the call that would answer it.
 		UNKNOWN
 	}
 
-	/// What an address answered when it was asked for its model list.
-	///
-	/// @param status  the HTTP status, or `-1` when nothing answered at all
-	/// @param listing whether the answer was a model listing
+	/**
+	 * Response from a model listing probe.
+	 *
+	 * @param status  HTTP status code, or -1 on network failure
+	 * @param listing whether the response body resembles a model listing
+	 */
 	public record Answer(int status, boolean listing) {
 
-		/// Reports whether something that lists models answered here.
-		///
-		/// A refusal counts as an answer: `401` and `403` are an API saying it wants a key, which is
-		/// the ordinary thing to hear when adding a supplier, before there is one to send.
-		///
-		/// A `2xx` alone does not. The status says a server replied, and a server that answers
-		/// everything with `200 Not Found` — a site behind a proxy that serves a page for every path
-		/// — is exactly the address this must refuse: taking the status for the answer is how one
-		/// was added as a supplier, and a supplier that lists no models is a route that cannot be
-		/// built. What the harness's own discovery reads is the body, and so does this.
-		///
-		/// @return whether a model API is there
+		/**
+		 * Reports whether the endpoint appears to host a model API.
+		 *
+		 * @return true if the response was a listing or auth challenge
+		 */
 		public boolean listsModels() {
 			return listing || status == 401 || status == 403;
 		}
 	}
 
-	/// What a check found, and why.
-	///
-	/// @param outcome what happened
-	/// @param message a sentence for the person who pressed the button
+	/**
+	 * Outcome and human-readable message from an account credential check.
+	 *
+	 * @param outcome check outcome status
+	 * @param message localized result message
+	 */
 	public record Check(Outcome outcome, String message) {
 	}
 }

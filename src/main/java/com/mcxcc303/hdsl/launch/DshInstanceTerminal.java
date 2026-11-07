@@ -46,7 +46,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  * <li>toolchain</li>
  * </ol>
  * <p>
- * Creates a `#!/usr/bin/env bash` file on Linux, or a batch file on Windows.
+ * Creates a {@code #!/usr/bin/env bash} file on Linux, or a batch file on Windows.
  */
 @NotNullByDefault
 public final class DshInstanceTerminal {

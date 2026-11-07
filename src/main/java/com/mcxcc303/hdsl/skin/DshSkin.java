@@ -45,102 +45,52 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/// The skin this launcher wears.
-///
-/// Ported from the original's texture handling, minus the half of it that has nothing to do with
-/// drawing. That half arranged uploading a skin to Mojang and fetching one back for a signed-in
-/// account; there is no login here, so there is nothing for it to talk to. What is left is the part
-/// that is actually about pictures, and it is the whole of what a preview needs:
-///
-/// - read a PNG from a file,
-/// - normalise it, because a skin is one of **two** shapes and only one of them is the current one,
-/// - decide whether it is the slim model, which is a property of the picture rather than a setting,
-/// - keep the result, and hand it out without reading the file again.
-///
-/// Storage is one file in the launcher's own directory. A skin belongs to the person using the
-/// account, not to the launcher: the original keeps one per account, offline ones included, which is
-/// why two accounts can wear different faces. A single launcher-wide skin is what made changing one
-/// change them all.
+/**
+ * Skin and cape texture management, storage, normalization, and caching.
+ */
 @NotNullByDefault
 public final class DshSkin {
-	/// Where chosen skins are kept, inside the launcher's data directory.
-	///
-	/// One file per account, named after the account's key. A key is not a legal file name as it
-	/// stands — it is `vendor|name`, and a separator or a slash in it would escape the directory —
-	/// so it is hashed: the file names are opaque and stable, which is all they need to be.
 	private static final String DIRECTORY = "skins";
-
-	/// The name a skin's file has inside [#DIRECTORY].
 	private static final String SUFFIX = ".png";
-	/// What each account's skin came to, keyed by the account's key.
-	///
-	/// Keyed rather than held once, because the answer is now per account: a menu that lists several
-	/// accounts draws several faces, and a single cache would have them overwrite one another.
 	private static final Map<String, Loaded> LOADED = new ConcurrentHashMap<>();
-	/// The skin each account wears when it has chosen none.
-	///
-	/// Cached because normalising a picture is real work and the answer never changes, and keyed by
-	/// account because the answer is per account — the launcher picks a different one for each, so a
-	/// single entry would hand every account the same face.
 	private static final Map<String, Loaded> DEFAULTS = new ConcurrentHashMap<>();
-	/// The cape each account wears, or a marker meaning "none".
-	///
-	/// A cape is optional and most accounts have none, so the absence has to be remembered too, or
-	/// every read would go back to the disk to find out the same thing. `Optional` is the marker.
 	private static final Map<String, Optional<Image>> CAPES = new ConcurrentHashMap<>();
-	/// What a cape's file is called, beside the skin's.
 	private static final String CAPE_SUFFIX = "-cape.png";
-	/// A skin that is all one colour, used when even the bundled ones cannot be read.
-	///
-	/// Not an error state and not an empty square: a preview that shows nothing tells a person
-	/// nothing about whether the preview works. It is the **last** resort rather than the first —
-	/// an account with no skin of its own wears the original's own default for it, and this is only
-	/// reached when a bundled picture is missing from the jar.
 	private static @Nullable Image blank;
 
 	private DshSkin() {
 	}
 
-	/// Returns the file an account's skin is kept in.
-	///
-	/// The account's key is hashed rather than used literally: a key is `vendor|name`, so a name
-	/// containing a separator or a slash would put the file somewhere else entirely.
-	///
-	/// @param accountKey the account's key
-	/// @return the path, which may not exist
+	/**
+	 * Returns the path to the account's skin file.
+	 *
+	 * @param accountKey the account's key
+	 * @return the path, which may not exist
+	 */
 	public static Path file(String accountKey) {
 		return Metadata.HMCL_USER_HOME.resolve(DIRECTORY).resolve(hashedName(accountKey) + SUFFIX);
 	}
 
-	/// Returns the file an account's cape is kept in.
-	///
-	/// Beside the skin and named from the same hash, so the two travel together and neither can be
-	/// found without the account they belong to.
-	///
-	/// @param accountKey the account's key
-	/// @return the path, which may not exist
+	/**
+	 * Returns the path to the account's cape file.
+	 *
+	 * @param accountKey the account's key
+	 * @return the path, which may not exist
+	 */
 	public static Path capeFile(String accountKey) {
 		return Metadata.HMCL_USER_HOME.resolve(DIRECTORY).resolve(hashedName(accountKey) + CAPE_SUFFIX);
 	}
 
-	/// Returns the identity the launcher picks an account's default skin from.
-	///
-	/// The original hashes the account's UUID; there is no login here, so there are no UUIDs, and
-	/// the closest honest equivalent is the account's key — which is what makes an account *this*
-	/// account. Hashed through the same name-based scheme the original uses for its offline
-	/// accounts, so the arithmetic in `DefaultSkin.forUuid` is fed something of the same kind: a
-	/// UUID, not an arbitrary string's hash.
-	///
-	/// @param accountKey the account's key
-	/// @return its identity
+	/**
+	 * Returns a deterministic UUID derived from the account's key.
+	 *
+	 * @param accountKey the account's key
+	 * @return the derived UUID
+	 */
 	public static UUID uuidOf(String accountKey) {
 		return UUID.nameUUIDFromBytes(("OfflinePlayer:" + accountKey).getBytes(StandardCharsets.UTF_8));
 	}
 
-	/// Returns the file name for an account's key.
-	///
-	/// @param accountKey the account's key
-	/// @return the name
 	private static String hashedName(String accountKey) {
 		try {
 			byte[] digest = MessageDigest.getInstance("SHA-256").digest(accountKey.getBytes(StandardCharsets.UTF_8));
@@ -150,83 +100,68 @@ public final class DshSkin {
 			}
 			return hex.toString();
 		} catch (NoSuchAlgorithmException e) {
-			// Every JVM has SHA-256; a fallback that cannot collide with a hash is still needed so the
-			// method never throws.
 			return "key-" + Integer.toHexString(accountKey.hashCode());
 		}
 	}
 
-	/// Returns the atlas an account's head is cut out of.
-	///
-	/// The **normalised** atlas, which is what a head can be cut out of. Never `null`: an account
-	/// that has chosen nothing wears the picture its own identity selects, exactly as in the
-	/// original, whose account list draws `TexturesLoader.getDefaultSkin(uuid)` for every row. Only
-	/// the last resort — a bundled file missing from the jar — comes back as the flat picture.
-	///
-	/// This is not what the turning model is given: see [#canvasImage].
-	///
-	/// @param accountKey the account's key
-	/// @return the atlas, never `null`
+	/**
+	 * Returns the normalized 64x64 texture atlas used to extract an account head preview.
+	 *
+	 * @param accountKey the account's key
+	 * @return the normalized atlas
+	 */
 	public static Image headImage(String accountKey) {
 		return load(accountKey).normalized();
 	}
 
-	/// Returns the picture the turning model is given.
-	///
-	/// The picture **as it was read**, not the normalised atlas, and this is not a detail: the
-	/// renderer refuses a picture that reports a size it was decoded to, because it cannot tell such
-	/// a picture from one that was assembled — and a `WritableImage`, which is what normalising
-	/// produces, always reports the size it was made with. Handing the model a normalised atlas
-	/// therefore draws **nothing at all**, silently, with the shape left white and no error
-	/// anywhere. The original feeds its canvas the raw picture for the same reason and lets the
-	/// canvas do its own normalising and enlarging.
-	///
-	/// @param accountKey the account's key
-	/// @return the picture to draw, never `null`
+	/**
+	 * Returns the raw decoded image for rendering in the 3D canvas model.
+	 *
+	 * @param accountKey the account's key
+	 * @return the image to draw
+	 */
 	public static Image canvasImage(String accountKey) {
 		Loaded skin = load(accountKey);
 		return skin.source() != null ? skin.source() : skin.normalized();
 	}
 
-	/// Reads the skin, falling back to the one the account wears by default.
-	///
-	/// This is what the turning model is given: the original shows its own default for an account
-	/// that has chosen none, and the same reasoning holds — a skin chooser that starts blank cannot
-	/// be told apart from one that failed.
-	///
-	/// @return the picture to draw, never `null`
+	/**
+	 * Reads the skin image, falling back to the default skin if unconfigured.
+	 *
+	 * @param accountKey the account's key
+	 * @return the image to draw
+	 */
 	public static Image imageOrFallback(String accountKey) {
 		return canvasImage(accountKey);
 	}
 
-	/// Returns the picture the launcher draws for an account that has chosen no skin.
-	///
-	/// The original's own rule, ported: one of nine bundled skins on one of two bodies, picked by
-	/// the account's identity. Drawing the first bundled skin instead — or a flat placeholder — is
-	/// what made every account look alike before anything was chosen.
-	///
-	/// As with [#canvasImage], the picture **as it was read**: the model cannot draw a normalised
-	/// atlas.
-	///
-	/// @param accountKey the account's key
-	/// @return the picture, never `null`
+	/**
+	 * Returns the default bundled skin image for an account.
+	 *
+	 * @param accountKey the account's key
+	 * @return the default image
+	 */
 	public static Image defaultImage(String accountKey) {
 		Loaded skin = defaultSkin(accountKey);
 		return skin.source() != null ? skin.source() : skin.normalized();
 	}
 
-	/// Reports whether the default picture is drawn on the slim body.
-	///
-	/// @param accountKey the account's key
-	/// @return whether the arms are three pixels wide
+	/**
+	 * Reports whether an account's default skin uses the slim model.
+	 *
+	 * @param accountKey the account's key
+	 * @return true if the default skin is slim
+	 */
 	public static boolean defaultSlim(String accountKey) {
 		return defaultSkin(accountKey).slim();
 	}
 
-	/// Returns the picture an account's cape was read from.
-	///
-	/// @param accountKey the account's key
-	/// @return the cape, or `null` when none has been chosen or it cannot be read
+	/**
+	 * Returns the cape image for an account, or {@code null} if none is set or readable.
+	 *
+	 * @param accountKey the account's key
+	 * @return the cape image, or {@code null}
+	 */
 	public static @Nullable Image cape(String accountKey) {
 		Optional<Image> cached = CAPES.get(accountKey);
 		if (cached != null) {
@@ -237,10 +172,6 @@ public final class DshSkin {
 		return read.orElse(null);
 	}
 
-	/// Reads an account's cape from its file.
-	///
-	/// @param accountKey the account's key
-	/// @return the cape, or `null`
 	private static @Nullable Image readCape(String accountKey) {
 		Path file = capeFile(accountKey);
 		if (!Files.isRegularFile(file)) {
@@ -259,14 +190,13 @@ public final class DshSkin {
 		}
 	}
 
-	/// Copies a file in as the chosen cape, after checking that it is a picture.
-	///
-	/// A cape is not checked for being a *skin*, because it is not one: the original accepts any
-	/// picture here and stretches it over the cloak. Only that it can be read is required, since a
-	/// file that cannot be read would leave the model wearing nothing and the person no wiser.
-	///
-	/// @param source the picture file, or `null` to remove the cape
-	/// @throws DshException when the file cannot be read or written
+	/**
+	 * Copies a file in as the chosen cape, or clears it if source is {@code null}.
+	 *
+	 * @param accountKey the account's key
+	 * @param source     the cape image file, or {@code null} to clear
+	 * @throws DshException if the image cannot be read or written
+	 */
 	public static void setCape(String accountKey, @Nullable Path source) throws DshException {
 		if (source == null) {
 			clearCape(accountKey);
@@ -294,9 +224,12 @@ public final class DshSkin {
 		CAPES.put(accountKey, Optional.of(candidate));
 	}
 
-	/// Forgets the chosen cape.
-	///
-	/// @throws DshException when the file cannot be removed
+	/**
+	 * Removes the chosen cape file and clears the cache for the account.
+	 *
+	 * @param accountKey the account's key
+	 * @throws DshException if the file cannot be removed
+	 */
 	public static void clearCape(String accountKey) throws DshException {
 		try {
 			Files.deleteIfExists(capeFile(accountKey));
@@ -306,32 +239,32 @@ public final class DshSkin {
 		CAPES.put(accountKey, Optional.empty());
 	}
 
-	/// Reports whether a skin has been chosen.
-	///
-	/// @return whether the file is there
+	/**
+	 * Reports whether a custom skin has been saved on disk for this account.
+	 *
+	 * @param accountKey the account's key
+	 * @return true if a skin file is present on disk
+	 */
 	public static boolean isSet(String accountKey) {
 		return load(accountKey).fromDisk();
 	}
 
-	/// Reports whether the chosen skin is the slim model.
-	///
-	/// Read off the picture rather than asked for. The original does the same: whether a skin is
-	/// slim is recorded in its transparent pixels, so a person importing a skin does not have to be
-	/// asked a question the file already answers.
-	///
-	/// @return whether the arms are three pixels wide
+	/**
+	 * Reports whether the account's active skin uses the slim model.
+	 *
+	 * @param accountKey the account's key
+	 * @return true if the skin uses the slim model
+	 */
 	public static boolean isSlim(String accountKey) {
 		return load(accountKey).slim();
 	}
 
-	/// Reports whether a picture describes the slim body.
-	///
-	/// Asked of the picture rather than chosen by the person: whether a skin is slim is recorded in
-	/// its own transparent pixels, so a file already answers the question and asking again would let
-	/// the two disagree.
-	///
-	/// @param picture the picture
-	/// @return whether the arms are three pixels wide, or `false` when it is not a skin at all
+	/**
+	 * Determines whether a skin image uses the slim body model.
+	 *
+	 * @param picture the skin image
+	 * @return true if the image uses the slim model
+	 */
 	public static boolean slimOf(Image picture) {
 		try {
 			return new NormalizedSkin(picture).isSlim();
@@ -340,14 +273,12 @@ public final class DshSkin {
 		}
 	}
 
-	/// Reads a picture from a file without keeping it.
-	///
-	/// For a dialog that has to show what a file looks like before the person has agreed to it:
-	/// nothing is written until they confirm, so nothing they did not choose can replace what they
-	/// had.
-	///
-	/// @param source the image file
-	/// @return the picture, or `null` when it is not a skin
+	/**
+	 * Reads an image from disk without validating or caching it.
+	 *
+	 * @param source the image file
+	 * @return the decoded image, or {@code null} if unreadable
+	 */
 	public static @Nullable Image read(Path source) {
 		try {
 			Image candidate = new Image(Files.newInputStream(source));
@@ -360,10 +291,12 @@ public final class DshSkin {
 		}
 	}
 
-	/// Reports whether a file is a usable skin, without keeping it.
-	///
-	/// @param source the file
-	/// @throws DshException when it is not
+	/**
+	 * Checks whether a file is a valid skin image.
+	 *
+	 * @param source the image file to check
+	 * @throws DshException if the image is missing or invalid
+	 */
 	public static void check(Path source) throws DshException {
 		Image candidate = read(source);
 		if (candidate == null) {
@@ -376,16 +309,14 @@ public final class DshSkin {
 		}
 	}
 
-	/// Keeps an already-read picture as the chosen skin.
-	///
-	/// The body type is stated rather than read off the picture. For an imported file the picture
-	/// decides — that is what makes importing a slim skin switch the arms without being asked — but
-	/// for one of the launcher's own skins the person has just chosen the body, and the two bundled
-	/// pictures are drawn for their own bodies, so the choice is the answer rather than the picture.
-	///
-	/// @param picture the picture
-	/// @param slim    whether the slim body is wanted
-	/// @throws DshException when the picture is not a skin, or cannot be written
+	/**
+	 * Saves a skin image to disk and updates the cache.
+	 *
+	 * @param accountKey the account's key
+	 * @param picture    the skin image
+	 * @param slim       whether the slim body model is requested
+	 * @throws DshException if the image is invalid or cannot be written
+	 */
 	public static void setFromImage(String accountKey, @Nullable Image picture, boolean slim) throws DshException {
 		if (picture == null) {
 			throw new DshException(i18n("dsh.skin.invalid"), null);
@@ -397,8 +328,6 @@ public final class DshSkin {
 			throw new DshException(i18n("dsh.skin.invalid"), e);
 		}
 
-		// The file is written from the normalised atlas, so what is stored is always the current
-		// format whether the picture came from a bundled pair, an old 64x32 file, or anywhere else.
 		Path target = file(accountKey);
 		Image atlas = normalized.getNormalizedTexture();
 		try {
@@ -411,15 +340,6 @@ public final class DshSkin {
 		LOADED.put(accountKey, new Loaded(atlas, picture, slim, true));
 	}
 
-	/// Copies an image out of JavaFX so it can be written.
-	///
-	/// JavaFX can read a PNG and cannot write one, and the launcher has no image encoder of its own;
-	/// the JDK's is reached through `ImageIO`, which needs an `AWT` image. The conversion is a copy
-	/// of the pixels and nothing else — no scaling, no colour management — so a 64-pixel skin stays
-	/// 64 pixels exactly.
-	///
-	/// @param image the image
-	/// @return the same pixels as an AWT image
 	private static BufferedImage toBufferedImage(Image image) {
 		int width = (int) image.getWidth();
 		int height = (int) image.getHeight();
@@ -433,18 +353,16 @@ public final class DshSkin {
 		return out;
 	}
 
-	/// Copies a file in as the chosen skin, after checking that it is one.
-	///
-	/// The check happens before the copy: a file that is not a skin must not replace a good one, or
-	/// a mistyped path would leave the launcher with no skin and no way back except choosing again.
-	///
-	/// @param source the image file
-	/// @throws DshException when the file is not a skin, or cannot be read or written
+	/**
+	 * Validates a skin file, copies it into storage, and updates the cache.
+	 *
+	 * @param accountKey the account's key
+	 * @param source     the skin image file
+	 * @throws DshException if the image is invalid or cannot be saved
+	 */
 	public static void setFrom(String accountKey, Path source) throws DshException {
 		Image candidate;
 		try {
-			// Loaded with its own size requested so the picture is not scaled to a default: the
-			// normaliser reads the dimensions to decide which of the two formats this is.
 			candidate = new Image(Files.newInputStream(source));
 		} catch (IOException | RuntimeException e) {
 			throw new DshException("Could not read " + source, e);
@@ -465,8 +383,6 @@ public final class DshSkin {
 		Path target = file(accountKey);
 		try {
 			Files.createDirectories(target.getParent());
-			// Written beside the target and moved over it, so an interrupted copy cannot leave half
-			// a picture where the launcher expects a whole one.
 			Path staging = target.resolveSibling(target.getFileName() + ".hdsl-writing");
 			Files.copy(source, staging, StandardCopyOption.REPLACE_EXISTING);
 			try {
@@ -481,9 +397,12 @@ public final class DshSkin {
 		LOADED.put(accountKey, new Loaded(normalized.getNormalizedTexture(), candidate, normalized.isSlim(), true));
 	}
 
-	/// Forgets the chosen skin.
-	///
-	/// @throws DshException when the file cannot be removed
+	/**
+	 * Deletes the custom skin file and evicts it from the cache.
+	 *
+	 * @param accountKey the account's key
+	 * @throws DshException if the file cannot be deleted
+	 */
 	public static void clear(String accountKey) throws DshException {
 		try {
 			Files.deleteIfExists(file(accountKey));
@@ -493,13 +412,6 @@ public final class DshSkin {
 		forget(accountKey);
 	}
 
-	/// Reads the file if it has not been read yet.
-	///
-	/// A failure is not thrown at the caller: a skin is decoration, and a launcher that refuses to
-	/// draw because a picture is unreadable would be trading the whole interface for an ornament.
-	///
-	/// @param accountKey the account whose skin is wanted
-	/// @return what its skin came to, with the built-in picture standing in when there is none
 	private static Loaded load(String accountKey) {
 		Loaded cached = LOADED.get(accountKey);
 		if (cached != null) {
@@ -510,10 +422,6 @@ public final class DshSkin {
 		return skin;
 	}
 
-	/// Reads an account's skin from its file.
-	///
-	/// @param accountKey the account
-	/// @return what the file came to
 	private static Loaded readFromDisk(String accountKey) {
 		Path file = file(accountKey);
 		if (!Files.isRegularFile(file)) {
@@ -533,21 +441,10 @@ public final class DshSkin {
 		}
 	}
 
-	/// Reads the skin an account wears when it has chosen none.
-	///
-	/// @param accountKey the account
-	/// @return the default skin, read once per account
 	private static Loaded defaultSkin(String accountKey) {
 		return DEFAULTS.computeIfAbsent(accountKey, DshSkin::chooseDefault);
 	}
 
-	/// Picks and normalises an account's default skin.
-	///
-	/// A bundled file that cannot be read is a packaging mistake, and the flat picture is the answer
-	/// to it rather than a crash: an ornament must not be able to take the interface down.
-	///
-	/// @param accountKey the account
-	/// @return the default skin
 	private static Loaded chooseDefault(String accountKey) {
 		DefaultSkin.Chosen chosen = DefaultSkin.forUuid(uuidOf(accountKey));
 		Image picture = chosen.image();
@@ -562,20 +459,10 @@ public final class DshSkin {
 		}
 	}
 
-	/// Forgets what was read for an account, so the next read goes to the file.
-	///
-	/// @param accountKey the account
 	private static void forget(String accountKey) {
 		LOADED.remove(accountKey);
 	}
 
-	/// Builds the picture drawn when even the bundled skins cannot be read.
-	///
-	/// A flat picture the size of a skin, in the surface colour the interface already uses, so it
-	/// cannot be mistaken for somebody's skin and cannot clash with the theme. Drawing one pixel at
-	/// a time is the cheapest way to make a valid skin without shipping a binary asset.
-	///
-	/// @return the picture
 	private static Image blank() {
 		if (blank == null) {
 			WritableImage image = new WritableImage(64, 64);
@@ -591,29 +478,21 @@ public final class DshSkin {
 		return blank;
 	}
 
-	/// Returns a translated string.
-	///
-	/// @param key the key
-	/// @return the text
 	private static String i18n(String key) {
 		return I18n.i18n(key);
 	}
 
-	/// Reports whether a file looks like a skin by its name.
-	///
-	/// @param name the file name
-	/// @return whether it is worth opening
+	/**
+	 * Reports whether a file name has a supported image extension.
+	 *
+	 * @param name the file name
+	 * @return true if the file name ends with {@code .png}
+	 */
 	public static boolean looksLikeAnImage(String name) {
 		String lower = name.toLowerCase(Locale.ROOT);
 		return lower.endsWith(".png");
 	}
 
-	/// What one account's skin came to when it was read.
-	///
-	/// @param normalized the 64x64 tile atlas, for drawing a head or a body part out of
-	/// @param source     the picture as decoded, which is **not** the same thing — see [#previewImage]
-	/// @param slim       whether the arms are three pixels wide
-	/// @param fromDisk   whether a skin was actually there, as opposed to the default
 	private record Loaded(Image normalized, @Nullable Image source, boolean slim, boolean fromDisk) {
 	}
 }

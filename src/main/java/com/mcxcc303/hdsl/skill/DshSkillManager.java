@@ -69,7 +69,7 @@ public final class DshSkillManager {
 	 *
 	 * @param home   the instance's DSH_HOME
 	 * @param wanted the names to carry, matched against the pack's own name and its on-disk name
-	 * @return the packs, in the order [#list] returns them
+	 * @return the packs, in the order {@link #list} returns them
 	 * @throws DshException when the skills cannot be read
 	 */
 	public static @Unmodifiable List<DshSkill> packable(Path home, Set<String> wanted) throws DshException {
@@ -87,7 +87,7 @@ public final class DshSkillManager {
 	 * Returns the on-disk name of every skill a pack could carry.
 	 *
 	 * @param home the instance's DSH_HOME
-	 * @return the names, ordered as [#list] orders them
+	 * @return the names, ordered as {@link #list} orders them
 	 * @throws DshException when the skills cannot be read
 	 */
 	public static @Unmodifiable List<String> packableNames(Path home) throws DshException {
@@ -103,7 +103,7 @@ public final class DshSkillManager {
 	 *
 	 * @param zip     the archive
 	 * @param skills  the packs to write
-	 * @param onStage receives progress lines, or `null`
+	 * @param onStage receives progress lines, or {@code null}
 	 * @return how many files were written
 	 * @throws DshException when a pack cannot be read
 	 * @throws IOException  when the archive cannot be written
@@ -142,7 +142,7 @@ public final class DshSkillManager {
 	 *
 	 * @param archive the archive
 	 * @param home    the DSH_HOME to read into
-	 * @param onStage receives progress lines, or `null`
+	 * @param onStage receives progress lines, or {@code null}
 	 * @return how many files were written
 	 * @throws DshException when the archive cannot be read
 	 */
@@ -180,26 +180,12 @@ public final class DshSkillManager {
 		return files;
 	}
 
-	/**
-	 * Writes one file into an open archive under a member name.
-	 *
-	 * @param zip  the archive
-	 * @param file the file
-	 * @param name the member name
-	 * @throws IOException when the archive cannot be written
-	 */
 	private static void copyInto(ZipOutputStream zip, Path file, String name) throws IOException {
 		zip.putNextEntry(new ZipEntry(name));
 		Files.copy(file, zip);
 		zip.closeEntry();
 	}
 
-	/**
-	 * Reports a line of progress to whoever is watching.
-	 *
-	 * @param onStage the sink, or `null`
-	 * @param line    the line
-	 */
 	private static void report(@Nullable Consumer<String> onStage, String line) {
 		if (onStage != null) onStage.accept(line);
 	}

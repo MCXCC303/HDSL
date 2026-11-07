@@ -20,35 +20,27 @@ package com.mcxcc303.hdsl.instance;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-/// Whether a new instance keeps its own home.
-///
-/// New instances keep their writable state to themselves by default. Sharing remains an explicit
-/// choice, either for every new instance or only for installations without their own plugins.
+/**
+ * Policy determining whether newly created instances use an isolated home directory.
+ */
 @NotNullByDefault
 public enum DshIsolationPolicy {
-	/// Every new instance keeps its own home.
 	ALWAYS("always"),
-
-	/// A new instance keeps its own home when it is given plugins of its own.
 	WITH_PLUGINS("modded"),
-
-	/// New instances share one home unless somebody says otherwise.
 	NEVER("never");
 
-	/// The value the setting is stored as.
 	private final String id;
 
-	/// Creates a policy.
-	///
-	/// @param id the stored value
 	DshIsolationPolicy(String id) {
 		this.id = id;
 	}
 
-	/// Reads a stored value.
-	///
-	/// @param value the stored value, or `null`
-	/// @return the policy, or [DshIsolationPolicy#ALWAYS] when it is not one
+	/**
+	 * Reads a stored value.
+	 *
+	 * @param value the stored value, or {@code null}
+	 * @return the policy, or {@link #ALWAYS} when it is unrecognized
+	 */
 	public static DshIsolationPolicy of(@Nullable String value) {
 		if (value != null) {
 			for (DshIsolationPolicy policy : values()) {
@@ -60,18 +52,22 @@ public enum DshIsolationPolicy {
 		return ALWAYS;
 	}
 
-	/// Returns the value the setting is stored as.
-	///
-	/// @return the id
+	/**
+	 * Returns the value the setting is stored as.
+	 *
+	 * @return the id
+	 */
 	public String id() {
 		return id;
 	}
 
-	/// Decides how a new instance keeps its state.
-	///
-	/// @param carriesItsOwn whether the installation brings plugins or presets of its own
-	/// @param shared        the mode used when the instance does not keep a home of its own
-	/// @return the mode to create the instance with
+	/**
+	 * Decides how a new instance keeps its state.
+	 *
+	 * @param carriesItsOwn whether the installation brings plugins or presets of its own
+	 * @param shared        the mode used when the instance does not keep a home of its own
+	 * @return the mode to create the instance with
+	 */
 	public DshHomeMode homeMode(boolean carriesItsOwn, DshHomeMode shared) {
 		return switch (this) {
 			case ALWAYS -> DshHomeMode.ISOLATED;

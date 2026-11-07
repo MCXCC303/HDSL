@@ -24,23 +24,21 @@ import org.jetbrains.annotations.Unmodifiable;
 import java.util.Locale;
 import java.util.Set;
 
-/// A DeepSeek Harness release published to the npm registry.
-///
-/// The registry is the only discovery channel: upstream ships no version
-/// manager and no release feed, so `npm view` is the authoritative source.
-///
-/// @param version  the published version string
-/// @param distTags the npm dist-tags that point at this version, such as `latest` or `alpha`
+/**
+ * A DeepSeek Harness release published to the npm registry.
+ *
+ * @param version     the published version string
+ * @param distTags    the npm dist-tags that point at this version, such as {@code latest} or {@code alpha}
+ * @param publishedAt the ISO timestamp when the release was published, or {@code null}
+ */
 @NotNullByDefault
 public record DshRelease(String version, @Unmodifiable Set<String> distTags, @Nullable String publishedAt) {
 
-	/// Classifies a release the way the download page filters them.
-	///
-	/// DeepSeek Harness has published no stable release yet, so `latest` is the
-	/// best available signal for one and the suffix decides the rest. A version
-	/// that is neither is reported as [Type#OTHER] rather than guessed at.
-	///
-	/// @return the release type
+	/**
+	 * Classifies a release for filtering.
+	 *
+	 * @return the release type
+	 */
 	public Type type() {
 		String lower = version.toLowerCase(Locale.ROOT);
 		if (lower.contains("-alpha")) {
@@ -55,26 +53,29 @@ public record DshRelease(String version, @Unmodifiable Set<String> distTags, @Nu
 		return Type.STABLE;
 	}
 
-	/// Reports whether this release is only reachable through a non-`latest` tag.
-	///
-	/// Upstream publishes every release under a channel tag (`alpha`, `rc`, …)
-	/// and only promotes a version to `latest` once it is considered stable.
-	///
-	/// @return whether this is a pre-release
+	/**
+	 * Reports whether this release is only reachable through a non-{@code latest} tag.
+	 *
+	 * @return whether this is a pre-release
+	 */
 	public boolean isPrerelease() {
 		return version.contains("-") && !distTags.contains("latest");
 	}
 
-	/// Reports whether this release is the current `latest` tag.
-	///
-	/// @return whether `latest` points at this version
+	/**
+	 * Reports whether this release is the current {@code latest} tag.
+	 *
+	 * @return whether {@code latest} points at this version
+	 */
 	public boolean isLatest() {
 		return distTags.contains("latest");
 	}
 
-	/// Returns the most specific tag for this release, for display.
-	///
-	/// @return the tag name, or `null` when the version carries none
+	/**
+	 * Returns the most specific tag for this release, for display.
+	 *
+	 * @return the tag name, or {@code null} when the version carries none
+	 */
 	public String primaryTag() {
 		if (isLatest()) {
 			return "latest";
@@ -82,17 +83,14 @@ public record DshRelease(String version, @Unmodifiable Set<String> distTags, @Nu
 		return distTags.stream().sorted().findFirst().orElse(null);
 	}
 
-	/// The kinds of release the download page can filter by.
+	/**
+	 * The kinds of release the download page can filter by.
+	 */
 	public enum Type {
-		/// A release with no pre-release suffix.
 		STABLE("stable"),
-		/// A release candidate.
 		RC("rc"),
-		/// A beta.
 		BETA("beta"),
-		/// An alpha.
 		ALPHA("alpha"),
-		/// Anything that does not match the others.
 		OTHER("other");
 
 		private final String id;
@@ -101,9 +99,11 @@ public record DshRelease(String version, @Unmodifiable Set<String> distTags, @Nu
 			this.id = id;
 		}
 
-		/// Returns the identifier used in settings and translation keys.
-		///
-		/// @return the identifier
+		/**
+		 * Returns the identifier used in settings and translation keys.
+		 *
+		 * @return the identifier
+		 */
 		public String id() {
 			return id;
 		}

@@ -22,27 +22,21 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 
-/// How the browser surface's port is chosen for an instance.
-///
-/// The port is not incidental: DeepSeek Harness keys its browser-facing session
-/// state by origin, so reaching one instance's history through two different
-/// ports lets two writers touch the same history and corrupt it. An instance
-/// therefore keeps one port for its whole life, whichever mode is in use.
+/**
+ * Port selection strategy for the browser surface of an instance.
+ */
 @NotNullByDefault
 public enum DshPortMode {
-	/// Pick a free port on first launch and keep it from then on.
 	AUTO,
-
-	/// Use the port the user chose.
 	FIXED,
-
-	/// Follow the launcher's own policy, which is what an instance starts at.
 	GLOBAL;
 
-	/// Resolves a mode from its stored name.
-	///
-	/// @param value the stored name, possibly `null` or of the wrong case
-	/// @return the matching mode, or [DshPortMode#AUTO] when unrecognised
+	/**
+	 * Resolves a mode from its stored name.
+	 *
+	 * @param value the stored name, possibly {@code null}
+	 * @return the matching mode, or {@link #AUTO} when unrecognised
+	 */
 	public static DshPortMode of(@Nullable String value) {
 		if (value != null) {
 			for (DshPortMode mode : values()) {
@@ -54,9 +48,11 @@ public enum DshPortMode {
 		return AUTO;
 	}
 
-	/// Returns the name used in settings files and on the command line.
-	///
-	/// @return the lower-case name
+	/**
+	 * Returns the name used in settings files and on the command line.
+	 *
+	 * @return the lower-case name
+	 */
 	public String id() {
 		return name().toLowerCase(Locale.ROOT);
 	}

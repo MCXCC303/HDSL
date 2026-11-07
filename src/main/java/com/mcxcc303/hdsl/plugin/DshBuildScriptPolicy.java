@@ -23,37 +23,32 @@ import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-/// What happens when a plugin wants to run an install script.
-///
-/// The script runs with the user's own rights and nobody has read it, which is why a
-/// package manager stops and asks. Every answer is somebody's decision, so the launcher
-/// offers all three rather than choosing: run them without asking, ask every time, or
-/// never run them at all.
+/**
+ * Policy for handling build/install scripts during plugin installation.
+ */
 @NotNullByDefault
 public enum DshBuildScriptPolicy {
-	/// Answer yes and carry on, without asking.
+	/** Run build scripts automatically without prompting. */
 	AUTO("auto"),
 
-	/// Ask, with what is at stake, and do what the person says.
+	/** Prompt the user for approval. */
 	MANUAL("manual"),
 
-	/// Answer no: the package is installed and its script is not run.
+	/** Never run build scripts. */
 	NEVER("never");
 
-	/// The value the setting is stored as.
 	private final String id;
 
-	/// Creates a policy.
-	///
-	/// @param id the stored value
 	DshBuildScriptPolicy(String id) {
 		this.id = id;
 	}
 
-	/// Reads a stored value.
-	///
-	/// @param value the stored value, or `null`
-	/// @return the policy, or `null` when the value is not one
+	/**
+	 * Parses a stored policy identifier.
+	 *
+	 * @param value the stored value, or {@code null}
+	 * @return the policy, or {@code null} if unknown
+	 */
 	public static @Nullable DshBuildScriptPolicy of(@Nullable String value) {
 		if (value == null) {
 			return null;
@@ -63,8 +58,7 @@ public enum DshBuildScriptPolicy {
 				return policy;
 			}
 		}
-		// Written before there were three answers: yes meant run without asking,
-		// and no meant do not run them.
+		// Backward compatibility for boolean strings
 		if (value.equalsIgnoreCase("true")) {
 			return AUTO;
 		}
@@ -74,10 +68,12 @@ public enum DshBuildScriptPolicy {
 		return null;
 	}
 
-	/// Returns the policy an instance runs under.
-	///
-	/// @param instance the instance
-	/// @return the policy, the launcher-wide one when the instance follows it
+	/**
+	 * Returns the build script policy for the given instance.
+	 *
+	 * @param instance the instance
+	 * @return the instance policy, or the launcher default if unset
+	 */
 	public static DshBuildScriptPolicy of(DshInstance instance) {
 		Boolean legacy = DshInstanceSettings.approveBuildScripts(instance);
 		if (legacy != null) {
@@ -88,10 +84,13 @@ public enum DshBuildScriptPolicy {
 		return policy != null ? policy : SettingsManager.settings().buildScriptPolicy();
 	}
 
-	/// Returns the value the setting is stored as.
-	///
-	/// @return the id
+	/**
+	 * Returns the stored identifier.
+	 *
+	 * @return the id
+	 */
 	public String id() {
 		return id;
 	}
 }
+

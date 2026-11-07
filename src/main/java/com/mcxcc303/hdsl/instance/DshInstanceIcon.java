@@ -23,59 +23,28 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Locale;
 
-/// The icon shown for a launcher instance.
-///
-/// The mechanism and the set are HMCL's: an instance carries an icon selection,
-/// the list and the sidebar show it, and the chooser offers the same images the
-/// original does. The mod-loader artwork is kept for that parity — a launcher
-/// that offers fewer choices than the one it is modelled on reads as a
-/// limitation rather than a decision.
-///
-/// The DeepSeek Harness marks lead the set. They were supplied as SVG and are
-/// kept as PNG, which is what every other icon here is and what the image
-/// container reads: HMCL's own icons are inline path data in an enum, and
-/// introducing a second mechanism for three images would not pay for itself.
-///
-/// Each icon is a 32-pixel image with a 64-pixel `@2x` beside it, matching the
-/// set it joins. Rendering the wrong one is not obvious in a still: the
-/// container scales what it is given, so a mis-sized asset looks merely soft.
+/**
+ * Icons available for launcher instances.
+ */
 @NotNullByDefault
 public enum DshInstanceIcon {
-	/// The DeepSeek Harness mark, in colour.
 	DSH_APPLICATION("dsh_application"),
-	/// The DeepSeek Harness mark on a light background.
 	DSH_BLACK("dsh_black"),
-	/// The DeepSeek Harness mark on a dark background.
 	DSH_WHITE("dsh_white"),
-	/// The default icon.
 	DEFAULT("grass"),
-	/// Grass block.
 	GRASS("grass"),
-	/// Chest.
 	CHEST("chest"),
-	/// Chicken.
 	CHICKEN("chicken"),
-	/// Command block.
 	COMMAND("command"),
-	/// The April Fools artwork.
 	APRIL_FOOLS("april_fools"),
-	/// The OptiFine logo.
 	OPTIFINE("optifine"),
-	/// Crafting table.
 	CRAFT_TABLE("craft_table"),
-	/// The Fabric logo.
 	FABRIC("fabric"),
-	/// The Legacy Fabric logo.
 	LEGACY_FABRIC("legacyfabric"),
-	/// The Forge logo.
 	FORGE("forge"),
-	/// The Cleanroom logo.
 	CLEANROOM("cleanroom"),
-	/// The NeoForge logo.
 	NEO_FORGE("neoforge"),
-	/// Furnace.
 	FURNACE("furnace"),
-	/// The Quilt logo.
 	QUILT("quilt");
 
 	private final String asset;
@@ -84,10 +53,12 @@ public enum DshInstanceIcon {
 		this.asset = asset;
 	}
 
-	/// Resolves an icon from its stored identifier.
-	///
-	/// @param value the stored identifier, possibly `null` or unknown
-	/// @return the matching icon, or [DshInstanceIcon#DEFAULT]
+	/**
+	 * Resolves an icon from its stored identifier.
+	 *
+	 * @param value the stored identifier, possibly {@code null} or unknown
+	 * @return the matching icon, or {@link #DEFAULT}
+	 */
 	public static DshInstanceIcon of(@Nullable String value) {
 		if (value != null) {
 			for (DshInstanceIcon icon : values()) {
@@ -99,38 +70,39 @@ public enum DshInstanceIcon {
 		return DEFAULT;
 	}
 
-	/// Returns the identifier stored with an instance.
-	///
-	/// @return the lower-case identifier
+	/**
+	 * Returns the identifier stored with an instance.
+	 *
+	 * @return the lower-case identifier
+	 */
 	public String id() {
 		return name().toLowerCase(Locale.ROOT);
 	}
 
-	/// Returns the bundled image this icon uses.
-	///
-	/// Not the same as [#id]: `DEFAULT` and `GRASS` are separate choices that
-	/// share one image, because a stored choice records what the user picked
-	/// rather than which file it came from.
-	///
-	/// @return the asset name without its extension
+	/**
+	 * Returns the bundled image asset name without its extension.
+	 *
+	 * @return the asset name
+	 */
 	public String assetName() {
 		return asset;
 	}
 
-	/// Loads the icon image from the bundled assets.
-	///
-	/// @return the image, or `null` when the asset is missing
+	/**
+	 * Loads the icon image from the bundled assets.
+	 *
+	 * @return the image, or {@code null} when the asset is missing
+	 */
 	public @Nullable Image load() {
 		return load(1.0);
 	}
 
-	/// Loads the icon at the resolution a display asks for.
-	///
-	/// Uses the `@2x` asset when one is bundled and the screen is dense enough
-	/// to benefit, which is what the rest of the set does.
-	///
-	/// @param scale the display scale, `1.0` for an ordinary screen
-	/// @return the image, or `null` when the asset is missing
+	/**
+	 * Loads the icon image at the requested display scale.
+	 *
+	 * @param scale the display scale, 1.0 for standard resolution
+	 * @return the image, or {@code null} when the asset is missing
+	 */
 	public @Nullable Image load(double scale) {
 		String suffix = scale > 1.5 ? "@2x" : "";
 		var url = DshInstanceIcon.class.getResource("/assets/img/" + asset + suffix + ".png");

@@ -19,43 +19,13 @@ package com.mcxcc303.hdsl.instance;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// Selects which `DSH_HOME` an instance uses.
-///
-/// DeepSeek Harness keeps profiles, sessions, settings and credentials under a
-/// single home directory. Sharing that directory across different `dsh`
-/// versions is unsafe: the module fallback links are rewritten by whichever
-/// version boots last and only ever accumulate, `dsh.profile.bundles` is
-/// rewritten in place, the workspace storage domain has no compatible-version
-/// list, and session logs are refused outright by older builds once the format
-/// moves on.
-///
-/// [#ISOLATED] is therefore the default and the only mode that is safe under
-/// version churn.
+/**
+ * Selects which {@code DSH_HOME} directory an instance uses.
+ */
 @NotNullByDefault
 public enum DshHomeMode {
-	/// Use whatever policy the launcher is set to.
-	///
-	/// The value a new instance is given, so changing the launcher's default
-	/// affects the instances that never chose one and leaves the rest alone.
 	GLOBAL,
-
-	/// The instance owns a private home under its own instance directory.
-	///
-	/// This is the default. Profiles, sessions, settings and credentials are
-	/// fully private to the instance, so installing or upgrading another
-	/// version cannot disturb it.
 	ISOLATED,
-
-	/// All instances of the same `dsh` version share one home.
-	///
-	/// Suitable for deliberately sharing profiles between instances pinned to
-	/// an identical version. The launcher warns about this mode because the
-	/// pinned version must never change while the home is in use.
 	VERSION_SHARED,
-
-	/// The user names the home directory, typically to adopt an existing
-	/// `~/.dsh` installation.
-	///
-	/// HDSL never moves or deletes anything in a custom home.
 	CUSTOM
 }

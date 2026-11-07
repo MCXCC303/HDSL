@@ -32,23 +32,20 @@ import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// What npm publishes: the harness releases, the versions of one package, when they were
-/// published, and the `dist-tags` that point at them.
-///
-/// Every query goes through the runtime's own npm, so a registry mirror or a proxy configured on
-/// the machine is the one the answers come from.
+/**
+ * Queries release and version metadata from the npm registry.
+ */
 @NotNullByDefault
 public final class ReleaseQueries {
 	private ReleaseQueries() {
 	}
 
-	/// Queries the npm registry for every published DeepSeek Harness version.
-	///
-	/// Dist-tags are fetched in a second call and merged in, so the caller can
-	/// tell a stable release from an `alpha` or `rc` snapshot.
-	///
-	/// @return the published releases, newest first
-	/// @throws DshException when no usable npm is available or the query fails
+	/**
+	 * Queries the npm registry for every published DeepSeek Harness version.
+	 *
+	 * @return the published releases, newest first
+	 * @throws DshException when no usable npm is available or the query fails
+	 */
 	public static List<DshRelease> fetchReleases() throws DshException {
 		DshNodeRuntime runtime = HarnessInstaller.requireRuntime();
 		if (!runtime.canInstall()) {
@@ -80,37 +77,36 @@ public final class ReleaseQueries {
 		return releases;
 	}
 
-	/// Reads the published version list from the registry.
-	///
-	/// @param npm the npm executable
-	/// @return the published version strings
-	/// @throws DshException when the query fails or returns unexpected data
+	/**
+	 * Reads the published version list from the registry for the harness package.
+	 *
+	 * @param npm the npm executable
+	 * @return the published version strings
+	 * @throws DshException when the query fails or returns unexpected data
+	 */
 	static Set<String> queryVersions(Path npm) throws DshException {
 		return queryVersions(npm, HarnessInstaller.PACKAGE_NAME);
 	}
 
-	/// Reads a package's published version list from the registry.
-	///
-	/// @param npm the npm executable
-	/// @param pkg the package to read
-	/// @return the published version strings, newest first
-	/// @throws DshException when the query fails or returns unexpected data
+	/**
+	 * Reads a package's published version list from the registry.
+	 *
+	 * @param pkg the package to read
+	 * @return the published version strings, newest first
+	 * @throws DshException when the query fails or returns unexpected data
+	 */
 	public static List<String> fetchPackageVersions(String pkg) throws DshException {
 		return fetchPackageVersions(HarnessInstaller.requireRuntime(), pkg);
 	}
 
-	/// Reads the published version list of one package, using a runtime the caller
-	/// already resolved.
-	///
-	/// An instance that runs on a launcher-managed Node has a runtime of its own, and
-	/// asking whether the machine happens to have one on its path is asking the wrong
-	/// question: the version list of a plugin is read with the runtime the instance
-	/// would HarnessInstaller.install it with.
-	///
-	/// @param runtime the runtime to read with
-	/// @param pkg     the package name
-	/// @return the versions, newest first
-	/// @throws DshException when npm is missing or the registry cannot be reached
+	/**
+	 * Reads the published version list of a package using the provided Node runtime.
+	 *
+	 * @param runtime the runtime to read with
+	 * @param pkg     the package name
+	 * @return the versions, newest first
+	 * @throws DshException when npm is missing or the registry cannot be reached
+	 */
 	public static List<String> fetchPackageVersions(DshNodeRuntime runtime, String pkg) throws DshException {
 		if (!runtime.canInstall()) {
 			throw new DshException(
@@ -121,21 +117,25 @@ public final class ReleaseQueries {
 		return List.copyOf(versions);
 	}
 
-	/// Returns the last few output lines, for an error message.
-	///
-	/// @param lines the captured output
-	/// @return the trailing lines joined by newlines
+	/**
+	 * Returns the trailing output lines for error reporting.
+	 *
+	 * @param lines the captured output
+	 * @return the trailing lines joined by newlines
+	 */
 	static String tail(List<String> lines) {
 		int from = Math.max(0, lines.size() - 12);
 		return String.join("\n", lines.subList(from, lines.size()));
 	}
 
-	/// Reads the published version list of one package from the registry.
-	///
-	/// @param npm the npm executable
-	/// @param pkg the package to read
-	/// @return the published version strings
-	/// @throws DshException when the query fails or returns unexpected data
+	/**
+	 * Reads the published version list of a package from the registry.
+	 *
+	 * @param npm the npm executable
+	 * @param pkg the package to read
+	 * @return the published version strings
+	 * @throws DshException when the query fails or returns unexpected data
+	 */
 	static Set<String> queryVersions(Path npm, String pkg) throws DshException {
 		DshCommand.Result result = runNpmView(npm, pkg, "versions");
 		JsonElement parsed = parseJson(result.text());
@@ -156,16 +156,12 @@ public final class ReleaseQueries {
 		return versions;
 	}
 
-	/// Reads the dist-tag table from the registry.
-	///
-	/// @param npm the npm executable
-	/// @param npm the npm executable
-	/// @return the tag-to-version mapping, empty when the query fails
-	/// Reads when each version was published.
-	///
-	/// A failure is not fatal: the download page shows a version without its
-	/// date rather than refusing to list it.
-	/// @return the version to publication-time map, empty when unavailable
+	/**
+	 * Reads when each version was published.
+	 *
+	 * @param npm the npm executable
+	 * @return the version to publication-time map, empty when unavailable
+	 */
 	static JsonObject queryTimes(Path npm) {
 		try {
 			return asObject(parseJson(runNpmView(npm, "time").text()));
@@ -175,15 +171,12 @@ public final class ReleaseQueries {
 		}
 	}
 
-	/// Returns the object npm answered with.
-	///
-	/// `npm view <package> <field> --json` wraps its answer in an array when the
-	/// field holds one value per package, which is the case for both `time` and
-	/// `dist-tags`. Reading only a bare object silently yields nothing, and the
-	/// symptom is an empty column rather than an error.
-	///
-	/// @param parsed the parsed answer, possibly `null`
-	/// @return the object, or an empty one when there is none
+	/**
+	 * Returns the object npm answered with.
+	 *
+	 * @param parsed the parsed answer, possibly {@code null}
+	 * @return the object, or an empty one when there is none
+	 */
 	static JsonObject asObject(@Nullable JsonElement parsed) {
 		if (parsed == null) {
 			return new JsonObject();
@@ -199,6 +192,12 @@ public final class ReleaseQueries {
 		return parsed.isJsonObject() ? parsed.getAsJsonObject() : new JsonObject();
 	}
 
+	/**
+	 * Reads the dist-tag table from the registry.
+	 *
+	 * @param npm the npm executable
+	 * @return the tag-to-version mapping, empty when the query fails
+	 */
 	static JsonObject queryDistTags(Path npm) {
 		try {
 			return asObject(parseJson(runNpmView(npm, "dist-tags").text()));
@@ -208,23 +207,27 @@ public final class ReleaseQueries {
 		}
 	}
 
-	/// Runs `npm view <package> <field> --json`.
-	///
-	/// @param npm   the npm executable
-	/// @param field the registry field to read
-	/// @return the command result
-	/// @throws DshException when npm cannot be run
+	/**
+	 * Runs {@code npm view <package> <field> --json} for the harness package.
+	 *
+	 * @param npm   the npm executable
+	 * @param field the registry field to read
+	 * @return the command result
+	 * @throws DshException when npm cannot be run
+	 */
 	static DshCommand.Result runNpmView(Path npm, String field) throws DshException {
 		return runNpmView(npm, HarnessInstaller.PACKAGE_NAME, field);
 	}
 
-	/// Runs `npm view <package> <field> --json`.
-	///
-	/// @param npm   the npm executable
-	/// @param pkg   the package to read
-	/// @param field the field to read
-	/// @return the command result
-	/// @throws DshException when the command cannot be run
+	/**
+	 * Runs {@code npm view <package> <field> --json}.
+	 *
+	 * @param npm   the npm executable
+	 * @param pkg   the package to read
+	 * @param field the field to read
+	 * @return the command result
+	 * @throws DshException when the command cannot be run
+	 */
 	static DshCommand.Result runNpmView(Path npm, String pkg, String field) throws DshException {
 		List<String> command = List.of(npm.toString(), "view", pkg, field, "--json");
 		try {
@@ -242,16 +245,12 @@ public final class ReleaseQueries {
 		}
 	}
 
-	/// Parses JSON out of a command's output, returning `null` rather than throwing.
-	///
-	/// npm writes warnings, deprecation notices and progress lines to the same stream as the
-	/// answer, so the output is not JSON — it is some number of lines that are not JSON followed by
-	/// the JSON. Reading from the first line that begins a value is what makes the answer findable
-	/// whatever npm has decided to say first; parsing the whole output works only until the day npm
-	/// has something to say, and then the version list is empty and the error blames the network.
-	///
-	/// @param text the command's output
-	/// @return the parsed element, or `null` when there is no value in it
+	/**
+	 * Parses JSON from command output, returning {@code null} if parsing fails.
+	 *
+	 * @param text the command's output
+	 * @return the parsed element, or {@code null} when no JSON value is found
+	 */
 	static @Nullable JsonElement parseJson(String text) {
 		if (text.isBlank()) {
 			return null;

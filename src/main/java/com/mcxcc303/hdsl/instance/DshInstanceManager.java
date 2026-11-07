@@ -41,41 +41,34 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Creates, enumerates, edits and removes [DshInstance]s.
-///
-/// Where an instance lives and how one is read is [InstanceStore]'s business, and which folders
-/// the launcher looks in is [InstanceFolders]'s; what is left here is an instance's life —
-/// creating one, changing it, renaming it, copying it and removing it — and telling the interface
-/// when any of that happened.  A rename moves the directory inside its own folder and puts back
-/// the plugin paths the profile recorded; a copy is made by describing the original as a pack and
-/// installing it beside itself.
+/**
+ * Creates, enumerates, edits and removes {@link DshInstance}s.
+ */
 @NotNullByDefault
 public final class DshInstanceManager {
-	/// Listeners notified after an instance is created, changed or removed.
-	///
-	/// The manager is the only writer of instance manifests, so announcing
-	/// writes here is what lets the interface observe the folder instead of
-	/// polling it. Callers are notified on the thread that made the change.
 	private static final List<Runnable> CHANGE_LISTENERS = new CopyOnWriteArrayList<>();
 
 	private DshInstanceManager() {
 	}
 
-	/// Registers a listener notified after every write.
-	///
-	/// @param listener the listener
+	/**
+	 * Registers a listener notified after every write.
+	 *
+	 * @param listener the listener
+	 */
 	public static void addChangeListener(Runnable listener) {
 		CHANGE_LISTENERS.add(listener);
 	}
 
-	/// Removes a listener registered by [#addChangeListener].
-	///
-	/// @param listener the listener
+	/**
+	 * Removes a listener registered by {@link #addChangeListener}.
+	 *
+	 * @param listener the listener
+	 */
 	public static void removeChangeListener(Runnable listener) {
 		CHANGE_LISTENERS.remove(listener);
 	}
 
-	/// Tells every listener that the instances on disk have changed.
 	private static void fireChanged() {
 		for (Runnable listener : CHANGE_LISTENERS) {
 			try {
@@ -86,22 +79,20 @@ public final class DshInstanceManager {
 		}
 	}
 
-	/// Creates and persists a new instance.
-	///
-	/// The isolated home directory is created eagerly so that a later launch
-	/// cannot fail merely because the directory is missing.
-	///
-	/// @param id          the instance id, which must be unique and a safe path segment
-	/// @param version     the installed version to pin
-	/// @param profile     the profile to boot
-	/// @param workspace   the directory sessions are scoped to
-	/// @param homeMode    how the `DSH_HOME` is resolved
-	/// @param customHome  the custom home, required when `homeMode` is [DshHomeMode#CUSTOM]
-	/// @param arguments   extra command-line arguments
-	/// @param environment extra environment variables
-	/// @return the created instance
-	/// @throws DshException when the id is taken, the version is not installed,
-	///                       or the instance cannot be written
+	/**
+	 * Creates and persists a new instance.
+	 *
+	 * @param id          the instance id
+	 * @param version     the installed version to pin
+	 * @param profile     the profile to boot
+	 * @param workspace   the directory sessions are scoped to
+	 * @param homeMode    how the {@code DSH_HOME} is resolved
+	 * @param customHome  the custom home, required when {@code homeMode} is {@link DshHomeMode#CUSTOM}
+	 * @param arguments   extra command-line arguments
+	 * @param environment extra environment variables
+	 * @return the created instance
+	 * @throws DshException when the id is taken, the version is not installed, or the instance cannot be written
+	 */
 	public static DshInstance create(String id,
 	                                 String version,
 	                                 String profile,
@@ -121,20 +112,21 @@ public final class DshInstanceManager {
 		              environment);
 	}
 
-	/// Creates and persists a new instance pinned to a Node runtime.
-	///
-	/// @param id          the instance id, which must be unique and a safe path segment
-	/// @param version     the installed version to pin
-	/// @param profile     the profile to boot
-	/// @param workspace   the directory sessions are scoped to
-	/// @param nodeRuntime the Node runtime selection, or `null` for the system runtime
-	/// @param homeMode    how the `DSH_HOME` is resolved
-	/// @param customHome  the custom home, required when `homeMode` is [DshHomeMode#CUSTOM]
-	/// @param arguments   extra command-line arguments
-	/// @param environment extra environment variables
-	/// @return the created instance
-	/// @throws DshException when the id is taken, the version is not installed,
-	///                       or the instance cannot be written
+	/**
+	 * Creates and persists a new instance pinned to a Node runtime.
+	 *
+	 * @param id          the instance id
+	 * @param version     the installed version to pin
+	 * @param profile     the profile to boot
+	 * @param workspace   the directory sessions are scoped to
+	 * @param nodeRuntime the Node runtime selection, or {@code null} for the system runtime
+	 * @param homeMode    how the {@code DSH_HOME} is resolved
+	 * @param customHome  the custom home, required when {@code homeMode} is {@link DshHomeMode#CUSTOM}
+	 * @param arguments   extra command-line arguments
+	 * @param environment extra environment variables
+	 * @return the created instance
+	 * @throws DshException when the id is taken, the version is not installed, or the instance cannot be written
+	 */
 	public static DshInstance create(String id,
 	                                 String version,
 	                                 String profile,
@@ -156,28 +148,22 @@ public final class DshInstanceManager {
 		              InstanceFolders.currentFolder());
 	}
 
-	/// Creates and persists a new instance in a folder of the caller's choosing.
-	///
-	/// The folder is where the instance's own directory is made: it holds the
-	/// copy of DeepSeek Harness the instance runs, the plugin files it was given
-	/// and, for an isolated home, its profile and sessions. A person who added a
-	/// folder did so to keep instances there, so this is what "install an
-	/// instance" has to be given — the folder they are looking at — rather than
-	/// the one the launcher owns.
-	///
-	/// @param id          the instance id, which must be unique and a safe path segment
-	/// @param version     the installed version to pin
-	/// @param profile     the profile to boot
-	/// @param workspace   the directory sessions are scoped to
-	/// @param nodeRuntime the Node runtime selection, or `null` for the system runtime
-	/// @param homeMode    how the `DSH_HOME` is resolved
-	/// @param customHome  the custom home, required when `homeMode` is [DshHomeMode#CUSTOM]
-	/// @param arguments   extra command-line arguments
-	/// @param environment extra environment variables
-	/// @param folder      the folder to make the instance in
-	/// @return the created instance
-	/// @throws DshException when the id is taken, the version is not installed,
-	///                       or the instance cannot be written
+	/**
+	 * Creates and persists a new instance in a folder of the caller's choosing.
+	 *
+	 * @param id          the instance id
+	 * @param version     the installed version to pin
+	 * @param profile     the profile to boot
+	 * @param workspace   the directory sessions are scoped to
+	 * @param nodeRuntime the Node runtime selection, or {@code null} for the system runtime
+	 * @param homeMode    how the {@code DSH_HOME} is resolved
+	 * @param customHome  the custom home, required when {@code homeMode} is {@link DshHomeMode#CUSTOM}
+	 * @param arguments   extra command-line arguments
+	 * @param environment extra environment variables
+	 * @param folder      the folder to make the instance in
+	 * @return the created instance
+	 * @throws DshException when the id is taken, the version is not installed, or the instance cannot be written
+	 */
 	public static DshInstance create(String id,
 	                                 String version,
 	                                 String profile,
@@ -189,19 +175,14 @@ public final class DshInstanceManager {
 	                                 Map<String, String> environment,
 	                                 Path folder) throws DshException {
 		if (InstanceStore.find(id) != null) {
-			// An id names one instance. Two folders holding the same name would
-			// make every lookup a coin toss, so the second one is refused here,
-			// where the person can still be told which name is taken.
+			// Instance IDs must be unique across all folders.
 			throw new DshException("An instance named \"" + id + "\" already exists");
 		}
 		if (homeMode == DshHomeMode.CUSTOM && customHome == null) {
 			throw new DshException("A custom DSH_HOME must be chosen for this instance");
 		}
 
-		// The port is reserved here, once, for the whole life of the instance:
-		// the browser interface keys its state by origin, so an instance that
-		// reached the same history through two ports would have two writers. A
-		// surface that serves nothing needs none.
+		// Reserve a persistent port for web surface instances.
 		int port = DshSurface.ofProfile(profile).isWeb() ? DshPorts.reserve(id) : 0;
 
 		Path directory = folder.toAbsolutePath().normalize().resolve(DshPaths.segment(id, "instance id"));
@@ -225,8 +206,7 @@ public final class DshInstanceManager {
 		                                       directory.toString());
 
 		try {
-			// Never adopt a pre-existing folder: it may contain the user's own files.
-			// createDirectory is atomic, unlike exists() followed by createDirectories().
+			// Never adopt a pre-existing folder: it may contain user files.
 			Files.createDirectories(directory.getParent());
 			Files.createDirectory(directory);
 			if (homeMode == DshHomeMode.ISOLATED) {
@@ -245,10 +225,12 @@ public final class DshInstanceManager {
 		return instance;
 	}
 
-	/// Overwrites an existing instance definition.
-	///
-	/// @param instance the instance to persist
-	/// @throws DshException when the manifest cannot be written
+	/**
+	 * Overwrites an existing instance definition.
+	 *
+	 * @param instance the instance to persist
+	 * @throws DshException when the manifest cannot be written
+	 */
 	public static void update(DshInstance instance) throws DshException {
 		InstanceLocks.withLock(instance, "updated", () -> {
 			if (!Files.isDirectory(instance.instanceDirectory())) {
@@ -290,10 +272,12 @@ public final class DshInstanceManager {
 		});
 	}
 
-	/// Reports whether an instance id is already taken.
-	///
-	/// @param id the candidate id
-	/// @return whether an instance with that id exists
+	/**
+	 * Reports whether an instance id is already taken.
+	 *
+	 * @param id the candidate id
+	 * @return whether an instance with that id exists
+	 */
 	public static boolean exists(String id) {
 		return InstanceStore.find(id) != null;
 	}
@@ -363,36 +347,15 @@ public final class DshInstanceManager {
 		});
 	}
 
-	/// Copies an instance into a new one, its configuration and all.
-	///
-	/// A copy is the original's **configuration**: the harness version it pins, its profile, the
-	/// plugin list in its own order, the profile's patch layer, the plugins it installed from files,
-	/// the settings its plugins keep, and its skill packs. What it is not is the original's
-	/// **state**: session history and keys stay behind, because a copy of somebody's past is not what
-	/// "copy this instance" asks for, and a key duplicated into a second home is a key nobody meant
-	/// to make. The instance's own launcher settings — its install-script policy, the commands that
-	/// run around it, which account it uses — come along, because those are what "this instance"
-	/// means to the launcher rather than to the harness.
-	///
-	/// Both halves of that are already written down elsewhere: a pack *is* that description of an
-	/// instance, and installing one *is* that rebuild — version, profile, patch, local plugin files,
-	/// settings sections, skills, and nothing that looks like a key. So a duplicate writes a pack to
-	/// a temporary file and installs it, rather than copying directories: copying would have to
-	/// answer the same questions again — which of `node_modules`, `dsh/`, `sessions/` and
-	/// `.credentials.yaml` may travel — and it would leave the copy's `file:` plugin paths pointing
-	/// into the original's plugin directory.
-	///
-	/// **Resumable on purpose.** pnpm refuses to run a package's install script until it is told to,
-	/// and it says so as a failure. The copy is kept in that case — the question is written into its
-	/// own profile, so the answer has somewhere to go — and the work runs again from the copy it
-	/// already made. Every other failure takes the half-made copy with it: an instance that appears
-	/// in the list and cannot start is worse than one that never appeared.
-	///
-	/// @param id     the instance to copy
-	/// @param newId  the new instance's id
-	/// @param report receives progress lines, or `null`
-	/// @return the copy
-	/// @throws DshException when either id is unusable, or the copy cannot be made
+	/**
+	 * Copies an instance into a new one, including its configuration.
+	 *
+	 * @param id     the instance to copy
+	 * @param newId  the new instance's id
+	 * @param report receives progress lines, or {@code null}
+	 * @return the copy
+	 * @throws DshException when either id is unusable, or the copy cannot be made
+	 */
 	public static DshInstance duplicate(String id, String newId, @Nullable Consumer<String> report)
 	throws DshException {
 		DshInstance source = InstanceStore.find(id);
@@ -409,11 +372,7 @@ public final class DshInstanceManager {
 
 		DshInstance copy = InstanceStore.find(normalized);
 		if (copy == null) {
-			// The copy carries the original's icon, and only its icon: a copy that
-			// is indistinguishable from what it was copied from is a copy nobody can
-			// find in the list. The port is deliberately not copied — two instances
-			// may not be given the same one — and the write is what makes the icon
-			// survive, because a copy built by `withIcon` alone is never persisted.
+			// Preserve icon on the copy while assigning a fresh port.
 			copy = create(normalized,
 			              source.version(),
 			              source.profile(),
@@ -426,10 +385,7 @@ public final class DshInstanceManager {
 			              source.instanceDirectory().getParent()).withIcon(source.iconOrDefault());
 			update(copy);
 		} else if (HarnessInstaller.isInstalled(copy)) {
-			// An id taken by an instance that is already whole is somebody else's. One that is
-			// half-made is this call's own earlier attempt, kept because pnpm asked about an install
-			// script: the answer goes into that instance's profile, so the work continues there
-			// instead of starting over.
+			// Refuse duplicate ID unless resuming an uninstalled earlier attempt.
 			throw new DshException("Instance " + normalized + " already exists");
 		}
 
@@ -447,8 +403,7 @@ public final class DshInstanceManager {
 			return filled == null ? copy : filled;
 		} catch (DshException | RuntimeException failed) {
 			if (failed instanceof DshPluginInstaller.DshBuildScriptApprovalRequired) {
-				// The one failure that must keep what it made: the question pnpm raised is written
-				// into the copy's profile, and removing the copy would take the question with it.
+				// Keep partial copy if build script approval is required to retain pending state.
 				throw failed;
 			}
 			LOG.warning("Could not copy " + id + " to " + normalized + "; removing the copy", failed);
@@ -464,14 +419,6 @@ public final class DshInstanceManager {
 		}
 	}
 
-	/// Creates the temporary pack a duplicate describes itself into.
-	///
-	/// It goes through the system's temporary directory rather than the launcher's own, because it is
-	/// not a thing the launcher keeps: it is written, read back, and deleted in the same call, and a
-	/// copy that is interrupted leaves a file the system already knows how to sweep.
-	///
-	/// @return the file, which does not exist yet
-	/// @throws DshException when the system cannot make one
 	private static Path temporaryPack() throws DshException {
 		try {
 			return Files.createTempFile("hdsl-duplicate-", PackManifest.FILE_EXTENSION);
@@ -480,16 +427,6 @@ public final class DshInstanceManager {
 		}
 	}
 
-	/// Copies an instance's own launcher settings to another instance.
-	///
-	/// The file holds what somebody chose *for this instance*: its install-script policy, the
-	/// commands that run around it, which account it uses, and how loudly it logs. None of that is a
-	/// secret — the account is named, not keyed — and all of it is what a copy should inherit, which
-	/// is why it is carried beside the pack rather than inside it.
-	///
-	/// @param source the instance copied from
-	/// @param copy   the instance being filled
-	/// @throws DshException when the file exists but cannot be copied
 	private static void copyOwnLauncherSettings(DshInstance source, DshInstance copy) throws DshException {
 		Path from = source.instanceDirectory().resolve("settings.json");
 		if (!Files.isRegularFile(from)) {
@@ -503,10 +440,12 @@ public final class DshInstanceManager {
 		}
 	}
 
-	/// Returns the next free id derived from a base name.
-	///
-	/// @param base the base name
-	/// @return the id, suffixed with a number when needed
+	/**
+	 * Returns the next free id derived from a base name.
+	 *
+	 * @param base the base name
+	 * @return the id, suffixed with a number when needed
+	 */
 	public static String nextId(String base) {
 		String candidate = base + "-copy";
 		int suffix = 2;

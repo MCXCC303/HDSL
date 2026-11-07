@@ -47,41 +47,20 @@ import java.util.zip.ZipOutputStream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Writes an instance as a pack the community's tooling reads.
-///
-/// The `DSH-PackForge` specification is not this launcher's own, and it describes a different
-/// thing from the pack this launcher writes for itself: that one is a recipe — a version, an
-/// ordered plugin list, a patch layer — while this one is a **snapshot**: the profile's files,
-/// scanned, filtered and carried inside a `.dspack` container with a manifest that says what
-/// they are. Both are useful and neither replaces the other, which is why the export wizard asks
-/// which one to write.
-///
-/// The container is a plain ZIP with `dspack.json` at its root — the marker that says this is a
-/// `.dspack` and which version of the container it is — and the profile's files live under
-/// `overrides/`, which is what an importer copies into the profile it is rebuilding. The manifest
-/// is v5 with `type: "profile"`.
-///
-/// The specification's filter is the part worth taking literally: an exported pack is something
-/// people publish, so installed trees, credentials, keys, private keys, tokens and nested archives
-/// never travel, whatever the exporter would otherwise copy.
+/**
+ * Exports an instance profile as a community-standard {@code .dspack} container archive.
+ * <p>
+ * Scans profile files, filters sensitive data and artifacts, writes a v5 manifest,
+ * and packages files into a container with root configuration and {@code overrides/}.
+ */
 @NotNullByDefault
 public final class DshPackForge {
-	/// The format's marker file, at the container's root.
 	public static final String MARKER = "dspack.json";
-
-	/// The container version this writes.
 	public static final int CONTAINER_VERSION = 3;
-
-	/// The manifest's name inside the container.
 	public static final String MANIFEST = "manifest.json";
-
-	/// Where a profile's own files go, which is where an importer copies them from.
 	public static final String OVERRIDES = "overrides/";
-
-	/// The manifest version this writes.
 	public static final int MANIFEST_VERSION = 5;
 
-	/// Names excluded anywhere in a path.
 	private static final List<String> DENY_NAMES = List.of("node_modules",
 	                                                       "dist",
 	                                                       "build",
@@ -98,10 +77,8 @@ public final class DshPackForge {
 	                                                       "settings.yaml",
 	                                                       ".dshpkcfg");
 
-	/// Extensions that are credentials rather than content.
 	private static final List<String> DENY_EXTENSIONS = List.of(".key", ".pem", ".p12", ".pfx", ".crt", ".der", ".asc");
 
-	/// Names that are credentials whatever they are called.
 	private static final List<Pattern> DENY_FILE_NAMES = List.of(Pattern.compile("^\\.env.*"),
 	                                                             Pattern.compile("^credentials.*\\.ya?ml$",
 	                                                                             Pattern.CASE_INSENSITIVE),
@@ -114,11 +91,9 @@ public final class DshPackForge {
 	                                                             Pattern.compile(".*api[_-]?key.*",
 	                                                                             Pattern.CASE_INSENSITIVE));
 
-	/// Archives, which are never nested inside a pack.
 	private static final Pattern DENY_ARCHIVE = Pattern.compile(".*\\.(tgz|tar\\.gz|zip|dspack)$",
 	                                                            Pattern.CASE_INSENSITIVE);
 
-	/// Runtime and baseline directories, which belong to the home rather than to a profile.
 	private static final List<String> DENY_PREFIXES = List.of("attachments/",
 	                                                          "profiles/web/",
 	                                                          "profiles/headless/",
@@ -127,11 +102,13 @@ public final class DshPackForge {
 	private DshPackForge() {
 	}
 
-	/// Scans a profile for what a pack carries.
-	///
-	/// @param profile the profile directory
-	/// @return what travels and what does not
-	/// @throws DshException when the directory cannot be read
+	/**
+	 * Scans a profile directory for files eligible to be included in a pack.
+	 *
+	 * @param profile the profile directory
+	 * @return scan results containing included and excluded files
+	 * @throws DshException when the directory cannot be read
+	 */
 	public static Scan scan(Path profile) throws DshException {
 		List<Entry> files = new ArrayList<>();
 		Map<String, String> excluded = new LinkedHashMap<>();
@@ -144,7 +121,6 @@ public final class DshPackForge {
 						return FileVisitResult.CONTINUE;
 					}
 					if (Files.isSymbolicLink(directory)) {
-						// A link is never followed: it can leave the profile, and it can loop.
 						excluded.put(relative(profile, directory), "symlink");
 						return FileVisitResult.SKIP_SUBTREE;
 					}
@@ -175,7 +151,6 @@ public final class DshPackForge {
 
 				@Override
 				public FileVisitResult visitFileFailed(Path file, IOException e) {
-					// Unreadable is the same as absent for a pack's purposes.
 					excluded.put(relative(profile, file), "unreadable");
 					return FileVisitResult.CONTINUE;
 				}
@@ -188,10 +163,12 @@ public final class DshPackForge {
 		return new Scan(List.copyOf(files), Map.copyOf(excluded));
 	}
 
-	/// Reports why a path does not travel, or `null` when it does.
-	///
-	/// @param relative the path inside the profile
-	/// @return the reason, or `null`
+	/**
+	 * Determines the exclusion reason for a path, or null if eligible for export.
+	 *
+	 * @param relative profile-relative path
+	 * @return exclusion reason code, or null if included
+	 */
 	static @Nullable String exclusionOf(String relative) {
 		String path = relative.endsWith("/") ? relative.substring(0, relative.length() - 1) : relative;
 		String[] segments = path.split("/");
@@ -223,28 +200,16 @@ public final class DshPackForge {
 		return null;
 	}
 
-	/// Writes an instance as a `.dspack`.
-	///
-	/// Both of the container's places are used the way the specification says. The files that
-	/// describe the profile rather than override anything — `package.json`, the lock file, the
-	/// workspace file — are written at the archive root, which is where the installer copies them
-	/// **before** it resolves the dependencies; everything else goes under `overrides/`, which lands
-	/// afterwards. Writing the first group under `overrides/` as well would be a pack that installs
-	/// and then boots with none of its plugins: the resolve that installs them ran while the profile
-	/// was still empty, because the manifest it needed had not been copied yet.
-	///
-	/// `home/` is not written. The container defines it, and the installer lands it at the DSH_HOME
-	/// root, which is where anything outside the profile belongs — the skills under `skills/` among
-	/// them. That is a question for the format repository rather than one to answer here alone, and
-	/// it is also why [DENY_PREFIXES], whose entries are home-relative paths, matches nothing under
-	/// the profile this scans today.
-	///
-	/// @param instance the instance
-	/// @param target   the archive to create
-	/// @param options  what it should say about itself
-	/// @param onStage  receives progress lines, or `null`
-	/// @return what was written
-	/// @throws DshException when the profile cannot be read or written
+	/**
+	 * Exports an instance profile as a {@code .dspack} archive.
+	 *
+	 * @param instance the source instance
+	 * @param target   the output archive path
+	 * @param options  pack metadata options
+	 * @param onStage  consumer for progress messages, or null
+	 * @return export result statistics
+	 * @throws DshException when the profile cannot be read or written
+	 */
 	public static Result export(DshInstance instance, Path target, Options options, @Nullable Consumer<String> onStage)
 	throws DshException {
 		Path profile = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
@@ -264,14 +229,9 @@ public final class DshPackForge {
 				Files.createDirectories(parent);
 			}
 			try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
-				// The marker comes first: a loader reads it before anything else.
 				put(zip, MARKER, "{\"format\":\"dspack\",\"version\":" + CONTAINER_VERSION + "}");
 				put(zip, MANIFEST, JsonUtils.GSON.toJson(manifest));
 				for (Entry entry : scan.files()) {
-					// The two places are not a matter of taste: the root files are copied before the
-					// dependency install and the overrides after it, so a manifest under
-					// `overrides/` arrives too late to be installed from. One predicate decides
-					// which is which, and the installer reads the archive with the same one.
 					copy(zip,
 					     profile.resolve(entry.relative()),
 					     DspackSafety.isMachineFile(entry.relative())
@@ -292,13 +252,15 @@ public final class DshPackForge {
 		return new Result(scan.files().size(), scan.excluded().size(), size, digest);
 	}
 
-	/// Builds the v5 manifest for an instance.
-	///
-	/// @param instance the instance
-	/// @param options  what it should say about itself
-	/// @param onStage  receives progress lines, or `null`
-	/// @return the manifest
-	/// @throws DshException when a dependency cannot be pinned to an exact version
+	/**
+	 * Builds a v5 pack manifest for an instance.
+	 *
+	 * @param instance the instance
+	 * @param options  metadata options
+	 * @param onStage  consumer for progress messages, or null
+	 * @return JSON manifest object
+	 * @throws DshException when a dependency cannot be pinned
+	 */
 	static JsonObject buildManifest(DshInstance instance, Options options, @Nullable Consumer<String> onStage)
 	throws DshException {
 		JsonObject manifest = new JsonObject();
@@ -318,7 +280,6 @@ public final class DshPackForge {
 		if (options.author() != null && !options.author().isBlank()) {
 			manifest.addProperty("author", options.author().trim());
 		}
-		// Exact, because the specification requires it: a pack is a reproducible snapshot.
 		manifest.addProperty("dshVersion", instance.version());
 		manifest.addProperty("profileName", instance.profile());
 
@@ -330,10 +291,6 @@ public final class DshPackForge {
 		for (Map.Entry<String, String> entry : DshPluginInstaller.readDependencies(instance.homeDirectory(),
 		                                                                           instance.profile()).entrySet()) {
 			if (PackManifest.isLocalSpec(entry.getValue())) {
-				// A specification this instance installed from a file. This format names sources, and
-				// a file on this machine is not one — unless the registry publishes the same version,
-				// in which case the source it names is the one the file was built from and the pack
-				// stays a pack of published sources.
 				dependencies.addProperty(entry.getKey(),
 				                         publishedVersionOf(instance, entry.getKey(), entry.getValue()));
 				report(onStage,
@@ -347,13 +304,6 @@ public final class DshPackForge {
 		return manifest;
 	}
 
-	/// Returns the published version of a plugin an instance installed from a file.
-	///
-	/// @param instance the instance the plugin belongs to
-	/// @param name     the dependency name
-	/// @param declared what the profile declares for it
-	/// @return the published version
-	/// @throws DshException when the registry does not publish it, which this format cannot express
 	private static String publishedVersionOf(DshInstance instance, String name, String declared) throws DshException {
 		Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
 		DshPluginBundle.Payload payload = DshPluginBundle.locate(profileDirectory, name, declared);
@@ -367,17 +317,15 @@ public final class DshPackForge {
 		                       " themselves, or install a published version first.");
 	}
 
-	/// Pins a dependency to what the specification requires.
-	///
-	/// npm versions are already exact in a profile. A git source names a branch or a tag, and a
-	/// pack has to name the commit instead — a branch moves, and a pack that moved with it would
-	/// not be a snapshot of anything.
-	///
-	/// @param name     the package
-	/// @param declared what the profile declares
-	/// @param onStage  receives progress lines, or `null`
-	/// @return the pinned version or commit
-	/// @throws DshException when a git source cannot be resolved to a commit
+	/**
+	 * Resolves a plugin dependency declaration to a pinned version or commit hash.
+	 *
+	 * @param name     package name
+	 * @param declared declared version or git URL
+	 * @param onStage  consumer for progress messages, or null
+	 * @return pinned version or commit hash
+	 * @throws DshException when resolution fails
+	 */
 	static String pin(String name, String declared, @Nullable Consumer<String> onStage) throws DshException {
 		if (declared == null || declared.isBlank()) {
 			throw new DshException("The plugin " + name + " has no version to pin");
@@ -411,33 +359,16 @@ public final class DshPackForge {
 		}
 	}
 
-	/// Returns the path of a file inside a root, with `/` separators.
-	///
-	/// @param root the root
-	/// @param file the file
-	/// @return the relative path
 	private static String relative(Path root, Path file) {
 		return root.relativize(file).toString().replace('\\', '/');
 	}
 
-	/// Writes one entry of text.
-	///
-	/// @param zip  the archive
-	/// @param name the entry's name
-	/// @param body the entry's text
-	/// @throws IOException when the archive cannot be written
 	private static void put(ZipOutputStream zip, String name, String body) throws IOException {
 		zip.putNextEntry(new ZipEntry(name));
 		zip.write(body.getBytes(StandardCharsets.UTF_8));
 		zip.closeEntry();
 	}
 
-	/// Copies one file into the archive.
-	///
-	/// @param zip  the archive
-	/// @param file the file
-	/// @param name the entry's name
-	/// @throws IOException when the file cannot be read or the archive written
 	private static void copy(ZipOutputStream zip, Path file, String name) throws IOException {
 		zip.putNextEntry(new ZipEntry(name));
 		try (InputStream input = Files.newInputStream(file)) {
@@ -446,10 +377,6 @@ public final class DshPackForge {
 		zip.closeEntry();
 	}
 
-	/// Returns a file's size.
-	///
-	/// @param file the file
-	/// @return the size, or zero
 	private static long sizeOf(Path file) {
 		try {
 			return Files.size(file);
@@ -458,11 +385,13 @@ public final class DshPackForge {
 		}
 	}
 
-	/// Returns a file's SHA-256 digest, which is what a publisher writes beside a pack.
-	///
-	/// @param file the file
-	/// @return the digest in lower-case hexadecimal
-	/// @throws DshException when the file cannot be read
+	/**
+	 * Computes the SHA-256 hash of a file as a hex string.
+	 *
+	 * @param file the file to hash
+	 * @return hex encoded SHA-256 digest
+	 * @throws DshException when the file cannot be read
+	 */
 	static String sha256(Path file) throws DshException {
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -483,40 +412,40 @@ public final class DshPackForge {
 		}
 	}
 
-	/// Reports progress.
-	///
-	/// @param onStage the sink, or `null`
-	/// @param message the message
 	private static void report(@Nullable Consumer<String> onStage, String message) {
 		if (onStage != null) {
 			onStage.accept(message);
 		}
 	}
 
-	/// What a pack says about itself.
-	///
-	/// @param name        the pack's identifier, which has to be kebab-case
-	/// @param version     the pack's own version, which has to be a version
-	/// @param displayName what people see, or an empty string for the name
-	/// @param description what it is for, or an empty string
-	/// @param author      who made it, or an empty string
+	/**
+	 * Pack metadata configuration options.
+	 *
+	 * @param name        pack identifier (kebab-case)
+	 * @param version     pack version string
+	 * @param displayName user-facing display name
+	 * @param description pack description
+	 * @param author      pack author
+	 */
 	public record Options(String name, String version, String displayName, String description, String author) {
 
-		/// Returns options that describe an instance without being told anything.
-		///
-		/// @param instance the instance
-		/// @return the options
+		/**
+		 * Creates default options describing an instance.
+		 *
+		 * @param instance the instance
+		 * @return default options
+		 */
 		public static Options of(DshInstance instance) {
 			String name = kebab(instance.id());
 			return new Options(name, "1.0.0", instance.id(), "", "");
 		}
 
-		/// Turns anything into a kebab-case identifier.
-		///
-		/// The specification requires one, and an instance's name is whatever somebody typed.
-		///
-		/// @param text the text
-		/// @return the identifier
+		/**
+		 * Converts arbitrary text into a valid kebab-case identifier.
+		 *
+		 * @param text input text
+		 * @return sanitized kebab-case identifier
+		 */
 		public static String kebab(String text) {
 			String cleaned = text == null
 			                 ? ""
@@ -528,26 +457,32 @@ public final class DshPackForge {
 		}
 	}
 
-	/// One file the scan found, or refused.
-	///
-	/// @param relative the path inside the profile, always with `/` separators
-	/// @param size     its size in bytes
+	/**
+	 * File entry in a profile scan.
+	 *
+	 * @param relative relative path with forward slashes
+	 * @param size     size in bytes
+	 */
 	public record Entry(String relative, long size) {
 	}
 
-	/// What a scan found.
-	///
-	/// @param files    the files that travel, sorted by path
-	/// @param excluded what was left out and why
+	/**
+	 * Result of scanning a profile directory.
+	 *
+	 * @param files    included files sorted by path
+	 * @param excluded excluded paths mapped to reason codes
+	 */
 	public record Scan(List<Entry> files, Map<String, String> excluded) {
 	}
 
-	/// What an export wrote.
-	///
-	/// @param files    how many files travelled
-	/// @param excluded how many were left out
-	/// @param bytes    the container's size
-	/// @param sha256   the container's digest, which is what a publisher writes beside it
+	/**
+	 * Result of exporting a pack archive.
+	 *
+	 * @param files    number of files included
+	 * @param excluded number of files excluded
+	 * @param bytes    output file size in bytes
+	 * @param sha256   hex SHA-256 digest of the archive
+	 */
 	public record Result(int files, int excluded, long bytes, String sha256) {
 	}
 }

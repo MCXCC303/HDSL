@@ -33,31 +33,23 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Runs the commands a person asked to run around an instance.
-///
-/// The original offers two: one before the game starts and one after it has ended, which is
-/// how a launcher is made to fit somebody's own workflow — starting a companion process,
-/// syncing a directory, telling something that a session began or ended. They belong here
-/// for the same reason: an instance of DeepSeek Harness is a long-running thing that people
-/// wrap in their own tooling.
-///
-/// A command that fails before the launch stops the launch: it was asked to run first, and
-/// starting anyway would be ignoring what it was for. One that fails afterwards is reported
-/// and nothing more can be done about it. Commands run in the instance's own working
-/// directory, and the environment the instance runs with is the environment they see, so a
-/// command sees what the instance would.
+/**
+ * Runs pre-launch and post-exit custom shell commands configured for an instance.
+ */
 @NotNullByDefault
 public final class DshCustomCommands {
 	private DshCustomCommands() {
 	}
 
-	/// Runs a command, if there is one.
-	///
-	/// @param instance the instance the command is about
-	/// @param command  the command, or `null` or blank for none
-	/// @param phase    what the command is, for the message
-	/// @param onLine   receives the command's output, or `null`
-	/// @throws DshException when the command cannot be run or exits non-zero
+	/**
+	 * Runs a custom command for an instance.
+	 *
+	 * @param instance the instance
+	 * @param command  the command line to run, or null/blank
+	 * @param phase    the execution phase description
+	 * @param onLine   consumer for command output lines, or null
+	 * @throws DshException when the command cannot be run or exits non-zero
+	 */
 	public static void run(DshInstance instance,
 	                       @Nullable String command,
 	                       String phase,
@@ -68,22 +60,12 @@ public final class DshCustomCommands {
 
 		LOG.info("Running the " + phase + " command of " + instance.id() + ": " + command);
 		Map<String, String> environment = new LinkedHashMap<>();
-		// The same three values the launch states, and the same refusal of a `DSH_HOME` typed into
-		// an environment box — read through [DshEnvironment#of], which is where that refusal lives.
-		// A command written to prepare or back up "the instance's home" has to operate on the
-		// instance's own home, and measured before this, it operated on whatever a variable named
-		// `DSH_HOME` said.
 		environment.put("DSH_INSTANCE", instance.id());
 		environment.put("DSH_VERSION", instance.version());
 		environment.putAll(DshEnvironment.of(instance));
 		environment.put(DshEnvironment.HOMEDIRECTORY_VARIABLE, instance.homeDirectory().toString());
 
 		try {
-			// A command is a shell line, not a program and its arguments: that is what a
-			// person types into the box, and splitting it here would take away the pipes,
-			// redirections and quoting they wrote. The shell that reads it is the system's
-			// own: `/bin/sh` where that is a thing, and `cmd.exe` — named by `ComSpec`,
-			// which Windows keeps pointed at it even when it has moved — where it is not.
 			DshCommand.Result result = DshCommand.run(shellCommand(command),
 			                                          instance.workspacePath(),
 			                                          environment,
@@ -100,15 +82,14 @@ public final class DshCustomCommands {
 		}
 	}
 
-	/// Runs a command and reports a failure instead of raising it.
-	///
-	/// Used after an instance has ended: there is nothing left to stop, so a failing command
-	/// is something to say rather than something to refuse.
-	///
-	/// @param instance the instance the command is about
-	/// @param command  the command, or `null` or blank for none
-	/// @param phase    what the command is, for the message
-	/// @param onLine   receives the command's output, or `null`
+	/**
+	 * Runs a custom command and logs any failure instead of throwing.
+	 *
+	 * @param instance the instance
+	 * @param command  the command line to run, or null/blank
+	 * @param phase    the execution phase description
+	 * @param onLine   consumer for command output lines, or null
+	 */
 	public static void runQuietly(DshInstance instance,
 	                              @Nullable String command,
 	                              String phase,
@@ -120,17 +101,12 @@ public final class DshCustomCommands {
 		}
 	}
 
-	/// Builds the command that hands a shell line to the system's shell.
-	///
-	/// `/bin/sh -c` is the Linux spelling. Windows has no `/bin`, but its
-	/// command interpreter runs a line just as well: `cmd.exe /d /s /c` — `/d`
-	/// so no startup script of the machine's runs first, `/s` so the whole line
-	/// after `/c` is taken as it was typed, however it is quoted — and the
-	/// interpreter is named by `ComSpec` because that is where Windows itself
-	/// records which one to use.
-	///
-	/// @param command the shell line
-	/// @return the program and its arguments
+	/**
+	 * Wraps a shell command string for the host platform's command interpreter.
+	 *
+	 * @param command the shell command line
+	 * @return command arguments for ProcessBuilder
+	 */
 	static List<String> shellCommand(String command) {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
 			String interpreter = System.getenv("ComSpec");

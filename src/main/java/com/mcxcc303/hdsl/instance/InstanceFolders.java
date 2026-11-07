@@ -28,39 +28,16 @@ import java.util.function.Supplier;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The folders instances live in, and which of them the launcher is showing.
-///
-/// The answer comes from the launcher rather than being read here: `setFolders` is what
-/// points this at the settings, and what a test uses in place of a settings file.  The folder being
-/// shown comes first, because that is where a new instance goes and which of two namesakes wins.
+/**
+ * Resolves the directories configured to store launcher instances.
+ */
 @NotNullByDefault
 public final class InstanceFolders {
-	/// The folders the launcher looks for instances in, the one it is showing first.
-	///
-	/// Which folders exist is a question only the settings can answer, and the
-	/// settings live a layer above this package — so the default answer is asked
-	/// of them, every time. It is asked lazily rather than installed once,
-	/// because the launcher has three ways in and only one of them starts an
-	/// interface: a command-line run that adds a folder and then makes an
-	/// instance in it is two processes, and the second one never touches the
-	/// interface. Answering from the settings is what makes the folder the user
-	/// chose mean the same thing in all three.
-	///
-	/// The one thing that keeps this from being a circular dependency is that
-	/// the settings' own instance listing reads folders directly rather than
-	/// through here.
 	private static volatile Supplier<List<Path>> folders = InstanceFolders::foldersFromTheSettings;
 
 	private InstanceFolders() {
 	}
 
-	/// Asks the settings which folders the launcher keeps instances in.
-	///
-	/// A launcher whose settings cannot be read — a build with none, a test that
-	/// has not set any up — still has the folder it owns, which is where its
-	/// instances were before folders could be added at all.
-	///
-	/// @return the folders, the one being shown first
 	private static List<Path> foldersFromTheSettings() {
 		try {
 			return GameDirectoryManager.instanceFolders();
@@ -71,24 +48,23 @@ public final class InstanceFolders {
 		}
 	}
 
-	/// Points the manager at the folders the launcher knows about.
-	///
-	/// The settings are the answer by default; this is for a caller that wants a
-	/// different one, and for a test, which has no settings to point at and
-	/// folders of its own to use instead.
-	///
-	/// @param supplier the folders, the one being shown first
-	/// @return the supplier that was in place, so a caller passing through can
-	///         put it back
+	/**
+	 * Configures the supplier of instance folders.
+	 *
+	 * @param supplier the folder supplier, current folder first
+	 * @return the previously installed supplier
+	 */
 	public static Supplier<List<Path>> setFolders(Supplier<List<Path>> supplier) {
 		Supplier<List<Path>> previous = folders;
 		folders = supplier;
 		return previous;
 	}
 
-	/// Returns the folders the launcher looks for instances in, the current one first.
-	///
-	/// @return the folders, absolute and without duplicates
+	/**
+	 * Returns the folders the launcher looks for instances in, the current one first.
+	 *
+	 * @return the folders, absolute and without duplicates
+	 */
 	public static List<Path> folders() {
 		List<Path> resolved = new ArrayList<>();
 		for (Path folder : folders.get()) {
@@ -106,13 +82,11 @@ public final class InstanceFolders {
 		return List.copyOf(resolved);
 	}
 
-	/// Returns the folder a new instance is made in.
-	///
-	/// The one the interface is showing: adding a folder is how a person says
-	/// where their instances belong, and installing one is the moment they mean
-	/// it. Nothing is written anywhere else until they choose another folder.
-	///
-	/// @return the folder
+	/**
+	 * Returns the folder a new instance is created in.
+	 *
+	 * @return the current folder path
+	 */
 	public static Path currentFolder() {
 		return folders().get(0);
 	}

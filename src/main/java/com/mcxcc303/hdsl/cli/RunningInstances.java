@@ -24,24 +24,22 @@ import org.jetbrains.annotations.NotNullByDefault;
 import java.io.PrintStream;
 import java.util.Optional;
 
-/// The question a command that changes an instance has to ask before it changes it.
-///
-/// A running harness is reading the very files these commands write: the profile pnpm installs into,
-/// the home a pack restores, the runtime an upgrade replaces, the sessions an import adds to. The
-/// launcher has kept one process per instance for exactly that reason — and what it could not do
-/// until the record existed was see a process another launcher had started, so a command typed in a
-/// terminal beside a running window went ahead and wrote under a live server.
+/**
+ * Checks whether an instance process is active before executing commands that modify instance state.
+ */
 @NotNullByDefault
 final class RunningInstances {
 
 	private RunningInstances() {
 	}
 
-	/// Tells the caller whether the instance is up, and what to do about it.
-	///
-	/// @param instance the instance
-	/// @param err      the stream for error output
-	/// @return whether it is running, in which case the reason has been printed
+	/**
+	 * Checks whether the instance is running, printing an error message if it is.
+	 *
+	 * @param instance the instance to check
+	 * @param err      the stream for error output
+	 * @return true if the instance is running
+	 */
 	static boolean isUp(DshInstance instance, PrintStream err) {
 		Optional<DshProcessManager.Running> running = DshProcessManager.findRunning(instance);
 		if (running.isEmpty()) {

@@ -30,47 +30,26 @@ import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Port selection for the browser surface.
-///
-/// DeepSeek Harness exits with status 1 when its port is taken rather than
-/// probing for another one, so the launcher has to choose a free port itself.
-/// It also has to keep choosing the *same* port for an instance: the browser
-/// interface keys session state by origin, so reaching one history through two
-/// ports lets two writers corrupt it.
-///
-/// The port is therefore settled once, when the instance is created, and written
-/// into its manifest; every launch from then on asks for that same port. A port
-/// that has since been taken is not worked around — moving the instance would
-/// change the origin its state is keyed by — so the launch is refused and the
-/// user is told which port to free or to change.
+/**
+ * Port allocation and resolution for the browser surface.
+ */
 @NotNullByDefault
 public final class DshPorts {
-	/// The lowest port the automatic allocator will hand out.
 	private static final int AUTO_RANGE_START = 3081;
-	/// The highest port the automatic allocator will hand out.
 	private static final int AUTO_RANGE_END = 4081;
-	/// How many random candidates are tried before the range is swept in order.
 	private static final int RANDOM_ATTEMPTS = 64;
-	/// The source of the candidates.
-	///
-	/// Random rather than sequential so that two launchers, or two runs of the
-	/// same one, do not both hand out the bottom of the range and collide the
-	/// moment anything else on the machine takes a port.
 	private static final Random RANDOM = new Random();
 
 	private DshPorts() {
 	}
 
-	/// Reserves a free port for an instance, avoiding the ones other instances hold.
-	///
-	/// Called when an instance is created, so that the port it will use for its
-	/// whole life is decided once and written down, rather than being discovered
-	/// on the first launch — which is what left an instance without a port while
-	/// it sat in the list, and let two instances be given the same one.
-	///
-	/// @param instanceId the instance being created, excluded from the ports in use
-	/// @return the reserved port
-	/// @throws DshException when no free port can be found in the range
+	/**
+	 * Reserves a free port for an instance, avoiding ports held by other instances.
+	 *
+	 * @param instanceId the instance being created
+	 * @return the reserved port
+	 * @throws DshException when no free port can be found in the range
+	 */
 	public static int reserve(String instanceId) throws DshException {
 		Set<Integer> claimed = claimedPorts(instanceId);
 		int span = AUTO_RANGE_END - AUTO_RANGE_START + 1;
@@ -90,16 +69,13 @@ public final class DshPorts {
 		throw new DshException("No free port was found between " + AUTO_RANGE_START + " and " + AUTO_RANGE_END);
 	}
 
-	/// Resolves the port to launch an instance on.
-	///
-	/// The instance's own port is used as it stands, whether the launcher picked
-	/// it or the user did. An instance that has no port yet — one made before
-	/// ports were reserved — is given one now, and keeps it from then on.
-	///
-	/// @param instance the instance being launched
-	/// @return the port to pass to DeepSeek Harness
-	/// @throws DshException when no free port can be found, or the instance's own
-	///                       port is held by something else
+	/**
+	 * Resolves the port to launch an instance on.
+	 *
+	 * @param instance the instance being launched
+	 * @return the port to pass to DeepSeek Harness
+	 * @throws DshException when no free port can be found or the port is in use
+	 */
 	public static int resolve(DshInstance instance) throws DshException {
 		int port = instance.portOrDefault();
 		if (port <= 0) {
@@ -107,36 +83,18 @@ public final class DshPorts {
 			return reserve(instance.id());
 		}
 		if (!isFree(port)) {
-			// The port is part of what the instance is: the browser interface
-			// keys its state by origin, so an instance that came up somewhere
-			// else would be an instance whose history is somewhere else. The
-			// launcher says so instead of quietly changing it.
+			// Fail early rather than moving port and breaking origin-scoped browser state.
 			throw new PortUnavailableException(instance.id(), port);
 		}
 		return port;
 	}
 
-	/// Returns the port an instance is really serving on.
-	///
-	/// DeepSeek Harness prints the address it bound, so the printed one is the truth and the
-	/// number the launcher asked for is only what it asked for. The two are the same thing until
-	/// a patch layer restates the `webserver` row: `--port` reaches the server through that row's
-	/// own `webStartup` expression, and a layer that replaces the row with a literal port takes
-	/// that expression away. Nothing about a launch says which of the two happened, so the
-	/// answer is read from the address rather than assumed from the request.
-	///
-	/// @param reported the address the harness printed, or `null` when it printed none
-	/// @param planned  the port the launcher asked for
-	/// @param printed  the address the harness printed, or `null` when it has printed none
-	/// @return the port the instance is on
-	/// Returns the key the harness is asking for, out of the address it printed.
-	///
-	/// The browser surface prints the address it serves with the key it will ask for, and that key
-	/// is the whole of what somebody needs to reach the address from another window, or from another
-	/// machine. A harness from before the key existed printed none, and an address with no key is
-	/// not the same as a key that is empty: there is nothing to copy either way, so both are empty
-	/// here.
-	/// @return the key, or empty when the address carries none
+	/**
+	 * Returns the key the harness is asking for, out of the address it printed.
+	 *
+	 * @param printed the address the harness printed, or {@code null}
+	 * @return the key, or empty when the address carries none
+	 */
 	public static Optional<String> launchToken(@Nullable URI printed) {
 		String query = printed == null ? null : printed.getQuery();
 		if (query == null || query.isBlank()) {
@@ -153,6 +111,13 @@ public final class DshPorts {
 		return Optional.empty();
 	}
 
+	/**
+	 * Returns the port an instance is really serving on.
+	 *
+	 * @param reported the address the harness printed, or {@code null}
+	 * @param planned  the port the launcher asked for
+	 * @return the port the instance is on
+	 */
 	public static int observedPort(@Nullable URI reported, int planned) {
 		if (reported == null) {
 			return planned;
@@ -161,33 +126,26 @@ public final class DshPorts {
 		return port > 0 ? port : planned;
 	}
 
-	/// Returns the address a browser is sent to for an instance.
-	///
-	/// A browser keys the state it keeps by origin, and an instance's origin is the port it is
-	/// recorded at. The address the harness printed is used while it is that port, because it
-	/// carries the token a fenced release wants. When it is another port the instance's own
-	/// address is returned instead, deliberately without a token: an address on the port the
-	/// harness really bound belongs to an origin this instance is not recorded at, and a browser
-	/// sent there would leave everything it stores behind the day the port moves back.
-	///
-	/// @param instance the instance
-	/// @param reported the address the harness printed, or `null` when it printed none
-	/// @return the address to open
+	/**
+	 * Returns the address a browser is sent to for an instance.
+	 *
+	 * @param instance the instance
+	 * @param reported the address the harness printed, or {@code null}
+	 * @return the address to open
+	 */
 	public static URI openAddress(DshInstance instance, @Nullable URI reported) {
 		int port = instance.portOrDefault();
 		boolean servingWhereItIsRecorded = reported != null && (port <= 0 || observedPort(reported, port) == port);
 		return servingWhereItIsRecorded ? reported : URI.create("http://127.0.0.1:" + Math.max(port, 0) + "/");
 	}
 
-	/// Records the port an instance settled on.
-	///
-	/// Only an instance that had none is written to: a port the launcher or the
-	/// user already chose is the one it keeps, and rewriting it would be exactly
-	/// the silent move this class exists to prevent.
-	///
-	/// @param instance the instance
-	/// @param port     the port DeepSeek Harness is bound to
-	/// @throws DshException when the instance cannot be written back
+	/**
+	 * Records the port an instance settled on if none was previously configured.
+	 *
+	 * @param instance the instance
+	 * @param port     the port DeepSeek Harness is bound to
+	 * @throws DshException when the instance cannot be written back
+	 */
 	public static void remember(DshInstance instance, int port) throws DshException {
 		if (port <= 0 || instance.portOrDefault() == port) {
 			return;
@@ -201,14 +159,12 @@ public final class DshPorts {
 		}
 	}
 
-	/// Returns the port the launcher gave an instance, which is what its automatic policy means.
-	///
-	/// An instance made before this was written down has it nowhere else, and while its policy is
-	/// automatic the port in its record **is** the one the launcher gave it — that is what makes this
-	/// work for the instances that already exist, without a migration step.
-	///
-	/// @param instance the instance
-	/// @return the port, or `0` when the launcher never gave this instance one
+	/**
+	 * Returns the port the launcher gave an instance under its automatic policy.
+	 *
+	 * @param instance the instance
+	 * @return the port, or {@code 0} when the launcher never gave this instance one
+	 */
 	public static int autoPort(DshInstance instance) {
 		int recorded = DshInstanceSettings.autoPort(instance);
 		if (recorded > 0) {
@@ -217,14 +173,12 @@ public final class DshPorts {
 		return instance.portModeOrDefault() == DshPortMode.AUTO ? instance.portOrDefault() : 0;
 	}
 
-	/// Writes down the port the launcher gave an instance, before a named one takes over.
-	///
-	/// Called when the policy is about to become a named port: the instance's record is going to hold
-	/// the number the person typed, and a number that was never written down somewhere else is a
-	/// number there is no going back to.
-	///
-	/// @param instance the instance
-	/// @throws DshException when the choice cannot be written
+	/**
+	 * Writes down the automatic port of an instance before switching to a fixed port.
+	 *
+	 * @param instance the instance
+	 * @throws DshException when the choice cannot be written
+	 */
 	public static void keepAutoPort(DshInstance instance) throws DshException {
 		if (DshInstanceSettings.autoPort(instance) > 0 || instance.portModeOrDefault() != DshPortMode.AUTO) {
 			return;
@@ -235,23 +189,18 @@ public final class DshPorts {
 		}
 	}
 
-	/// Returns an instance under a different port policy, keeping the port the launcher gave it.
-	///
-	/// **A named port is a detour, not a replacement.** An instance's browser state is keyed to the
-	/// origin it was first reached at, so the launcher's own port is written down before a named one
-	/// takes over and given back when the person stops naming one. Only an instance that lost it
-	/// before the launcher wrote such things down — one an earlier version switched to a named port —
-	/// is given a new one, which is the most that can be done for it.
-	///
-	/// @param instance the instance
-	/// @param mode     the policy to record
-	/// @return the instance to store
-	/// @throws DshException when a port has to be reserved and none can be found
+	/**
+	 * Returns an instance under a different port policy, preserving the launcher-assigned port.
+	 *
+	 * @param instance the instance
+	 * @param mode     the policy to record
+	 * @return the instance to store
+	 * @throws DshException when a port has to be reserved and none can be found
+	 */
 	public static DshInstance withMode(DshInstance instance, DshPortMode mode) throws DshException {
 		if (mode == DshPortMode.FIXED) {
 			keepAutoPort(instance);
-			// The field starts at the number the instance already has, so naming a port is an edit of
-			// a real one rather than a blank to fill in.
+			// Start fixed port field from existing instance port.
 			return instance.withPortPolicy(mode, instance.portOrDefault());
 		}
 		int automatic = autoPort(instance);
@@ -262,10 +211,12 @@ public final class DshPorts {
 		return instance.withPortPolicy(mode, automatic);
 	}
 
-	/// Reports whether a port can be bound on the loopback interface.
-	///
-	/// @param port the port to test
-	/// @return whether it is free
+	/**
+	 * Reports whether a port can be bound on the loopback interface.
+	 *
+	 * @param port the port to test
+	 * @return whether it is free
+	 */
 	public static boolean isFree(int port) {
 		if (port <= 0 || port > 65535) {
 			return false;
@@ -278,18 +229,19 @@ public final class DshPorts {
 		}
 	}
 
-	/// Returns the ports other instances have been given.
-	///
-	/// @param exceptInstanceId the instance to leave out, or `null`
-	/// @return the ports in use on paper
+	/**
+	 * Returns the ports other instances currently claim or have assigned.
+	 *
+	 * @param exceptInstanceId the instance to leave out, or {@code null}
+	 * @return the ports in use
+	 */
 	static Set<Integer> claimedPorts(@Nullable String exceptInstanceId) {
 		Set<Integer> claimed = new HashSet<>();
 		for (DshInstance instance : List.copyOf(InstanceListing.list())) {
 			if (instance.id().equals(exceptInstanceId)) {
 				continue;
 			}
-			// Both numbers, when there are two: the one in effect, and the launcher's own — which a
-			// named port has merely put aside, and which this instance is entitled to come back to.
+			// Claim both current port and remembered automatic port.
 			for (int port : new int[]{instance.portOrDefault(), autoPort(instance)}) {
 				if (port > 0) {
 					claimed.add(port);
@@ -299,10 +251,12 @@ public final class DshPorts {
 		return claimed;
 	}
 
-	/// Validates a user-entered port.
-	///
-	/// @param port the port, or `null`
-	/// @return the complaint, or `null` when the port is usable
+	/**
+	 * Validates a user-entered port number.
+	 *
+	 * @param port the port, or {@code null}
+	 * @return validation error message, or {@code null} when valid
+	 */
 	public static @Nullable String validate(@Nullable Integer port) {
 		if (port == null) {
 			return "Enter a port number";
@@ -313,40 +267,36 @@ public final class DshPorts {
 		return null;
 	}
 
-	/// Raised when the port an instance must bind is held by something else.
-	///
-	/// Carries the port, because the interface names it when it explains what to
-	/// do about it, and the domain layer is where the number is known.
+	/**
+	 * Thrown when the port an instance must bind is held by something else.
+	 */
 	public static final class PortUnavailableException extends DshException {
 		@Serial
 		private static final long serialVersionUID = 1L;
 
-		/// The instance that cannot have its port.
 		private final String instanceId;
-
-		/// The port that is taken.
 		private final int port;
 
-		/// Creates the exception.
-		///
-		/// @param instanceId the instance
-		/// @param port       the port it needs
 		PortUnavailableException(String instanceId, int port) {
 			super("Port " + port + " for instance " + instanceId + " is already in use");
 			this.instanceId = instanceId;
 			this.port = port;
 		}
 
-		/// Returns the instance that cannot be started.
-		///
-		/// @return the instance id
+		/**
+		 * Returns the instance that cannot be started.
+		 *
+		 * @return the instance id
+		 */
 		public String instanceId() {
 			return instanceId;
 		}
 
-		/// Returns the port that is taken.
-		///
-		/// @return the port
+		/**
+		 * Returns the port that is taken.
+		 *
+		 * @return the port
+		 */
 		public int port() {
 			return port;
 		}

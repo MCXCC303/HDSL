@@ -30,44 +30,30 @@ import java.util.List;
 import java.util.Locale;
 import java.util.function.Predicate;
 
-/// A model supplier this launcher can be told about.
-///
-/// DeepSeek Harness knows a long list of them — thirty-nine, from the catalogue that ships with the
-/// `pi-ai` provider bundle — and each is addressed by an id, reads its key from an environment
-/// variable of its own, and talks one of three wire protocols. The three things this launcher needs
-/// to know about each are exactly those: what to call it, which variable the harness reads, and
-/// which protocol to declare when the route is written out by hand.
-///
-/// Only a few are offered. A list of thirty-nine in a dropdown is a list nobody reads, and the
-/// others can be reached by typing a route of one's own — which is what [DshAccount] allows. The
-/// ones here are the ones people actually start with: the harness's own vendor, the two largest
-/// general-purpose ones, the two aggregators that resell everything else, and the coding-plan
-/// endpoints that a Chinese network can reach without a proxy.
+/**
+ * A supported or discovered model supplier vendor configuration.
+ *
+ * @param id          vendor identifier and route name
+ * @param displayName human-readable name displayed in the interface
+ * @param apiKeyEnv   environment variable name read by the harness for this vendor's API key
+ * @param api         wire protocol spoken by the endpoint
+ * @param baseUrl     endpoint URL, or {@code null} if configured per-account
+ * @param preferred   whether this is the primary default vendor
+ */
 @NotNullByDefault
 public record DshVendor(
-		/// The id `dsh` addresses this vendor by, which is also the route name.
 		String id,
-
-		/// What the interface calls it.
 		String displayName,
-
-		/// The environment variable the harness reads this vendor's key from.
 		String apiKeyEnv,
-
-		/// The wire protocol its endpoint speaks.
 		String api,
-
-		/// The endpoint, or `null` for a vendor whose address is per account.
 		@Nullable String baseUrl,
-
-		/// Whether this is the harness's own vendor, which the interface leads with.
 		boolean preferred) {
 
-	/// The protocols a hand-written route may declare.
-	///
-	/// The harness accepts exactly these three; anything else is rejected when the route is
-	/// registered, which fails the launch rather than the request.
+	/**
+	 * Supported wire protocols for harness supplier routes.
+	 */
 	public static final List<String> APIS = List.of("openai-completions", "openai-responses", "anthropic-messages");
+
 	private static final List<DshVendor> OFFERED = List.of(new DshVendor("deepseek",
 	                                                                     "DeepSeek",
 	                                                                     "DEEPSEEK_API_KEY",
@@ -146,24 +132,28 @@ public record DshVendor(
 	                                                                     "openai-completions",
 	                                                                     "https://api.x.ai/v1",
 	                                                                     false));
-	/// The catalogue, read once.
+
 	private static final @Nullable List<DshVendor> CATALOGUE;
 
 	static {
 		CATALOGUE = readCatalogue();
 	}
 
-	/// The vendors offered, in the order the interface shows them.
-	///
-	/// @return the list
+	/**
+	 * Returns the list of standard vendors offered in the user interface.
+	 *
+	 * @return the offered vendors
+	 */
 	public static List<DshVendor> offered() {
 		return OFFERED;
 	}
 
-	/// Finds a vendor by its id.
-	///
-	/// @param id the id, or `null`
-	/// @return the vendor, or `null` when it is not one this launcher offers
+	/**
+	 * Finds an offered vendor by its identifier.
+	 *
+	 * @param id the vendor identifier
+	 * @return the matching vendor, or {@code null} if not found
+	 */
 	public static @Nullable DshVendor byId(@Nullable String id) {
 		if (id == null) {
 			return null;
@@ -176,34 +166,23 @@ public record DshVendor(
 		return null;
 	}
 
-	/// Returns the whole catalogue the harness ships, not only the ones offered.
-	///
-	/// [`offered`] is a short list chosen for a dropdown; this is all thirty-seven, and it is what a
-	/// base URL is looked up in. The two are different questions — "what should be easy to pick" and
-	/// "what does this address belong to" — and answering the second with the first would mean a
-	/// person who pastes a perfectly good Kimi endpoint is told it is not a provider.
-	///
-	/// Read from `assets/dsh-providers.txt` rather than written out in Java, so that re-reading the
-	/// harness's own catalogue is a diff of one data file.
-	///
-	/// @return the catalogue, in id order
+	/**
+	 * Returns the complete vendor catalogue bundled with the launcher.
+	 *
+	 * @return the full catalogue of known vendors
+	 */
 	public static List<DshVendor> catalogue() {
 		List<DshVendor> known = CATALOGUE;
 		return known != null ? known : List.of();
 	}
 
-	/// Reports whether a name is one a supplier already answers to.
-	///
-	/// A route is named after its account, so an account carrying a supplier's own name would build a
-	/// route the harness already serves under that name — and the launcher's own tidying, which takes
-	/// away the routes it made, would take that one away with them.
-	///
-	/// Compared without case: what is refused is a **name**, and `DeepSeek` and `deepseek` are one
-	/// supplier to anybody reading them.
-	///
-	/// @param name  the name to test, or `null`
-	/// @param match which suppliers count
-	/// @return whether one of them already answers to it
+	/**
+	 * Reports whether an existing vendor matches the given name according to the predicate.
+	 *
+	 * @param name  the candidate name
+	 * @param match matching predicate
+	 * @return true if a matching vendor exists
+	 */
 	public static boolean answersTo(@Nullable String name, Predicate<DshVendor> match) {
 		if (name == null || name.isBlank()) {
 			return false;
@@ -222,16 +201,12 @@ public record DshVendor(
 		return false;
 	}
 
-	/// Finds the provider an address belongs to.
-	///
-	/// Compared by **host**, not by the whole string: an endpoint is written with or without a
-	/// trailing slash, with or without `/v1`, and both spellings are the same service. The host is
-	/// the part that identifies it, and matching on more than that would fail on exactly the
-	/// variations people type. A provider that publishes no address of its own is never found this
-	/// way, which is correct — there is nothing to compare against.
-	///
-	/// @param url the address
-	/// @return the provider, or `null` when the address belongs to none of them
+	/**
+	 * Finds a vendor whose base URL matches the host of the given endpoint.
+	 *
+	 * @param url the endpoint URL
+	 * @return the matching vendor, or {@code null} if none match
+	 */
 	public static @Nullable DshVendor byBaseUrl(@Nullable String url) {
 		String host = hostOf(url);
 		if (host == null) {
@@ -242,8 +217,6 @@ public record DshVendor(
 				return vendor;
 			}
 		}
-		// The offered list may name an address the catalogue types differently; it wins because it
-		// carries the name this launcher shows.
 		for (DshVendor vendor : offered()) {
 			if (host.equals(hostOf(vendor.baseUrl))) {
 				return vendor;
@@ -252,10 +225,12 @@ public record DshVendor(
 		return null;
 	}
 
-	/// Returns the host of an address, or `null` when there is not one.
-	///
-	/// @param url the address
-	/// @return the lowercase host
+	/**
+	 * Extracts the normalized lowercase host from a URL.
+	 *
+	 * @param url the URL string
+	 * @return the lowercase host name, or {@code null} if invalid
+	 */
 	public static @Nullable String hostOf(@Nullable String url) {
 		if (url == null || url.isBlank()) {
 			return null;
@@ -268,16 +243,14 @@ public record DshVendor(
 		}
 	}
 
-	/// Makes a vendor for a provider the catalogue does not hold.
-	///
-	/// The key's variable name and the protocol cannot be discovered — no service publishes the name
-	/// of the environment variable a launcher should use — so both are derived from the id the same
-	/// way the harness's own catalogue derives them, and the address is the one that answered.
-	///
-	/// @param id      the id, which is also the route name
-	/// @param name    what the person called it
-	/// @param baseUrl the address
-	/// @return the vendor
+	/**
+	 * Creates a custom vendor definition for an endpoint not in the catalogue.
+	 *
+	 * @param id      vendor identifier and route name
+	 * @param name    display name
+	 * @param baseUrl endpoint URL
+	 * @return the discovered vendor
+	 */
 	public static DshVendor discovered(String id, String name, String baseUrl) {
 		return new DshVendor(id,
 		                     name,
@@ -287,24 +260,16 @@ public record DshVendor(
 		                     false);
 	}
 
-	/// Report whether an id may be used as a route name.
-	///
-	/// The id becomes the name of the route the harness is handed, so it has to be something the
-	/// harness can address. Same rule as an account's name, and for the same reason.
-	///
-	/// @param id the id
-	/// @return whether it may be used
+	/**
+	 * Reports whether a string is a valid vendor or route identifier.
+	 *
+	 * @param id the candidate identifier
+	 * @return true if the identifier is valid
+	 */
 	public static boolean isUsableId(@Nullable String id) {
 		return id != null && id.matches("[a-z0-9][a-z0-9._-]*");
 	}
 
-	/// Reads the catalogue from the launcher's own resources.
-	///
-	/// A line that cannot be read is skipped rather than fatal: a catalogue is a convenience, and a
-	/// launcher that will not start because one line of it is malformed is worse than one that
-	/// offers thirty-six providers instead of thirty-seven.
-	///
-	/// @return the catalogue
 	private static List<DshVendor> readCatalogue() {
 		List<DshVendor> vendors = new ArrayList<>();
 		try (InputStream stream = DshVendor.class.getResourceAsStream("/assets/dsh-providers.txt")) {
@@ -335,14 +300,6 @@ public record DshVendor(
 		return List.copyOf(vendors);
 	}
 
-	/// Turns an id into something readable to show for it.
-	///
-	/// The catalogue gives ids and no display names, and the id is what the interface has to show
-	/// anyway — it is the name a route is written with. Only the shape is tidied: `zai-coding-cn`
-	/// reads better as `Zai Coding Cn` than as itself, and the id is still shown beside it.
-	///
-	/// @param id the id
-	/// @return the name to display
 	private static String readableName(String id) {
 		StringBuilder name = new StringBuilder();
 		for (String word : id.split("-")) {
@@ -357,33 +314,30 @@ public record DshVendor(
 		return name.toString();
 	}
 
-	/// Reports whether the endpoint is one a key can be checked against.
-	///
-	/// A vendor whose address depends on the account cannot be checked without being told the
-	/// address, which is what the account's own base URL is for.
-	///
-	/// @return whether this vendor states its own address
+	/**
+	 * Reports whether this vendor specifies a base URL.
+	 *
+	 * @return true if {@link #baseUrl()} is present and non-blank
+	 */
 	public boolean hasBaseUrl() {
 		return baseUrl != null && !baseUrl.isBlank();
 	}
 
-	/// Returns what the interface shows for this vendor.
-	///
-	/// @return the name and the id, because the id is what a settings file will hold
+	/**
+	 * Formats a display label combining the vendor name and identifier.
+	 *
+	 * @return formatted label string
+	 */
 	public String label() {
 		return displayName + " (" + id + ")";
 	}
 
-	/// Reports whether a key looks like one for this vendor.
-	///
-	/// Not a validation — only the vendor can say that — but a key pasted with the wrong vendor
-	/// chosen is the commonest mistake, and the prefixes differ enough to catch it: the harness's
-	/// own keys begin `sk-`, Anthropic's `sk-ant-`, OpenRouter's `sk-or-`. A key that matches no
-	/// known shape is accepted, because this is a guess and refusing on a guess is worse than
-	/// letting the vendor answer.
-	///
-	/// @param key the key
-	/// @return whether it is shaped like one of this vendor's
+	/**
+	 * Performs heuristic validation on an API key based on known vendor key prefixes.
+	 *
+	 * @param key the candidate API key
+	 * @return true if the key format is plausible for this vendor
+	 */
 	public boolean looksLikeItsKey(String key) {
 		String trimmed = key == null ? "" : key.trim();
 		if (trimmed.isEmpty()) {

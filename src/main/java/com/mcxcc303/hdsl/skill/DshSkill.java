@@ -26,11 +26,11 @@ import java.nio.file.Path;
  *
  * @param entry          the entry on disk: the bundle directory, or the flat file
  * @param instructions   the file whose frontmatter describes the skill
- * @param name           the frontmatter `name`, or the entry's own name when it has none
- * @param description    the frontmatter `description`, or an empty string
+ * @param name           the frontmatter {@code name}, or the entry's own name when it has none
+ * @param description    the frontmatter {@code description}, or an empty string
  * @param bundle         whether this is a directory bundle rather than a flat file
  * @param modelInvocable whether the agent may invoke it: the harness hides a skill
- *                       whose frontmatter says `disable-model-invocation: true`
+ *                       whose frontmatter says {@code disable-model-invocation: true}
  * @param sizeBytes      what the pack occupies on disk
  * @param modifiedAt     when the instructions were last written, in epoch milliseconds
  */
@@ -40,7 +40,7 @@ public record DshSkill(Path entry, Path instructions, String name, String descri
 	/**
 	 * Returns whether the agent can see and invoke this skill.
 	 *
-	 * @return whether the frontmatter leaves `disable-model-invocation` unset or false
+	 * @return whether the frontmatter leaves {@code disable-model-invocation} unset or false
 	 */
 	public boolean enabled() {
 		return modelInvocable;
@@ -49,7 +49,7 @@ public record DshSkill(Path entry, Path instructions, String name, String descri
 	/**
 	 * Returns the entry's own name, which is what a file manager shows.
 	 *
-	 * @return the last segment of [#entry]
+	 * @return the last segment of {@link #entry}
 	 */
 	public String fileName() {
 		return entry.getFileName().toString();

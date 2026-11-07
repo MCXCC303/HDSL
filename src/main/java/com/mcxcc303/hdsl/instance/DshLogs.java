@@ -30,57 +30,42 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
-/// Writes a log window's contents to a file somebody can find again.
-///
-/// Three things go into the name, because a directory of exported logs is only useful if the files
-/// in it can be told apart without opening them: **the launcher** that wrote them, **the instance**
-/// they came from, and **the moment** they were exported. What comes out is
-/// `hdsl-<instance>-2026-09-27T21-58-30.log`.
-///
-/// They are written into [#DshPaths.LOGS], which is the launcher's own directory. The original
-/// wrote them beside the process's working directory — a path with nothing to do with this launcher,
-/// and one a person has no reason to look in.
-///
-/// An instance name is whatever somebody typed, so it is made into something a file name can hold
-/// rather than refused: the export is a diagnostic, and a name is not worth losing one over.
+/**
+ * Exports instance execution logs to stamped files in the launcher log directory.
+ */
 @NotNullByDefault
 public final class DshLogs {
-	/// What every export's name begins with.
 	private static final String PREFIX = "hdsl";
-
-	/// The suffix every export carries.
 	private static final String SUFFIX = ".log";
-
-	/// How the moment is written: sortable, and free of the colon a file name may not hold.
 	private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss");
-
-	/// How much of an instance's name is kept.
 	private static final int NAME_LIMIT = 64;
-
-	/// The characters a file name may not hold, on any of the systems this runs on.
 	private static final String FORBIDDEN = "/\\:*?\"<>|";
 
 	private DshLogs() {
 	}
 
-	/// Writes lines into the launcher's log directory, named for the launcher, the instance and now.
-	///
-	/// @param instanceId the instance the lines came from, or `null` when they came from none
-	/// @param lines      the lines
-	/// @return the file that was written
-	/// @throws IOException when the directory or the file cannot be written
+	/**
+	 * Writes log lines into the launcher's log directory stamped with the current time.
+	 *
+	 * @param instanceId the instance the lines came from, or {@code null}
+	 * @param lines      the log lines to write
+	 * @return the written file path
+	 * @throws IOException when the directory or file cannot be written
+	 */
 	public static Path write(@Nullable String instanceId, List<String> lines) throws IOException {
 		return write(DshPaths.LOGS, instanceId, lines, LocalDateTime.now());
 	}
 
-	/// Writes lines into a directory, named for the launcher, the instance and the moment.
-	///
-	/// @param directory  where to write
-	/// @param instanceId the instance the lines came from, or `null` when they came from none
-	/// @param lines      the lines
-	/// @param at         the moment the export is stamped with
-	/// @return the file that was written
-	/// @throws IOException when the directory or the file cannot be written
+	/**
+	 * Writes lines into a directory, stamped with the given timestamp.
+	 *
+	 * @param directory  target directory
+	 * @param instanceId the instance the lines came from, or {@code null}
+	 * @param lines      the log lines to write
+	 * @param at         the timestamp to record in the file name
+	 * @return the written file path
+	 * @throws IOException when the directory or file cannot be written
+	 */
 	static Path write(Path directory, @Nullable String instanceId, List<String> lines, LocalDateTime at)
 	throws IOException {
 		DshPermissions.createRestrictedDirectory(directory, DshPermissions.SECRET_DIRECTORY);
@@ -90,24 +75,19 @@ public final class DshLogs {
 		return file;
 	}
 
-	/// Returns the name one export carries.
-	///
-	/// @param instanceId the instance the lines came from, or `null` when they came from none
-	/// @param at         the moment the export is stamped with
-	/// @return the file name
+	/**
+	 * Formats the log export file name.
+	 *
+	 * @param instanceId the instance id, or {@code null}
+	 * @param at         the timestamp
+	 * @return the generated file name
+	 */
 	static String fileName(@Nullable String instanceId, LocalDateTime at) {
 		String instance = usableName(instanceId);
 		String stamp = at.format(STAMP);
 		return instance.isEmpty() ? PREFIX + "-" + stamp + SUFFIX : PREFIX + "-" + instance + "-" + stamp + SUFFIX;
 	}
 
-	/// Returns a name no export has taken yet.
-	///
-	/// Two exports a second apart is unlikely and two in the same second is not impossible, and the
-	/// second one overwriting the first would lose exactly the log somebody is trying to keep.
-	///
-	/// @param wanted the name the moment asks for
-	/// @return a path under the same name, or under that name and a number
 	private static Path unused(Path wanted) {
 		if (!Files.exists(wanted)) {
 			return wanted;
@@ -122,10 +102,6 @@ public final class DshLogs {
 		}
 	}
 
-	/// Returns an instance name a file name can hold, or an empty string.
-	///
-	/// @param instanceId the instance, or `null`
-	/// @return the name
 	private static String usableName(@Nullable String instanceId) {
 		String trimmed = instanceId == null ? "" : instanceId.trim();
 		if (trimmed.isEmpty() || trimmed.equals(".") || trimmed.equals("..")) {

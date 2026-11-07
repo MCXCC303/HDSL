@@ -33,31 +33,19 @@ import java.util.List;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Reading and writing one instance's manifest.
-///
-/// An instance is a directory holding `instance.json`, and the folder it was read out of
-/// is stamped onto what comes back — so an instance in a folder the user added is managed where it
-/// is, not where the launcher owns.
+/**
+ * Reads and writes instance manifests.
+ */
 @NotNullByDefault
 public final class InstanceStore {
-	/// The manifest file inside an instance directory.
+	/**
+	 * The manifest file inside an instance directory.
+	 */
 	public static final String MANIFEST_NAME = "instance.json";
 
 	private InstanceStore() {
 	}
 
-	/// Reads the manifest inside an instance directory.
-	///
-	/// The directory that was read is stamped onto the instance, and it wins
-	/// over whatever the manifest records: the manifest is a file, and it can be
-	/// copied to another folder, carried to another machine, or written by hand
-	/// — while the folder the manifest was found in is a fact about right now.
-	/// An instance read out of a folder the user added is in that folder, and
-	/// every later operation on it — installing, launching, renaming, removing —
-	/// has to name that folder rather than the one the launcher owns.
-	///
-	/// @param directory the candidate instance directory
-	/// @return the instance, or `null` when there is no readable manifest
 	private static @Nullable DshInstance read(Path directory) {
 		Path manifest = directory.resolve(MANIFEST_NAME);
 		if (!Files.isRegularFile(manifest)) {
@@ -75,10 +63,12 @@ public final class InstanceStore {
 		}
 	}
 
-	/// Writes an instance manifest.
-	///
-	/// @param instance the instance to persist
-	/// @throws DshException when the manifest cannot be written
+	/**
+	 * Writes an instance manifest.
+	 *
+	 * @param instance the instance to persist
+	 * @throws DshException when the manifest cannot be written
+	 */
 	static void write(DshInstance instance) throws DshException {
 		try {
 			Path directory = instance.instanceDirectory();
@@ -89,12 +79,12 @@ public final class InstanceStore {
 		}
 	}
 
-	/// Lists every readable instance, newest first.
-	///
-	/// Directories without a manifest, or with an unreadable one, are skipped
-	/// rather than failing the whole listing.
-	///
-	/// @return the known instances
+	/**
+	 * Lists every readable instance in the given root directory, sorted newest first.
+	 *
+	 * @param root the directory containing instances
+	 * @return the known instances
+	 */
 	public static List<DshInstance> listIn(Path root) {
 		if (!Files.isDirectory(root)) {
 			return List.of();
@@ -115,17 +105,12 @@ public final class InstanceStore {
 		return List.copyOf(instances);
 	}
 
-	/// Finds an instance by id.
-	///
-	/// Looked for in every folder the launcher knows about: an id names one
-	/// instance, and a person who sees it in the list has to be able to open,
-	/// launch or remove it without knowing which folder it came from. The folder
-	/// being shown is searched first, so the common case reads one directory —
-	/// and it is also the folder that wins when the name is held twice, which is
-	/// the order [#list] keeps a row for.
-	///
-	/// @param id the instance id
-	/// @return the instance, or `null` when it does not exist or is unreadable
+	/**
+	 * Finds an instance by ID across all configured instance folders.
+	 *
+	 * @param id the instance ID
+	 * @return the instance, or {@code null} if not found or unreadable
+	 */
 	public static @Nullable DshInstance find(String id) {
 		try {
 			String segment = DshPaths.segment(id, "instance id");
@@ -140,8 +125,7 @@ public final class InstanceStore {
 					found = instance;
 					foundIn = instance.instanceDirectory();
 				} else {
-					// The rest of the folders are still looked in, so that a name held twice is said
-					// out loud rather than being a coin toss nobody can see.
+					// Continue checking other folders to warn about duplicate instance names.
 					InstanceListing.warnAboutASharedName(id, foundIn, instance.instanceDirectory());
 				}
 			}
@@ -151,12 +135,11 @@ public final class InstanceStore {
 		}
 	}
 
-	/// Deletes a path, ignoring anything that goes wrong.
-	///
-	/// Used for the copies a rename or delete leaves behind, where a failure to
-	/// tidy up must not fail the operation that already succeeded.
-	///
-	/// @param path the path to delete
+	/**
+	 * Deletes a path, suppressing any I/O errors.
+	 *
+	 * @param path the path to delete
+	 */
 	static void deleteQuietly(Path path) {
 		if (path != null) {
 			DshFiles.deleteTreeQuietly(path);

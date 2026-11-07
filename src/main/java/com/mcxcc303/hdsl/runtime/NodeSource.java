@@ -38,8 +38,8 @@ public enum NodeSource {
 	/**
 	 * Resolves a source from its stored name.
 	 *
-	 * @param value the stored name, possibly `null` or of the wrong case
-	 * @return the matching source, or [NodeSource#OFFICIAL] when unrecognized
+	 * @param value the stored name, possibly {@code null} or of the wrong case
+	 * @return the matching source, or {@link #OFFICIAL} when unrecognized
 	 */
 	public static NodeSource of(@Nullable String value) {
 		if (value != null) {
@@ -69,7 +69,7 @@ public enum NodeSource {
 	/**
 	 * Returns the URL of one release's archive.
 	 *
-	 * @param version  the version without its leading `v`
+	 * @param version  the version without its leading {@code v}
 	 * @param fileName the archive's file name
 	 * @return the URL
 	 */

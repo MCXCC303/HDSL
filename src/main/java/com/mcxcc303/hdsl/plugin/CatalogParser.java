@@ -28,27 +28,21 @@ import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Turning what a source answered into a catalogue: the JSON, the merges, and the ordering.
-///
-/// Pure in the sense that matters: it reads no settings, touches no network and keeps no copy —
-/// it is handed a document and answers with entries.
+/**
+ * Parses catalog JSON documents and merges multiple sources.
+ */
 @NotNullByDefault
 public final class CatalogParser {
 	private CatalogParser() {
 	}
 
-	/// Combines what the sources answered into one catalogue.
-	///
-	/// A plugin is the same plugin across sources when it names the same npm
-	/// package, and repository-only entries are the same when they name the same
-	/// repository. The first occurrence wins, so the order of the sources decides
-	/// which description, version and download count are shown for a plugin that
-	/// two of them list — which is what makes the order the user arranged mean
-	/// something.
-	///
-	/// @param parts      the catalogues that answered, in source order
-	/// @param unreadable the sources that did not
-	/// @return the merged catalogue
+	/**
+	 * Combines what the sources answered into one catalogue.
+	 *
+	 * @param parts      the catalogues that answered, in source order
+	 * @param unreadable the sources that did not
+	 * @return the merged catalogue
+	 */
 	static Catalog merge(List<Catalog> parts, List<String> unreadable) {
 		List<Plugin> plugins = new ArrayList<>();
 		Set<String> seen = new LinkedHashSet<>();
@@ -72,10 +66,6 @@ public final class CatalogParser {
 		return new Catalog(updated, List.copyOf(plugins), List.copyOf(categories.values()), List.copyOf(unreadable));
 	}
 
-	/// Returns the name two entries share when they are the same plugin.
-	///
-	/// @param plugin the entry
-	/// @return the identity
 	private static String identityOf(Plugin plugin) {
 		String npm = plugin.npm();
 		if (npm != null && !npm.isBlank()) {
@@ -84,10 +74,12 @@ public final class CatalogParser {
 		return "repo:" + DshPluginSources.repoOf(plugin.url()).toLowerCase(Locale.ROOT);
 	}
 
-	/// Parses a catalogue document.
-	///
-	/// @param body the JSON document
-	/// @return the catalogue
+	/**
+	 * Parses a catalogue JSON document.
+	 *
+	 * @param body the JSON document
+	 * @return the catalogue
+	 */
 	public static Catalog parse(String body) {
 		JsonElement parsed = JsonParser.parseString(body);
 		if (!parsed.isJsonObject()) {
@@ -109,8 +101,7 @@ public final class CatalogParser {
 			}
 		}
 
-		// Categories come from the entries rather than from the document's own
-		// list, so a category the document forgot is still reachable.
+		// Categories come from the entries rather than from the document's own list
 		Map<String, String> byKey = new TreeMap<>();
 		for (Plugin plugin : plugins) {
 			byKey.putIfAbsent(plugin.category().toLowerCase(Locale.ROOT), plugin.category());
@@ -121,11 +112,13 @@ public final class CatalogParser {
 		                   List.copyOf(new LinkedHashSet<>(byKey.values())));
 	}
 
-	/// Sorts plugins the way the original's sort picker does.
-	///
-	/// @param plugins the plugins
-	/// @param sort    the sort: `downloads`, `stars` or `added`
-	/// @return the sorted list
+	/**
+	 * Sorts plugins by the given criterion.
+	 *
+	 * @param plugins the plugins
+	 * @param sort    the sort key: {@code "downloads"}, {@code "stars"}, or {@code "added"}
+	 * @return the sorted list
+	 */
 	public static List<Plugin> sorted(List<Plugin> plugins, String sort) {
 		Comparator<Plugin> comparator = switch (sort == null ? "" : sort) {
 			case "stars" -> Comparator.comparingInt(Plugin::stars).reversed();
@@ -135,10 +128,6 @@ public final class CatalogParser {
 		return plugins.stream().sorted(comparator.thenComparing(Plugin::name)).toList();
 	}
 
-	/// Reads one entry.
-	///
-	/// @param object the entry
-	/// @return the plugin, or `null` when the entry names nothing installable
 	private static @Nullable Plugin readPlugin(JsonObject object) {
 		String name = asString(object, "name");
 		String url = asString(object, "url");
@@ -169,11 +158,6 @@ public final class CatalogParser {
 		                  asString(object, "added"));
 	}
 
-	/// Returns a string member, or `null`.
-	///
-	/// @param object the object
-	/// @param name   the member's name
-	/// @return the string, or `null`
 	private static @Nullable String asString(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
@@ -183,11 +167,6 @@ public final class CatalogParser {
 		return value.isBlank() ? null : value;
 	}
 
-	/// Returns an integer member, or zero.
-	///
-	/// @param object the object
-	/// @param name   the member's name
-	/// @return the number, or zero when it is absent or not a number
 	private static int asInt(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber()) {
@@ -201,10 +180,6 @@ public final class CatalogParser {
 		}
 	}
 
-	/// Returns a string member that must have a value.
-	///
-	/// @param value the value, or `null`
-	/// @return the value, or an empty string
 	private static String orEmpty(@Nullable String value) {
 		return value == null ? "" : value;
 	}

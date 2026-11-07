@@ -43,7 +43,7 @@ public enum DshSkillSources {
 	/**
 	 * Returns the source a stored id names.
 	 *
-	 * @param id the stored id, possibly `null` or of the wrong case
+	 * @param id the stored id, possibly {@code null} or of the wrong case
 	 * @return the source
 	 */
 	public static DshSkillSources of(@Nullable String id) {

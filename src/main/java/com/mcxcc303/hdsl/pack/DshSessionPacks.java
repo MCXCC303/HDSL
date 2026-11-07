@@ -49,82 +49,37 @@ import java.util.zip.ZipOutputStream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Moves a set of conversations between installations as one file.
-///
-/// A session is a directory holding a self-describing log, and the harness can
-/// read one from any home it is put in — but only if three things hold, and all
-/// three fail loudly rather than degrading: the directory's name must be the one
-/// the log's own working directory identifies, the log's compression must match
-/// what the home is configured for, and the log's first compressed frame must be
-/// the header line by itself. A pack therefore copies the logs **byte for byte**
-/// and never re-encodes them, keeps each session's directory name exactly as it
-/// was, and records the working directory the sessions expect so that a pack
-/// arriving somewhere else can say so before it is unpacked.
-///
-/// What a session needs besides its log is the attachment store: images and files
-/// a conversation referred to are kept once per home, by content, and a session
-/// whose attachments did not come along shows broken references. Those are copied
-/// too — the ones the sessions name, when `zstd` is available to read the logs, or
-/// the whole store when it is not, because a pack that silently loses images is
-/// worse than a large one.
-///
-/// The projection cache is carried when it exists, although it is derived: it
-/// holds the title a conversation is listed under, and a pack that arrives with
-/// its titles is a pack that looks like what it came from. A target home refuses a
-/// cache row it does not recognise rather than trusting it, so carrying one is
-/// never a risk to the harness.
+/**
+ * Archives and restores conversation sessions and attachments as portable {@code .sspack} files.
+ */
 @NotNullByDefault
 public final class DshSessionPacks {
-	/// What a pack says it is, so that it is not mistaken for anything else.
 	public static final String FORMAT = "hdsl-session-pack";
-
-	/// The file extension a session pack is written with.
-	///
-	/// `sspack` reads as "session pack", and a name of its own is what keeps a session pack from
-	/// looking like any other archive — it is a record of conversations, not a set of files.
-	///
-	/// @see DshModpacks#FILE_EXTENSION for why a launcher's own packs do not use `.zip`
 	public static final String FILE_EXTENSION = ".sspack";
-
-	/// The extensions an import accepts, for the reason [DshModpacks#ACCEPTED_EXTENSIONS] gives.
 	public static final List<String> ACCEPTED_EXTENSIONS = List.of(".sspack", ".zip");
-
-	/// The pack format's version.
 	public static final int FORMAT_VERSION = 1;
-
-	/// The manifest's name inside the archive.
 	public static final String MANIFEST = "manifest.json";
 
-	/// Where the sessions live inside the archive.
 	private static final String SESSIONS = "sessions/";
-
-	/// Where the attachment store lives inside the archive.
 	private static final String ATTACHMENTS = "attachments/";
-
-	/// Where the projection cache lives inside the archive.
 	private static final String PROJCACHE = "projcache/";
-
-	/// A content-addressed object's name: the harness names attachments by their
-	/// sha-256, which is what makes copying the ones a session names possible at
-	/// all.
 	private static final Pattern OBJECT_ID = Pattern.compile("\\b[0-9a-f]{64}\\b");
-
-	/// The directory names inside an attachment store that hold objects.
 	private static final List<String> STORES = List.of("objects", "file-objects", "request-images");
-	/// How many attachment objects the last copy added.
 	private static int copiedAttachments;
 
 	private DshSessionPacks() {
 	}
 
-	/// Writes the given sessions into a pack.
-	///
-	/// @param instance the instance whose sessions they are
-	/// @param sessions the sessions to write
-	/// @param target   the archive to create
-	/// @param onStage  receives progress lines, or `null`
-	/// @return what was written
-	/// @throws DshException when a session cannot be read or the pack cannot be written
+	/**
+	 * Writes the given sessions into a pack.
+	 *
+	 * @param instance the instance whose sessions they are
+	 * @param sessions the sessions to write
+	 * @param target   the archive to create
+	 * @param onStage  receives progress lines, or null
+	 * @return export summary
+	 * @throws DshException when a session cannot be read or the pack cannot be written
+	 */
 	public static ExportResult export(DshInstance instance,
 	                                  List<DshSession> sessions,
 	                                  Path target,
@@ -136,8 +91,6 @@ public final class DshSessionPacks {
 
 		List<DshSession> ordered = sessions.stream().sorted(Comparator.comparing(DshSession::id)).toList();
 
-		// The attachments first, because whether they are the referenced ones or
-		// all of them is something the manifest has to say.
 		Set<String> referenced = referencedAttachments(home, ordered);
 		List<Path> attachments = referenced == null
 		                         ? allAttachments(home)
@@ -157,7 +110,6 @@ public final class DshSessionPacks {
 		}
 
 		List<Entry> entries = new ArrayList<>();
-		long bytes = 0;
 		try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
 			entries.addAll(writeInto(zip, home, ordered, onStage));
 			for (Path attachment : attachments) {
@@ -188,21 +140,17 @@ public final class DshSessionPacks {
 		return new ExportResult(entries.size(), attachments.size(), size);
 	}
 
-	/// Writes sessions into an archive that is already open.
-	///
-	/// The layout is the one a session pack uses, which is also the one a home uses:
-	/// a modpack that carries conversations carries exactly these entries, and
-	/// whoever reads them applies the same rules either way — a log is copied byte
-	/// for byte, named as the harness names it, and put in the directory its own
-	/// working directory identifies.
-	///
-	/// @param zip      the archive
-	/// @param home     the `DSH_HOME` they live in
-	/// @param sessions the sessions, in the order to write them
-	/// @param onStage  receives progress lines, or `null`
-	/// @return the entries describing what was written
-	/// @throws DshException when a session holds no log
-	/// @throws IOException  when the archive cannot be written
+	/**
+	 * Writes sessions into an open archive stream.
+	 *
+	 * @param zip      the output archive
+	 * @param home     the DSH_HOME path
+	 * @param sessions sessions to write
+	 * @param onStage  receives progress lines, or null
+	 * @return entries describing what was written
+	 * @throws DshException when a session holds no log
+	 * @throws IOException  when the archive cannot be written
+	 */
 	public static List<Entry> writeInto(ZipOutputStream zip,
 	                                    Path home,
 	                                    List<DshSession> sessions,
@@ -236,15 +184,16 @@ public final class DshSessionPacks {
 		return entries;
 	}
 
-	/// Writes the attachments the given sessions name into an archive that is
-	/// already open.
-	///
-	/// @param zip      the archive
-	/// @param home     the `DSH_HOME`
-	/// @param sessions the sessions
-	/// @param onStage  receives progress lines, or `null`
-	/// @return how many attachment objects were written
-	/// @throws IOException when the archive cannot be written
+	/**
+	 * Writes session attachments into an open archive stream.
+	 *
+	 * @param zip      the archive
+	 * @param home     the DSH_HOME path
+	 * @param sessions the sessions
+	 * @param onStage  receives progress lines, or null
+	 * @return count of attachment objects written
+	 * @throws IOException when the archive cannot be written
+	 */
 	public static int writeAttachmentsInto(ZipOutputStream zip,
 	                                       Path home,
 	                                       List<DshSession> sessions,
@@ -263,18 +212,15 @@ public final class DshSessionPacks {
 		return attachments.size();
 	}
 
-	/// Reads a pack into a home.
-	///
-	/// Sessions the home already has are left alone: a pack is a way of bringing
-	/// conversations somewhere, and re-importing one that is already there must
-	/// not touch it — the harness would refuse a second log for one id, and the
-	/// right answer is to keep the one in place.
-	///
-	/// @param home    the `DSH_HOME` to read into
-	/// @param pack    the archive to read
-	/// @param onStage receives progress lines, or `null`
-	/// @return what was read
-	/// @throws DshException when the pack is not a pack, or cannot be read
+	/**
+	 * Reads a session pack into an instance home.
+	 *
+	 * @param home    the DSH_HOME path
+	 * @param pack    the archive path
+	 * @param onStage receives progress lines, or null
+	 * @return import summary
+	 * @throws DshException when the pack cannot be read or validated
+	 */
 	public static ImportResult importFrom(Path home, Path pack, @Nullable Consumer<String> onStage)
 	throws DshException {
 		Manifest manifest = readManifest(pack);
@@ -301,9 +247,6 @@ public final class DshSessionPacks {
 			throw new DshException("Failed to read " + pack, e);
 		}
 
-		// The grouping is the harness's to derive from the sessions' own headers;
-		// asking for it again is what files the imported conversations under their
-		// projects instead of leaving them ungrouped.
 		if (imported > 0) {
 			DshSessions.regroup(home);
 		}
@@ -315,20 +258,15 @@ public final class DshSessionPacks {
 		return new ImportResult(imported, manifest.sessions().size() - imported, attachments, manifest);
 	}
 
-	/// Reads sessions out of an archive that holds them beside something else.
-	///
-	/// A modpack carries a conversation history the same way a session pack does —
-	/// the same entries, the same rules, including the one that a log is never
-	/// written into a directory its own working directory does not identify — and it
-	/// does not carry a session manifest, because it has one of its own. What is
-	/// written is therefore everything the archive holds that the home does not
-	/// already have.
-	///
-	/// @param archive the archive
-	/// @param home    the `DSH_HOME` to read into
-	/// @param onStage receives progress lines, or `null`
-	/// @return how many sessions were restored
-	/// @throws DshException when the archive cannot be read
+	/**
+	 * Restores session entries from an archive into an instance home.
+	 *
+	 * @param archive the archive
+	 * @param home    the DSH_HOME path
+	 * @param onStage receives progress lines, or null
+	 * @return number of restored sessions
+	 * @throws DshException when the archive cannot be read
+	 */
 	public static int restoreInto(Path archive, Path home, @Nullable Consumer<String> onStage) throws DshException {
 		int imported;
 		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(archive))) {
@@ -343,14 +281,6 @@ public final class DshSessionPacks {
 		return imported;
 	}
 
-	/// Copies the session, cache and attachment entries of an open archive.
-	///
-	/// @param zip    the archive
-	/// @param home   the `DSH_HOME` to read into
-	/// @param wanted the sessions to take, or `null` to take every one the archive
-	///               holds that the home does not already have
-	/// @return how many session logs were written
-	/// @throws IOException when the archive cannot be read
 	private static int copyEntries(ZipInputStream zip, Path home, @Nullable List<Entry> wanted) throws IOException {
 		Set<String> wantedIds =
 				wanted == null ? Set.of() : new LinkedHashSet<>(wanted.stream().map(Entry::id).toList());
@@ -366,16 +296,6 @@ public final class DshSessionPacks {
 
 			if (name.startsWith(SESSIONS)) {
 				String[] parts = name.substring(SESSIONS.length()).split("/");
-				// A pack is an archive somebody may have edited, and every part of this path is
-				// interpolated into a `resolve`. A member named `sessions/../planted/session.jsonl`
-				// leaves the sessions directory and lands in the home — the prefix is matched before
-				// the path is resolved, and `..` is a legal element. Each part is checked on its own
-				// because any one of them is the one that can escape.
-				// An archive is something somebody may have edited, and every part of this path is
-				// interpolated into a `resolve`. A member named `sessions/../planted/session.jsonl`
-				// passes the prefix test and is a legal path, so it leaves the sessions directory
-				// and lands in the home — anywhere the archive says. Each part is checked on its
-				// own, because any one of them is the one that can climb out.
 				if (parts.length != 3 || !safeRelative(parts[0]) || !safeRelative(parts[1]) ||
 				    !safeRelative(parts[2])) {
 					LOG.warning("Skipping " + name + " in a session pack: unsafe path");
@@ -387,9 +307,6 @@ public final class DshSessionPacks {
 					}
 					String recorded = slugOf(wanted, parts[1]);
 					if (recorded == null || !recorded.equals(parts[0])) {
-						// The harness matches a log's header against the directory it
-						// is in and refuses the whole home when they disagree, so a
-						// session is only written where the manifest says it came from.
 						LOG.warning("Skipping " + name + " in a session pack: the manifest puts session " + parts[1] +
 						            " in " + recorded + ", not " + parts[0]);
 						continue;
@@ -445,11 +362,13 @@ public final class DshSessionPacks {
 		return imported;
 	}
 
-	/// Reads a pack's manifest.
-	///
-	/// @param pack the archive
-	/// @return the manifest
-	/// @throws DshException when the archive holds none
+	/**
+	 * Reads and parses the manifest of a session pack.
+	 *
+	 * @param pack the archive path
+	 * @return parsed manifest
+	 * @throws DshException when the archive holds no manifest
+	 */
 	public static Manifest readManifest(Path pack) throws DshException {
 		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
 			ZipEntry entry;
@@ -469,10 +388,6 @@ public final class DshSessionPacks {
 		throw new DshException("This file holds no session pack manifest");
 	}
 
-	/// Reads a manifest object.
-	///
-	/// @param root the manifest
-	/// @return the manifest record
 	private static Manifest manifestOf(JsonObject root) {
 		List<Entry> entries = new ArrayList<>();
 		JsonElement sessions = root.get("sessions");
@@ -507,14 +422,6 @@ public final class DshSessionPacks {
 		                    integer(root, "attachmentCount"));
 	}
 
-	/// Says so when a pack's sessions were recorded somewhere else.
-	///
-	/// This is a warning rather than a refusal: a session whose working directory
-	/// does not exist still lists and still opens, it simply belongs to no
-	/// project, and resuming it needs that exact directory. Saying which
-	/// directory it was is the useful part.
-	///
-	/// @param manifest the pack's manifest
 	private static void warnAboutWorkingDirectory(Manifest manifest) {
 		String cwd = manifest.workingDirectory();
 		if (cwd == null || cwd.isBlank()) {
@@ -526,25 +433,9 @@ public final class DshSessionPacks {
 		}
 	}
 
-	/// Returns the attachment ids the given sessions name, or `null` when the
-	/// logs cannot be read here.
-	///
-	/// A log is compressed, and this launcher has no decompressor of its own; the
-	/// `zstd` command is used when it is installed, which is the honest way to ask
-	/// rather than to guess at the compressed bytes. When it is not, the caller
-	/// takes the whole store instead.
-	///
-	/// @param home     the `DSH_HOME`
-	/// @param sessions the sessions
-	/// @return the ids, or `null` when they cannot be determined
 	private static @Nullable Set<String> referencedAttachments(Path home, List<DshSession> sessions) {
 		Path zstd = SystemUtils.which("zstd");
 		if (zstd == null) {
-			// Without a decompressor the referenced ids of a compressed log cannot be read, and a
-			// log that cannot be read is not a log with no attachments. Returning null says "not
-			// known", which the caller answers by carrying the whole store — the safe direction,
-			// because a pack that carries too much still restores, and one that carries too little
-			// loses pictures with nothing to say so.
 			LOG.info("zstd is not installed, so a session pack carries the whole attachment store");
 			return null;
 		}
@@ -552,11 +443,6 @@ public final class DshSessionPacks {
 		Set<String> ids = new LinkedHashSet<>();
 		for (DshSession session : sessions) {
 			for (Path log : logsOf(session.directory())) {
-				// A home may hold either spelling — the harness decides per root — and this used to
-				// read only the compressed one. An uncompressed log was skipped, so the ids it named
-				// were never collected and its attachments were left out of the pack **silently**:
-				// the export reported success and the pictures were simply gone at the other end.
-				// Which spelling a log has says nothing about whether it names attachments.
 				boolean compressed = log.getFileName().toString().endsWith(".zstd");
 				try {
 					String text;
@@ -589,10 +475,6 @@ public final class DshSessionPacks {
 		return ids;
 	}
 
-	/// Returns every object in a home's attachment store.
-	///
-	/// @param home the `DSH_HOME`
-	/// @return the files
 	private static List<Path> allAttachments(Path home) {
 		Path store = home.resolve("attachments");
 		if (!Files.isDirectory(store)) {
@@ -609,11 +491,6 @@ public final class DshSessionPacks {
 		return files;
 	}
 
-	/// Returns the store file holding one object, if there is one.
-	///
-	/// @param home the `DSH_HOME`
-	/// @param id   the object's id
-	/// @return the file, or `null` when the store does not hold it
 	private static @Nullable Path findAttachment(Path home, String id) {
 		for (String store : STORES) {
 			Path file = home.resolve("attachments")
@@ -628,26 +505,12 @@ public final class DshSessionPacks {
 		return null;
 	}
 
-	/// Returns a store file's path relative to the store, which is how it is
-	/// named inside a pack.
-	///
-	/// @param home the `DSH_HOME`
-	/// @param file the store file
-	/// @return the relative path, with forward slashes
 	private static String relativeToStore(Path home, Path file) {
 		Path store = home.resolve("attachments");
 		String relative = store.relativize(file).toString();
 		return relative.replace('\\', '/');
 	}
 
-	/// Reports whether a home's sessions are compressed.
-	///
-	/// The harness decides this per root and refuses a root that mixes the two, so
-	/// a pack has to write the spelling the home already uses. A home with no
-	/// sessions yet is taken to be compressed, which is the harness's own default.
-	///
-	/// @param home the `DSH_HOME`
-	/// @return whether the home reads compressed logs
 	private static boolean expectsCompressed(Path home) {
 		Path root = home.resolve("sessions");
 		if (!Files.isDirectory(root)) {
@@ -666,21 +529,11 @@ public final class DshSessionPacks {
 		return true;
 	}
 
-	/// Reports whether a log name is written the way a home reads them.
-	///
-	/// @param home     the `DSH_HOME`
-	/// @param fileName the log's name
-	/// @return whether the compression matches
 	private static boolean matchesCompression(Path home, String fileName) {
 		boolean compressed = fileName.endsWith(".zstd");
 		return compressed == expectsCompressed(home);
 	}
 
-	/// Returns the project directory a pack's manifest records for a session.
-	///
-	/// @param entries the pack's sessions
-	/// @param id      the session id
-	/// @return the directory, or `null` when the manifest does not describe it
 	private static @Nullable String slugOf(List<Entry> entries, String id) {
 		for (Entry entry : entries) {
 			if (entry.id().equals(id)) {
@@ -690,24 +543,11 @@ public final class DshSessionPacks {
 		return null;
 	}
 
-	/// Returns the cache file of a session, if the home has one.
-	///
-	/// @param home the `DSH_HOME`
-	/// @param id   the session id
-	/// @return the file, or `null`
 	private static @Nullable Path cacheFile(Path home, String id) {
 		Path file = home.resolve("storages").resolve("session_projcache").resolve("sessions").resolve(id + ".json");
 		return Files.isRegularFile(file) ? file : null;
 	}
 
-	/// Returns the canonical logs in a session directory, oldest generation first.
-	///
-	/// Every generation is carried, not only the newest: a directory can hold two
-	/// after a session was continued, and which one a future harness reads is not
-	/// this launcher's decision to make.
-	///
-	/// @param directory the session directory
-	/// @return the logs
 	private static List<Path> logsOf(Path directory) {
 		try (Stream<Path> files = Files.list(directory)) {
 			return files.filter(Files::isRegularFile)
@@ -719,11 +559,6 @@ public final class DshSessionPacks {
 		}
 	}
 
-	/// Returns the working directory every session in a pack shares, if they share
-	/// one.
-	///
-	/// @param entries the pack's sessions
-	/// @return the directory, or `null` when they do not share one
 	private static @Nullable String commonWorkingDirectory(List<Entry> entries) {
 		String common = null;
 		for (Entry entry : entries) {
@@ -740,13 +575,6 @@ public final class DshSessionPacks {
 		return common;
 	}
 
-	/// Copies a file into the archive.
-	///
-	/// @param zip  the archive
-	/// @param file the file
-	/// @param name the entry's name
-	/// @return the file's size
-	/// @throws IOException when the file cannot be read or written
 	private static long copyInto(ZipOutputStream zip, Path file, String name) throws IOException {
 		zip.putNextEntry(new ZipEntry(name));
 		try (InputStream input = Files.newInputStream(file)) {
@@ -756,11 +584,6 @@ public final class DshSessionPacks {
 		return Files.size(file);
 	}
 
-	/// Writes one archive entry to a file.
-	///
-	/// @param zip    the archive
-	/// @param target the file
-	/// @throws IOException when the file cannot be written
 	private static void write(ZipInputStream zip, Path target) throws IOException {
 		Path staging = target.resolveSibling(target.getFileName() + ".importing");
 		try (OutputStream output = Files.newOutputStream(staging)) {
@@ -769,10 +592,6 @@ public final class DshSessionPacks {
 		Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
 	}
 
-	/// Reports whether a path from an archive stays inside the store.
-	///
-	/// @param relative the path
-	/// @return whether it is safe to resolve
 	private static boolean safeRelative(String relative) {
 		if (relative.isBlank() || relative.startsWith("/") || relative.contains("\\")) {
 			return false;
@@ -788,10 +607,6 @@ public final class DshSessionPacks {
 		return true;
 	}
 
-	/// Returns a file's size.
-	///
-	/// @param file the file
-	/// @return the size, or zero
 	private static long sizeOf(Path file) {
 		try {
 			return Files.size(file);
@@ -800,21 +615,12 @@ public final class DshSessionPacks {
 		}
 	}
 
-	/// Reports progress.
-	///
-	/// @param onStage the sink, or `null`
-	/// @param message the message
 	private static void report(@Nullable Consumer<String> onStage, String message) {
 		if (onStage != null) {
 			onStage.accept(message);
 		}
 	}
 
-	/// Returns a string member, or `null`.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the string, or `null`
 	private static @Nullable String string(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		return element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()
@@ -822,11 +628,6 @@ public final class DshSessionPacks {
 		       : element.getAsString();
 	}
 
-	/// Returns an integer member, or zero.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the number, or zero
 	private static int integer(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber()) {
@@ -835,48 +636,56 @@ public final class DshSessionPacks {
 		return element.getAsInt();
 	}
 
-	/// One conversation in a pack.
-	///
-	/// @param id            the session id
-	/// @param slug          the project directory the session lives in
-	/// @param cwd           the working directory the session was recorded in
-	/// @param formatVersion the log's format generation
-	/// @param title         the title the cache carried, or `null`
-	/// @param sizeBytes     the size of the session's logs
+	/**
+	 * One conversation session entry in a pack.
+	 *
+	 * @param id            session identifier
+	 * @param slug          workspace project slug directory name
+	 * @param cwd           working directory where session was recorded, or null
+	 * @param formatVersion log format version
+	 * @param title         session title, or null
+	 * @param sizeBytes     size of session log files in bytes
+	 */
 	public record Entry(String id, String slug, @Nullable String cwd, int formatVersion, @Nullable String title,
 	                    long sizeBytes) {
 	}
 
-	/// What a pack holds.
-	///
-	/// @param format           the format identifier
-	/// @param version          the format version
-	/// @param createdAt        when the pack was written
-	/// @param instanceId       the instance the sessions came from
-	/// @param dshVersion       the DeepSeek Harness version that wrote them
-	/// @param workingDirectory the working directory the sessions expect, or `null`
-	/// @param sessions         the sessions
-	/// @param attachments      whether the referenced attachments, or all of them, came along
-	/// @param attachmentCount  how many attachment objects the pack holds
+	/**
+	 * Session pack manifest contents.
+	 *
+	 * @param format           format identifier
+	 * @param version          format version
+	 * @param createdAt        ISO creation timestamp
+	 * @param instanceId       source instance ID
+	 * @param dshVersion       DeepSeek Harness version
+	 * @param workingDirectory common working directory, or null
+	 * @param sessions         session entries included
+	 * @param attachments      attachment coverage indicator ("all" or "referenced")
+	 * @param attachmentCount  number of attachment files included
+	 */
 	public record Manifest(String format, int version, String createdAt, String instanceId, String dshVersion,
 	                       @Nullable String workingDirectory, List<Entry> sessions, String attachments,
 	                       int attachmentCount) {
 	}
 
-	/// What an export wrote.
-	///
-	/// @param sessions    how many sessions were written
-	/// @param attachments how many attachment objects were written
-	/// @param bytes       the size of the pack
+	/**
+	 * Summary of a session pack export.
+	 *
+	 * @param sessions    number of sessions exported
+	 * @param attachments number of attachment objects exported
+	 * @param bytes       archive file size in bytes
+	 */
 	public record ExportResult(int sessions, int attachments, long bytes) {
 	}
 
-	/// What an import read.
-	///
-	/// @param imported    how many sessions were added
-	/// @param skipped     how many were already present
-	/// @param attachments how many attachment objects were added
-	/// @param manifest    the pack's manifest
+	/**
+	 * Summary of a session pack import.
+	 *
+	 * @param imported    number of sessions added
+	 * @param skipped     number of sessions skipped because they were already present
+	 * @param attachments number of attachment objects imported
+	 * @param manifest    imported pack manifest
+	 */
 	public record ImportResult(int imported, int skipped, int attachments, Manifest manifest) {
 	}
 }

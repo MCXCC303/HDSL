@@ -40,7 +40,7 @@ public final class PluginCommands {
 	}
 
 	/**
-	 * Runs the `plugin list` command
+	 * Runs the {@code plugin list} command.
 	 */
 	static int listPlugins(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
@@ -97,7 +97,7 @@ public final class PluginCommands {
 	}
 
 	/**
-	 * Runs the `plugin install` command
+	 * Runs the {@code plugin install} command.
 	 */
 	static int installPlugin(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
@@ -117,10 +117,7 @@ public final class PluginCommands {
 	}
 
 	/**
-	 * Runs the `plugin build-scripts` command
-	 * <p>
-	 * Without `--allow` or `--deny` it prints the profile's install-script entries. <br>
-	 * With one of them the packages named are answered for, or every package still waiting when none is named
+	 * Runs the {@code plugin build-scripts} command.
 	 */
 	static int buildScripts(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
@@ -148,7 +145,7 @@ public final class PluginCommands {
 	}
 
 	/**
-	 * Runs the `plugin install-file` command
+	 * Runs the {@code plugin install-file} command.
 	 */
 	static int installPluginFile(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
@@ -169,7 +166,7 @@ public final class PluginCommands {
 	}
 
 	/**
-	 * Runs the `plugin remove` command
+	 * Runs the {@code plugin remove} command.
 	 */
 	static int removePlugin(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");

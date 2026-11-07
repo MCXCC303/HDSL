@@ -38,28 +38,17 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The `appBoot` pin: which version of the boot library an instance starts with, and the
-/// override that says so in the instance's own profile.
-///
-/// A value read back out of a profile is checked against what the manifest declares, because a
-/// profile somebody edited by hand is a profile the launcher has to be able to refuse.
+/**
+ * Resolves and configures the {@code appBoot} library pin for an instance.
+ */
 @NotNullByDefault
 public final class AppBootPin {
-	/// The npm package that provides the application boot library.
-	///
-	/// Held to the same version as DeepSeek Harness itself: the two are
-	/// published together, and a mismatch between them is a failure at import
-	/// rather than a degradation.
+	/**
+	 * The npm package that provides the application boot library.
+	 */
 	public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
 
-	/// The line that pins the boot library, as the file writes it.
-	///
-	/// Anchored on the key rather than looked for anywhere in a line, and that is the whole point:
-	/// the workspace file also *lists* packages, in entries spelled "- '@scope/name@1.2.3'", and a
-	/// scan for the name alone reads the boot library out of one of those. What it answers with then
-	/// still carries the "@" that separated the two halves of that list entry — and that value
-	/// travels: an exported pack records it, and installing it writes a workspace file whose pin is
-	/// not a version at all, which pnpm then refuses.
+	// Matches the key in pnpm-workspace.yaml without capturing list entries.
 	private static final Pattern APP_BOOT_PIN = Pattern.compile(
 			"^[ \\t]*['\"]?" + Pattern.quote(APP_BOOT_PACKAGE) + "['\"]?[ \\t]*:[ \\t]*(\\S+)[ \\t]*$",
 			Pattern.MULTILINE);
@@ -83,7 +72,7 @@ public final class AppBootPin {
 	 *
 	 * @param instance the instance to change
 	 * @param appBoot  the boot library version to hold it to
-	 * @param onLine   receives the package manager's output, or `null`
+	 * @param onLine   receives the package manager's output, or {@code null}
 	 * @throws DshException when the manifest cannot be written or pnpm fails
 	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot, @Nullable Consumer<String> onLine)
@@ -125,13 +114,12 @@ public final class AppBootPin {
 		}
 	}
 
-	/// Returns the boot library version the workspace file pins, or null when it pins none.
-	///
-	/// The seam the reader is written against, so the parse can be tested on a file's own text
-	/// rather than through an instance that has to exist first.
-	///
-	/// @param workspace the file's text
-	/// @return the pinned version, or null
+	/**
+	 * Returns the boot library version the workspace file pins, or {@code null} when none is pinned.
+	 *
+	 * @param workspace the file's text
+	 * @return the pinned version, or {@code null}
+	 */
 	static @Nullable String appBootPin(String workspace) {
 		Matcher pin = APP_BOOT_PIN.matcher(workspace);
 		if (!pin.find()) {
@@ -145,15 +133,12 @@ public final class AppBootPin {
 		return version.isEmpty() ? null : version;
 	}
 
-	/// Returns the boot library version an instance is held to.
-	///
-	/// The pin is read back from where it was written, because that is the
-	/// instance's own record of the choice: asking pnpm which copy it linked
-	/// would mean reproducing its store layout, and the version that matters to
-	/// the page is the one the instance asks for.
-	///
-	/// @param instance the instance
-	/// @return the version, or `null` when the instance has no pin to read
+	/**
+	 * Returns the boot library version an instance is held to.
+	 *
+	 * @param instance the instance
+	 * @return the version, or {@code null} when the instance has no pin to read
+	 */
 	public static @Nullable String readAppBoot(DshInstance instance) {
 		Path prefix;
 		try {

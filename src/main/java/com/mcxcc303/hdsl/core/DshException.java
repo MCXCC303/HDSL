@@ -19,25 +19,17 @@ package com.mcxcc303.hdsl.core;
 
 import java.io.Serial;
 
-/// Signals that a DeepSeek Harness operation could not be completed.
-///
-/// Used for conditions the user can act on — a missing runtime, an unknown
-/// version, a failed install — rather than for programming errors.
+/**
+ * Signals that a DeepSeek Harness operation could not be completed.
+ */
 public class DshException extends Exception {
 	@Serial
 	private static final long serialVersionUID = 1L;
 
-	/// Creates an exception with a message.
-	///
-	/// @param message the human-readable cause
 	public DshException(String message) {
 		super(message);
 	}
 
-	/// Creates an exception with a message and a cause.
-	///
-	/// @param message the human-readable cause
-	/// @param cause   the underlying failure
 	public DshException(String message, Throwable cause) {
 		super(message, cause);
 	}

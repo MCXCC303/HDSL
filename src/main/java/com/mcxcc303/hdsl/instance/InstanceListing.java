@@ -26,19 +26,21 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Every instance the launcher knows, across every folder it looks in.
-///
-/// One name is one instance, but a folder can be copied: what the listing does with a name two
-/// folders both hold is keep the one in the folder being shown and say so once in the log.
+/**
+ * Lists instances across all configured instance folders.
+ */
 @NotNullByDefault
 public final class InstanceListing {
-	/// The names whose two folders have already been reported, so a lookup that happens on every
-	/// frame says it once rather than every time.
 	private static final Set<String> REPORTED_SHARED_NAMES = ConcurrentHashMap.newKeySet();
 
 	private InstanceListing() {
 	}
 
+	/**
+	 * Returns all discovered instances sorted newest first.
+	 *
+	 * @return the list of instances
+	 */
 	public static List<DshInstance> list() {
 		List<DshInstance> instances = new ArrayList<>();
 		Map<String, Path> taken = new HashMap<>();
@@ -63,21 +65,13 @@ public final class InstanceListing {
 		return instances;
 	}
 
-	/// Says, once per run, that one name is held by two folders.
-	///
-	/// A name is meant to be one instance — [#create] refuses a second one — but a folder can be
-	/// copied, a backup can be unpacked beside the original, and a folder the user adds can hold a
-	/// copy of an instance the launcher already knows. What that leaves is two folders answering to
-	/// one name, and every lookup and every removal then acts on whichever folder comes first: the
-	/// list would show the same instance twice while managing one of them.
-	///
-	/// So the first folder wins — [#folders] puts the folder being shown first — and the copies it
-	/// shadows are named in the log rather than in the list, because what a person needs is one row
-	/// per name and one line saying which folder was left out and what to do about it.
-	///
-	/// @param id      the name both folders answer to
-	/// @param used    the folder the launcher uses
-	/// @param ignored the folder it leaves alone
+	/**
+	 * Logs a warning once per run when an instance ID is present in multiple folders.
+	 *
+	 * @param id      the shared instance ID
+	 * @param used    the folder being used
+	 * @param ignored the shadowed folder
+	 */
 	static void warnAboutASharedName(String id, Path used, Path ignored) {
 		if (!REPORTED_SHARED_NAMES.add(id)) {
 			return;

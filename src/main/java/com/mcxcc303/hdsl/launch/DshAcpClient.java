@@ -41,25 +41,16 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// A client for DeepSeek Harness's Agent Client Protocol surface.
-///
-/// ACP is the launcher's only route to a *conversation* rather than a browser
-/// tab. Upstream documents it as the stable automation interface: one
-/// newline-delimited JSON-RPC 2.0 stream over stdio, advertising only what is
-/// actually mounted. The launcher deliberately does not touch the web
-/// interface's internal `/api` gateway, whose routes are composition-dependent
-/// and authenticated by a browser cookie.
-///
-/// The client is intentionally small. It speaks the four calls a chat panel
-/// needs — `initialize`, `session/new`, `session/prompt`, `session/cancel` —
-/// and surfaces `session/update` notifications, rather than mirroring the whole
-/// ACP schema.
+/**
+ * Client for DeepSeek Harness's Agent Client Protocol (ACP) automation interface.
+ * <p>
+ * Communicates with an instance using newline-delimited JSON-RPC 2.0 over stdio for
+ * session initialization, message prompting, cancellation, and streaming update events.
+ */
 @NotNullByDefault
 public final class DshAcpClient implements AutoCloseable {
-	/// The ACP protocol version this client speaks.
 	public static final int PROTOCOL_VERSION = 1;
 
-	/// How long a request waits for its response before giving up.
 	private static final long REQUEST_TIMEOUT_SECONDS = 120;
 	private final DshInstance instance;
 	private final ManagedProcess process;
@@ -70,14 +61,7 @@ public final class DshAcpClient implements AutoCloseable {
 	private final Deque<String> stderrTail = new ArrayDeque<>();
 	private volatile @Nullable Listener listener;
 	private volatile boolean closed;
-	/// Starts an ACP child for an instance.
-	///
-	/// @param instance         the instance whose profile speaks ACP
-	/// @param command          the exact command to run
-	/// @param workingDirectory the directory sessions are scoped to
-	/// @param environment      extra environment variables for the child
-	/// @param listener         the listener for session events
-	/// @throws DshException when the child cannot start
+
 	private DshAcpClient(DshInstance instance,
 	                     List<String> command,
 	                     Path workingDirectory,
@@ -115,11 +99,6 @@ public final class DshAcpClient implements AutoCloseable {
 		this.readerThread.start();
 	}
 
-	/// Builds the command that boots an instance's profile in ACP mode.
-	///
-	/// @param instance the instance
-	/// @return the command
-	/// @throws DshException when the runtime or version is unavailable
 	private static List<String> commandFor(DshInstance instance) throws DshException {
 		DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
 		HarnessInstaller.requireInstalled(instance);
@@ -127,42 +106,36 @@ public final class DshAcpClient implements AutoCloseable {
 		return List.of(runtime.node().toString(), script.toString(), "--profile", "acp");
 	}
 
-	/// Builds the child environment for an instance.
-	///
-	/// @param instance the instance
-	/// @return the environment additions
-	/// @throws DshException when the instance's home cannot be resolved
 	private static Map<String, String> environmentFor(DshInstance instance) throws DshException {
 		Map<String, String> environment = new LinkedHashMap<>();
-		// DSH_* cannot come from a .env file: upstream rejects those names there.
 		environment.put("DSH_HOME", instance.homeDirectory().toString());
 		environment.putAll(DshEnvironment.of(instance));
 		return environment;
 	}
 
-	/// Starts a client for a DeepSeek Harness instance.
-	///
-	/// @param instance the instance to talk to
-	/// @param listener the listener for session events
-	/// @return the connected client
-	/// @throws DshException when the child cannot start or the handshake fails
+	/**
+	 * Starts a client for a DeepSeek Harness instance.
+	 *
+	 * @param instance the instance to connect to
+	 * @param listener the listener for session events
+	 * @return the connected client
+	 * @throws DshException when the process fails to start or the handshake fails
+	 */
 	public static DshAcpClient connect(DshInstance instance, Listener listener) throws DshException {
 		return connect(instance, commandFor(instance), instance.workspacePath(), environmentFor(instance), listener);
 	}
 
-	/// Starts a client over an explicitly supplied transport.
-	///
-	/// Separated from [#connect(DshInstance, Listener)] so the protocol layer can
-	/// be exercised against a stub peer — the streaming path otherwise needs a
-	/// live model credential to observe.
-	///
-	/// @param instance         the instance the session is attributed to
-	/// @param command          the exact command to run
-	/// @param workingDirectory the directory sessions are scoped to
-	/// @param environment      extra environment variables for the child
-	/// @param listener         the listener for session events
-	/// @return the connected client
-	/// @throws DshException when the child cannot start or the handshake fails
+	/**
+	 * Starts a client over an explicitly supplied command and transport.
+	 *
+	 * @param instance         the instance the session is attributed to
+	 * @param command          the exact command to run
+	 * @param workingDirectory the directory sessions are scoped to
+	 * @param environment      extra environment variables for the process
+	 * @param listener         the listener for session events
+	 * @return the connected client
+	 * @throws DshException when the process fails to start or the handshake fails
+	 */
 	public static DshAcpClient connect(DshInstance instance,
 	                                   List<String> command,
 	                                   Path workingDirectory,
@@ -178,28 +151,16 @@ public final class DshAcpClient implements AutoCloseable {
 		return client;
 	}
 
-	/// Extracts the text of a content chunk.
-	///
-	/// @param update the update object
-	/// @return the text, or an empty string
 	private static String textOf(JsonObject update) {
 		JsonObject content = update.getAsJsonObject("content");
 		return content == null ? "" : stringOf(content, "text");
 	}
 
-	/// Reads a string field, tolerating absence and null.
-	///
-	/// @param object the object
-	/// @param name   the field name
-	/// @return the value, or an empty string
 	private static String stringOf(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		return element == null || element.isJsonNull() || !element.isJsonPrimitive() ? "" : element.getAsString();
 	}
 
-	/// Performs the `initialize` call.
-	///
-	/// @throws DshException when the server rejects the handshake
 	private void handshake() throws DshException {
 		JsonObject clientInfo = new JsonObject();
 		clientInfo.addProperty("name", "HDSL");
@@ -219,10 +180,12 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 	}
 
-	/// Creates a session rooted at the instance's working directory.
-	///
-	/// @return the new session id
-	/// @throws DshException when the server rejects the request
+	/**
+	 * Creates a new session rooted at the instance working directory.
+	 *
+	 * @return the new session ID
+	 * @throws DshException when the server rejects the request
+	 */
 	public String newSession() throws DshException {
 		JsonObject params = new JsonObject();
 		params.addProperty("cwd", instance.workspacePath().toString());
@@ -236,14 +199,13 @@ public final class DshAcpClient implements AutoCloseable {
 		return sessionId.getAsString();
 	}
 
-	/// Sends one text prompt.
-	///
-	/// The call returns when the agent settles; assistant text arrives through
-	/// the listener while it runs.
-	///
-	/// @param sessionId the session to prompt
-	/// @param text      the prompt text
-	/// @throws DshException when the server rejects the request
+	/**
+	 * Sends a prompt to an active session and waits for it to complete.
+	 *
+	 * @param sessionId the session to prompt
+	 * @param text      the prompt text
+	 * @throws DshException when the request fails
+	 */
 	public void prompt(String sessionId, String text) throws DshException {
 		JsonObject prompt = new JsonObject();
 		prompt.addProperty("type", "text");
@@ -263,36 +225,40 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 	}
 
-	/// Asks the agent to stop the prompt in flight.
-	///
-	/// @param sessionId the session to cancel
+	/**
+	 * Requests cancellation of an in-flight prompt in the specified session.
+	 *
+	 * @param sessionId the session to cancel
+	 */
 	public void cancel(String sessionId) {
 		JsonObject params = new JsonObject();
 		params.addProperty("sessionId", sessionId);
-		// session/cancel is a notification, not a request: no id, no response.
 		sendNotification("session/cancel", params);
 	}
 
-	/// Returns the last few lines the server wrote to stderr.
-	///
-	/// ACP reserves stdout for protocol frames, so a startup failure shows up
-	/// here and nowhere else.
-	///
-	/// @return the trailing stderr lines
+	/**
+	 * Returns recent lines captured from the child process standard error stream.
+	 *
+	 * @return list of stderr lines
+	 */
 	public List<String> stderrTail() {
 		synchronized (stderrTail) {
 			return List.copyOf(stderrTail);
 		}
 	}
 
-	/// Reports whether the child is still running.
-	///
-	/// @return whether the connection is alive
+	/**
+	 * Reports whether the child process is still running.
+	 *
+	 * @return true if the connection is active
+	 */
 	public boolean isRunning() {
 		return !closed && process.isRunning();
 	}
 
-	/// Detaches the listener.
+	/**
+	 * Detaches the event listener from this client.
+	 */
 	public void detachListener() {
 		listener = null;
 	}
@@ -309,8 +275,7 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 		pending.clear();
 
-		// Closing stdin is the protocol's own shutdown request: the server binds
-		// EOF to its bounded drain.
+		// Closing stdin sends EOF to trigger graceful server shutdown
 		try {
 			writer.close();
 		} catch (IOException e) {
@@ -332,12 +297,6 @@ public final class DshAcpClient implements AutoCloseable {
 		process.destroyRelatedThreads();
 	}
 
-	/// Sends a JSON-RPC request and waits for its response.
-	///
-	/// @param method the method name
-	/// @param params the parameters
-	/// @return the result object
-	/// @throws DshException when the server returns an error or never answers
 	private JsonObject request(String method, JsonObject params) throws DshException {
 		long id = nextId.getAndIncrement();
 		CompletableFuture<JsonObject> future = new CompletableFuture<>();
@@ -365,10 +324,6 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 	}
 
-	/// Sends a JSON-RPC notification.
-	///
-	/// @param method the method name
-	/// @param params the parameters
 	private void sendNotification(String method, JsonObject params) {
 		JsonObject message = new JsonObject();
 		message.addProperty("jsonrpc", "2.0");
@@ -377,9 +332,6 @@ public final class DshAcpClient implements AutoCloseable {
 		send(message);
 	}
 
-	/// Writes one frame.
-	///
-	/// @param message the JSON-RPC message
 	private synchronized void send(JsonObject message) {
 		if (closed) {
 			return;
@@ -393,9 +345,6 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 	}
 
-	/// Dispatches one line of server output.
-	///
-	/// @param line the raw line
 	private void handleLine(String line) {
 		String trimmed = line.trim();
 		if (trimmed.isEmpty()) {
@@ -410,8 +359,6 @@ public final class DshAcpClient implements AutoCloseable {
 			}
 			message = parsed.getAsJsonObject();
 		} catch (RuntimeException e) {
-			// Stdout is reserved for protocol frames, but a misbehaving plugin
-			// can still print; ignore rather than break the connection.
 			LOG.info("[acp stdout] " + trimmed);
 			return;
 		}
@@ -440,9 +387,6 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 	}
 
-	/// Dispatches a `session/update` notification.
-	///
-	/// @param params the notification parameters, or `null`
 	private void dispatchUpdate(@Nullable JsonObject params) {
 		Listener current = listener;
 		if (current == null || params == null) {
@@ -463,12 +407,10 @@ public final class DshAcpClient implements AutoCloseable {
 			case "tool_call", "tool_call_update" ->
 					current.onToolCall(stringOf(update, "title"), stringOf(update, "status"));
 			default -> {
-				// Other update kinds are not rendered by the session panel yet.
 			}
 		}
 	}
 
-	/// Waits for the child to exit and reports it.
 	private void awaitExit() {
 		try {
 			int code = process.getProcess().waitFor();
@@ -485,36 +427,48 @@ public final class DshAcpClient implements AutoCloseable {
 		}
 	}
 
-	/// Receives the events of one session.
+	/**
+	 * Receives events from an active ACP session.
+	 */
 	public interface Listener {
-		/// Called for a chunk of assistant text.
-		///
-		/// @param text the chunk
+		/**
+		 * Called when an assistant text response chunk is received.
+		 *
+		 * @param text the text chunk
+		 */
 		default void onText(String text) {
 		}
 
-		/// Called for a chunk of assistant reasoning.
-		///
-		/// @param text the chunk
+		/**
+		 * Called when an assistant reasoning thought chunk is received.
+		 *
+		 * @param text the thought chunk
+		 */
 		default void onThought(String text) {
 		}
 
-		/// Called when a tool call starts or changes state.
-		///
-		/// @param title  the tool title
-		/// @param status the reported status
+		/**
+		 * Called when a tool call starts or its status updates.
+		 *
+		 * @param title  the tool title
+		 * @param status the reported status
+		 */
 		default void onToolCall(String title, String status) {
 		}
 
-		/// Called when a prompt settles.
-		///
-		/// @param stopReason the protocol stop reason
+		/**
+		 * Called when prompt execution finishes.
+		 *
+		 * @param stopReason the reason execution stopped
+		 */
 		default void onPromptFinished(String stopReason) {
 		}
 
-		/// Called when the connection fails or the child exits.
-		///
-		/// @param message a description of the failure
+		/**
+		 * Called when connection failure or process exit occurs.
+		 *
+		 * @param message description of the failure
+		 */
 		default void onFailure(String message) {
 		}
 	}

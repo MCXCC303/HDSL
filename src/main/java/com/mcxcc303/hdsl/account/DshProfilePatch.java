@@ -44,12 +44,14 @@ public final class DshProfilePatch {
 	private DshProfilePatch() {
 	}
 
-	/// Removes every insert that a bundle already applies.
-	///
-	/// @param patch   the profile's patch layer
-	/// @param bundles the bundle list the profile boots, in order
-	/// @return the entry ids left alone because they carry configuration, never `null`
-	/// @throws DshException when the file cannot be read or written
+	/**
+	 * Removes bundle inserts from a profile's patch layer if the profile boots those bundles.
+	 *
+	 * @param patch   the profile's patch layer path
+	 * @param bundles the bundle list booted by the profile, in order
+	 * @return entry IDs preserved because they contain configuration
+	 * @throws DshException if reading or writing fails
+	 */
 	public static List<String> dropRedundantInserts(Path patch, List<String> bundles) throws DshException {
 		if (bundles.isEmpty() || !Files.isRegularFile(patch)) return List.of();
 
@@ -71,15 +73,13 @@ public final class DshProfilePatch {
 		return edit.withConfiguration();
 	}
 
-	/// Returns the patch without the inserts its bundles already apply, and what was left alone.
-	///
-	/// The text form exists because a pack is written from a **copy**: the exporter puts this file
-	/// into the archive, and the copy has to be repaired too — otherwise every pack made from an
-	/// instance that carries such an insert hands the same broken profile to the next person.
-	///
-	/// @param text    the patch
-	/// @param bundles the bundle list the profile boots, in order
-	/// @return what one pass produced
+	/**
+	 * Removes bundle inserts from patch text if the profile boots those bundles.
+	 *
+	 * @param text    the patch text
+	 * @param bundles the bundle list booted by the profile, in order
+	 * @return the edit result
+	 */
 	public static Edit withoutRedundantInserts(String text, List<String> bundles) {
 		if (bundles.isEmpty()) {
 			return new Edit(text, false, List.of());
@@ -103,8 +103,7 @@ public final class DshProfilePatch {
 				continue;
 			}
 			if (hasKey(lines, i, end, "config")) {
-				// Applied twice is wrong, but so is throwing the settings away: said out loud rather
-				// than decided here.
+				// Preserve inserts that carry custom configuration.
 				withConfiguration.add(
 						valueOf(lines, i, end, "id") == null ? unquote(name) : unquote(valueOf(lines, i, end, "id")));
 				kept.addAll(lines.subList(i, end));
@@ -154,83 +153,74 @@ public final class DshProfilePatch {
 		List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
 		int item = lastEntryItem(lines, entry);
 		if (item < 0) {
-			// Nothing names the entry yet: a profile nobody has configured a supplier in.
 			return new Edit(DshPluginPatch.appendEntry(text, newEntry(entry, route, block)), true, List.of());
 		}
 		int end = itemEnd(lines, item);
 		int body = childIndent(lines, item, end, indentOf(lines.get(item)));
 		int config = keyAtIndent(lines, item, end, "config", body);
 		if (config < 0) {
-			// A row that only names the entry, or disables it: everything below is added.
 			int at = beforeBlanks(lines, end);
-			lines.addAll(at, List.of(pad(body) + "config:", pad(body + 2) + "providers:"));
-			lines.addAll(at + 2, routeLines(route, block, body + 4, step(lines, item, body)));
+			List<String> addition = new ArrayList<>();
+			addition.add(pad(body) + "config:");
+			addition.add(pad(body + 2) + "providers:");
+			addition.addAll(routeLines(route, block, body + 4, 2));
+			lines.addAll(at, addition);
 			return changed(lines, text);
 		}
 
-		String configLine = contentOf(lines.get(config));
-		if (!configLine.equals("config:") && !isNullOrEmptyMapping(configLine, "config")) {
-			throw new DshException(
-					"The entry " + entry + " has its config written inline (" + contentOf(lines.get(config)) +
-					"); the providers of a supplier cannot be added" +
-					" to it. Write that entry's config as a block, or launch on a profile that has" +
-					" no such entry.");
+		if (isNullOrEmptyMapping(contentOf(lines.get(config)), "config")) {
+			lines.set(config, pad(indentOf(lines.get(config))) + "config:");
+		} else if (lines.get(config).trim().contains("{")) {
+			throw new DshException("The profile's patch layer already holds `" + entry + "` with an inline or empty `config`; " +
+			                       "format it with newlines to configure an account");
 		}
 
 		int configIndent = indentOf(lines.get(config));
-		if (!configLine.equals("config:")) lines.set(config, pad(configIndent) + "config:");
-
 		int configEnd = blockEnd(lines, config + 1, end, configIndent);
 		int providers = keyDeeperThan(lines, config + 1, configEnd, "providers", configIndent);
 		if (providers < 0) {
-			int child = childIndent(lines, config + 1, configEnd, configIndent);
 			int at = beforeBlanks(lines, configEnd);
-			lines.addAll(at, List.of(pad(child) + "providers:"));
-			lines.addAll(at + 1, routeLines(route, block, child + 2, step(lines, item, body)));
+			int providersIndent = childIndent(lines, config + 1, configEnd, configIndent);
+			int step = providersIndent - configIndent;
+			List<String> addition = new ArrayList<>();
+			addition.add(pad(providersIndent) + "providers:");
+			addition.addAll(routeLines(route, block, providersIndent + step, step));
+			lines.addAll(at, addition);
 			return changed(lines, text);
 		}
 
-		String providersLine = contentOf(lines.get(providers));
-		if (!providersLine.equals("providers:") && !isNullOrEmptyMapping(providersLine, "providers")) {
-			throw new DshException(
-					"The entry " + entry + " has its providers written inline (" + contentOf(lines.get(providers)) +
-					"); a supplier cannot be added to it. Write" +
-					" that mapping as a block, or launch on a profile that has no such entry.");
+		if (isNullOrEmptyMapping(contentOf(lines.get(providers)), "providers")) {
+			lines.set(providers, pad(indentOf(lines.get(providers))) + "providers:");
+		} else if (lines.get(providers).trim().contains("{")) {
+			throw new DshException("The profile's patch layer already holds `" + entry + "` with an inline or empty `providers`; " +
+			                       "format it with newlines to configure an account");
 		}
 
 		int providersIndent = indentOf(lines.get(providers));
-		if (!providersLine.equals("providers:")) lines.set(providers, pad(providersIndent) + "providers:");
-
 		int providersEnd = blockEnd(lines, providers + 1, end, providersIndent);
 		int existing = routeKey(lines, providers + 1, providersEnd, route, providersIndent);
+		int routeIndent = childIndent(lines, providers + 1, providersEnd, providersIndent);
 		if (existing < 0) {
-			int child = childIndent(lines, providers + 1, providersEnd, providersIndent);
-			lines.addAll(beforeBlanks(lines, providersEnd), routeLines(route, block, child, step(lines, item, body)));
+			int at = beforeBlanks(lines, providersEnd);
+			lines.addAll(at, routeLines(route, block, routeIndent, step(lines, item, body)));
 			return changed(lines, text);
 		}
 
-		int routeIndent = indentOf(lines.get(existing));
-		int routeEnd = beforeBlanks(lines, blockEnd(lines, existing + 1, providersEnd, routeIndent));
+		int routeEnd = beforeBlanks(lines, blockEnd(lines, existing + 1, providersEnd, indentOf(lines.get(existing))));
 		lines.subList(existing, routeEnd).clear();
 		lines.addAll(existing, routeLines(route, block, routeIndent, step(lines, item, body)));
 		return changed(lines, text);
 	}
 
-	/// Takes one provider route back out of an entry, leaving everything else where it is.
-	///
-	/// A route the launcher wrote belongs to the launch that wrote it: its key travels in a variable
-	/// that launch set, and nothing sets it afterwards. So the route goes when the launch ends —
-	/// otherwise the harness keeps offering a supplier with no key behind it, and a launch that wants
-	/// no supplier inherits the last one's. That is the contract the home's own settings have always
-	/// had; this is it for the profile patch.
-	///
-	/// Nothing else in the file is touched, and a route that is not there leaves the file alone.
-	///
-	/// @param patch the profile's patch layer
-	/// @param entry the loader entry that holds the supplier routes
-	/// @param route the route's name
-	/// @return what the pass produced
-	/// @throws DshException when the file cannot be read or written
+	/**
+	 * Removes a provider route from an entry in the profile's patch layer.
+	 *
+	 * @param patch the profile's patch layer path
+	 * @param entry the loader entry holding supplier routes
+	 * @param route the route name
+	 * @return the edit result
+	 * @throws DshException if reading or writing fails
+	 */
 	public static Edit removeProvider(Path patch, String entry, String route) throws DshException {
 		String text = read(patch);
 		Edit edit = removeProvider(text, entry, route);
@@ -241,12 +231,14 @@ public final class DshProfilePatch {
 		return edit;
 	}
 
-	/// Returns the patch without one provider route, and whether anything changed.
-	///
-	/// @param text  the patch
-	/// @param entry the loader entry that holds the supplier routes
-	/// @param route the route's name
-	/// @return what the pass produced
+	/**
+	 * Removes a provider route from an entry in patch text.
+	 *
+	 * @param text  the patch text
+	 * @param entry the loader entry holding supplier routes
+	 * @param route the route name
+	 * @return the edit result
+	 */
 	public static Edit removeProvider(String text, String entry, String route) {
 		List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
 		int[] block = routeBlock(lines, entry, route);
@@ -257,16 +249,6 @@ public final class DshProfilePatch {
 		return changed(lines, text);
 	}
 
-	/// Returns where one route's block sits: its first line, and the line after its last.
-	///
-	/// The route's key line is part of the block, and so is everything indented under it, up to the
-	/// next sibling. Blank lines between the two are left to the file: taking them out would move the
-	/// spacing the person chose for the routes around it.
-	///
-	/// @param lines the file's lines
-	/// @param entry the loader entry that holds the supplier routes
-	/// @param route the route's name
-	/// @return the two line numbers, or `null` when the file has no such route
 	private static int @Nullable [] routeBlock(List<String> lines, String entry, String route) {
 		int item = lastEntryItem(lines, entry);
 		if (item < 0) {
@@ -293,40 +275,16 @@ public final class DshProfilePatch {
 		return new int[]{at, beforeBlanks(lines, blockEnd(lines, at + 1, providersEnd, indentOf(lines.get(at))))};
 	}
 
-	/// Returns what a rewritten line list produced, and whether it differs from the text.
-	///
-	/// Equality is the point: a launch that finds its route already written exactly as the account
-	/// states it must not touch the file, so the file's modification time keeps meaning "the person
-	/// or the harness changed this".
-	///
-	/// @param lines the lines
-	/// @param text  the text they came from
-	/// @return what the pass produced
 	private static Edit changed(List<String> lines, String text) {
 		String updated = String.join("\n", lines);
 		return new Edit(updated, !updated.equals(text), List.of());
 	}
 
-	/**
-	 * Reports whether a line's value is an empty mapping or YAML {@code null}.
-	 *
-	 * @param content the line without its indentation
-	 * @param key     the key
-	 * @return whether the value is {@code {}}, {@code { }}, {@code null} or {@code ~}
-	 */
 	private static boolean isNullOrEmptyMapping(String content, String key) {
 		String value = content.substring(key.length() + 1).trim();
 		return value.equals("{}") || value.equals("{ }") || value.equals("null") || value.equals("~");
 	}
 
-	/// Returns the last entry with an id, as a line index, or `-1`.
-	///
-	/// Top level only: an `insert` list holds entries of its own at a deeper indentation, and one of
-	/// those is not a row of this file.
-	///
-	/// @param lines the file's lines
-	/// @param entry the id
-	/// @return the line the entry opens on, or `-1`
 	private static int lastEntryItem(List<String> lines, String entry) {
 		int found = -1;
 		for (int i = 0; i < lines.size(); i++) {
@@ -341,27 +299,11 @@ public final class DshProfilePatch {
 		return found;
 	}
 
-	/// Renders a whole entry for an id that the file does not mention yet.
-	///
-	/// @param entry the loader entry
-	/// @param route the route's name
-	/// @param block the route's settings
-	/// @return the entry, ending in a newline
 	private static String newEntry(String entry, String route, String block) {
 		return "- id: " + YamlScalar.of(entry) + "\n  config:\n    providers:\n" +
 		       String.join("\n", routeLines(route, block, 6, 2)) + "\n";
 	}
 
-	/// Renders the route's own lines at an indentation, in the file's own steps.
-	///
-	/// The block arrives two spaces per level, which is what the harness writes; a file indented four
-	/// spaces at a time keeps four, because the levels are the file's and not this method's.
-	///
-	/// @param route  the route's name
-	/// @param block  the route's settings, one level in
-	/// @param indent the indentation of the route's key
-	/// @param step   the file's indentation step
-	/// @return the lines
 	private static List<String> routeLines(String route, String block, int indent, int step) {
 		List<String> lines = new ArrayList<>();
 		lines.add(pad(indent) + YamlScalar.of(route) + ":");
@@ -375,27 +317,11 @@ public final class DshProfilePatch {
 		return lines;
 	}
 
-	/// Returns the file's indentation step, from an entry's own children.
-	///
-	/// @param lines the file's lines
-	/// @param item  the entry's first line
-	/// @param body  the entry's children's indentation
-	/// @return how far one level goes, two spaces when the file does not say
 	private static int step(List<String> lines, int item, int body) {
 		int own = indentOf(lines.get(item));
 		return body > own ? body - own : 2;
 	}
 
-	/// Returns the indentation of a block's children.
-	///
-	/// The file's own, taken from a child that is already there, and two spaces when there is none:
-	/// the harness writes two, and a hand-written file that uses four keeps four.
-	///
-	/// @param lines        the file's lines
-	/// @param start        the block's first line
-	/// @param end          the line after the block
-	/// @param parentIndent the block's own indentation
-	/// @return the children's indentation
 	private static int childIndent(List<String> lines, int start, int end, int parentIndent) {
 		for (int i = start; i < end && i < lines.size(); i++) {
 			String line = lines.get(i);
@@ -406,15 +332,6 @@ public final class DshProfilePatch {
 		return parentIndent + 2;
 	}
 
-	/// Returns where a block is written into: the index just before its last blank lines.
-	///
-	/// A line list carries the text's final newline as an empty last line, and a mapping may be
-	/// spaced out by hand. Both are blanks, and writing *after* one would leave a blank line inside a
-	/// mapping — or move the file's final newline into the middle of it.
-	///
-	/// @param lines the file's lines
-	/// @param index the index a block would go at
-	/// @return the index to write at
 	private static int beforeBlanks(List<String> lines, int index) {
 		int at = Math.min(index, lines.size());
 		while (at > 0 && lines.get(at - 1).isBlank()) {
@@ -423,16 +340,6 @@ public final class DshProfilePatch {
 		return at;
 	}
 
-	/// Returns where a block ends: the next line at or above its own indentation.
-	///
-	/// Blank lines are stepped over rather than treated as the end, because a mapping written by hand
-	/// may be spaced out and stopping at the first blank would leave half of it behind.
-	///
-	/// @param lines  the file's lines
-	/// @param start  the first line after the block's opening
-	/// @param end    the line the block cannot reach past
-	/// @param indent the block's own indentation
-	/// @return the first line after the block
 	private static int blockEnd(List<String> lines, int start, int end, int indent) {
 		for (int i = start; i < end && i < lines.size(); i++) {
 			String line = lines.get(i);
@@ -443,14 +350,6 @@ public final class DshProfilePatch {
 		return Math.min(end, lines.size());
 	}
 
-	/// Returns the line a key sits on at exactly one indentation, or `-1`.
-	///
-	/// @param lines  the file's lines
-	/// @param start  the first line to look at
-	/// @param end    the line to stop before
-	/// @param key    the key
-	/// @param indent the indentation it has to have
-	/// @return the line's index, or `-1`
 	private static int keyAtIndent(List<String> lines, int start, int end, String key, int indent) {
 		for (int i = start; i < end && i < lines.size(); i++) {
 			if (indentOf(lines.get(i)) == indent && startsWithKey(lines.get(i), key)) {
@@ -460,14 +359,6 @@ public final class DshProfilePatch {
 		return -1;
 	}
 
-	/// Returns the line a key sits on below an indentation, or `-1`.
-	///
-	/// @param lines        the file's lines
-	/// @param start        the first line to look at
-	/// @param end          the line to stop before
-	/// @param key          the key
-	/// @param parentIndent the indentation it has to be inside
-	/// @return the line's index, or `-1`
 	private static int keyDeeperThan(List<String> lines, int start, int end, String key, int parentIndent) {
 		for (int i = start; i < end && i < lines.size(); i++) {
 			if (indentOf(lines.get(i)) > parentIndent && startsWithKey(lines.get(i), key)) {
@@ -477,17 +368,6 @@ public final class DshProfilePatch {
 		return -1;
 	}
 
-	/// Returns the line a route's own key sits on, or `-1`.
-	///
-	/// Matched by value rather than by text, because the harness quotes a name that needs it and the
-	/// launcher may have written it unquoted.
-	///
-	/// @param lines        the file's lines
-	/// @param start        the first line to look at
-	/// @param end          the line to stop before
-	/// @param route        the route's name
-	/// @param parentIndent the indentation it has to be inside
-	/// @return the line's index, or `-1`
 	private static int routeKey(List<String> lines, int start, int end, String route, int parentIndent) {
 		for (int i = start; i < end && i < lines.size(); i++) {
 			if (indentOf(lines.get(i)) <= parentIndent) {
@@ -501,34 +381,16 @@ public final class DshProfilePatch {
 		return -1;
 	}
 
-	/// Reports whether a line names a key, whatever it puts after it.
-	///
-	/// The point of matching a key with a value is that a value this will not rewrite — an inline
-	/// mapping — has to be *found*, so that it can be refused. Missing it would silently write a
-	/// second key of the same name and shadow whatever the person had written.
-	///
-	/// @param line the line
-	/// @param key  the key
-	/// @return whether the line names it
 	private static boolean startsWithKey(String line, String key) {
 		String content = contentOf(line);
 		return content.startsWith(key + ":") &&
 		       (content.length() == key.length() + 1 || Character.isWhitespace(content.charAt(key.length() + 1)));
 	}
 
-	/// Returns that many spaces.
-	///
-	/// @param count how many
-	/// @return the spaces
 	private static String pad(int count) {
 		return " ".repeat(Math.max(0, count));
 	}
 
-	/// Reads a patch file, treating absence as an empty file.
-	///
-	/// @param patch the file
-	/// @return the text, or an empty string
-	/// @throws DshException when the file exists but cannot be read
 	private static String read(Path patch) throws DshException {
 		if (!Files.isRegularFile(patch)) {
 			return "";
@@ -540,11 +402,6 @@ public final class DshProfilePatch {
 		}
 	}
 
-	/// Writes a file the harness may be reading, through a staging file.
-	///
-	/// @param patch the file
-	/// @param text  what to put in it
-	/// @throws DshException when it cannot be written
 	private static void write(Path patch, String text) throws DshException {
 		try {
 			Files.createDirectories(patch.getParent());
@@ -560,28 +417,14 @@ public final class DshProfilePatch {
 		}
 	}
 
-	/// Reports whether a line opens an item of an `insert` list.
-	///
-	/// The shape is the loader's: a patch entry is `- insert:` and the plugins it inserts are the
-	/// lines under it that begin with `- `.
-	///
-	/// @param line the line
-	/// @return whether it opens an inserted plugin
 	private static boolean isInsertItem(String line) {
 		String trimmed = line.trim();
 		if (!trimmed.startsWith("- ")) {
 			return false;
 		}
-		// An item that names a plugin, not the `- insert:` that holds the list: the latter sits at the
-		// same indentation as the list's own items would at the file's top level.
 		return trimmed.startsWith("- id:") || trimmed.startsWith("- name:");
 	}
 
-	/// Returns where the item starting at `start` ends.
-	///
-	/// @param lines the file's lines
-	/// @param start the item's first line
-	/// @return the first line after the item
 	private static int itemEnd(List<String> lines, int start) {
 		int indent = indentOf(lines.get(start));
 		int i = start + 1;
@@ -597,36 +440,15 @@ public final class DshProfilePatch {
 		return i;
 	}
 
-	/// Returns the value of a key inside an item, or `null`.
-	///
-	/// @param lines the file's lines
-	/// @param start the item's first line
-	/// @param end   the line after the item
-	/// @param key   the key
-	/// @return the raw value, or `null` when the item does not name it
 	private static String valueOf(List<String> lines, int start, int end, String key) {
 		int at = keyAt(lines, start, end, key);
 		return at < 0 ? null : contentOf(lines.get(at)).substring(key.length() + 1).trim();
 	}
 
-	/// Reports whether an item names a key.
-	///
-	/// @param lines the file's lines
-	/// @param start the item's first line
-	/// @param end   the line after the item
-	/// @param key   the key
-	/// @return whether the item has it
 	private static boolean hasKey(List<String> lines, int start, int end, String key) {
 		return keyAt(lines, start, end, key) >= 0;
 	}
 
-	/// Returns the line an item names a key on, or `-1`.
-	///
-	/// @param lines the file's lines
-	/// @param start the item's first line
-	/// @param end   the line after the item
-	/// @param key   the key
-	/// @return the line's index, or `-1`
 	private static int keyAt(List<String> lines, int start, int end, String key) {
 		for (int i = start; i < end && i < lines.size(); i++) {
 			String trimmed = lines.get(i).trim();
@@ -641,12 +463,6 @@ public final class DshProfilePatch {
 		return -1;
 	}
 
-	/// Returns a line without its indentation or the list marker that opens it.
-	///
-	/// An inserted plugin is written as `- id: …`, so the key is behind both.
-	///
-	/// @param line the line
-	/// @return what is left
 	private static String contentOf(String line) {
 		String trimmed = line.trim();
 		return trimmed.startsWith("- ") ? trimmed.substring(2).trim() : trimmed;
@@ -660,10 +476,6 @@ public final class DshProfilePatch {
 		return i;
 	}
 
-	/// Returns a YAML scalar without the quotes a writer may have put around it.
-	///
-	/// @param value the raw value
-	/// @return the value itself
 	private static String unquote(String value) {
 		String trimmed = value.trim();
 		if (trimmed.length() >= 2 && (trimmed.charAt(0) == '\'' || trimmed.charAt(0) == '"') &&
@@ -674,8 +486,11 @@ public final class DshProfilePatch {
 	}
 
 	/**
-	 * @param text    patch after the edit
-	 * @param changed whether the text differs
+	 * Result of a patch modification.
+	 *
+	 * @param text              patch content after editing
+	 * @param changed           whether the content differs from original
+	 * @param withConfiguration entry IDs preserved due to existing configuration
 	 */
 	public record Edit(String text, boolean changed, List<String> withConfiguration) {}
 }

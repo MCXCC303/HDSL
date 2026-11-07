@@ -33,54 +33,29 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/// Sets the model the harness starts with, by editing two keys of its settings file.
-///
-/// A route in the profile's patch layer says what the harness is offered; it does not make the
-/// harness *use* it. Which supplier and model to start on is recorded in one place, the
-/// `agent-default-model` section, and a patch cannot put it there: the harness keeps that answer in
-/// its own settings, which are applied over every layer of the composition. It has to be set where
-/// the person's own answer lives.
-///
-/// **Only a line is ever rewritten.** The harness reads this file, and while it runs it also writes
-/// it — under a cross-process lock, with a leaf-level diff that keeps comments and formatting. So
-/// the one thing this must never do is take a copy of the file and put it back later: a restore
-/// would silently discard every change the person made through the interface during the run, and
-/// could race the harness's own atomic write. What is done here is the smallest edit that has an
-/// effect — the two scalar values under the section's own indentation — leaving every other byte,
-/// including comments about them, exactly where it was.
-///
-/// Nothing else is touched, and the edit is skipped whenever it would have to guess. A route with
-/// no model named is left alone: the harness refuses to start on a default it cannot resolve, so an
-/// invented model name would turn a helpful default into a launch that fails.
+/**
+ * Updates the agent default model and provider configuration in an instance's {@code settings.yaml}.
+ */
 @NotNullByDefault
 public final class DshDefaultModel {
-	/// The file, inside a `DSH_HOME`.
 	private static final String FILE = "settings.yaml";
-
-	/// The section that records what the harness starts with.
 	private static final String SECTION = "agent-default-model";
-
-	/// A line feed, named rather than written.
-	///
-	/// `"\n"` in Java source is one character, but a newline typed *into* the literal is a real
-	/// newline and makes the string two characters long — a mistake that does not fail to compile
-	/// and does not throw, it just makes every comparison quietly false.
 	private static final String NEWLINE = "\n";
 
 	private DshDefaultModel() {
 	}
 
-	/// Points a home's default model at a route, unless it already says so.
-	///
-	/// @param home     the `DSH_HOME`
-	/// @param provider the route name
-	/// @param model    the model id, or `null`/blank to leave the file alone
-	/// @return whether the file now names this provider and model
-	/// @throws DshException when the file cannot be read or written
+	/**
+	 * Configures the default provider and model in an instance's {@code settings.yaml}.
+	 *
+	 * @param home     the {@code DSH_HOME} path
+	 * @param provider the provider route name
+	 * @param model    the model identifier, or {@code null}/blank to leave untouched
+	 * @return true if the settings were updated or already matched
+	 * @throws DshException if reading or writing fails
+	 */
 	public static boolean apply(Path home, String provider, @Nullable String model) throws DshException {
 		if (model == null || model.isBlank()) {
-			// Which model a route should default to is the vendor's answer or the person's, not a
-			// guess: the harness refuses to start on a default it cannot resolve.
 			return false;
 		}
 		Path file = home.resolve(FILE);
@@ -92,9 +67,7 @@ public final class DshDefaultModel {
 				return true;
 			}
 			Files.createDirectories(home);
-			// Written beside the file and moved over it, so a reader never sees half a document and
-			// an interrupted write cannot leave the settings truncated. The harness writes its own
-			// copy the same way, for the same reason.
+			// Write via staging file and replace atomically.
 			Path staging = file.resolveSibling(file.getFileName() + ".hdsl-writing");
 			Files.writeString(staging, updated, StandardCharsets.UTF_8);
 			try {
@@ -102,12 +75,9 @@ public final class DshDefaultModel {
 			} catch (AtomicMoveNotSupportedException e) {
 				Files.move(staging, file, StandardCopyOption.REPLACE_EXISTING);
 			} catch (IOException e) {
-				// Leaving a half-written neighbour behind would be worse than the failure itself:
-				// the next run would find it and have to decide what it was.
 				try {
 					Files.deleteIfExists(staging);
 				} catch (IOException ignored) {
-					// Reported by the throw below, which is the failure that matters.
 				}
 				throw e;
 			}
@@ -117,11 +87,13 @@ public final class DshDefaultModel {
 		}
 	}
 
-	/// Returns the provider a home's settings name, or `null`.
-	///
-	/// @param home the `DSH_HOME`
-	/// @return the provider name
-	/// @throws DshException when the file cannot be read
+	/**
+	 * Reads the configured default provider from an instance's {@code settings.yaml}.
+	 *
+	 * @param home the {@code DSH_HOME} path
+	 * @return the provider name, or {@code null} if unconfigured
+	 * @throws DshException if reading fails
+	 */
 	public static @Nullable String providerOf(Path home) throws DshException {
 		Path file = home.resolve(FILE);
 		if (!Files.isRegularFile(file)) {
@@ -132,9 +104,7 @@ public final class DshDefaultModel {
 			if (section == null) {
 				return null;
 			}
-			// `\\s*$` rather than `\\s*$` after a literal newline: an entry on the file's last line has
-			// no line ending to match, and requiring one would fail to read back a value the writer
-			// had just written.
+			// Match provider line with optional indentation and trailing whitespace.
 			Matcher matcher = Pattern.compile("^[ \\t]*provider:[ \\t]*(\\S+)[ \\t]*$", Pattern.MULTILINE)
 			                         .matcher(section);
 			return matcher.find() ? matcher.group(1) : null;
@@ -143,24 +113,19 @@ public final class DshDefaultModel {
 		}
 	}
 
-	/// Rewrites the two scalar keys of the section, leaving every other line alone.
-	///
-	/// @param text     the file's contents
-	/// @param provider the route name
-	/// @param model    the model id
-	/// @return the contents it should have
-	/// @throws DshException when the file is not one this can edit safely
+	/**
+	 * Updates the {@code agent-default-model} section in YAML text, preserving other lines and comments.
+	 *
+	 * @param text     existing YAML content
+	 * @param provider the provider route name
+	 * @param model    the model identifier
+	 * @return updated YAML content
+	 * @throws DshException if the section appears multiple times
+	 */
 	static String setSection(String text, String provider, String model) throws DshException {
-		// Work on line indices rather than on a rebuilt document: the point of this edit is that
-		// every byte it was not asked about stays where it was, and the surest way to guarantee
-		// that is to change at most two lines and never re-serialise the rest.
 		String newline = text.contains("\r\n") ? "\r\n" : "\n";
 		List<String> lines = new ArrayList<>(List.of(text.split("\n", -1)));
 
-		// `split(..., -1)` leaves one element per line plus a final empty one when the text ends in
-		// a newline. Dropping that element makes `lines` a one-to-one list of the file's lines —
-		// including a file of a single line, which is why the test is on the element being empty
-		// rather than on the text's last character.
 		boolean endedWithNewline = text.endsWith("\n");
 		if (!lines.isEmpty() && lines.get(lines.size() - 1).isEmpty()) {
 			lines.remove(lines.size() - 1);
@@ -182,16 +147,11 @@ public final class DshDefaultModel {
 			}
 		}
 		if (headers > 1) {
-			// A file with the section twice is a file whose author meant something this code cannot
-			// guess at, and it is already malformed for the harness. Changing one of the two would
-			// leave it malformed and would make this edit look like it had succeeded.
 			throw new DshException("The settings file has \"" + SECTION + "\" more than once, " +
 			                       "so the default model was left alone");
 		}
 
 		if (header < 0) {
-			// No section: append one. A file whose last line has no newline gets one first, so the
-			// header is not run into it.
 			if (!lines.isEmpty() && !endedWithNewline) {
 				lines.add("");
 			}
@@ -201,10 +161,8 @@ public final class DshDefaultModel {
 			return String.join(newline, lines) + newline;
 		}
 
-		// The section's children: every following line that is indented. A blank line inside them is
-		// kept as a child — it is not a line at column zero, so it does not end the section.
 		int first = header + 1;
-		int last = header;          // the index of the last child, or the header when it has none
+		int last = header;
 		String pad = null;
 		int atProvider = -1;
 		int atModel = -1;
@@ -220,10 +178,7 @@ public final class DshDefaultModel {
 			if (pad == null) {
 				pad = linePad;
 			}
-			// Only the section's own children are candidates. `model:` nested one level deeper is
-			// part of some object the user wrote, and writing a scalar over it would delete that
-			// object — so a key at a different indentation is treated as one this section does not
-			// have, and a correct one is added beside it.
+			// Match only direct children of the section.
 			if (linePad.equals(pad)) {
 				String body = line.strip();
 				if (body.startsWith("provider:")) {
@@ -236,17 +191,13 @@ public final class DshDefaultModel {
 		}
 		String indent = pad == null ? "  " : pad;
 
-		// The value is replaced, the line's own trailing comment is not. Somebody who wrote
-		// `provider: old   # the one I picked` wrote that comment about the choice, and it is still
-		// about the choice after the launcher changes it.
+		// Preserve inline comments when updating values.
 		if (atProvider >= 0) {
 			lines.set(atProvider, indent + "provider: " + YamlScalar.of(provider) + commentOf(lines.get(atProvider)));
 		}
 		if (atModel >= 0) {
 			lines.set(atModel, indent + "model: " + YamlScalar.of(model) + commentOf(lines.get(atModel)));
 		}
-		// A key the section does not have goes directly after the last child it does have, so it
-		// ends up inside the section rather than after a blank line or after the next section.
 		int insert = last + 1;
 		if (atProvider < 0) {
 			lines.add(insert, indent + "provider: " + YamlScalar.of(provider));
@@ -256,18 +207,9 @@ public final class DshDefaultModel {
 			lines.add(insert, indent + "model: " + YamlScalar.of(model));
 		}
 
-		// The file gets a final newline either way: one line ending per line, and no line left open.
 		return String.join(newline, lines) + newline;
 	}
 
-	/// Returns the trailing comment of a line, with the space before it, or the empty string.
-	///
-	/// A `#` only starts a comment when it is at the start of the line or after whitespace, and it
-	/// is not inside quotes — which is what makes this worth doing rather than splitting on the
-	/// first `#`: a value may legitimately contain one.
-	///
-	/// @param line the line
-	/// @return the comment, including the whitespace that separates it
 	private static String commentOf(String line) {
 		boolean quoted = false;
 		char quote = 0;
@@ -281,7 +223,6 @@ public final class DshDefaultModel {
 			}
 			if (c == '"' || c == '\'') {
 				quote = c;
-				continue;
 			}
 			if (c == '#' && (i == 0 || Character.isWhitespace(line.charAt(i - 1)))) {
 				int from = i;
@@ -294,14 +235,6 @@ public final class DshDefaultModel {
 		return "";
 	}
 
-	/// Reports whether a line is the section's header.
-	///
-	/// The one test used everywhere the header is looked for, so the writer and the reader cannot
-	/// disagree about whether a section is there. A header is the name, a colon, and either nothing
-	/// or a space — `agent-default-modelish:` is a different key.
-	///
-	/// @param line the line
-	/// @return whether it opens the section
 	private static boolean isSectionHeader(String line) {
 		if (!line.startsWith(SECTION + ":") || line.length() == SECTION.length() + 1) {
 			return line.equals(SECTION + ":");
@@ -309,10 +242,6 @@ public final class DshDefaultModel {
 		return Character.isWhitespace(line.charAt(SECTION.length() + 1));
 	}
 
-	/// Returns the section's own lines, or `null` when the file has no such section.
-	///
-	/// @param text the file's contents
-	/// @return the lines belonging to the section
 	private static @Nullable String sectionOf(String text) {
 		StringBuilder section = new StringBuilder();
 		boolean inside = false;

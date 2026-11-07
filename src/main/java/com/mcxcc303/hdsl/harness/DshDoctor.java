@@ -36,21 +36,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-/// Prints a diagnostics report describing everything HDSL needs to run.
-///
-/// This is the launcher's `--doctor`: it lets a user (or a bug report) show the
-/// detected toolchain, the on-disk layout and registry reachability without
-/// starting the JavaFX interface. It is also how the version-management core is
-/// exercised outside the UI.
+/**
+ * Prints a diagnostics report describing the environment and toolchain HDSL needs to run.
+ */
 @NotNullByDefault
 public final class DshDoctor {
 	private DshDoctor() {
 	}
 
-	/// Runs the diagnostics and prints them.
-	///
-	/// @param out the stream to print to
-	/// @return the process exit code, non-zero when a hard requirement is missing
+	/**
+	 * Runs the diagnostics and prints the report.
+	 *
+	 * @param out the stream to print to
+	 * @return the process exit code, non-zero when a hard requirement is missing
+	 */
 	public static int report(PrintStream out) {
 		out.println("HDSL " + Metadata.VERSION + " diagnostics");
 		out.println("Java:      " + System.getProperty("java.vm.name") + " " + System.getProperty("java.version"));
@@ -150,11 +149,6 @@ public final class DshDoctor {
 		return runtimeOk ? 0 : 1;
 	}
 
-	/// Renders an optional executable and its version.
-	///
-	/// @param path    the executable, or `null`
-	/// @param version the reported version, or `null`
-	/// @return a display string
 	private static String describe(@Nullable Path path, @Nullable String version) {
 		if (path == null) {
 			return "NOT FOUND";

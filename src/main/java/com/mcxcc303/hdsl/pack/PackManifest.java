@@ -38,60 +38,27 @@ import java.util.zip.ZipInputStream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The `hdslp` format: what a pack declares, and how it is read back.
-///
-/// A pack is a zip holding `manifest.json` and the plugins the exporting machine could not
-/// name from the registry, carried under `plugins/`.  The manifest is what a launcher reads
-/// before it installs anything: the harness version, the profile, the plugins — each with whether it
-/// is active, whether it came from a file, and whether it is part of the in-box set.
+/**
+ * Manifest definitions and parsers for the {@code .hdslp} modpack archive format.
+ */
 @NotNullByDefault
 public final class PackManifest {
-	/// What a pack says it is.
 	public static final String FORMAT = "hdsl-modpack";
-
-	/// The file extension this launcher's own packs are written with.
-	///
-	/// The container is a plain ZIP, so `.zip` opened it — and told nobody anything. A pack written
-	/// by this launcher is a different thing from an archive somebody zipped by hand, and the name
-	/// is the only place that can say so before anything is unzipped: it is what a file manager
-	/// shows, what a browser offers to download, and what somebody types into the import box.
-	///
-	/// `.dspack` is the community's and stays theirs; this is the launcher's own format.
 	public static final String FILE_EXTENSION = ".hdslp";
-
-	/// The extensions an import accepts.
-	///
-	/// `.zip` is kept because packs written before the extension existed are `.zip`, and refusing
-	/// them would be refusing the user's own files to make a naming point. What a file *is* is
-	/// decided by its manifest, which both spellings carry.
 	public static final List<String> ACCEPTED_EXTENSIONS = List.of(".hdslp", ".zip");
-
-	/// The format's version.
-	///
-	/// Version 2 added the plugins a pack carries — a plugin installed from a file that the registry
-	/// does not publish now travels inside the pack, under `plugins/`, and is put back into the
-	/// instance's own plugin directory on install. A version 2 pack is therefore one a version 1
-	/// launcher cannot install correctly: it would read the plugin as a local one it cannot fetch and
-	/// leave it out, so the pack is refused instead, which is the honest answer.
-	///
-	/// Version 3 added the skill packs a pack carries — the skills an instance had under its
-	/// home, under `skills/`, put back into the next home on install. Skills are content rather
-	/// than configuration, which is why they are the second exception to the rule at the top of
-	/// this file: they cannot be named and fetched, so they travel as their own files. A version
-	/// 2 launcher would leave them out in silence, so a version 3 pack is refused by it instead.
 	public static final int FORMAT_VERSION = 3;
-
-	/// The manifest's name inside the archive.
 	public static final String MANIFEST = "manifest.json";
 
 	private PackManifest() {
 	}
 
-	/// Reads a pack's manifest.
-	///
-	/// @param pack the archive
-	/// @return the manifest
-	/// @throws DshException when the archive holds no manifest
+	/**
+	 * Reads and parses the modpack manifest from an archive.
+	 *
+	 * @param pack the archive path
+	 * @return parsed manifest
+	 * @throws DshException when the archive holds no manifest
+	 */
 	public static Manifest readManifest(Path pack) throws DshException {
 		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
 			ZipEntry entry;
@@ -110,10 +77,12 @@ public final class PackManifest {
 		throw new DshException("This file holds no modpack manifest");
 	}
 
-	/// Reads a manifest object.
-	///
-	/// @param root the manifest
-	/// @return the manifest record
+	/**
+	 * Parses a JSON object into a Manifest record.
+	 *
+	 * @param root the JSON manifest root
+	 * @return parsed manifest
+	 */
 	static Manifest manifestOf(JsonObject root) {
 		List<Plugin> plugins = new ArrayList<>();
 		JsonElement list = root.get("plugins");
@@ -167,11 +136,13 @@ public final class PackManifest {
 		                    strings(root, "skills"));
 	}
 
-	/// Reads an array of strings.
-	///
-	/// @param root the object
-	/// @param name the field
-	/// @return the strings, empty when the field is absent or not an array
+	/**
+	 * Reads an array of strings from a JSON property.
+	 *
+	 * @param root the JSON object
+	 * @param name property name
+	 * @return list of strings
+	 */
 	static List<String> strings(JsonObject root, String name) {
 		List<String> values = new ArrayList<>();
 		JsonElement element = root.get(name);
@@ -185,10 +156,12 @@ public final class PackManifest {
 		return List.copyOf(values);
 	}
 
-	/// Refuses a pack this launcher cannot read.
-	///
-	/// @param manifest the pack's manifest
-	/// @throws DshException when the format or version is not one this reads
+	/**
+	 * Validates that the manifest format and version are supported.
+	 *
+	 * @param manifest the pack's manifest
+	 * @throws DshException when the format or version is unsupported
+	 */
 	static void requireFormat(Manifest manifest) throws DshException {
 		if (!FORMAT.equals(manifest.format())) {
 			throw new DshException("This file is not an instance pack (" + manifest.format() + ")");
@@ -202,31 +175,16 @@ public final class PackManifest {
 		}
 	}
 
-	/// Returns a member as a primitive, or `null`.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the value, or `null`
 	static @Nullable JsonElement member(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		return element == null || !element.isJsonPrimitive() ? null : element;
 	}
 
-	/// Returns a string member, or `null`.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the string, or `null`
 	static @Nullable String string(JsonObject object, String name) {
 		JsonElement element = member(object, name);
 		return element == null || !((JsonPrimitive) element).isString() ? null : element.getAsString();
 	}
 
-	/// Returns a boolean member, or false.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the value, or false
 	static boolean bool(JsonObject object, String name) {
 		JsonElement element = member(object, name);
 		if (element == null) {
@@ -239,11 +197,6 @@ public final class PackManifest {
 		}
 	}
 
-	/// Returns an integer member, or zero.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the number, or zero
 	static int integer(JsonObject object, String name) {
 		JsonElement element = member(object, name);
 		if (element == null || !((JsonPrimitive) element).isNumber()) {
@@ -252,16 +205,12 @@ public final class PackManifest {
 		return element.getAsInt();
 	}
 
-	/// Reports whether a declared version is really the path of a local file.
-	///
-	/// A package manager records a local installation by the specification it was
-	/// given, in the field a version would otherwise hold, so a profile that
-	/// installed a packed plugin says `file:/…/plugins/x.tgz` where a version
-	/// belongs. Reading that as a version would have a pack ask for a package
-	/// called `x@file:/…`, which resolves to nothing.
-	///
-	/// @param version the declared version
-	/// @return whether it is a local installation's path
+	/**
+	 * Reports whether a declared version is really the path of a local file or directory.
+	 *
+	 * @param version the declared version string
+	 * @return true if the version represents a local specification
+	 */
 	static boolean isLocalSpec(@Nullable String version) {
 		if (version == null || version.isBlank()) {
 			return false;
@@ -271,62 +220,53 @@ public final class PackManifest {
 		       value.startsWith("./") || value.startsWith("../");
 	}
 
-	/// One plugin the pack names.
-	///
-	/// @param name    the package name
-	/// @param version the declared version, or the path a locally installed plugin
-	///                was installed from
-	/// @param active  whether the package is in the profile's bundle list
-	/// @param local   whether the plugin was installed from a file this instance
-	///                keeps, and so cannot be fetched by anyone else
-	/// One plugin a pack names.
-	/// @param name    the package name
-	/// @param version the version the pack pins, or a local specification for a plugin that was not
-	///                fetched — which is a path, and only meaningful on the machine it names
-	/// @param active  whether the pack boots it as a bundle
-	/// @param local   whether the instance installed it from a file rather than a registry
-	/// @param bundled whether the pack carries the plugin's own files, which is what makes a local
-	///                plugin installable somewhere else
+	/**
+	 * Plugin entry declared in a pack manifest.
+	 *
+	 * @param name    the package name
+	 * @param version the version or local specification
+	 * @param active  whether the pack boots it as a bundle
+	 * @param local   whether the instance installed it from a local file
+	 * @param bundled whether the pack carries the plugin's own files
+	 */
 	public record Plugin(String name, String version, boolean active, boolean local, boolean bundled) {
 	}
 
-	/// What a pack describes.
-	///
-	/// @param format          the format identifier
-	/// @param version         the format version
-	/// @param createdAt       when the pack was written
-	/// @param instanceId      the instance it came from
-	/// @param dshVersion      the DeepSeek Harness version it pins
-	/// @param appBoot         the boot library it is paired with, or `null` for the same version
-	/// @param profile         the profile the plugins belong to
-	/// @param plugins         the plugins, in the profile manifest's order
-	/// @param bundles         the active bundle list, in load order
-	/// @param hasPatch        whether the pack carries the profile's patch layer
-	/// @param name            what the pack is called
-	/// @param packVersion     the pack's own version
-	/// @param author          who made it, or an empty string
-	/// @param description     what it is for, or an empty string
-	/// @param sessionCount    how many conversations it carries, zero for none
-	/// @param settings        the `settings.yaml` sections the pack carries, in the file's order
-	/// @param settingsOmitted the `section.key` paths left out of them because they look like
-	///                        credentials, so whoever opens the pack can see what it does not hold
-	/// @param skills          the skill packs the pack carries, by the name each has on disk
+	/**
+	 * Modpack manifest describing instance configuration and contents.
+	 *
+	 * @param format          the format identifier
+	 * @param version         the format version
+	 * @param createdAt       timestamp when the pack was written
+	 * @param instanceId      the instance it came from
+	 * @param dshVersion      the DeepSeek Harness version it pins
+	 * @param appBoot         boot library pin, or null
+	 * @param profile         the profile name
+	 * @param plugins         the plugins declared
+	 * @param bundles         the active bundle list
+	 * @param hasPatch        whether the pack carries a patch layer
+	 * @param name            pack name
+	 * @param packVersion     pack version
+	 * @param author          author name
+	 * @param description     pack description
+	 * @param url             pack URL
+	 * @param referenceUrl    documentation reference URL
+	 * @param sessionCount    number of conversations carried
+	 * @param settings        included settings.yaml sections
+	 * @param settingsOmitted omitted settings keys
+	 * @param skills          skill pack names carried
+	 */
 	public record Manifest(String format, int version, String createdAt, String instanceId, String dshVersion,
 	                       @Nullable String appBoot, String profile, List<Plugin> plugins, List<String> bundles,
 	                       boolean hasPatch, String name, String packVersion, String author, String description,
 	                       String url, String referenceUrl, int sessionCount, List<String> settings,
 	                       List<String> settingsOmitted, List<String> skills) {
 
-		/// Returns the plugins that should be installed, in the order they are
-		/// listed in.
-		///
-		/// A pack can name a package that is not in the bundle list — an installed
-		/// but switched-off plugin. It is still installed, because that is what
-		/// the instance it came from had; whether the harness then contributes its
-		/// layer is decided by the bundle list, which is what the pack restores
-		/// separately.
-		///
-		/// @return the installation specifications, in order
+		/**
+		 * Returns the plugin installation specifications in order.
+		 *
+		 * @return list of dependency specifications
+		 */
 		public List<String> installSpecs() {
 			List<String> specs = new ArrayList<>();
 			for (Plugin plugin : plugins) {
@@ -340,90 +280,62 @@ public final class PackManifest {
 			return specs;
 		}
 
-		/// Returns the plugins that were installed from a file rather than fetched.
-		///
-		/// A profile records the path it installed a local plugin from, which is a
-		/// path inside the instance that had it; another instance cannot install
-		/// from it, and a pack that pretended otherwise would describe an
-		/// installation that cannot be made.
-		///
-		/// @return the local plugins
+		/**
+		 * Returns the plugins installed from a local file.
+		 *
+		 * @return list of local plugins
+		 */
 		public List<Plugin> localPlugins() {
 			return plugins.stream().filter(Plugin::local).toList();
 		}
 
-		/// Returns the local plugins a pack carries the files of.
-		///
-		/// @return the plugins whose files travel inside the pack
+		/**
+		 * Returns the local plugins whose files travel inside the pack.
+		 *
+		 * @return list of bundled plugins
+		 */
 		public List<Plugin> bundledPlugins() {
 			return plugins.stream().filter(Plugin::bundled).toList();
 		}
 
-		/// Returns the local plugins a pack cannot install.
-		///
-		/// A pack written before it carried local plugin files names one, and so does a pack whose
-		/// instance had already lost the file: either way there is nothing to install from, and
-		/// saying which plugin it is beats a resolve that fails on a path from another machine.
-		///
-		/// @return the plugins that cannot be installed
+		/**
+		 * Returns the local plugins that cannot be installed from this pack.
+		 *
+		 * @return list of uninstallable plugins
+		 */
 		public List<Plugin> uninstallablePlugins() {
 			return plugins.stream().filter(plugin -> plugin.local() && !plugin.bundled()).toList();
 		}
 	}
 
-	/// Writes an instance's configuration into a pack.
-	///
-	/// What a pack says about itself, and what it carries.
-	///
-	/// @param name            what the pack is called, or an empty string for the instance's id
-	/// @param version         the pack's own version
-	/// @param author          who made it
-	/// @param description     what it is for
-	/// @param includeSessions whether the instance's conversations travel with it
-	/// @param excludedBundles the bundles the person chose to leave out
-	/// @param settings        the `settings.yaml` sections that travel: a plugin's own settings, and
-	///                        most of what "the same environment" means for it
-	/// @param skills          the skill packs that travel, by the name each has under the home's
-	///                        skills directory; names rather than packs, so the choice is a small
-	///                        thing to hold and is read against what is there when the pack is
-	///                        written
+	/**
+	 * Pack export configuration options.
+	 *
+	 * @param name            pack name
+	 * @param version         pack version
+	 * @param author          pack author
+	 * @param description     pack description
+	 * @param url             pack URL
+	 * @param referenceUrl    documentation reference URL
+	 * @param includeSessions whether to export sessions
+	 * @param excludedBundles set of bundle names to exclude
+	 * @param settings        set of settings sections to include
+	 * @param skills          set of skill names to include
+	 */
 	public record Options(String name, String version, String author, String description, String url,
 	                      String referenceUrl, boolean includeSessions, Set<String> excludedBundles,
 	                      Set<String> settings, Set<String> skills) {
-		/// Returns options that carry no addresses.
-		///
-		/// @param name            what the pack is called
-		/// @param version         the pack's own version
-		/// @param author          who made it
-		/// @param description     what it is for
-		/// @param includeSessions whether the conversations travel
+
 		public Options(String name, String version, String author, String description, boolean includeSessions) {
 			this(name, version, author, description, "", "", includeSessions, Set.of(), Set.of(), Set.of());
 		}
 
-		/// Returns options that carry every bundle.
-		///
-		/// @param name            what the pack is called
-		/// @param version         the pack's own version
-		/// @param author          who made it
-		/// @param description     what it is for
-		/// @param includeSessions whether the conversations travel
-
-		/// Returns the options a pack is written with when nobody chose any.
-		///
-		/// Everything a plugin keeps in the harness's settings travels, because that is what makes a
-		/// pack an environment rather than a list of packages — and because the alternative, a pack
-		/// that names a sidebar but not the stylesheet it was configured with, is the difference
-		/// nobody notices until they open it. Values that look like credentials are removed on the
-		/// way out; see [DshPluginSettings].
-		///
-		/// The same is true of the skill packs an instance has: a pack that reproduces an
-		/// environment without the skills it was set up around is missing the part that took the
-		/// longest to assemble, and a skill is content rather than configuration, so there is
-		/// nowhere else for it to come from.
-		///
-		/// @param instance the instance
-		/// @return the options
+		/**
+		 * Creates default options for an instance.
+		 *
+		 * @param instance the instance
+		 * @return default options
+		 */
 		public static Options of(DshInstance instance) {
 			Set<String> settings = Set.of();
 			try {
@@ -440,10 +352,12 @@ public final class PackManifest {
 			return new Options(instance.id(), "1.0", "", "", "", "", false, Set.of(), settings, skills);
 		}
 
-		/// Returns whether a bundle travels.
-		///
-		/// @param bundle the bundle's name
-		/// @return whether it does
+		/**
+		 * Checks whether a bundle is included in the export.
+		 *
+		 * @param bundle bundle name
+		 * @return true if the bundle is included
+		 */
 		public boolean includesBundle(String bundle) {
 			return !excludedBundles.contains(bundle);
 		}

@@ -40,50 +40,43 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Getting a pack's archive onto this machine, and checking it arrived whole.
-///
-/// A download is kept under the launcher's cache directory and reused: the same pack installed
-/// twice is fetched once, and its checksum is checked against what the market published.
+/**
+ * Downloads and caches {@code .dspack} modpack archives with SHA-256 verification.
+ */
 @NotNullByDefault
 public final class DspackDownload {
 	private DspackDownload() {
 	}
 
-	/// Where packs are kept between being downloaded and being installed.
-	///
-	/// @return the directory
+	/**
+	 * Returns the local cache directory for downloaded packs.
+	 *
+	 * @return pack cache directory path
+	 */
 	public static Path cacheDirectory() {
 		return CatalogClient.cacheDirectory().resolve("packs");
 	}
 
-	/// Returns the file a pack's archive is kept in.
-	///
-	/// Named from the pack's id and version rather than from its display name: the display name is
-	/// the author's to change and may hold anything, and this has to be a file name.
-	///
-	/// @param entry the pack
-	/// @return the path
+	/**
+	 * Resolves the cached archive file path for a market pack entry.
+	 *
+	 * @param entry pack entry
+	 * @return archive file path
+	 */
 	public static Path archiveFile(DshPackMarket.Entry entry) {
 		String safe = entry.id().replaceAll("[^A-Za-z0-9._-]", "-") + "-" +
 		              entry.version().replaceAll("[^A-Za-z0-9._-]", "-");
 		return cacheDirectory().resolve(safe + ".dspack");
 	}
 
-	/// Fetches a pack into the cache and checks it against the index.
-	///
-	/// The download goes to a file beside the target and is moved over it only once it has been
-	/// verified, so an interrupted transfer cannot leave a file that looks like a fetched pack. The
-	/// digest is computed **as the bytes arrive** rather than by reading the file again: the same
-	/// work, done once, on the pass that is already touching every byte.
-	///
-	/// Redirects are followed, and that is not optional here: the ecosystem's archives are GitHub
-	/// release assets, and a release asset is a redirect to a storage host. A client that did not
-	/// follow them would download a three-hundred-byte HTML page and then report a digest mismatch.
-	///
-	/// @param entry  the pack
-	/// @param report receives progress lines, or `null`
-	/// @return the verified archive
-	/// @throws DshException when the pack cannot be fetched or is not what the index described
+	/**
+	 * Fetches a pack into the cache and verifies its size and SHA-256 digest.
+	 *
+	 * @param entry  the pack entry
+	 * @param report receives progress lines, or null
+	 * @return the verified archive path
+	 * @throws DshException when the pack cannot be fetched or verification fails
+	 */
 	public static Path download(DshPackMarket.Entry entry, @Nullable Consumer<String> report) throws DshException {
 		Path target = archiveFile(entry);
 		if (isCached(entry)) {
@@ -135,8 +128,6 @@ public final class DspackDownload {
 							actual + ")", null);
 				}
 			}
-			// Moved into place only now: everything before this line was a file that could be thrown
-			// away, and the name the rest of the launcher reads is only ever the verified one.
 			Files.move(staging, target, StandardCopyOption.REPLACE_EXISTING);
 			verify(entry, target);
 			return target;
@@ -146,8 +137,6 @@ public final class DspackDownload {
 			Thread.currentThread().interrupt();
 			throw new DshException("The download was interrupted", e);
 		} finally {
-			// A failed download leaves nothing behind, not even the half-written file: the cache is
-			// the launcher's own directory, and littering it is how a cache becomes a mess.
 			try {
 				Files.deleteIfExists(staging);
 			} catch (IOException e) {
@@ -156,10 +145,12 @@ public final class DspackDownload {
 		}
 	}
 
-	/// Writes a digest as lowercase hex.
-	///
-	/// @param bytes the digest
-	/// @return the text
+	/**
+	 * Encodes bytes into a lowercase hexadecimal string.
+	 *
+	 * @param bytes input byte array
+	 * @return hexadecimal string
+	 */
 	static String hex(byte[] bytes) {
 		StringBuilder text = new StringBuilder(bytes.length * 2);
 		for (byte value : bytes) {
@@ -168,13 +159,12 @@ public final class DspackDownload {
 		return text.toString();
 	}
 
-	/// Reports whether a pack has already been fetched and verified.
-	///
-	/// Checked by digest rather than by presence: a file of the right name that is not the right
-	/// bytes is worse than no file, because it would be installed without being fetched again.
-	///
-	/// @param entry the pack
-	/// @return whether the archive is already here and is the one the index described
+	/**
+	 * Reports whether a pack has already been fetched and verified.
+	 *
+	 * @param entry the pack entry
+	 * @return true if the archive is cached and matches size and digest
+	 */
 	public static boolean isCached(DshPackMarket.Entry entry) {
 		Path archive = archiveFile(entry);
 		try {
@@ -187,11 +177,13 @@ public final class DspackDownload {
 		}
 	}
 
-	/// Checks a downloaded archive against the two pointers the index gave.
-	///
-	/// @param entry   the pack
-	/// @param archive the file
-	/// @throws DshException when it is not what the index described
+	/**
+	 * Verifies an archive against the size and digest specified in the entry.
+	 *
+	 * @param entry   the pack entry
+	 * @param archive the archive file
+	 * @throws DshException when size or digest does not match
+	 */
 	public static void verify(DshPackMarket.Entry entry, Path archive) throws DshException {
 		long length;
 		try {
@@ -199,9 +191,6 @@ public final class DspackDownload {
 		} catch (IOException e) {
 			throw new DshException("Could not read " + archive, e);
 		}
-		// The length first: it is one call, and a truncated transfer is the failure that actually
-		// happens. Reporting "the digest does not match" for a file that is obviously half there
-		// sends somebody looking for a forger when the network dropped.
 		if (entry.size() > 0 && length != entry.size()) {
 			throw new DshException("The pack is " + length + " bytes and the market says it is " + entry.size() +
 			                       " bytes, so it did not arrive whole", null);

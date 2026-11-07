@@ -37,7 +37,7 @@ final class DshSkillFrontmatter {
 	}
 
 	/**
-	 * Reads the keys and values of a block, empty when the file has none
+	 * Reads the keys and values of a block, empty when the file has none.
 	 */
 	static Map<String, String> parse(List<String> lines) {
 		int[] block = rangeOf(lines);
@@ -71,7 +71,7 @@ final class DshSkillFrontmatter {
 	}
 
 	/**
-	 * Returns the opening and closing line of the block, or `null` when there is none
+	 * Returns the opening and closing line of the block, or {@code null} when there is none.
 	 */
 	static int @Nullable [] rangeOf(List<String> lines) {
 		int open = -1;
@@ -90,7 +90,7 @@ final class DshSkillFrontmatter {
 	}
 
 	/**
-	 * Returns the key a line declares, or an empty string
+	 * Returns the key a line declares, or an empty string.
 	 */
 	static String keyOf(String line) {
 		int colon = line.indexOf(':');
@@ -98,9 +98,9 @@ final class DshSkillFrontmatter {
 	}
 
 	/**
-	 * Sets one key, adding it to the block when it is not there yet, and returns the lines to write
+	 * Sets one key, adding it to the block when it is not there yet, and returns the lines to write.
 	 * <p>
-	 * The lines come back unchanged when there is no block to write into
+	 * The lines come back unchanged when there is no block to write into.
 	 */
 	static List<String> with(List<String> lines, String key, String value) {
 		int[] block = rangeOf(lines);
@@ -117,9 +117,9 @@ final class DshSkillFrontmatter {
 	}
 
 	/**
-	 * Removes one key, when it is there, and returns the lines to write
+	 * Removes one key, when it is there, and returns the lines to write.
 	 * <p>
-	 * The lines come back unchanged when the key was not there
+	 * The lines come back unchanged when the key was not there.
 	 */
 	static List<String> without(List<String> lines, String key) {
 		for (int i = 0; i < lines.size(); i++) {
@@ -131,9 +131,6 @@ final class DshSkillFrontmatter {
 		return lines;
 	}
 
-	/**
-	 * Strips the quotes a YAML string may be wrapped in
-	 */
 	private static String unquote(String value) {
 		char quote = value.isEmpty() ? '\0' : value.charAt(0);
 		if (value.length() >= 2 && (quote == '"' || quote == '\'') && value.charAt(value.length() - 1) == quote) {
@@ -143,7 +140,7 @@ final class DshSkillFrontmatter {
 	}
 
 	/**
-	 * Collapses every run of whitespace into one space
+	 * Collapses every run of whitespace into one space.
 	 */
 	static String collapse(String text) {
 		StringBuilder collapsed = new StringBuilder(text.length());

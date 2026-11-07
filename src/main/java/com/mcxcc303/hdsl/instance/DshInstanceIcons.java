@@ -26,20 +26,20 @@ import java.nio.file.Path;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Resolves the image an instance shows.
-///
-/// A custom file wins over the built-in icon, because choosing one is the more
-/// specific act and HMCL behaves the same way. A file that has since been moved
-/// or deleted falls back rather than leaving the row blank.
+/**
+ * Resolves and loads the icon image for an instance.
+ */
 @NotNullByDefault
 public final class DshInstanceIcons {
 	private DshInstanceIcons() {
 	}
 
-	/// Loads the image for an instance.
-	///
-	/// @param instance the instance
-	/// @return the image, or `null` when neither source is usable
+	/**
+	 * Loads the image for an instance.
+	 *
+	 * @param instance the instance
+	 * @return the image, or {@code null} when neither source is usable
+	 */
 	public static @Nullable Image load(DshInstance instance) {
 		Path file = instance.iconFileOrDefault();
 		if (file != null) {

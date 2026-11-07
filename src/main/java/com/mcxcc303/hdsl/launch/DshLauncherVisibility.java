@@ -20,37 +20,27 @@ package com.mcxcc303.hdsl.launch;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-/// What the launcher does with itself once an instance is running.
-///
-/// An instance of DeepSeek Harness is used in a browser, so the launcher has nothing to show
-/// while it runs — and the original offers the same choice for the same reason. Either way,
-/// the launcher comes back when the instance is stopped: a window that hides itself and never
-/// returns is a window somebody has to hunt for.
+/**
+ * Launcher window visibility behavior while an instance is running.
+ */
 @NotNullByDefault
 public enum DshLauncherVisibility {
-	/// Stay where it is.
 	KEEP("keep"),
-
-	/// Get out of the way entirely.
 	HIDE("hide"),
-
-	/// Stay in the task bar, out of the way.
 	MINIMIZE("minimize");
 
-	/// The value the setting is stored as.
 	private final String id;
 
-	/// Creates a choice.
-	///
-	/// @param id the stored value
 	DshLauncherVisibility(String id) {
 		this.id = id;
 	}
 
-	/// Reads a stored value.
-	///
-	/// @param value the stored value, or `null`
-	/// @return the choice, or [DshLauncherVisibility#KEEP] when it is not one
+	/**
+	 * Resolves visibility mode from its stored identifier string.
+	 *
+	 * @param value the stored identifier, or null
+	 * @return the resolved visibility mode, defaulting to {@link #KEEP}
+	 */
 	public static DshLauncherVisibility of(@Nullable String value) {
 		if (value != null) {
 			for (DshLauncherVisibility choice : values()) {
@@ -62,9 +52,11 @@ public enum DshLauncherVisibility {
 		return KEEP;
 	}
 
-	/// Returns the value the setting is stored as.
-	///
-	/// @return the id
+	/**
+	 * Returns the identifier stored for this setting.
+	 *
+	 * @return the setting identifier
+	 */
 	public String id() {
 		return id;
 	}

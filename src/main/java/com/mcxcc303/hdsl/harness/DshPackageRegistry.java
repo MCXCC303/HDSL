@@ -40,29 +40,25 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Reads package metadata from the npm registry.
-///
-/// Plugins are ordinary npm packages, so the registry is the only catalogue
-/// there is: upstream ships no plugin store and no version feed. The ordinary
-/// `npm view` command is used rather than talking HTTP directly, so a user's
-/// registry mirror or proxy configuration is honoured automatically.
+/**
+ * Reads package metadata from the npm registry.
+ */
 @NotNullByDefault
 public final class DshPackageRegistry {
-	/// The dependencies read so far, by specification.
 	private static final Map<String, JsonObject> DEPENDENCIES = new ConcurrentHashMap<>();
-	/// The documents read so far, by package.
 	private static final Map<String, JsonObject> PACKUMENTS = new ConcurrentHashMap<>();
-	/// The peer requirements read so far, by specification.
 	private static final Map<String, JsonObject> PEERS = new ConcurrentHashMap<>();
 
 	private DshPackageRegistry() {
 	}
 
-	/// Fetches the published versions of a package, newest first.
-	///
-	/// @param packageName the package name
-	/// @return the published versions, newest first
-	/// @throws DshException when npm is unavailable or the query fails
+	/**
+	 * Fetches the published versions of a package, newest first.
+	 *
+	 * @param packageName the package name
+	 * @return the published versions, newest first
+	 * @throws DshException when npm is unavailable or the query fails
+	 */
 	public static List<String> fetchVersions(String packageName) throws DshException {
 		DshNodeRuntime runtime = DshNodeRuntime.detect()
 		                                       .orElseThrow(() -> new DshException("Node.js was not found on PATH; " +
@@ -93,11 +89,6 @@ public final class DshPackageRegistry {
 		return versions;
 	}
 
-	/// Parses the version list npm printed.
-	///
-	/// @param text the JSON text, which may be a lone string for a package with one release
-	/// @return the versions
-	/// @throws DshException when the output is not usable
 	private static List<String> parseVersions(String text) throws DshException {
 		if (text.isBlank()) {
 			throw new DshException("npm returned no versions for this package");
@@ -126,23 +117,18 @@ public final class DshPackageRegistry {
 		return versions;
 	}
 
-	/// Returns the last few output lines, for an error message.
-	///
-	/// @param lines the captured output
-	/// @return the trailing lines joined by newlines
 	private static String tail(List<String> lines) {
 		int from = Math.max(0, lines.size() - 6);
 		return String.join("\n", lines.subList(from, lines.size()));
 	}
 
-	/// Splits a package spec into its name and optional version range.
-	///
-	/// @param spec        the spec, for example `dshmarket` or `dshmarket@1.48.0`
-	/// @param packageName the package
-	/// @param version     the version, or `null` for the latest
-	/// @return the package name
-	/// Reads what a published package depends on.
-	/// @return the dependencies, empty when there are none or they cannot be read
+	/**
+	 * Reads what a published package depends on.
+	 *
+	 * @param packageName the package name
+	 * @param version     the version, or {@code null} for the latest
+	 * @return the dependencies, empty when there are none or they cannot be read
+	 */
 	public static JsonObject dependencies(String packageName, @Nullable String version) {
 		String spec = version == null || version.isBlank() ? packageName : packageName + "@" + version;
 		JsonObject cached = DEPENDENCIES.get(spec);
@@ -154,11 +140,6 @@ public final class DshPackageRegistry {
 		return dependencies;
 	}
 
-	/// Reads one object field of a published package.
-	///
-	/// @param spec  the package specification
-	/// @param field the field
-	/// @return the object, or an empty one when it is absent or cannot be read
 	private static JsonObject viewJson(String spec, String field) {
 		try {
 			DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
@@ -184,21 +165,13 @@ public final class DshPackageRegistry {
 		return new JsonObject();
 	}
 
-	/// Reads the registry's own document for a package.
-	///
-	/// One request for everything a version list needs at once: which versions exist, when each was
-	/// published, which one each dist-tag points at, and what each declares it needs. Asking `npm
-    /// view` once per version is the same data at one process per version, which for a plugin with a
-	/// hundred releases is a hundred processes on a page that is only being looked at.
-	///
-	/// The document is kept in memory for the session and on disk for later ones: a popular plugin's
-	/// is a few hundred kilobytes, and a page opened twice should not fetch it twice. A document that
-	/// cannot be fetched falls back to the kept copy — which is what a launcher that cannot reach the
-	/// registry can still draw from — and answers `null` when there is none.
-	///
-	/// @param packageName the package
-	/// @param refresh     whether to fetch again rather than answer from memory
-	/// @return the document, or `null` when it could not be read
+	/**
+	 * Reads the registry's packument document for a package.
+	 *
+	 * @param packageName the package name
+	 * @param refresh     whether to fetch again rather than answer from memory
+	 * @return the document, or {@code null} when it could not be read
+	 */
 	public static @Nullable JsonObject packument(String packageName, boolean refresh) {
 		if (!refresh) {
 			JsonObject known = PACKUMENTS.get(packageName);
@@ -235,10 +208,6 @@ public final class DshPackageRegistry {
 		}
 	}
 
-	/// Keeps a copy of a document so a later fetch has something to fall back on.
-	///
-	/// @param file where to keep it
-	/// @param body the document
 	private static void keep(Path file, String body) {
 		try {
 			Files.createDirectories(file.getParent());
@@ -248,10 +217,6 @@ public final class DshPackageRegistry {
 		}
 	}
 
-	/// Reads a kept copy.
-	///
-	/// @param file the file
-	/// @return the document, or `null` when there is none
 	private static @Nullable String read(Path file) {
 		try {
 			return Files.isRegularFile(file) ? Files.readString(file) : null;
@@ -260,15 +225,13 @@ public final class DshPackageRegistry {
 		}
 	}
 
-	/// Asks the registry whether a package is published at a version.
-	///
-	/// The query is `npm view <name>@<version> version`, which is one request, honours whatever
-	/// registry and proxy the user has configured, and answers with an error precisely when the
-	/// version does not exist — `E404`, which is an answer, unlike a timeout.
-	///
-	/// @param packageName the package
-	/// @param version     the version
-	/// @return what the registry says
+	/**
+	 * Checks whether a package is published at a specified version.
+	 *
+	 * @param packageName the package name
+	 * @param version     the version
+	 * @return what the registry says
+	 */
 	public static Availability availability(String packageName, String version) {
 		DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
 		if (runtime == null || runtime.npm() == null) {
@@ -290,16 +253,13 @@ public final class DshPackageRegistry {
 		}
 	}
 
-	/// Reads what a registry answer means.
-	///
-	/// Kept apart from the command that produces it so the reading can be pinned: exit zero is the
-	/// version, and a 404 in the output is the registry saying there is no such thing — anything else
-	/// (a missing network, a registry that is down, a package name the registry rejects the syntax
-	/// of) is not an answer at all.
-	///
-	/// @param exitCode the command's exit code
-	/// @param output   what it printed
-	/// @return what the registry says
+	/**
+	 * Reads what a registry answer means.
+	 *
+	 * @param exitCode the command's exit code
+	 * @param output   what it printed
+	 * @return what the registry says
+	 */
 	static Availability availabilityOf(int exitCode, String output) {
 		if (exitCode == 0) {
 			return Availability.PUBLISHED;
@@ -310,16 +270,13 @@ public final class DshPackageRegistry {
 		       : Availability.UNKNOWN;
 	}
 
-	/// Reads the peer requirements a published package declares.
-	///
-	/// Asked of the package rather than of the catalogue, because the catalogue does not
-	/// carry them. The answer is remembered: a page asks about the same packages again
-	/// whenever it is searched, and a registry is not to be asked twice for the same
-	/// thing.
-	///
-	/// @param packageName the package
-	/// @param version     the version, or `null` for the latest
-	/// @return the peer requirements, empty when there are none or they cannot be read
+	/**
+	 * Reads the peer requirements a published package declares.
+	 *
+	 * @param packageName the package
+	 * @param version     the version, or {@code null} for the latest
+	 * @return the peer requirements, empty when there are none or they cannot be read
+	 */
 	public static JsonObject peerDependencies(String packageName, @Nullable String version) {
 		String spec = version == null || version.isBlank() ? packageName : packageName + "@" + version;
 		JsonObject cached = PEERS.get(spec);
@@ -356,6 +313,12 @@ public final class DshPackageRegistry {
 		return peers;
 	}
 
+	/**
+	 * Extracts the package name from a package specification.
+	 *
+	 * @param spec the package specification
+	 * @return the package name
+	 */
 	public static String packageNameOf(String spec) {
 		String trimmed = spec.trim();
 		if (trimmed.startsWith("@")) {
@@ -370,29 +333,24 @@ public final class DshPackageRegistry {
 		return at < 0 ? trimmed : trimmed.substring(0, at);
 	}
 
-	/// Returns the version part of a package spec.
-	///
-	/// @param spec the spec
-	/// @return the version range, or `null` when the spec carries none
+	/**
+	 * Returns the version part of a package specification.
+	 *
+	 * @param spec the package specification
+	 * @return the version range, or {@code null} when the spec carries none
+	 */
 	public static @Nullable String versionOf(String spec) {
 		String trimmed = spec.trim();
 		int at = trimmed.startsWith("@") ? trimmed.indexOf('@', trimmed.indexOf('/') + 1) : trimmed.indexOf('@');
 		return at < 0 || at + 1 >= trimmed.length() ? null : trimmed.substring(at + 1);
 	}
 
-	/// What the registry says about a package at a version.
-	///
-	/// Three answers, because two would be a lie: a registry that is not reachable, or an `npm` that
-	/// is not installed, has not said the package is absent — and the caller decides what to do about
-	/// that, which for a pack is to carry the files rather than to trust a silence.
+	/**
+	 * What the registry says about a package at a version.
+	 */
 	public enum Availability {
-		/// The registry publishes this exact version.
 		PUBLISHED,
-
-		/// The registry says there is no such package, or no such version of it.
 		ABSENT,
-
-		/// The registry could not be asked.
 		UNKNOWN
 	}
 }

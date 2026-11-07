@@ -189,13 +189,13 @@ public final class DshInstalledPlugins {
 	/**
 	 * One plugin a profile holds.
 	 *
-	 * @param version      the installed version, or `null` when the package is not there
+	 * @param version      the installed version, or {@code null} when the package is not there
 	 * @param declared     what the profile declares for it, such as a version range or a local path
 	 * @param requirements the harness peer requirements left after wildcards are dropped, as text
 	 * @param path         the path inside the profile, or the directory it links to
 	 * @param rows         the loader rows its bundle inserts, with the modules they mount
-	 * @param icon         the picture the package declares, or `null` when it declares none that can be read
-	 * @param title        the title the package publishes in its locales, or `null` when it publishes none
+	 * @param icon         the picture the package declares, or {@code null} when it declares none that can be read
+	 * @param title        the title the package publishes in its locales, or {@code null} when it publishes none
 	 */
 	public record Installed(String name, @Nullable String version, String declared, String requirements,
 	                        DshPluginVersions.Fit fit, State state, String path, List<DshPluginPatch.Row> rows,

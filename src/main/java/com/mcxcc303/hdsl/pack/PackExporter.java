@@ -49,38 +49,40 @@ import java.util.zip.ZipOutputStream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Writing an instance out as a pack.
-///
-/// What travels is the instance's *configuration*: the version it pins, the profile, the plugin list
-/// in its own order, the profile's patch layer, the local plugin files, the settings its plugins keep
-/// and its skill packs.  What does not is its state — sessions, credentials, keys — because a pack is
-/// meant to be published.
+/**
+ * Exports an instance configuration as a modpack archive.
+ */
 @NotNullByDefault
 public final class PackExporter {
-	/// The profile patch layer's name inside the archive.
 	private static final String PATCH = "cordis.patch.yml";
 
 	private PackExporter() {
 	}
 
-	/// @param instance the instance to describe
-	/// @param target   the archive to create
-	/// @param onStage  receives progress lines, or `null`
-	/// @return what was written
-	/// @throws DshException when the configuration cannot be read or written
+	/**
+	 * Exports an instance configuration into a pack archive with default options.
+	 *
+	 * @param instance the instance to describe
+	 * @param target   the archive to create
+	 * @param onStage  receives progress lines, or null
+	 * @return export summary
+	 * @throws DshException when the configuration cannot be read or written
+	 */
 	public static ExportResult export(DshInstance instance, Path target, @Nullable Consumer<String> onStage)
 	throws DshException {
 		return export(instance, target, PackManifest.Options.of(instance), onStage);
 	}
 
-	/// Writes an instance's configuration into a pack.
-	///
-	/// @param instance the instance to describe
-	/// @param target   the archive to create
-	/// @param options  what the pack should say and carry
-	/// @param onStage  receives progress lines, or `null`
-	/// @return what was written
-	/// @throws DshException when the configuration cannot be read or written
+	/**
+	 * Writes an instance configuration into a pack archive with custom options.
+	 *
+	 * @param instance the instance to describe
+	 * @param target   the archive to create
+	 * @param options  options describing pack contents and metadata
+	 * @param onStage  receives progress lines, or null
+	 * @return export summary
+	 * @throws DshException when the configuration cannot be read or written
+	 */
 	public static ExportResult export(DshInstance instance,
 	                                  Path target,
 	                                  PackManifest.Options options,
@@ -90,9 +92,6 @@ public final class PackExporter {
 		                                                                       instance.profile());
 		List<String> bundles = new ArrayList<>(DshPluginInstaller.readBundles(instance.homeDirectory(),
 		                                                                      instance.profile()));
-		// A bundle somebody unticked is not in the pack and is not recorded as one of its plugins:
-		// a pack that named a plugin it does not install would describe an installation nobody can
-		// make, and an import would try.
 		bundles.removeIf(bundle -> !options.includesBundle(bundle));
 
 		List<PackManifest.Plugin> plugins = new ArrayList<>();
@@ -113,9 +112,6 @@ public final class PackExporter {
 		boolean hasPatch = Files.isRegularFile(patch);
 		String appBoot = AppBootPin.readAppBoot(instance);
 		if (appBoot != null && appBoot.equals(instance.version())) {
-			// A pin equal to the version is what an instance has by default; a pack
-			// does not need to say so, and saying it would make the pack claim a
-			// choice nobody made.
 			appBoot = null;
 		}
 
@@ -132,16 +128,11 @@ public final class PackExporter {
 			       String.join(", ", settings.sections()));
 		}
 		if (!settings.omitted().isEmpty()) {
-			// Named rather than counted: whoever opens the pack should be able to see what was left
-			// out, and whoever made it should be able to see that a setting did not travel.
 			report(onStage,
 			       "Left out " + settings.omitted().size() + " value(s) that look like credentials: " +
 			       String.join(", ", settings.omitted()));
 		}
 
-		// The pack carries the skill packs the options asked for and the home actually has:
-		// a name for a skill that is no longer there is not something to fail over, because the
-		// alternative is a pack that cannot be written after a skill was deleted.
 		List<DshSkill> skills = DshSkillManager.packable(instance.homeDirectory(), options.skills());
 		List<String> skillNames = skills.stream().map(DshSkill::fileName).toList();
 
@@ -174,10 +165,6 @@ public final class PackExporter {
 			}
 			try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target))) {
 				if (hasPatch) {
-					// The copy goes in repaired, for the same reason the installer repairs it on the
-					// way out: a profile that both boots a plugin as a bundle and inserts it applies
-					// it twice and does not start. Fixing it only on install would leave every pack
-					// made from such an instance carrying the defect forward.
 					byte[] body = DshProfilePatch.withoutRedundantInserts(Files.readString(patch,
 					                                                                       StandardCharsets.UTF_8),
 					                                                      bundles)
@@ -193,21 +180,14 @@ public final class PackExporter {
 					zip.closeEntry();
 				}
 				for (DshPluginBundle.Payload payload : carried) {
-					// A local plugin nobody publishes travels as its own files, and there is no
-					// smaller way to say it: the alternative is a pack that cannot be installed.
 					DshPluginBundle.writeInto(zip, payload, onStage);
 				}
 				if (!sessions.isEmpty()) {
-					// The conversations are written the way a session pack writes
-					// them, because that is the layout the harness reads and the
-					// rules are the same either way.
 					DshSessionPacks.writeInto(zip, instance.homeDirectory(), sessions, onStage);
 					DshSessionPacks.writeAttachmentsInto(zip, instance.homeDirectory(), sessions, onStage);
 				}
 
 				if (!skills.isEmpty()) {
-					// The layout under the home is the layout in the pack, which is what makes
-					// restoring one a copy rather than a translation.
 					DshSkillManager.writeInto(zip, skills, onStage);
 				}
 				zip.putNextEntry(new ZipEntry(PackManifest.MANIFEST));
@@ -226,21 +206,17 @@ public final class PackExporter {
 		return new ExportResult(plugins.size(), size);
 	}
 
-	/// Records a plugin the instance installed from a file.
-	///
-	/// The registry is asked first, because a plugin that is published at the version the instance
-	/// has does not need to travel: the pack names `name@version` and the install fetches it, which is
-	/// smaller and is the same code either way. Only when the registry does not publish it — or cannot
-	/// be asked at all, which is not the same as an answer — are the files carried, because a pack
-	/// that named a package nobody can fetch would be a pack that does not install.
-	///
-	/// @param profileDirectory the profile the plugin was installed into
-	/// @param name             the dependency name
-	/// @param declared         what the profile declares for it
-	/// @param active           whether it is in the bundle list
-	/// @param carried          collects the payloads the pack has to carry
-	/// @param onStage          receives progress lines, or `null`
-	/// @return what the pack records for it
+	/**
+	 * Resolves a local plugin dependency for inclusion in a pack.
+	 *
+	 * @param profileDirectory profile directory path
+	 * @param name             dependency name
+	 * @param declared         declared version specification
+	 * @param active           whether the plugin is in the bundle list
+	 * @param carried          list collecting bundled plugin payloads
+	 * @param onStage          consumer for progress messages, or null
+	 * @return plugin manifest entry
+	 */
 	static PackManifest.Plugin localPlugin(Path profileDirectory,
 	                                       String name,
 	                                       String declared,
@@ -249,9 +225,6 @@ public final class PackExporter {
 	                                       @Nullable Consumer<String> onStage) {
 		DshPluginBundle.Payload payload = DshPluginBundle.locate(profileDirectory, name, declared);
 		if (payload == null) {
-			// Two reasons, and the difference is what a person can do about it: a file that was
-			// deleted can be put back where it was, while a plugin somebody is working on has no
-			// copy here at all — the profile holds a link to their directory, not the directory.
 			report(onStage,
 			       DshPluginBundle.namesADirectory(declared, profileDirectory)
 			       ? "Note: " + name + " is a plugin under development, installed from the directory" +
@@ -279,18 +252,13 @@ public final class PackExporter {
 		return new PackManifest.Plugin(name, payload.version(), active, true, true);
 	}
 
-	/// Returns the plugins an instance installed from this machine rather than from a registry.
-	///
-	/// A `file:` or `link:` specification names something that was on the machine the instance was
-	/// made on, and a pack is handed to somebody else. What the export does about it depends on
-	/// which of the two it is: a packed plugin the launcher copied into the instance travels as the
-	/// file it is, while a directory somebody is working on — `link:`, and a `file:` that names a
-	/// directory — has no files of the instance's own to carry and is left out of the pack
-	/// entirely. Both are worth saying **before** the export starts, which is the last moment at
-	/// which the person can still do something about either.
-	///
-	/// @param instance the instance
-	/// @return the plugins, in the profile's order, empty when there are none
+	/**
+	 * Lists local file or directory plugins installed in an instance.
+	 *
+	 * @param instance the instance
+	 * @return list of local plugins
+	 * @throws DshException if reading dependencies fails
+	 */
 	public static List<LocalPlugin> localPlugins(DshInstance instance) throws DshException {
 		Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
 		List<LocalPlugin> plugins = new ArrayList<>();
@@ -304,11 +272,13 @@ public final class PackExporter {
 		return List.copyOf(plugins);
 	}
 
-	/// Reads the settings a pack carries.
-	///
-	/// @param pack the archive
-	/// @return the text, or an empty string when the pack carries none
-	/// @throws DshException when the archive cannot be read
+	/**
+	 * Reads the settings a pack carries.
+	 *
+	 * @param pack the archive
+	 * @return the text, or an empty string when the pack carries none
+	 * @throws DshException when the archive cannot be read
+	 */
 	static String readSettings(Path pack) throws DshException {
 		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
 			ZipEntry entry;
@@ -323,11 +293,13 @@ public final class PackExporter {
 		return "";
 	}
 
-	/// Reads a pack's patch layer into a profile.
-	///
-	/// @param pack   the archive
-	/// @param target the file to write
-	/// @throws DshException when the archive cannot be read or the file written
+	/**
+	 * Reads a pack's patch layer into a profile.
+	 *
+	 * @param pack   the archive
+	 * @param target the file to write
+	 * @throws DshException when the archive cannot be read or the file written
+	 */
 	static void writePatch(Path pack, Path target) throws DshException {
 		try (ZipInputStream zip = new ZipInputStream(Files.newInputStream(pack))) {
 			ZipEntry entry;
@@ -347,20 +319,12 @@ public final class PackExporter {
 		throw new DshException("The pack says it carries a patch layer, but does not");
 	}
 
-	/// Reports progress.
-	///
-	/// @param onStage the sink, or `null`
-	/// @param message the message
 	static void report(@Nullable Consumer<String> onStage, String message) {
 		if (onStage != null) {
 			onStage.accept(message);
 		}
 	}
 
-	/// Returns a file's size.
-	///
-	/// @param file the file
-	/// @return the size, or zero
 	static long sizeOf(Path file) {
 		try {
 			return Files.size(file);
@@ -369,18 +333,21 @@ public final class PackExporter {
 		}
 	}
 
-	/// What an export wrote.
-	///
-	/// @param plugins how many plugins were recorded
-	/// @param bytes   the pack's size
+	/**
+	 * Summary of an export result.
+	 *
+	 * @param plugins how many plugins were recorded
+	 * @param bytes   the pack's size in bytes
+	 */
 	public record ExportResult(int plugins, long bytes) {
 	}
 
-	/// One plugin an instance installed from this machine rather than from a registry.
-	///
-	/// @param name        the dependency name
-	/// @param development whether it was installed from a directory somebody is working on — a
-	///                    `link:`, or a `file:` that is not an archive — which a pack does not carry
+	/**
+	 * One plugin an instance installed from this machine rather than from a registry.
+	 *
+	 * @param name        the dependency name
+	 * @param development true if installed from a development directory
+	 */
 	public record LocalPlugin(String name, boolean development) {
 	}
 }

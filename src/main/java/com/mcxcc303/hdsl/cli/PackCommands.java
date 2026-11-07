@@ -31,15 +31,24 @@ import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.Set;
 
-/// The commands that move whole instances and their sessions: exporting one as a pack, installing
-/// one that somebody else made, restoring a profile, and importing an older format.
+/**
+ * CLI commands for importing, exporting, installing, and restoring modpacks and profile packs.
+ */
 @NotNullByDefault
 public final class PackCommands {
 
 	private PackCommands() {
 	}
 
-	/// Runs the `pack export-packforge` command.
+	/**
+	 * Runs the {@code pack export-packforge} command.
+	 *
+	 * @param invocation the parsed invocation
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 * @throws DshException if the pack cannot be exported
+	 */
 	static int exportPackforge(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -59,7 +68,15 @@ public final class PackCommands {
 		return 0;
 	}
 
-	/// Runs the `pack export` command.
+	/**
+	 * Runs the {@code pack export} command.
+	 *
+	 * @param invocation the parsed invocation
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 * @throws DshException if the pack cannot be exported
+	 */
 	static int exportModpack(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -69,11 +86,7 @@ public final class PackCommands {
 		}
 		Path target = Path.of(invocation.option("file"));
 		boolean withSessions = invocation.flag("with-sessions");
-		// Everything a pack carries by default is what a person asked for by not being
-		// asked: the plugins' own settings travel, because a pack that named a sidebar but
-		// not the stylesheet somebody configured it with is the difference nobody notices
-		// until they open it. The conversations are the one thing that is opt-in, because
-		// they are the one thing that is somebody's own.
+		// Export with plugin and skill settings by default; conversations are opt-in.
 		PackManifest.Options defaults = PackManifest.Options.of(instance);
 		PackManifest.Options options = new PackManifest.Options(instance.id(),
 		                                                        "1.0",
@@ -90,14 +103,21 @@ public final class PackCommands {
 		return 0;
 	}
 
-	/// Runs the `pack install` command.
+	/**
+	 * Runs the {@code pack install} command.
+	 *
+	 * @param invocation the parsed invocation
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 * @throws DshException if installation fails
+	 */
 	static int installModpack(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		Path pack = Path.of(invocation.option("file"));
 		String id = invocation.option("id") != null
 		            ? invocation.option("id")
 		            : PackManifest.readManifest(pack).instanceId();
-		// The pack may be making an instance that already exists, and one that is up is not one to
-		// write a profile over.
+		// Verify the target instance is not currently running.
 		DshInstance existing = InstanceStore.find(id);
 		if (existing != null && RunningInstances.isUp(existing, err)) {
 			return 1;
@@ -112,7 +132,15 @@ public final class PackCommands {
 		return 0;
 	}
 
-	/// Runs the `pack restore-profile` command.
+	/**
+	 * Runs the {@code pack restore-profile} command.
+	 *
+	 * @param invocation the parsed invocation
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 * @throws DshException if profile restoration fails
+	 */
 	static int restoreProfile(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -134,7 +162,15 @@ public final class PackCommands {
 		return 0;
 	}
 
-	/// Runs the `pack import` command.
+	/**
+	 * Runs the {@code pack import} command.
+	 *
+	 * @param invocation the parsed invocation
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 * @throws DshException if import fails
+	 */
 	static int importPack(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);

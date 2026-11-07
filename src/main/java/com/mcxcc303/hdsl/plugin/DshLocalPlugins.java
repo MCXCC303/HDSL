@@ -38,44 +38,24 @@ import java.util.zip.GZIPInputStream;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Installs a plugin from a file the user has.
-///
-/// A profile records the specification it was installed from, and a package manager
-/// takes a local path as just that: the path. Nothing copies the file into the
-/// project, so a plugin installed from `../my-plugin.tgz` stays a plugin whose
-/// installation depends on that file still being at that path — and every later
-/// operation on the profile resolves the whole manifest again, so the day the file
-/// moves, *all* of them fail, with a message about a missing tarball rather than
-/// about the plugin. That is what this exists to avoid.
-///
-/// A file is therefore copied into the instance first, under a directory the
-/// launcher owns, and installed from there. The profile then depends on a file
-/// inside the instance — which is also the answer to where the plugin lives: it is
-/// part of the instance now, and the interface says so when it is installed.
-///
-/// A directory is not accepted, only a packed archive. A directory install is a
-/// live link to the directory: the harness reads it from where it sits, so editing
-/// it changes a running installation and deleting it stops the instance from
-/// starting. Packing one is `pnpm pack`, which the caller can do; taking the file
-/// keeps this simple and the instance self-contained.
-///
-/// Keeping the file inside the instance is what makes the recorded path stable, but
-/// not immovable: the instance's own directory is named after the instance, so a
-/// renamed instance carries its plugin files to a new path and the records have to
-/// follow — see [DshLocalPluginPaths].
+/**
+ * Installs local plugin packages (.tgz) into an instance's local directory and inspects package contents.
+ */
 @NotNullByDefault
 public final class DshLocalPlugins {
-	/// Where an instance's local plugin files are kept.
+	/** Directory within an instance where local plugin archives are stored. */
 	public static final String DIRECTORY = "plugins";
 
 	private DshLocalPlugins() {
 	}
 
-	/// Reads what a plugin file holds, without installing anything.
-	///
-	/// @param file the archive
-	/// @return the package
-	/// @throws DshException when the file is not a readable package
+	/**
+	 * Inspects a plugin archive without installing it.
+	 *
+	 * @param file the archive
+	 * @return the package
+	 * @throws DshException when the file is not a readable package
+	 */
 	public static Package inspect(Path file) throws DshException {
 		if (!Files.isRegularFile(file)) {
 			throw new DshException("There is no file at " + file);
@@ -92,13 +72,15 @@ public final class DshLocalPlugins {
 		return packageOf(manifest, sizeOf(file), file.getFileName().toString());
 	}
 
-	/// Copies a plugin file into an instance and installs it from there.
-	///
-	/// @param instance the instance to install into
-	/// @param file     the archive the user has
-	/// @param onLine   receives progress lines, or `null`
-	/// @return what was installed
-	/// @throws DshException when the file is not a plugin, or the installation fails
+	/**
+	 * Copies a plugin file into an instance and installs it from there.
+	 *
+	 * @param instance the instance to install into
+	 * @param file     the archive the user has
+	 * @param onLine   receives progress lines, or {@code null}
+	 * @return what was installed
+	 * @throws DshException when the file is not a plugin, or the installation fails
+	 */
 	public static Result install(DshInstance instance, Path file, @Nullable Consumer<String> onLine)
 	throws DshException {
 		Package pkg = inspect(file);
@@ -119,14 +101,9 @@ public final class DshLocalPlugins {
 		}
 
 		if (!pkg.isBundle()) {
-			// Worth saying out loud: the harness installs it, reconciliation leaves
-			// it out of the bundle list because it contributes no layer, and the
-			// plugin then does nothing at all.
 			report(onLine, "Note: " + pkg.name() + " declares no dsh.bundle, so it will be installed but not active");
 		}
 
-		// The absolute path of the copy, not the file the user picked: the profile
-		// records this specification, and it has to keep pointing at something.
 		String spec = target.toAbsolutePath().toString();
 		report(onLine, "Installing " + pkg.name() + " " + pkg.version() + " from the instance's own copy");
 		DshPluginInstaller.installSpecs(instance, List.of(spec), onLine);
@@ -135,11 +112,13 @@ public final class DshLocalPlugins {
 		return new Result(pkg, target, spec);
 	}
 
-	/// Removes a local plugin file an instance no longer needs.
-	///
-	/// @param instance the instance
-	/// @param pkg      the package that was installed from it
-	/// @return whether a file was removed
+	/**
+	 * Removes a local plugin file an instance no longer needs.
+	 *
+	 * @param instance the instance
+	 * @param pkg      the package that was installed from it
+	 * @return whether a file was removed
+	 */
 	public static boolean discard(DshInstance instance, Package pkg) {
 		Path target;
 		try {
@@ -158,15 +137,13 @@ public final class DshLocalPlugins {
 		}
 	}
 
-	/// Reads the `package.json` out of a packed archive.
-	///
-	/// A gzipped tar is read here without a library: the format's header is a
-	/// fixed layout, and finding one named entry in it needs a few dozen lines
-	/// rather than a dependency as large as the launcher.
-	///
-	/// @param file the archive
-	/// @return the manifest's text, or `null` when the archive holds none
-	/// @throws DshException when the archive cannot be read
+	/**
+	 * Reads {@code package.json} from a gzipped tar archive.
+	 *
+	 * @param file the archive
+	 * @return the manifest's text, or {@code null} when the archive holds none
+	 * @throws DshException when the archive cannot be read
+	 */
 	static @Nullable String readPackedManifest(Path file) throws DshException {
 		try (InputStream raw = Files.newInputStream(file);
 		     InputStream gzip = new GZIPInputStream(raw)) {
@@ -177,8 +154,6 @@ public final class DshLocalPlugins {
 					return null;
 				}
 				if (isZero(header)) {
-					// Two zero blocks end an archive; one is enough to stop looking
-					// for a manifest that is not there.
 					return null;
 				}
 
@@ -215,13 +190,15 @@ public final class DshLocalPlugins {
 		}
 	}
 
-	/// Reads a package manifest.
-	///
-	/// @param body     the manifest's text
-	/// @param size     the file's size
-	/// @param fileName the file's name, for messages
-	/// @return the package
-	/// @throws DshException when the manifest names no package
+	/**
+	 * Parses package metadata from a manifest string.
+	 *
+	 * @param body     the manifest's text
+	 * @param size     the file's size
+	 * @param fileName the file's name, for messages
+	 * @return the package
+	 * @throws DshException when the manifest names no package
+	 */
 	static Package packageOf(String body, long size, String fileName) throws DshException {
 		JsonObject root;
 		try {
@@ -251,11 +228,6 @@ public final class DshLocalPlugins {
 		return new Package(name, asString(root, "version") == null ? "0.0.0" : asString(root, "version"), patch, size);
 	}
 
-	/// Returns a member as a string.
-	///
-	/// @param object the object
-	/// @param name   the member
-	/// @return the string, or `null`
 	private static @Nullable String asString(JsonObject object, String name) {
 		JsonElement element = object.get(name);
 		if (element == null || !element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
@@ -265,26 +237,20 @@ public final class DshLocalPlugins {
 		return value.isBlank() ? null : value;
 	}
 
-	/// Returns a name that can be used as a file name.
-	///
-	/// @param value the package name or version
-	/// @return the sanitised value
 	private static String safeFileName(String value) {
 		return value.replaceAll("[^A-Za-z0-9._-]", "_");
 	}
 
-	/// Returns a name that can be used as a file name, for a package a pack carries.
-	///
-	/// @param value the package name or version
-	/// @return the sanitised value
+	/**
+	 * Sanitizes a string for safe use in file names.
+	 *
+	 * @param value the package name or version
+	 * @return the sanitised value
+	 */
 	static String safeName(String value) {
 		return safeFileName(value);
 	}
 
-	/// Reports whether a tar header block is all zeroes.
-	///
-	/// @param block the block
-	/// @return whether it is empty
 	private static boolean isZero(byte[] block) {
 		for (byte b : block) {
 			if (b != 0) {
@@ -294,12 +260,6 @@ public final class DshLocalPlugins {
 		return true;
 	}
 
-	/// Returns a NUL-terminated string from a tar header block.
-	///
-	/// @param block  the block
-	/// @param offset where the string starts
-	/// @param length how long it may be
-	/// @return the string
 	private static String string(byte[] block, int offset, int length) {
 		int end = offset;
 		while (end < offset + length && block[end] != 0) {
@@ -308,12 +268,6 @@ public final class DshLocalPlugins {
 		return new String(block, offset, end - offset, StandardCharsets.UTF_8).trim();
 	}
 
-	/// Returns an octal number from a tar header block.
-	///
-	/// @param block  the block
-	/// @param offset where the number starts
-	/// @param length how long it may be
-	/// @return the number, or zero
 	private static long octal(byte[] block, int offset, int length) {
 		String text = string(block, offset, length).trim();
 		if (text.isEmpty()) {
@@ -326,10 +280,6 @@ public final class DshLocalPlugins {
 		}
 	}
 
-	/// Returns a file's size.
-	///
-	/// @param file the file
-	/// @return the size, or zero
 	private static long sizeOf(Path file) {
 		try {
 			return Files.size(file);
@@ -338,38 +288,39 @@ public final class DshLocalPlugins {
 		}
 	}
 
-	/// Reports progress.
-	///
-	/// @param onStage the sink, or `null`
-	/// @param message the message
 	private static void report(@Nullable Consumer<String> onStage, String message) {
 		if (onStage != null) {
 			onStage.accept(message);
 		}
 	}
 
-	/// What a plugin file holds.
-	///
-	/// @param name        the package name
-	/// @param version     the package version
-	/// @param bundlePatch the patch file the package declares, or `null` when it
-	///                    declares no bundle and would be installed but inactive
-	/// @param sizeBytes   the file's size
+	/**
+	 * What a plugin file holds.
+	 *
+	 * @param name        the package name
+	 * @param version     the package version
+	 * @param bundlePatch the patch file the package declares, or {@code null}
+	 * @param sizeBytes   the file's size
+	 */
 	public record Package(String name, String version, @Nullable String bundlePatch, long sizeBytes) {
-		/// Returns whether the package would be an active plugin.
-		///
-		/// @return whether it declares a bundle patch
+		/**
+		 * Returns whether the package would be an active plugin.
+		 *
+		 * @return whether it declares a bundle patch
+		 */
 		public boolean isBundle() {
 			return bundlePatch != null && !bundlePatch.isBlank();
 		}
 	}
 
-	/// What an installation did.
-	///
-	/// @param pkg       what the file held
-	/// @param installed the file inside the instance, which is what the profile
-	///                   depends on now
-	/// @param spec      the specification the profile recorded
+	/**
+	 * What an installation did.
+	 *
+	 * @param pkg       what the file held
+	 * @param installed the file inside the instance
+	 * @param spec      the specification the profile recorded
+	 */
 	public record Result(Package pkg, Path installed, String spec) {
 	}
 }
+

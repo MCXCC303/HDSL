@@ -31,16 +31,9 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-/// One launcher instance: a pinned DeepSeek Harness version plus the state it
-/// operates on.
-///
-/// An instance is deliberately thin. It names an installed [DshVersion], a
-/// profile inside that home, the working directory sessions are scoped to, and
-/// how the `DSH_HOME` is resolved. Everything else — plugins, sessions,
-/// credentials — belongs to the home directory and is therefore owned by
-/// DeepSeek Harness rather than mirrored here.
-///
-/// Instances are immutable; [DshInstanceManager] replaces them on edit.
+/**
+ * An immutable launcher instance configuration.
+ */
 @NotNullByDefault
 public record DshInstance(@SerializedName("id") String id, @SerializedName("version") String version,
                           @SerializedName("profile") String profile, @SerializedName("workspace") String workspace,
@@ -48,63 +41,43 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
                           @SerializedName("homeMode") DshHomeMode homeMode,
                           @SerializedName("customHome") @Nullable String customHome,
                           @SerializedName("arguments") @Unmodifiable List<String> extraArguments,
-                          // Empty means this instance adds nothing of its own, so what it runs with is the launcher's
-                          // set — which is what "follow the launcher" comes to, and is why the instance page's row
-                          // reads its own state from emptiness. A set of its own is laid over the launcher's rather
-                          // than replacing it, so an empty one and no set at all are the same thing here.
+                          // Empty map indicates inheriting the launcher's environment set.
                           @SerializedName("environment") @Unmodifiable Map<String, String> environment,
                           @SerializedName("icon") @Nullable String icon,
                           @SerializedName("iconFile") @Nullable String iconFile,
                           @SerializedName("portMode") @Nullable DshPortMode portMode,
                           @SerializedName("port") int port,
                           @SerializedName("createdAt") long createdAt,
-                          // The folder this instance's own directory is in, recorded so that an
-                          // instance read out of a folder the user added is managed where it
-                          // actually is. It is written down because an instance's own directory
-                          // holds its copy of DeepSeek Harness, its local plugin files and — for
-                          // an isolated home — its profile, credentials and sessions, so every
-                          // operation on an instance resolves through here: installing it,
-                          // launching it, renaming it and removing it all have to name the folder
-                          // that holds it. Absent means the folder the launcher owns, which is
-                          // what every instance written before this member existed was in.
+                          // Parent folder path, or null if stored in the default launcher folder.
                           @SerializedName("directory") @Nullable String directory) {
 
-	/// The profile booted when this instance is launched.
+	/**
+	 * The profile booted when this instance is launched.
+	 */
 	public static final String DEFAULT_PROFILE = "web";
 
-	/// Normalises the members a settings file may leave out.
-	///
-	/// The instance file is written by this launcher but not only read from files this launcher
-	/// wrote, and Gson fills a record through its fields rather than through its constructor — so a
-	/// member that is missing arrives here as `null` even though the record says it is never null.
-	/// An instance whose `environment` was absent therefore used to reach the interface as a `null`
-	/// map, and the first row that asked it whether it was empty brought the whole launcher down.
-	/// Doing it in the constructor is what makes every reader safe at once: there are a dozen
-	/// places that take an instance apart and rebuild it, and they all go through here.
 	public DshInstance {
 		environment = Map.copyOf(environment == null ? Map.of() : environment);
 	}
 
-	/// Creates an instance whose directory is the one the launcher owns.
-	///
-	/// The shape every caller that does not know where an instance lives uses —
-	/// and the one the tests build instances with. [#DshInstanceManager] names
-	/// the directory for everything it reads or writes.
-	///
-	/// @param id             the instance id
-	/// @param version        the pinned version
-	/// @param profile        the profile to boot
-	/// @param workspace      the session working directory
-	/// @param nodeRuntime    the Node runtime selection
-	/// @param homeMode       how the `DSH_HOME` is resolved
-	/// @param customHome     the custom home, or `null`
-	/// @param extraArguments the extra command-line arguments
-	/// @param environment    the extra environment variables
-	/// @param icon           the icon id
-	/// @param iconFile       the custom icon file, or `null`
-	/// @param portMode       the port policy
-	/// @param port           the remembered or fixed port
-	/// @param createdAt      when the instance was made
+	/**
+	 * Creates an instance whose directory is the one the launcher owns.
+	 *
+	 * @param id             the instance id
+	 * @param version        the pinned version
+	 * @param profile        the profile to boot
+	 * @param workspace      the session working directory
+	 * @param nodeRuntime    the Node runtime selection
+	 * @param homeMode       how the DSH_HOME is resolved
+	 * @param customHome     the custom home, or {@code null}
+	 * @param extraArguments the extra command-line arguments
+	 * @param environment    the extra environment variables
+	 * @param icon           the icon id
+	 * @param iconFile       the custom icon file, or {@code null}
+	 * @param portMode       the port policy
+	 * @param port           the remembered or fixed port
+	 * @param createdAt      when the instance was made
+	 */
 	public DshInstance(String id,
 	                   String version,
 	                   String profile,
@@ -136,27 +109,30 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		     null);
 	}
 
-	/// Returns the icon selected for this instance.
-	///
-	/// @return the icon, never `null`
+	/**
+	 * Returns the icon selected for this instance.
+	 *
+	 * @return the icon, never {@code null}
+	 */
 	public DshInstanceIcon iconOrDefault() {
 		return DshInstanceIcon.of(icon);
 	}
 
-	/// Returns the custom icon file, when the instance uses one.
-	///
-	/// A file takes precedence over the built-in icon, because choosing one is
-	/// the more specific act.
-	///
-	/// @return the file, or `null` when a built-in icon is in use
+	/**
+	 * Returns the custom icon file, when the instance uses one.
+	 *
+	 * @return the file, or {@code null} when a built-in icon is in use
+	 */
 	public @Nullable Path iconFileOrDefault() {
 		return iconFile == null || iconFile.isBlank() ? null : Path.of(iconFile);
 	}
 
-	/// Returns a copy that uses a custom icon file.
-	///
-	/// @param file the image file
-	/// @return the copy
+	/**
+	 * Returns a copy that uses a custom icon file.
+	 *
+	 * @param file the image file
+	 * @return the copy
+	 */
 	public DshInstance withIconFile(Path file) {
 		return new DshInstance(id,
 		                       version,
@@ -175,9 +151,11 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Returns a copy that uses a built-in icon.
-	///
-	/// @return the copy
+	/**
+	 * Returns a copy that uses a built-in icon.
+	 *
+	 * @return the copy
+	 */
 	public DshInstance withNoIconFile() {
 		return new DshInstance(id,
 		                       version,
@@ -196,10 +174,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Returns a copy under a different id.
-	///
-	/// @param newId the new id
-	/// @return the copy
+	/**
+	 * Returns a copy under a different id.
+	 *
+	 * @param newId the new id
+	 * @return the copy
+	 */
 	public DshInstance withId(String newId) {
 		return new DshInstance(newId,
 		                       version,
@@ -218,10 +198,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Returns a copy with a different icon.
-	///
-	/// @param newIcon the icon
-	/// @return the copy
+	/**
+	 * Returns a copy with a different icon.
+	 *
+	 * @param newIcon the icon
+	 * @return the copy
+	 */
 	public DshInstance withIcon(DshInstanceIcon newIcon) {
 		return new DshInstance(id,
 		                       version,
@@ -240,9 +222,11 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Returns the port policy, defaulting to automatic.
-	///
-	/// @return the port mode, never `null`
+	/**
+	 * Returns the port policy, defaulting to automatic.
+	 *
+	 * @return the port mode, never {@code null}
+	 */
 	public DshPortMode portModeOrDefault() {
 		// An instance that follows the launcher says so, and what it follows is the
 		// launcher's own policy — which is auto unless a person changed it.
@@ -250,28 +234,30 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		return mode == null || mode == DshPortMode.GLOBAL ? DshPortMode.AUTO : mode;
 	}
 
-	/// Reports whether this instance chooses its own port policy.
-	///
-	/// @return whether it does not follow the launcher
+	/**
+	 * Reports whether this instance chooses its own port policy.
+	 *
+	 * @return whether it does not follow the launcher
+	 */
 	public boolean hasOwnPortMode() {
 		return portMode() != null && portMode() != DshPortMode.GLOBAL;
 	}
 
-	/// Returns the port to pass to DeepSeek Harness.
-	///
-	/// For a fixed instance this is the port the user chose. For an automatic
-	/// one it is the port the instance was first given, or `0` before that has
-	/// happened.
-	///
-	/// @return the port, or `0` when none has been settled on yet
+	/**
+	 * Returns the port to pass to DeepSeek Harness.
+	 *
+	 * @return the port, or {@code 0} when none has been settled on yet
+	 */
 	public int portOrDefault() {
 		return Math.max(port, 0);
 	}
 
-	/// Returns a copy with a different port.
-	///
-	/// @param newPort the port
-	/// @return the copy
+	/**
+	 * Returns a copy with a different port.
+	 *
+	 * @param newPort the port
+	 * @return the copy
+	 */
 	public DshInstance withPort(int newPort) {
 		return new DshInstance(id,
 		                       version,
@@ -290,11 +276,13 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Returns a copy with a different port policy.
-	///
-	/// @param newMode the policy
-	/// @param newPort the fixed port, ignored when the policy is automatic
-	/// @return the copy
+	/**
+	 * Returns a copy with a different port policy.
+	 *
+	 * @param newMode the policy
+	 * @param newPort the fixed port, ignored when the policy is automatic
+	 * @return the copy
+	 */
 	public DshInstance withPortPolicy(DshPortMode newMode, int newPort) {
 		return new DshInstance(id,
 		                       version,
@@ -313,12 +301,11 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Returns the Node runtime this instance runs on.
-	///
-	/// `system` means whatever `node` is on `PATH`; anything else names a runtime
-	/// installed under `runtimes/<version>/`.
-	///
-	/// @return the runtime selection, never `null`
+	/**
+	 * Returns the Node runtime this instance runs on.
+	 *
+	 * @return the runtime selection, never {@code null}
+	 */
 	public String nodeRuntimeOrDefault() {
 		String value = nodeRuntime;
 		// An instance that never chose follows the launcher. Existing manifests
@@ -330,30 +317,32 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		return value;
 	}
 
-	/// Returns the working directory sessions are scoped to.
-	///
-	/// Paths are stored as strings rather than as [Path] values: the manifest is
-	/// a user-visible file, and Gson cannot serialise [Path] inside a record
-	/// without a custom adapter.
-	///
-	/// @return the absolute workspace path
+	/**
+	 * Returns the working directory sessions are scoped to.
+	 *
+	 * @return the absolute workspace path
+	 */
 	public Path workspacePath() {
 		return Path.of(workspace).toAbsolutePath().normalize();
 	}
 
-	/// Returns the configured custom home.
-	///
-	/// @return the absolute custom home, or `null` when none is configured
+	/**
+	 * Returns the configured custom home.
+	 *
+	 * @return the absolute custom home, or {@code null} when none is configured
+	 */
 	public @Nullable Path customHomePath() {
 		String value = customHome;
 		return value == null ? null : Path.of(value).toAbsolutePath().normalize();
 	}
 
-	/// Resolves the `DSH_HOME` this instance must be launched with.
-	///
-	/// @return the absolute home directory for this instance
-	/// @throws DshException when a custom home was requested but not configured,
-	///                       or when a path segment is unusable
+	/**
+	 * Resolves the {@code DSH_HOME} this instance must be launched with.
+	 *
+	 * @return the absolute home directory for this instance
+	 * @throws DshException when a custom home was requested but not configured,
+	 *                       or when a path segment is unusable
+	 */
 	public Path homeDirectory() throws DshException {
 		// GLOBAL is resolved through the launcher's default rather than here,
 		// because the settings live a layer above this package.
@@ -375,19 +364,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		};
 	}
 
-	/// Returns this instance's directory, which holds `instance.json` and the
-	/// isolated home when [#homeMode] is [DshHomeMode#ISOLATED].
-	///
-	/// The recorded directory wins, because an instance read out of a folder the
-	/// user added lives there and only there: its copy of DeepSeek Harness, the
-	/// plugin files it installed from a file and its profile are all inside it.
-	/// Answering with the folder the launcher owns would install a second copy
-	/// somewhere else and then report the instance as broken, and removing the
-	/// instance would either fail or remove a different one that happens to
-	/// share its name.
-	///
-	/// @return the instance directory
-	/// @throws DshException when the id cannot be used as a directory name
+	/**
+	 * Returns this instance's directory holding its files and configuration.
+	 *
+	 * @return the instance directory
+	 * @throws DshException when the id cannot be used as a directory name
+	 */
 	public Path instanceDirectory() throws DshException {
 		String recorded = directory;
 		if (recorded != null && !recorded.isBlank()) {
@@ -396,10 +378,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		return DshPaths.instanceDirectory(id);
 	}
 
-	/// Returns a copy living in a different directory.
-	///
-	/// @param newDirectory the directory, or `null` for the one the launcher owns
-	/// @return the copy
+	/**
+	 * Returns a copy living in a different directory.
+	 *
+	 * @param newDirectory the directory, or {@code null} for the default launcher directory
+	 * @return the copy
+	 */
 	public DshInstance withDirectory(@Nullable Path newDirectory) {
 		return new DshInstance(id,
 		                       version,
@@ -418,35 +402,41 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       newDirectory == null ? null : newDirectory.toAbsolutePath().normalize().toString());
 	}
 
-	/// Returns the directory holding this instance's own DeepSeek Harness.
-	///
-	/// @return the directory
-	/// @throws DshException when the identifier is not usable as a path segment
+	/**
+	 * Returns the directory holding this instance's own DeepSeek Harness.
+	 *
+	 * @return the directory
+	 * @throws DshException when the identifier is not usable as a path segment
+	 */
 	public Path dshDirectory() throws DshException {
 		return instanceDirectory().resolve("dsh");
 	}
 
-	/// Returns the entry script of this instance's own DeepSeek Harness.
-	///
-	/// @return the script's path
-	/// @throws DshException when the identifier is not usable as a path segment
+	/**
+	 * Returns the entry script of this instance's own DeepSeek Harness.
+	 *
+	 * @return the script's path
+	 * @throws DshException when the identifier is not usable as a path segment
+	 */
 	public Path dshEntryPoint() throws DshException {
 		return dshDirectory().resolve(DshVersion.PACKAGE_PATH).resolve("lib/bin.js");
 	}
 
-	/// Reports whether this instance shares its home with other instances.
-	///
-	/// The user interface uses this to show a warning next to the instance.
-	///
-	/// @return whether the home is not private to this instance
+	/**
+	 * Reports whether this instance shares its home with other instances.
+	 *
+	 * @return whether the home is not private to this instance
+	 */
 	public boolean sharesHome() {
 		return homeMode != DshHomeMode.ISOLATED;
 	}
 
-	/// Creates a new instance with a different profile.
-	///
-	/// @param newProfile the profile to boot
-	/// @return the updated instance
+	/**
+	 * Creates a new instance with a different profile.
+	 *
+	 * @param newProfile the profile to boot
+	 * @return the updated instance
+	 */
 	public DshInstance withProfile(String newProfile) {
 		return new DshInstance(id,
 		                       version,
@@ -465,10 +455,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Creates a new instance pinned to a different version.
-	///
-	/// @param newVersion the version to pin
-	/// @return the updated instance
+	/**
+	 * Creates a new instance pinned to a different version.
+	 *
+	 * @param newVersion the version to pin
+	 * @return the updated instance
+	 */
 	public DshInstance withVersion(String newVersion) {
 		return new DshInstance(id,
 		                       newVersion,
@@ -487,10 +479,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Creates a new instance pinned to a different Node runtime.
-	///
-	/// @param runtime the runtime selection, or `null` for the system runtime
-	/// @return the updated instance
+	/**
+	 * Creates a new instance pinned to a different Node runtime.
+	 *
+	 * @param runtime the runtime selection, or {@code null} for the system runtime
+	 * @return the updated instance
+	 */
 	public DshInstance withNodeRuntime(@Nullable String runtime) {
 		return new DshInstance(id,
 		                       version,
@@ -509,18 +503,12 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Creates a new instance with a different home policy.
-	///
-	/// @param mode        the new policy
-	/// @param home        the custom home, required when `mode` is [DshHomeMode#CUSTOM]
-	/// @param environment the variables the instance runs with
-	/// @return the updated instance
-	/// Returns a copy of this instance with a different environment.
-	///
-	/// The environment is how a per-instance secret is passed to what the instance runs —
-	/// an API key for one instance and another key for the next — so it is a field somebody
-	/// changes rather than one set at creation.
-	/// @return the copy
+	/**
+	 * Returns a copy of this instance with a different environment.
+	 *
+	 * @param environment the variables the instance runs with
+	 * @return the copy
+	 */
 	public DshInstance withEnvironment(Map<@Nullable String, @Nullable String> environment) {
 		// `null` is the state "this instance adds nothing of its own", which is what following the
 		// launcher is; it is written as an absent member. The constructor puts the field back to an
@@ -542,6 +530,13 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
+	/**
+	 * Creates a new instance with a different home policy.
+	 *
+	 * @param mode the new policy
+	 * @param home the custom home, required when {@code mode} is {@link DshHomeMode#CUSTOM}
+	 * @return the updated instance
+	 */
 	public DshInstance withHome(DshHomeMode mode, @Nullable Path home) {
 		return new DshInstance(id,
 		                       version,
@@ -560,11 +555,13 @@ public record DshInstance(@SerializedName("id") String id, @SerializedName("vers
 		                       directory);
 	}
 
-	/// Creates a new instance with different launch arguments and environment.
-	///
-	/// @param arguments   the extra command-line arguments
-	/// @param environment the extra environment variables
-	/// @return the updated instance
+	/**
+	 * Creates a new instance with different launch arguments and environment.
+	 *
+	 * @param arguments   the extra command-line arguments
+	 * @param environment the extra environment variables
+	 * @return the updated instance
+	 */
 	public DshInstance withLaunchOptions(@Unmodifiable List<String> arguments,
 	                                     @Unmodifiable Map<String, String> environment) {
 		return new DshInstance(id,

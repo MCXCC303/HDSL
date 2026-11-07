@@ -49,7 +49,7 @@ final class DshSkillFiles {
 	}
 
 	/**
-	 * Replaces a file with the given lines, staged beside it and moved onto it
+	 * Replaces a file with the given lines, staged beside it and moved atomically when supported.
 	 */
 	static void writeLines(Path file, List<String> lines) throws IOException {
 		Path staging = file.resolveSibling(file.getFileName() + STAGING);
@@ -109,11 +109,11 @@ final class DshSkillFiles {
 	}
 
 	/**
-	 * Returns the shallowest directory holding a file of this name
+	 * Returns the shallowest directory holding a file of this name.
 	 *
 	 * @param directory the unpacked tree
 	 * @param name      the file to look for
-	 * @return the directory holding it, or `null` when there is none
+	 * @return the directory holding it, or {@code null} when there is none
 	 * @throws IOException when the tree cannot be walked
 	 */
 	static @Nullable Path shallowest(Path directory, String name) throws IOException {

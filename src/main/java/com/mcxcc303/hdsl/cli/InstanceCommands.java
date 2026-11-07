@@ -65,9 +65,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Prints a running instance's key
-	 * <p>
-	 * The key is the address's `token`, alone
+	 * Prints a running instance's launch token.
 	 *
 	 * @param invocation the parsed invocation
 	 * @param out        the stream for normal output
@@ -102,9 +100,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Runs the `instance create` command
-	 * <p>
-	 * A DSH version is required
+	 * Runs the {@code instance create} command.
 	 *
 	 * @param invocation the parsed invocation
 	 * @param out        the stream for normal output
@@ -156,12 +152,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Runs the `instance launch` command: starts an instance and blocks until it exits
-	 * <p>
-	 * Except: `--url` and `--key` print the address or the key the running harness reported
-	 * <p>
-	 * The launcher keeps child processes in its own process group, and the JVM shutdown hook stops them<br>
-	 * Reattaching or interrupting this command therefore never leaves an orphaned `dsh` behind
+	 * Runs the {@code instance launch} command: starts an instance and blocks until it exits.
 	 *
 	 * @param invocation the parsed invocation
 	 * @param out        the stream for normal output
@@ -227,7 +218,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Runs the `instance print-launch-args` command: the pieces a typed argument string splits into
+	 * Runs the {@code instance print-launch-args} command.
 	 *
 	 * @param invocation the parsed invocation
 	 * @param out        the stream for normal output
@@ -258,8 +249,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Runs the `instance test-launch` command<br>
-	 * An instance already up will be refused
+	 * Runs the {@code instance test-launch} command.
 	 */
 	static int testLaunch(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
@@ -300,8 +290,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Runs the `instance list` command: the instances, or the running ones under `--running`
-	 * This command now also provide running status.
+	 * Runs the {@code instance list} command.
 	 */
 	static int listInstances(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		if (invocation.flag("running")) {
@@ -336,10 +325,7 @@ public final class InstanceCommands {
 	}
 
 	/**
-	 * Runs the `instance delete` command
-	 * <p>
-	 * An instance that is up is not removed: the harness is still writing to the home that would be deleted<br>
-	 * Stopping it first is one command, whose name is part of the refusal
+	 * Runs the {@code instance delete} command.
 	 */
 	static int deleteInstance(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
@@ -356,9 +342,7 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	/**
-	 * Runs the `instance list --running` command: the instances that are up, whichever launcher started them
-	 */
+	// Runs the `instance list --running` command: the instances that are up.
 	private static int listRunning(PrintStream out) {
 		List<DshProcessManager.Running> running = DshProcessManager.running();
 		if (running.isEmpty()) {
