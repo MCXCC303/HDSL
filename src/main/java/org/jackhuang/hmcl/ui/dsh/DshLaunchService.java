@@ -77,10 +77,14 @@ public final class DshLaunchService {
 	static {
 		DshProcessManager.setExitListener(process -> {
 			if (DshCrashDialog.isCrash(process)) {
-				Platform.runLater(() -> DshCrashDialog.show(process.instance(),
-				                                            DshCrashDialog.bannerOf(process),
-				                                            DshCrashDialog.describe(process),
-				                                            process));
+				try {
+					runInFX(() -> DshCrashDialog.show(process.instance(),
+					                                  DshCrashDialog.bannerOf(process),
+					                                  DshCrashDialog.describe(process),
+					                                  process));
+				} catch (IllegalStateException e) {
+					LOG.warning("Could not show crash dialog", e);
+				}
 			}
 		});
 	}
