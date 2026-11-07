@@ -17,21 +17,36 @@
  */
 package com.mcxcc303.hdsl.core;
 
-import org.jackhuang.hmcl.setting.LauncherSettings;
-import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.logging.Logger;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Network environment configuration for child processes.
  */
 @NotNullByDefault
 public final class DshNetworkSettings {
+	private static volatile Supplier<Map<String, String>> environmentSupplier =
+			() -> computeEnvironment(DshProxyMode.SYSTEM, null, null, false, null, null, 64);
+
 	private DshNetworkSettings() {
+	}
+
+	/**
+	 * Configures the supplier of network environment variables.
+	 *
+	 * @param supplier the environment supplier
+	 * @return the previously installed supplier
+	 */
+	public static Supplier<Map<String, String>> setSupplier(Supplier<Map<String, String>> supplier) {
+		Supplier<Map<String, String>> previous = environmentSupplier;
+		environmentSupplier = Objects.requireNonNull(supplier, "supplier");
+		return previous;
 	}
 
 	/**
@@ -40,57 +55,76 @@ public final class DshNetworkSettings {
 	 * @return the environment variables, empty when nothing is configured
 	 */
 	public static Map<String, String> environment() {
-		Map<String, String> environment = new LinkedHashMap<>();
 		try {
-			LauncherSettings settings = SettingsManager.settings();
-			DshProxyMode mode = settings.proxyModeProperty().get() == null
-			                    ? DshProxyMode.SYSTEM
-			                    : settings.proxyModeProperty().get();
-			switch (mode) {
-				case SYSTEM -> {
-					// Inherit default system proxy configuration.
-				}
-				case NONE -> {
-					// Explicitly clear proxy variables so system defaults are not inherited.
-					environment.put("HTTP_PROXY", "");
-					environment.put("HTTPS_PROXY", "");
-					environment.put("NO_PROXY", "*");
-				}
-				case HTTP, SOCKS -> {
-					String address = address(settings, mode);
-					if (address != null) {
-						environment.put("HTTP_PROXY", address);
-						environment.put("HTTPS_PROXY", address);
-						// ALL_PROXY is read by curl and various tools, especially for SOCKS proxies.
-						environment.put("ALL_PROXY", address);
-					}
-				}
-			}
-
-			Integer concurrency = settings.downloadConcurrencyProperty().get();
-			if (concurrency != null && concurrency > 0) {
-				// npm_config_maxsockets limits concurrent socket connections in npm.
-				environment.put("npm_config_maxsockets", Integer.toString(concurrency));
-			}
+			return environmentSupplier.get();
 		} catch (RuntimeException e) {
 			Logger.LOG.warning("Could not read the network settings", e);
+			return Map.of();
+		}
+	}
+
+	/**
+	 * Computes environment variables from raw network proxy configuration settings.
+	 *
+	 * @param mode          the proxy mode
+	 * @param host          the proxy host or empty/null
+	 * @param port          the proxy port or empty/null
+	 * @param authenticated whether authentication is enabled
+	 * @param user          the proxy username or empty/null
+	 * @param password      the proxy password or empty/null
+	 * @param concurrency   the maximum concurrent connections or null
+	 * @return the computed environment variables
+	 */
+	public static Map<String, String> computeEnvironment(
+			DshProxyMode mode,
+			@Nullable String host,
+			@Nullable String port,
+			boolean authenticated,
+			@Nullable String user,
+			@Nullable String password,
+			@Nullable Integer concurrency) {
+		Map<String, String> environment = new LinkedHashMap<>();
+		switch (mode) {
+			case SYSTEM -> {
+				// Inherit default system proxy configuration.
+			}
+			case NONE -> {
+				// Explicitly clear proxy variables so system defaults are not inherited.
+				environment.put("HTTP_PROXY", "");
+				environment.put("HTTPS_PROXY", "");
+				environment.put("NO_PROXY", "*");
+			}
+			case HTTP, SOCKS -> {
+				String address = address(mode, host, port, authenticated, user, password);
+				if (address != null) {
+					environment.put("HTTP_PROXY", address);
+					environment.put("HTTPS_PROXY", address);
+					// ALL_PROXY is read by curl and various tools, especially for SOCKS proxies.
+					environment.put("ALL_PROXY", address);
+				}
+			}
+		}
+
+		if (concurrency != null && concurrency > 0) {
+			// npm_config_maxsockets limits concurrent socket connections in npm.
+			environment.put("npm_config_maxsockets", Integer.toString(concurrency));
 		}
 		return environment;
 	}
 
-	private static @Nullable String address(LauncherSettings settings, DshProxyMode mode) {
-		String host = settings.proxyHostProperty().get();
+	private static @Nullable String address(
+			DshProxyMode mode,
+			@Nullable String host,
+			@Nullable String port,
+			boolean authenticated,
+			@Nullable String user,
+			@Nullable String password) {
 		if (host == null || host.isBlank()) {
 			return null;
 		}
-		String port = settings.proxyPortProperty().get();
 		String credentials = "";
-		if (settings.proxyAuthenticatedProperty().get()) {
-			String user = settings.proxyUserProperty().get();
-			String password = settings.proxyPasswordProperty().get();
-			if (user != null && !user.isBlank()) {
-				credentials = user + ":" + (password == null ? "" : password) + "@";
-			}
+		if (authenticated && user != null && !user.isBlank()) {
+			credentials = user + ":" + (password == null ? "" : password) + "@";
 		}
 		String scheme = mode == DshProxyMode.SOCKS ? "socks5" : "http";
 		return scheme + "://" + credentials + host.trim()

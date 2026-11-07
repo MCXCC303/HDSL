@@ -21,6 +21,7 @@ import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.account.DshVendor;
 import com.mcxcc303.hdsl.instance.*;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
+import com.mcxcc303.hdsl.core.DshNetworkSettings;
 import com.mcxcc303.hdsl.core.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
@@ -352,6 +353,24 @@ public final class LauncherSettings {
 	 */
 	public javafx.beans.property.StringProperty proxyPasswordProperty() {
 		return proxyPassword;
+	}
+
+	/**
+	 * Computes network environment variables from current proxy and concurrency configuration.
+	 *
+	 * @return environment variables
+	 */
+	public Map<String, String> computeNetworkEnvironment() {
+		DshProxyMode mode = proxyMode.get() == null ? DshProxyMode.SYSTEM : proxyMode.get();
+		return DshNetworkSettings.computeEnvironment(
+				mode,
+				proxyHost.get(),
+				proxyPort.get(),
+				proxyAuthenticated.get(),
+				proxyUser.get(),
+				proxyPassword.get(),
+				downloadConcurrency.get()
+		);
 	}
 
 	// Whether the launcher chooses how many downloads happen at once.

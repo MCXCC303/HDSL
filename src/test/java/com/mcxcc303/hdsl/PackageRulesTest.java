@@ -48,8 +48,15 @@ class PackageRulesTest {
 			"skin/NormalizedSkin.java",
 			"instance/DshInstanceIcon.java",
 			"instance/DshInstanceIcons.java",
-			"launch/DshBrowserWindow.java",
 			"launch/DshProcess.java"
+	);
+
+	private static final Set<String> KNOWN_CIRCLES = Set.of(
+			"harness<->instance",
+			"harness<->plugin",
+			"instance<->launch",
+			"instance<->pack",
+			"instance<->plugin"
 	);
 
 	private static final Pattern IMPORTED = Pattern.compile(
@@ -116,6 +123,20 @@ class PackageRulesTest {
 		return edges;
 	}
 
+	private static Set<String> circles() throws IOException {
+		Set<String> edges = edges();
+		Set<String> circles = new TreeSet<>();
+		for (String edge : edges) {
+			String[] halves = edge.split("->");
+			if (edges.contains(halves[1] + "->" + halves[0])) {
+				circles.add(halves[0].compareTo(halves[1]) < 0
+				            ? halves[0] + "<->" + halves[1]
+				            : halves[1] + "<->" + halves[0]);
+			}
+		}
+		return circles;
+	}
+
 	private static String withoutPrefix(String name) {
 		return name.replace("com.mcxcc303.hdsl.", "");
 	}
@@ -148,11 +169,43 @@ class PackageRulesTest {
 	}
 
 	@Test
+	void thePackagesDoNotReachForEachOtherInACircle() throws IOException {
+		assertEquals(KNOWN_CIRCLES,
+		             circles(),
+		             "a new circle is two packages reaching for each other rather than one handing the" +
+		             " other what it needs: " + circles());
+	}
+
+	@Test
 	void theCommandLineIsOnTopAndTheLeavesAreLeaves() throws IOException {
 		Set<String> edges = edges();
 		assertTrue(edges.stream().noneMatch(edge -> edge.endsWith("->cli")),
 		           "the command line is on top of the tree, and nothing below it may name it: " + edges);
 		assertTrue(edges.stream().noneMatch(edge -> edge.startsWith("core->")),
 		           "core is the foundation and must not depend on other packages: " + edges);
+		for (String leaf : List.of("runtime", "skill", "skin")) {
+			List<String> out = edges.stream()
+			                        .filter(edge -> edge.startsWith(leaf + "->"))
+			                        .filter(edge -> !edge.equals(leaf + "->core"))
+			                        .toList();
+			assertTrue(out.isEmpty(), leaf + " is a leaf, so it names only core: " + out);
+		}
+	}
+
+	@Test
+	void coreDoesNotDependOnSettingsOrInterface() throws IOException {
+		List<String> offenders = new ArrayList<>();
+		Path coreDir = ROOT.resolve("core");
+		for (Path file : sources()) {
+			if (file.startsWith(coreDir)) {
+				String source = read(file);
+				for (String forbidden : List.of("org.jackhuang.hmcl.setting.", "org.jackhuang.hmcl.ui.")) {
+					if (source.contains(forbidden)) {
+						offenders.add(ROOT.relativize(file) + " uses " + forbidden);
+					}
+				}
+			}
+		}
+		assertTrue(offenders.isEmpty(), "core must not import settings or interface types: " + offenders);
 	}
 }

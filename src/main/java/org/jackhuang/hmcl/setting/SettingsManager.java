@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.setting;
 import com.google.gson.annotations.SerializedName;
 import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.account.DshVendor;
+import com.mcxcc303.hdsl.core.DshNetworkSettings;
 import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
@@ -64,7 +65,20 @@ public final class SettingsManager {
 	// The lazily created window state singleton.
 	private static @Nullable LauncherState launcherState;
 
+	static {
+		DshNetworkSettings.setSupplier(SettingsManager::computeNetworkEnvironment);
+	}
+
 	private SettingsManager() {}
+
+	/**
+	 * Computes network environment variables from active settings.
+	 *
+	 * @return environment variables
+	 */
+	public static Map<String, String> computeNetworkEnvironment() {
+		return settings().computeNetworkEnvironment();
+	}
 
 	/**
 	 * Returns the process-wide window state, loading it on first use.
