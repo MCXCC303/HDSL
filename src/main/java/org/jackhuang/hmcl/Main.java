@@ -19,6 +19,7 @@ package org.jackhuang.hmcl;
 
 import com.mcxcc303.hdsl.cli.Cli;
 import org.jackhuang.hmcl.setting.LauncherLock;
+import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.Arrays;
@@ -54,7 +55,7 @@ public final class Main {
 
         Cli.Invocation invocation = Cli.parse(arguments);
         if (invocation != null) {
-            System.exit(Cli.run(invocation, System.out, System.err));
+            System.exit(runCommandLine(invocation));
         }
 
         if (arguments.contains("--version")) {
@@ -72,5 +73,22 @@ public final class Main {
         }
 
         Launcher.main(args);
+    }
+
+    /// Loads the launcher settings before a CLI command runs.
+    ///
+    /// Loading the settings class also registers the network environment supplier, so a command that
+    /// starts npm or another child process sees the configured proxy and download concurrency.
+    static void initializeCommandLine() {
+        SettingsManager.settings();
+    }
+
+    /// Runs one parsed command, after the settings a command may need are in place.
+    ///
+    /// @param invocation the command and its arguments
+    /// @return the process exit code
+    static int runCommandLine(Cli.Invocation invocation) {
+        initializeCommandLine();
+        return Cli.run(invocation, System.out, System.err);
     }
 }
