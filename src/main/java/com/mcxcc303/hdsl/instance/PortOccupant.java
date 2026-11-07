@@ -18,6 +18,11 @@
 package com.mcxcc303.hdsl.instance;
 
 import com.mcxcc303.hdsl.core.DshCommand;
+import com.sun.jna.Memory;
+import com.sun.jna.Pointer;
+import com.sun.jna.ptr.IntByReference;
+import com.sun.jna.win32.StdCallLibrary;
+import org.jackhuang.hmcl.util.platform.NativeUtils;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -42,10 +47,10 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class PortOccupant {
 	/**
-	 * How long a lookup command is given to answer. {@code lsof} is the one that can stop answering on a
-	 * filesystem that has stopped.
+	 * How long a lookup command is given to answer. External tools like {@code powershell} on Windows
+	 * or {@code lsof} on macOS can take a few seconds to start up and answer.
 	 */
-	private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(2);
+	private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(5);
 
 	/**
 	 * How much of a command line is shown before it is shortened.
@@ -91,7 +96,7 @@ public final class PortOccupant {
 			return Optional.empty();
 		}
 		OptionalLong pid = switch (OperatingSystem.CURRENT_OS) {
-			case WINDOWS -> pidFromNetstat(port, timeout);
+			case WINDOWS -> pidOnWindows(port, timeout);
 			case LINUX -> pidFromProc(port, timeout);
 			case MACOS, FREEBSD -> pidFromLsof(port, timeout);
 			default -> OptionalLong.empty();
@@ -193,6 +198,91 @@ public final class PortOccupant {
 		}
 	}
 
+	private interface Iphlpapi extends StdCallLibrary {
+		@Nullable Iphlpapi INSTANCE = NativeUtils.USE_JNA && OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
+				? NativeUtils.load("iphlpapi", Iphlpapi.class)
+				: null;
+
+		int GetExtendedTcpTable(Pointer pTcpTable, IntByReference pdwSize, boolean bOrder, int ulAf, int tableClass, int reserved);
+	}
+
+	private static final int AF_INET = 2;
+	private static final int AF_INET6 = 23;
+	private static final int TCP_TABLE_OWNER_PID_LISTENER = 3;
+
+	/**
+	 * Finds the listening pid on Windows.
+	 * <p>
+	 * Checks {@code netstat -ano} first. When {@code netstat} omits a listening socket (such as on
+	 * Windows 11 builds where newly created listeners report state 0 in {@code TCP_TABLE_OWNER_PID_ALL}),
+	 * falls back to querying the kernel listener table via {@code iphlpapi.dll} and PowerShell
+	 * {@code Get-NetTCPConnection}.
+	 *
+	 * @param port    the port
+	 * @param timeout how long the commands are given
+	 * @return the pid, or empty when no row listens on it
+	 */
+	private static OptionalLong pidOnWindows(int port, Duration timeout) {
+		OptionalLong pid = pidFromNetstat(port, timeout);
+		if (pid.isPresent()) {
+			return pid;
+		}
+		OptionalLong nativePid = pidFromNative(port);
+		if (nativePid.isPresent()) {
+			return nativePid;
+		}
+		return pidFromPowershell(port, timeout);
+	}
+
+	/**
+	 * Queries the Windows kernel TCP listener table via {@code iphlpapi.dll}.
+	 *
+	 * @param port the port to find
+	 * @return the listening pid, or empty when not listening or query failed
+	 */
+	private static OptionalLong pidFromNative(int port) {
+		if (Iphlpapi.INSTANCE == null) {
+			return OptionalLong.empty();
+		}
+		try {
+			OptionalLong ipv4 = queryTcpListeners(AF_INET, port, 24, 8, 20);
+			if (ipv4.isPresent()) {
+				return ipv4;
+			}
+			return queryTcpListeners(AF_INET6, port, 56, 20, 52);
+		} catch (Throwable e) {
+			LOG.warning("Failed to query TCP listener table via iphlpapi: " + e.getMessage());
+			return OptionalLong.empty();
+		}
+	}
+
+	private static OptionalLong queryTcpListeners(int af, int port, int rowSize, int portOffset, int pidOffset) {
+		IntByReference size = new IntByReference(0);
+		int res = Iphlpapi.INSTANCE.GetExtendedTcpTable(Pointer.NULL, size, false, af, TCP_TABLE_OWNER_PID_LISTENER, 0);
+		for (int attempt = 0; attempt < 3 && size.getValue() > 0; attempt++) {
+			Memory memory = new Memory(size.getValue());
+			res = Iphlpapi.INSTANCE.GetExtendedTcpTable(memory, size, false, af, TCP_TABLE_OWNER_PID_LISTENER, 0);
+			if (res == 0) {
+				int count = memory.getInt(0);
+				for (int i = 0; i < count; i++) {
+					long row = 4 + (long) i * rowSize;
+					int portRaw = memory.getInt(row + portOffset);
+					int localPort = ((portRaw & 0xFF) << 8) | ((portRaw >> 8) & 0xFF);
+					if (localPort == port) {
+						long pid = memory.getInt(row + pidOffset) & 0xFFFFFFFFL;
+						if (pid > 0) {
+							return OptionalLong.of(pid);
+						}
+					}
+				}
+				return OptionalLong.empty();
+			} else if (res != 122) { // 122 = ERROR_INSUFFICIENT_BUFFER
+				break;
+			}
+		}
+		return OptionalLong.empty();
+	}
+
 	/**
 	 * Finds the listening pid on Windows with {@code netstat -ano}.
 	 *
@@ -201,14 +291,31 @@ public final class PortOccupant {
 	 * @return the pid, or empty when no row listens on it
 	 */
 	private static OptionalLong pidFromNetstat(int port, Duration timeout) {
-		OptionalLong pid = pidListeningOn(run(List.of("netstat", "-ano"), timeout), port);
-		if (pid.isPresent()) {
-			return pid;
-		}
-		List<String> lines = run(List.of("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		return pidListeningOn(run(List.of("netstat", "-ano"), timeout), port);
+	}
+
+	/**
+	 * Finds the listening pid on Windows with {@code Get-NetTCPConnection}.
+	 *
+	 * @param port    the port
+	 * @param timeout how long the command is given
+	 * @return the pid, or empty when no connection listens on it
+	 */
+	private static OptionalLong pidFromPowershell(int port, Duration timeout) {
+		List<String> lines = run(List.of("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
 		                                 "Get-NetTCPConnection -LocalPort " + port +
-		                                 " -RemotePort 0 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"),
+		                                 " -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess"),
 		                         timeout);
+		return pidFromPowershellOutput(lines);
+	}
+
+	/**
+	 * Reads the pid out of {@code Get-NetTCPConnection} output lines.
+	 *
+	 * @param lines the output lines
+	 * @return the pid, or empty when no pid was output
+	 */
+	static OptionalLong pidFromPowershellOutput(List<String> lines) {
 		for (String line : lines) {
 			String text = line.trim();
 			if (text.isEmpty()) {

@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.time.Duration;
 import java.util.List;
 import java.util.OptionalLong;
@@ -118,6 +120,48 @@ class PortOccupantTest {
 
 		assertTrue(PortOccupant.find(port, LOOKUP_TIMEOUT).isEmpty(),
 		           "the same port has no listener once the socket is closed");
+	}
+
+	/**
+	 * Reads the pid out of PowerShell {@code Get-NetTCPConnection} output lines.
+	 */
+	@Test
+	void readsThePidOutOfPowershellOutput() {
+		assertEquals(OptionalLong.of(12345),
+		             PortOccupant.pidFromPowershellOutput(List.of("12345")));
+		assertEquals(OptionalLong.of(12345),
+		             PortOccupant.pidFromPowershellOutput(List.of("", "  12345  ", "")));
+		assertEquals(OptionalLong.of(12345),
+		             PortOccupant.pidFromPowershellOutput(List.of("Warning: lookup issue", "12345")));
+		assertTrue(PortOccupant.pidFromPowershellOutput(List.of()).isEmpty());
+		assertTrue(PortOccupant.pidFromPowershellOutput(List.of("not-a-number", "")).isEmpty());
+		assertTrue(PortOccupant.pidFromPowershellOutput(List.of("0", "-1")).isEmpty());
+	}
+
+	/**
+	 * Verifies that a socket that is only bound (not listened on) is not reported as an occupant,
+	 * while a listening ServerSocket is detected.
+	 */
+	@Test
+	void doesNotReportBoundNonListeningSocketAsOccupant() throws IOException {
+		int port;
+		try (Socket bound = new Socket()) {
+			bound.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+			port = bound.getLocalPort();
+
+			var occupant = PortOccupant.find(port, LOOKUP_TIMEOUT);
+			assertTrue(occupant.isEmpty(),
+			           "a bound non-listening socket should not be reported as a listening occupant");
+		}
+
+		try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+			int listenPort = server.getLocalPort();
+			var occupant = PortOccupant.find(listenPort, LOOKUP_TIMEOUT);
+			assertTrue(occupant.isPresent(),
+			           "a listening ServerSocket should be detected");
+			assertEquals(ProcessHandle.current().pid(), occupant.get().pid(),
+			             "the process holding the port is this JVM");
+		}
 	}
 
 	/**
