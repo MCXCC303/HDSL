@@ -21,7 +21,9 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.time.Duration;
 import java.util.List;
 import java.util.OptionalLong;
@@ -31,20 +33,21 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * Verifies the process lookup behind the message that says a port is taken.
- *
+ * <p>
  * The platform rows are written by hand; the lookup is tested against a socket this JVM holds.
  */
 class PortOccupantTest {
 	/**
-	 * How long the tests give a lookup. Longer than the launcher's own, because on Windows and
-	 * macOS the lookup runs an external command and a loaded CI runner answers slowly.
+	 * How long the tests give a lookup.
+	 * This is longer than the launcher's own, because on Windows and macOS the
+	 * lookup runs an external command and a loaded CI runner answers slowly.
 	 */
 	private static final Duration LOOKUP_TIMEOUT = Duration.ofSeconds(30);
 
 	/**
 	 * Reads a listening pid out of `netstat -ano` output without reading the state word.
-	 *
-	 * Windows translates that column, so a German machine writes `ABHÖREN` where an English one
+	 * <p>
+	 * Windows localizes that column, so a German machine writes `ABHÖREN` where an English one
 	 * writes `LISTENING`. The row carrying the German word is the only listening row on its
 	 * port, so a parser that began requiring `LISTENING` would answer differently here.
 	 */
@@ -74,11 +77,44 @@ class PortOccupantTest {
 		assertTrue(PortOccupant.pidListeningOn(List.of(), 3081).isEmpty());
 	}
 
+	@Test
+	void readsThePidOutOfPowershellOutput() {
+		assertEquals(OptionalLong.of(12345),
+		             PortOccupant.pidFromPowershellOutput(List.of("12345")));
+		assertEquals(OptionalLong.of(12345),
+		             PortOccupant.pidFromPowershellOutput(List.of("", "  12345  ", "")));
+		assertEquals(OptionalLong.of(12345),
+		             PortOccupant.pidFromPowershellOutput(List.of("Warning: lookup issue", "12345")));
+		assertTrue(PortOccupant.pidFromPowershellOutput(List.of()).isEmpty());
+		assertTrue(PortOccupant.pidFromPowershellOutput(List.of("not-a-number", "")).isEmpty());
+		assertTrue(PortOccupant.pidFromPowershellOutput(List.of("0", "-1")).isEmpty());
+	}
+
 	/**
-	 * Reads the socket inodes out of the lines of one `/proc/net` table.
-	 *
-	 * What is fixed here is the position of the state column and of the inode column.
+	 * Reports the process holding a listening socket, and reports nothing for a socket that is only bound.
 	 */
+	@Test
+	void doesNotReportBoundNonListeningSocketAsOccupant() throws IOException {
+		int port;
+		try (Socket bound = new Socket()) {
+			bound.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+			port = bound.getLocalPort();
+
+			var occupant = PortOccupant.find(port, LOOKUP_TIMEOUT);
+			assertTrue(occupant.isEmpty(),
+			           "a bound non-listening socket should not be reported as a listening occupant");
+		}
+
+		try (ServerSocket server = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+			int listenPort = server.getLocalPort();
+			var occupant = PortOccupant.find(listenPort, LOOKUP_TIMEOUT);
+			assertTrue(occupant.isPresent(),
+			           "a listening ServerSocket should be detected");
+			assertEquals(ProcessHandle.current().pid(), occupant.get().pid(),
+			             "the process holding the port is this JVM");
+		}
+	}
+
 	@Test
 	void readsTheListeningInodesOutOfProcRows() {
 		String header = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt" +
@@ -92,24 +128,16 @@ class PortOccupantTest {
 		                   " 00000000  1000        0 999999 1 0000000000000000 100 0 0 10 0";
 
 		assertEquals(Set.of("123456"), PortOccupant.inodesFromProc(
-				List.of(header, listening, established, otherPort), 3169),
+				             List.of(header, listening, established, otherPort), 3169),
 		             "an established row does not own the listening socket");
 		assertTrue(PortOccupant.inodesFromProc(List.of(header), 3169).isEmpty());
 	}
 
-	/**
-	 * Names the process behind a port that is really being listened on, and names nothing once
-	 * the socket is gone.
-	 *
-	 * Both halves are asserted on the same port, so that a lookup which always answered empty
-	 * cannot pass.
-	 */
 	@Test
 	void namesTheProcessListeningOnAPortAndNotOneThatIsFree() throws IOException {
 		int port;
 		try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
 			port = socket.getLocalPort();
-
 			var occupant = PortOccupant.find(port, LOOKUP_TIMEOUT);
 
 			assertTrue(occupant.isPresent(), "the test's own listener should be found on port " + port);
@@ -123,11 +151,8 @@ class PortOccupantTest {
 		           "the same port has no listener once the socket is closed");
 	}
 
-	/**
-	 * Refuses a port that cannot be a port at all.
-	 */
 	@Test
-	void refusesAPortThatIsNotOne() {
+	void refusesAPortThatIsDefinitelyInvalid() {
 		assertTrue(PortOccupant.find(0).isEmpty());
 		assertTrue(PortOccupant.find(-1).isEmpty());
 		assertTrue(PortOccupant.find(65536).isEmpty());
