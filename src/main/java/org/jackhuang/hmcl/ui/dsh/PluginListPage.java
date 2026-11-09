@@ -18,8 +18,8 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
-import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
+import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
@@ -38,6 +38,7 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.*;
+import org.jackhuang.hmcl.ui.animation.AnimationUtils;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -196,11 +197,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		                    null);
 	}
 
-	/// Switches one plugin on or off in the profile's patch layer.
-	///
-	/// @param row the row that was clicked
-	/// @param box the tick box, disabled while the write runs
-	private void toggle(PluginRow row, JFXCheckBox box) {
+	/**
+	 * Switches one plugin on or off in the profile's patch layer.
+	 *
+	 * @param row the row that was clicked
+	 * @param box the switch, disabled while the write runs
+	 */
+	private void toggle(PluginRow row, JFXSwitch box) {
 		box.setDisable(true);
 		apply(List.of(row), row.state() != DshInstalledPlugins.State.ACTIVE);
 	}
@@ -450,34 +453,21 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}
 	}
 
-	/// One row of the plugin list.
-	///
-	/// The shape is HMCL's mod row: a tick box, the plugin's icon, the name with
-	/// its version chip, the file it came from beneath, and the per-row actions
-	/// on the trailing edge.
+	// One row of the plugin list.
 	private static final class PluginItemCell extends MDListCell<PluginRow> {
-		/// The page whose actions the row's buttons run.
 		private final PluginListPage page;
-
-		/// The tick box reporting whether the plugin is in effect.
-		private final JFXCheckBox active = new JFXCheckBox();
-
-		/// The plugin icon.
+		private final JFXSwitch active = new JFXSwitch();
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The name, version and source line.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button that opens the plugin on npm.
 		private final JFXButton info = FXUtils.newToggleButton4(SVG.INFO);
-
-		/// The button that removes the plugin.
 		private final JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE);
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list
-		/// @param page     the page the row's actions belong to
+		/**
+		 * Creates the cell.
+		 *
+		 * @param listView the owning list
+		 * @param page     which page the row's actions belong to
+		 */
 		PluginItemCell(JFXListView<PluginRow> listView, PluginListPage page) {
 			super(listView);
 			this.page = page;
@@ -495,19 +485,22 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
 			active.setOnAction(event -> {
 				PluginRow row = getItem();
-				if (row != null) {
-					page.toggle(row, active);
-				}
+				if (row != null) page.toggle(row, active);
 			});
 
-			container.getChildren().setAll(active, icon, content, info, remove);
+			HBox actions = new HBox(8);
+			actions.setAlignment(Pos.CENTER);
+			actions.getChildren().setAll(info, remove, active);
+			active.setSize(20);
+			active.setMinSize(30, 30);
+			active.setPrefSize(30, 30);
+			active.setMaxSize(30, 30);
+
+			container.getChildren().setAll(icon, content, actions);
 			StackPane.setMargin(container, new Insets(8));
 			getContainer().getChildren().setAll(container);
 		}
 
-		/**
-		 * Returns what the tick box says about the plugin's state.
-		 */
 		private static String stateHint(DshInstalledPlugins.State state, boolean switchable) {
 			return switch (state) {
 				case ACTIVE -> switchable
@@ -522,17 +515,19 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		@Override
 		protected void updateControl(@Nullable PluginRow row, boolean empty) {
 			if (empty || row == null) {
-				// A cell that has scrolled past its last plugin returns to the launcher's own
-				// mark rather than keeping the picture of the plugin it held.
 				icon.setImage(DshInstanceIcon.COMMAND.load());
 				return;
 			}
 
 			icon.setImage(row.icon() != null ? row.icon() : DshInstanceIcon.COMMAND.load());
 
+			active.setDisableAnimation(true);
 			active.setSelected(row.state() == DshInstalledPlugins.State.ACTIVE);
+			active.setDisableAnimation(!AnimationUtils.isAnimationEnabled());
 			active.setDisable(!row.switchable());
-			FXUtils.installFastTooltip(active, stateHint(row.state(), row.switchable()));
+			String hint = stateHint(row.state(), row.switchable());
+			FXUtils.installFastTooltip(active, hint);
+			active.setAccessibleText(hint);
 
 			content.setTitle(row.displayName());
 			content.setSubtitle(i18n("dsh.instance.plugins.source", row.name()));
