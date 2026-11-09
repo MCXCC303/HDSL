@@ -54,6 +54,7 @@ public abstract class TaskExecutorDialogWizardDisplayer extends AbstractWizardDi
             it.fireEvent(new DialogCloseEvent());
             onEnd();
         });
+        pane.setOnBackground(this::onEnd);
 
         pane.setTitle(i18n("message.doing"));
         if (settings.containsKey("title")) {
@@ -108,13 +109,6 @@ public abstract class TaskExecutorDialogWizardDisplayer extends AbstractWizardDi
                                 return;
                             }
 
-                            // The failure handed here wraps the real one: a task
-                            // runs inside a completion stage, so the stack it
-                            // carries is the plumbing that awaited it and the
-                            // reason is in its cause. Shown as it stands, a failed
-                            // install reports `CompletableFuture`, `ForkJoinPool`
-                            // and `Thread.run` and says nothing about what went
-                            // wrong. The innermost cause is what is worth reading.
                             Throwable reason = rootCauseOf(completedFailure);
                             String appendix = reason == completedFailure
                                     ? StringUtils.getStackTrace(reason)
@@ -132,19 +126,10 @@ public abstract class TaskExecutorDialogWizardDisplayer extends AbstractWizardDi
             });
             pane.setExecutor(executor);
             Controllers.dialog(pane);
-            executor.start();
+            pane.startExecutor();
         });
     }
 
-    /// Finds the innermost reason a failure happened.
-    ///
-    /// The failure handed to the listener wraps the real one: a task runs inside
-    /// a completion stage, so the stack it carries is the plumbing that awaited
-    /// it. Read as it stands, a failed install reports `CompletableFuture`,
-    /// `ForkJoinPool` and `Thread.run` and says nothing about what went wrong.
-    ///
-    /// @param failure the failure, possibly wrapping another
-    /// @return the innermost cause, or the failure itself when it wraps nothing
     private static Throwable rootCauseOf(Throwable failure) {
         Throwable current = failure;
         while (current.getCause() != null && current.getCause() != current) {
