@@ -35,11 +35,6 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  */
 public final class AsyncTaskExecutor extends TaskExecutor {
 
-    /// The thread running the task in hand, while it runs.
-    ///
-    /// Cancelling has to reach it: a task waiting on a subprocess is stopped by
-    /// interrupting the wait, and nothing else gets its attention until it has
-    /// finished — which for a download is the whole download.
     private final java.util.concurrent.atomic.AtomicReference<Thread> running =
             new java.util.concurrent.atomic.AtomicReference<>();
 
@@ -101,26 +96,14 @@ public final class AsyncTaskExecutor extends TaskExecutor {
 
     @Override
     public synchronized void cancel() {
-        if (future == null) {
-            throw new IllegalStateException("Cannot cancel a not started TaskExecutor");
-        }
-
         cancelled = true;
 
-        // The flag is only read between tasks, so on its own it takes effect
-        // when the task in hand has finished — and a task waiting on a download
-        // finishes when the download does. Interrupting the thread that is
-        // running it stops the wait now; the task that follows sees the flag.
         Thread thread = running.get();
         if (thread != null) {
             thread.interrupt();
         }
     }
 
-    /// Runs a task body, noting the thread it is on for as long as it runs.
-    ///
-    /// @param body the task body
-    /// @return a runnable that runs it
     private Runnable tracked(ExceptionalRunnable<?> body) {
         return () -> {
             running.set(Thread.currentThread());
