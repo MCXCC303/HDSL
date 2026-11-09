@@ -39,7 +39,9 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 import static org.junit.jupiter.api.Assertions.*;
@@ -354,4 +356,30 @@ class DshProcessLifecycleTest {
 		assertTrue(DshProcessManager.running().isEmpty());
 		assertFalse(DshProcessManager.stop(instance.id()), "stopping what is already gone is a no-op, not a failure");
 	}
+
+	@Test
+	void reinstallingTheSameListenerAfterTerminalDoesNotNotifyItAgain() throws Exception {
+		requireNode();
+		DshInstance instance = makeInstance();
+		Files.writeString(instance.dshEntryPoint(), "process.exit(1);");
+
+		AtomicInteger terminalDeliveries = new AtomicInteger();
+		Consumer<DshProcess.State> listener = state -> {
+			if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
+				terminalDeliveries.incrementAndGet();
+			}
+		};
+
+		DshProcess process = DshProcess.start(instance);
+		await(() -> !process.isRunning(), "process to exit");
+		await(() -> process.state() == DshProcess.State.FAILED, "process state to become FAILED");
+
+		process.setStateListener(listener);
+		process.setStateListener(null);
+		process.setStateListener(listener);
+
+		assertEquals(1, terminalDeliveries.get(),
+		             "a listener that has seen the terminal state is not told again after being reinstalled");
+	}
+
 }

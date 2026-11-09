@@ -51,6 +51,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  * <p>
  * The process remains attached to the launcher so it can be stopped and its
  * output collected. Web readiness is detected from the upstream `dsh web:` line.
+ * A process that has stopped or failed does not change its state again.
  */
 @NotNullByDefault
 public final class DshProcess {
@@ -74,11 +75,14 @@ public final class DshProcess {
 	private final CircularArrayList<LogLine> windowLogs = new CircularArrayList<>();
 	private final List<Consumer<LogLine>> logListeners = new CopyOnWriteArrayList<>();
 	private final Object logLock = new Object();
+	private final Object stateLock = new Object();
 	private volatile State state = State.STARTING;
 	private volatile @Nullable URI webUrl;
 	private volatile int exitCode = Integer.MIN_VALUE;
 	private volatile @Nullable Consumer<String> logSink;
 	private volatile @Nullable Consumer<State> stateListener;
+	// The listener the terminal state was told to, so that it is told only once.
+	private @Nullable Consumer<State> terminalListener;
 	private volatile boolean stopRequested;
 
 	/**
@@ -180,6 +184,10 @@ public final class DshProcess {
 		}
 	}
 
+	private static boolean isTerminal(State state) {
+		return state == State.STOPPED || state == State.FAILED;
+	}
+
 	public DshInstance instance() {
 		return plan.instance();
 	}
@@ -261,14 +269,27 @@ public final class DshProcess {
 	 * Installs a listener for lifecycle transitions.
 	 * <p>
 	 * If the process has already reached a terminal state, the listener is
-	 * notified immediately.
+	 * notified immediately. Happens once per listener instance.
 	 *
 	 * @param listener the listener, or `null` to detach
 	 */
 	public void setStateListener(@Nullable Consumer<State> listener) {
-		this.stateListener = listener;
-		if (listener != null && (state == State.STOPPED || state == State.FAILED)) {
-			listener.accept(state);
+		State current;
+		boolean notifyImmediate = false;
+		synchronized (stateLock) {
+			this.stateListener = listener;
+			current = this.state;
+			if (listener != null && isTerminal(current) && terminalListener != listener) {
+				this.terminalListener = listener;
+				notifyImmediate = true;
+			}
+		}
+		if (notifyImmediate && listener != null) {
+			try {
+				listener.accept(current);
+			} catch (RuntimeException e) {
+				LOG.warning("State listener failed", e);
+			}
 		}
 	}
 
@@ -379,14 +400,26 @@ public final class DshProcess {
 	}
 
 	private void transitionTo(State next) {
-		state = next;
-		Consumer<State> listener = stateListener;
-		if (listener == null) return;
+		Consumer<State> listener = null;
+		synchronized (stateLock) {
+			if (isTerminal(state)) return;
 
-		try {
-			listener.accept(next);
-		} catch (RuntimeException e) {
-			LOG.warning("State listener failed", e);
+			state = next;
+			if (isTerminal(next)) {
+				if (stateListener != null && terminalListener != stateListener) {
+					terminalListener = stateListener;
+					listener = stateListener;
+				}
+			} else {
+				listener = stateListener;
+			}
+		}
+		if (listener != null) {
+			try {
+				listener.accept(next);
+			} catch (RuntimeException e) {
+				LOG.warning("State listener failed", e);
+			}
 		}
 	}
 
