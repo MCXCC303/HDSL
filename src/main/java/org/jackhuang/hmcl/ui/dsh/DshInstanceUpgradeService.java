@@ -105,7 +105,7 @@ public final class DshInstanceUpgradeService {
 
 		pane.setExecutor(executor, true);
 		Controllers.dialog(pane);
-		executor.start();
+		pane.startExecutor();
 	}
 
 	public static void reinstall(DshInstance instance, @Nullable Runnable onDone) {
