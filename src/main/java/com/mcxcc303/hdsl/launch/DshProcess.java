@@ -51,6 +51,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  * <p>
  * The process remains attached to the launcher so it can be stopped and its
  * output collected. Web readiness is detected from the upstream `dsh web:` line.
+ * A process that has stopped or failed does not change its state again.
  */
 @NotNullByDefault
 public final class DshProcess {
@@ -80,6 +81,7 @@ public final class DshProcess {
 	private volatile int exitCode = Integer.MIN_VALUE;
 	private volatile @Nullable Consumer<String> logSink;
 	private volatile @Nullable Consumer<State> stateListener;
+	// The listener the terminal state was told to, so that it is told only once.
 	private @Nullable Consumer<State> terminalListener;
 	private volatile boolean stopRequested;
 
@@ -267,7 +269,7 @@ public final class DshProcess {
 	 * Installs a listener for lifecycle transitions.
 	 * <p>
 	 * If the process has already reached a terminal state, the listener is
-	 * notified immediately.
+	 * notified immediately. Happens once per listener instance.
 	 *
 	 * @param listener the listener, or `null` to detach
 	 */
