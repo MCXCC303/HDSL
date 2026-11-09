@@ -17,24 +17,30 @@
  */
 package org.jackhuang.hmcl.ui.dsh.settings;
 
+import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXTextField;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.*;
 import com.mcxcc303.hdsl.launch.DshEnvironment;
 import com.mcxcc303.hdsl.launch.DshLaunchArguments;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
+import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import com.mcxcc303.hdsl.runtime.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.NodeRuntimeManager;
 import javafx.beans.value.ChangeListener;
+import javafx.geometry.Pos;
 import javafx.scene.control.ScrollPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.*;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.dsh.DshLaunchService;
 import org.jackhuang.hmcl.ui.dsh.InstanceIconDialog;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -50,30 +56,23 @@ import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The settings tab of an instance's management page.
-///
-/// Only the settings that exist for a DeepSeek Harness instance are offered.
-/// The port is the one with real consequences: the browser interface keys
-/// session state by origin, so an instance must keep one port for its whole
-/// life, and two instances sharing a history through different ports would let
-/// two writers corrupt it.
+/**
+ * The settings tab of an instance's management page.
+ */
 @NotNullByDefault
 public final class InstanceSettingsPage extends ScrollPane {
-	/// The icon row, kept so its image can follow a change.
 	private final ImagePickerItem iconRow = new ImagePickerItem();
-	/// The port row, kept so its hint can follow the mode.
 	private final LineTextPane portRow = new LineTextPane();
-	/// The port number field, kept so it can be offered or taken away with the mode.
 	private final JFXTextField portField = new JFXTextField();
-	/// Called after a change is written back.
+	private final JFXButton portRefresh = FXUtils.newToggleButton4(SVG.CASINO);
 	private final Runnable onChanged;
-	/// The instance being edited, refreshed from storage after every write.
 	private DshInstance instance;
 
-	/// Creates the settings tab.
-	///
-	/// @param instance  the instance being edited
-	/// @param onChanged run after a successful write
+	/**
+	 * Creates the settings tab.
+	 *
+	 * @param onChanged run after the tab writes a setting
+	 */
 	public InstanceSettingsPage(DshInstance instance, Runnable onChanged) {
 		this.instance = instance;
 		this.onChanged = onChanged;
@@ -93,13 +92,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		portList.getContent().add(buildPortModeRow());
 		portList.getContent().add(buildPortRow());
 
-		// The original's card list: the padding and the spacing between sections
-		// come from the class rather than from numbers chosen here, so a page
-		// built from the same parts sits the same way.
-		// What version of DeepSeek Harness the instance runs is not here: choosing
-		// it installs a runtime, and the auto-install page is where the original
-		// offers that — beside the boot library and the plugins, which are the
-		// same kind of thing.
 		VBox root = new VBox(ComponentList.createComponentListTitle(i18n("dsh.instance.icon")),
 		                     iconList,
 		                     ComponentList.createComponentListTitle(i18n("dsh.settings.environment")),
@@ -117,21 +109,16 @@ public final class InstanceSettingsPage extends ScrollPane {
 		root.getStyleClass().add("card-list");
 		setContent(root);
 
-		// Must run after the content is installed: smooth scrolling binds to the
-		// content node and throws on a null content.
+		// Must run after the content is installed
 		FXUtils.smoothScrolling(this);
 	}
 
-	/// Records whether an instance has an environment of its own.
-	///
-	/// The instance file cannot answer this: its `environment` member is read as an empty map
-	/// whether the instance adds nothing or has never been asked, so the answer is kept beside the
-	/// instance's other own-versus-launcher choices. A failure is logged rather than shown: the
-	/// variables themselves are already stored, and the worst a lost flag does is show the box
-	/// empty next time.
-	///
-	/// @param instance the instance
-	/// @param own      whether it has one
+	/**
+	 * Records whether an instance has an environment of its own.
+	 *
+	 * @param instance the instance
+	 * @param own      whether it has one
+	 */
 	private static void rememberEnvironment(DshInstance instance, boolean own) {
 		try {
 			DshInstanceSettings.setEnvironmentIsOwn(instance, own);
@@ -140,13 +127,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/// Builds the two commands that run around this instance.
-	///
-	/// Each follows the launcher until it is taken over, which is the shape every per-instance
-	/// setting here has: the globe beside the name is the way in, and the field shows the
-	/// launcher's command until it is.
-	///
-	/// @return the list
 	private ComponentList buildCommandsList() {
 		ComponentList list = new ComponentList();
 		list.getContent().add(commandRow(i18n("dsh.settings.commands.pre"), true));
@@ -154,11 +134,11 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds one command row for this instance.
-	///
-	/// @param title  the row's name
-	/// @param before whether it is the command that runs before the instance starts
-	/// @return the row
+	/**
+	 * Builds the pre-launch or post-exit command row.
+	 *
+	 * @param before whether this is the pre-launch command
+	 */
 	private LineInheritableTextField commandRow(String title, boolean before) {
 		String own = before
 		             ? DshInstanceSettings.preLaunchCommand(instance)
@@ -185,7 +165,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		row.textProperty().addListener(store);
 		row.overriddenProperty().addListener((observable, was, overridden) -> {
 			if (!overridden) {
-				// Handing it back shows the launcher's command again, which is what the row now is.
 				row.setText(settings().preLaunchCommandProperty().get() == null ? "" : launcher);
 				store.changed(null, null, null);
 			}
@@ -193,12 +172,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the row about this instance's debug lines.
-	///
-	/// It follows the launcher until it is told otherwise, which is the shape every
-	/// per-instance setting here has: the globe beside its name is the way in.
-	///
-	/// @return the list
 	private ComponentList buildDebugList() {
 		ComponentList list = new ComponentList();
 		list.getContent().add(launcherVisibilityRow());
@@ -207,20 +180,11 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the row about what the launcher does while this instance runs.
-	///
-	/// The original offers this inside a game's own settings as well as globally, for the
-	/// same reason it is offered in both places here: one instance may want the launcher to
-	/// get out of the way while another wants it to stay.
-	///
-	/// @return the row
 	private LineInheritableSelectButton<DshLauncherVisibility> launcherVisibilityRow() {
 		LineInheritableSelectButton<DshLauncherVisibility> row = new LineInheritableSelectButton<>();
 		row.setTitle(i18n("dsh.settings.launcher.visibility"));
 		row.setItems(List.of(DshLauncherVisibility.values()));
-		row.setNullSafeConverter(choice -> choice == null
-		                                   ? ""
-		                                   : i18n("dsh.settings.launcher.visibility." + choice.id()));
+		row.setNullSafeConverter(choice -> i18n("dsh.settings.launcher.visibility." + choice.id()));
 
 		String own = DshInstanceSettings.launcherVisibility(instance);
 		row.setOverridden(own != null);
@@ -229,9 +193,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 		ChangeListener<Object> store = (observable, was, value) -> {
 			try {
 				DshInstanceSettings.setLauncherVisibility(instance,
-				                                          row.overriddenProperty().get() && row.getValue() != null
-				                                          ? row.getValue().id()
-				                                          : null);
+				                                          row.overriddenProperty().get() ? row.getValue().id() : null);
 			} catch (DshException e) {
 				LOG.warning("Failed to store the launcher visibility", e);
 			}
@@ -241,9 +203,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the row about this instance's debug lines.
-	///
-	/// @return the row
 	private LineInheritableSwitch debugLogRow() {
 		LineInheritableSwitch row = new LineInheritableSwitch();
 		row.setTitle(i18n("dsh.settings.debug.log"));
@@ -265,9 +224,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the row about this instance's log window.
-	///
-	/// @return the row
 	private LineInheritableSwitch logRow() {
 		LineInheritableSwitch row = new LineInheritableSwitch();
 		row.setTitle(i18n("dsh.settings.launcher.show_logs"));
@@ -289,35 +245,14 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the editor for the variables an instance runs with.
-	///
-	/// This is how one instance is given one API key and the next another: the variables are
-	/// passed to whatever the instance runs, so a key set here belongs to this instance and is
-	/// never written into a profile, a plugin or a pack.
-	///
-	/// The row follows the launcher until it is taken over, like every other row here: while it
-	/// follows, the box shows the launcher's set and does not accept typing, and the globe beside
-	/// the name is the way in. What an instance sets is laid on top of the launcher's set rather
-	/// than replacing it, so taking the row over starts from nothing: an instance that lists only
-	/// its own key keeps every launcher-wide one as well.
-	///
-	/// The set is written the way the global tab writes it — `NAME=VALUE`, one per line — so the
-	/// same text can be moved between the two boxes.
-	///
-	/// @return the list
 	private ComponentList buildEnvironmentVariablesList() {
 		LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.env_vars"));
 
-		// Whether the instance has a set of its own is the state, and it has to be read from the
-		// file rather than from the map: the constructor turns an absent member into an empty map
-		// for safety, so an instance that adds nothing and one that has never been asked both look
-		// empty in memory. The file is what remembers which it is.
+		// the constructor turns an absent member into an empty map, so both cases look empty in memory.
 		boolean own = DshInstanceSettings.environmentIsOwn(instance);
 		row.setOverridden(own);
 		row.setText(DshEnvironment.format(own ? instance.environment() : settings().globalEnvironment()));
 
-		// Typing is only this instance's to store while the row is the one deciding; what is
-		// written is this instance's own set, which is what is laid over the launcher's.
 		row.textProperty().addListener((observable, was, text) -> {
 			if (row.isOverridden()) {
 				write(instance.withEnvironment(DshEnvironment.parse(text)));
@@ -325,18 +260,9 @@ public final class InstanceSettingsPage extends ScrollPane {
 			}
 		});
 		row.overriddenProperty().addListener((observable, was, overridden) -> {
-			if (overridden) {
-				// An instance's own set is laid on top of the launcher's, so it starts empty: a
-				// copy of the launcher's set would say the opposite — that every launcher-wide
-				// variable is now this instance's, which would freeze them here.
-				write(instance.withEnvironment(Map.of()));
-				rememberEnvironment(instance, true);
-				row.setText("");
-			} else {
-				write(instance.withEnvironment(null));
-				rememberEnvironment(instance, false);
-				row.setText(DshEnvironment.format(settings().globalEnvironment()));
-			}
+			write(instance.withEnvironment(Map.of()));
+			rememberEnvironment(instance, overridden);
+			row.setText(overridden ? "" : DshEnvironment.format(settings().globalEnvironment()));
 		});
 
 		ComponentList list = new ComponentList();
@@ -344,19 +270,11 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the row about install scripts.
-	///
-	/// The same three answers the launcher offers, plus following it, which is what
-	/// an instance starts at: the launcher's answer is the default, and an instance
-	/// states its own only when it has a reason to.
-	///
-	/// @return the list
 	private ComponentList buildScriptsList() {
-		// The entries are the policies with a null in front, which is what
-		// "follow the launcher" is.
-		List<DshBuildScriptPolicy> choices = new ArrayList<>();
 
-		choices.addAll(List.of(DshBuildScriptPolicy.AUTO, DshBuildScriptPolicy.MANUAL, DshBuildScriptPolicy.NEVER));
+		List<DshBuildScriptPolicy> choices = new ArrayList<>(List.of(DshBuildScriptPolicy.AUTO,
+		                                                             DshBuildScriptPolicy.MANUAL,
+		                                                             DshBuildScriptPolicy.NEVER));
 
 		LineInheritableSelectButton<DshBuildScriptPolicy> row = new LineInheritableSelectButton<>();
 		row.setTitle(i18n("dsh.settings.build_scripts.approve"));
@@ -387,14 +305,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/// Builds the Node runtime row.
-	///
-	/// Inheritable, like every other row that the global settings also answer: an instance that has
-	/// stated no runtime *follows* the launcher's default rather than being frozen at whatever it
-	/// was when the instance was made. Its mark is how that is visible — with it the row is a value
-	/// somebody chose, without it the row is the launcher's answer being shown through.
-	///
-	/// @return the row
 	private LineInheritableSelectButton<String> buildNodeRuntimeRow() {
 		List<String> choices = new ArrayList<>();
 		choices.add(DshNodeRuntime.SYSTEM);
@@ -415,7 +325,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 		row.setValue(overridden ? own : settings().defaultNodeRuntimeProperty().get());
 
 		row.valueProperty().addListener((observable, was, value) -> {
-			if (value != null && !value.equals(was) && row.isOverridden()) {
+			if (!value.equals(was) && row.isOverridden()) {
 				write(instance.withNodeRuntime(value));
 			}
 		});
@@ -426,31 +336,14 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the row for the arguments this instance is launched with.
-	///
-	/// In the environment section, beside the runtime and the home, because it is the third thing
-	/// that decides what actually runs — and with a globe like its neighbours, since the launcher
-	/// has a default line of its own and an instance may state its own instead.
-	///
-	/// What somebody types here is passed to the harness as it stands, with two exceptions the
-	/// launch reports rather than obeys: `--port` (an instance's port is part of its identity, and
-	/// the browser keys its stored state by it) and `DSH_HOME` (which is how one instance's state
-	/// is kept away from another's). Everything else, including which profile to boot and whether
-	/// to open a browser, is theirs to decide — see [DshLaunchArguments] for the split.
-	///
-	/// A value with a space in it is typed in quotes, and **either quoting carries a Windows path**:
-	/// `--patch "C:\Users\me\a.yml"` and `--patch 'C:\Users\me\a.yml'` both arrive as written. The
-	/// exception is a UNC path, whose two leading separators are one escaped separator inside double
-	/// quotes, so `\\server\share` has to be written in single quotes. This is the one thing about
-	/// the row a person cannot work out by trying it.
-	///
-	/// @return the row
+	/**
+	 * Builds the row for this instance's extra launch arguments.
+	 *
+	 * <p>Arguments are passed to the harness as typed, except {@code --port} and {@code DSH_HOME}.
+	 * Quoting rules are in {@link DshLaunchArguments#tokenize}.
+	 */
 	private LineInheritableTextField buildLaunchArgumentsRow() {
 		LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.launch_args"));
-		// No subtitle. The line it used to carry — "overrides the arguments the launcher sets
-		// automatically" — describes the *relationship* to the row on the global page, which is what
-		// the globe beside the name already says, and says it in one glance rather than one line.
-		// Two ways of saying "this follows the launcher, or does not" on one row was one too many.
 
 		List<String> own = instance.extraArguments();
 		row.setOverridden(!own.isEmpty());
@@ -458,8 +351,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 
 		row.textProperty().addListener((observable, was, text) -> {
 			if (row.isOverridden()) {
-				// Shown as one line and stored as the arguments it names, so what runs is what was
-				// typed rather than what a second parser made of it later.
+				// Tokenize now and store the list, so launch reuses this parse.
 				write(instance.withLaunchOptions(DshLaunchArguments.tokenize(text), instance.environment()));
 			}
 		});
@@ -475,13 +367,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the DSH_HOME policy row.
-	///
-	/// A choice of this instance's own, with no mark beside it, for the same reason the runtime row
-	/// has none: the launcher's default policy decides what a new instance is created with, and
-	/// after that the instance has its own answer. Where that answer points is the next row.
-	///
-	/// @return the row
 	private LineInheritableSelectButton<DshHomeMode> buildHomeModeRow() {
 		LineInheritableSelectButton<DshHomeMode> row = new LineInheritableSelectButton<>();
 		row.setTitle(i18n("dsh.install.home"));
@@ -497,9 +382,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 			}
 		});
 		row.valueProperty().addListener((observable, was, mode) -> {
-			if (mode == null || mode == was || !row.isOverridden()) {
-				return;
-			}
+			if (mode == was || !row.isOverridden()) return;
 			if (mode == DshHomeMode.CUSTOM) {
 				DirectoryChooser chooser = new DirectoryChooser();
 				chooser.setTitle(i18n("dsh.install.home"));
@@ -516,16 +399,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/// Builds the instance icon row.
-	///
-	/// HMCL's icon row is an `ImagePickerItem`: the image sits on the trailing
-	/// edge with an edit button beside it and a reset button after that, rather
-	/// than the whole row being clickable. The distinction matters because the
-	/// row is a setting like any other — the controls say what can be done to
-	/// it — and because resetting to the default has to be reachable without
-	/// opening the chooser.
-	///
-	/// @return the row
 	private ImagePickerItem buildIconRow() {
 		iconRow.setTitle(i18n("dsh.instance.icon"));
 		iconRow.setImage(DshInstanceIcons.load(instance));
@@ -535,55 +408,47 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return iconRow;
 	}
 
-	/// Re-reads the instance after a change made outside this pane.
-	///
-	/// The icon chooser writes to storage itself, so the pane cannot rely on
-	/// having produced the change and has to pick it up afterwards.
+	/**
+	 * Re-reads the instance after an outside change; the icon chooser writes to storage itself.
+	 */
 	private void reloadFromStorage() {
 		DshInstance stored = InstanceStore.find(instance.id());
-		if (stored != null) {
-			instance = stored;
-		}
+		if (stored != null) instance = stored;
+
 		iconRow.setImage(DshInstanceIcons.load(instance));
-		if (onChanged != null) {
-			onChanged.run();
-		}
+		onChanged.run();
 	}
 
-	/// Restores the default icon.
+	// Restores the default icon.
 	private void resetIcon() {
 		write(instance.withIcon(DshInstanceIcon.DEFAULT).withNoIconFile());
 	}
 
-	/// Builds the automatic-versus-fixed choice.
-	///
-	/// @return the row
 	private LineSelectButton<DshPortMode> buildPortModeRow() {
 		LineSelectButton<DshPortMode> row = new LineSelectButton<>();
 		row.setTitle(i18n("dsh.instance.port.mode"));
 		row.setItems(DshPortMode.AUTO, DshPortMode.FIXED);
-		// A choice of this instance's own: there is no launcher-wide port policy for it to follow,
-		// and a mark offering to follow one would be offering to follow nothing.
+		// no launcher-wide port policy for an instance to follow.
 		row.setValue(instance.portModeOrDefault());
-		// The control runs its converter the moment one is installed, before a
-		// value need exist, so the null-safe form is required here.
+
+		// The converter runs as soon as it is installed
+		// This has to be the null-safe one.
 		row.setNullSafeConverter(mode -> i18n("dsh.instance.port.mode." + mode.id()));
 		row.valueProperty().addListener((observable, was, mode) -> {
-			if (mode != null && mode != was) {
-				write(withPortMode(mode));
-			}
+			if (mode != was) write(withPortMode(mode));
 		});
 		return row;
 	}
 
-	/// Returns the instance under a new port policy.
-	///
-	/// The switch belongs to [DshPorts], which owns both numbers: the one in effect, which a named
-	/// port takes over, and the one the launcher gave the instance, which naming a port must not
-	/// lose. What is left here is saying so when neither can be settled on.
-	///
-	/// @param mode the policy to record
-	/// @return the instance to store
+	/**
+	 * Returns the instance under a new port policy.
+	 *
+	 * <p>{@link DshPorts} tracks the port in effect and the auto-assigned one separately; naming
+	 * a port must not lose the latter.
+	 *
+	 * @param mode the policy to record
+	 * @return the instance to store
+	 */
 	private DshInstance withPortMode(DshPortMode mode) {
 		try {
 			return DshPorts.withMode(instance, mode);
@@ -593,15 +458,9 @@ public final class InstanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/// Builds the fixed-port entry.
-	///
-	/// The field and the hint are drawn from the stored instance rather than
-	/// decided once here, because the control is built before the user has
-	/// chosen a mode and is never built again: deciding here is what left the
-	/// field disabled after the mode had already been switched to a fixed port,
-	/// with nothing to type the port into.
-	///
-	/// @return the row
+	/**
+	 * Builds the auto/fixed port mode row.
+	 */
 	private LineTextPane buildPortRow() {
 		portRow.setTitle(i18n("dsh.instance.port.fixed"));
 
@@ -613,42 +472,41 @@ public final class InstanceSettingsPage extends ScrollPane {
 				applyPort(portField.getText());
 			}
 		});
-		portRow.setRowTrailing(portField);
+
+		FXUtils.installFastTooltip(portRefresh, i18n("dsh.instance.port.refresh"));
+		portRefresh.setOnAction(event -> refreshPort());
+
+		HBox trailing = new HBox(4, portRefresh, portField);
+		trailing.setAlignment(Pos.CENTER_RIGHT);
+		portRow.setRowTrailing(trailing);
 
 		syncPortRow();
 		return portRow;
 	}
 
-	/// Draws the port row from the stored instance.
-	///
-	/// Called after every write, so that switching the mode and naming a port
-	/// take effect on the control the user is looking at.
+	// Draws the port row from the stored instance.
 	private void syncPortRow() {
 		boolean fixed = instance.hasOwnPortMode() && instance.portMode() == DshPortMode.FIXED;
 
-		// The port is always shown, whether or not it can be changed. It is settled when the
-		// instance is created and stays the same for its whole life — a browser keys its stored
-		// state by origin, so the port is part of the instance's identity — which makes it
-		// something the person needs to be able to read at any time: to reach the interface
-		// directly, to point another tool at it, or to see which of two instances is which.
-		// Only its editability follows the mode.
 		portField.setDisable(!fixed);
+		portRefresh.setDisable(fixed);
 		portField.setText(instance.portOrDefault() > 0 ? Integer.toString(instance.portOrDefault()) : "");
 		portField.setPromptText(i18n("dsh.instance.port.auto.none"));
 		portRow.setVisible(true);
 		portRow.setManaged(true);
 	}
 
-	/// Writes a typed port back.
-	///
-	/// @param text the field text
+	/**
+	 * Writes a typed port back.
+	 *
+	 * @param text the field text
+	 */
 	private void applyPort(@Nullable String text) {
-		if (text == null || text.isBlank()) {
-			return;
-		}
-		Integer port;
+		if (text == null || text.isBlank()) return;
+
+		int port;
 		try {
-			port = Integer.valueOf(text.trim());
+			port = Integer.parseInt(text.trim());
 		} catch (NumberFormatException e) {
 			return;
 		}
@@ -657,32 +515,46 @@ public final class InstanceSettingsPage extends ScrollPane {
 			Controllers.dialog(complaint, i18n("dsh.instance.port.invalid"), MessageType.ERROR);
 			return;
 		}
-		if (port == instance.portOrDefault()) {
-			return;
-		}
+		if (port == instance.portOrDefault()) return;
 		write(instance.withPortPolicy(DshPortMode.FIXED, port));
 	}
 
-	/// Persists a modified instance and notifies the caller.
-	///
-	/// @param updated the instance to store
+	/**
+	 * Persists a modified instance and reloads the tab.
+	 */
 	private void write(DshInstance updated) {
 		try {
 			DshInstanceManager.update(updated);
-			// Re-read rather than trusting the copy passed in: the stored
-			// instance is what the rest of the interface will show.
-			DshInstance stored = InstanceStore.find(updated.id());
-			if (stored != null) {
-				instance = stored;
-			}
-			iconRow.setImage(DshInstanceIcons.load(instance));
-			syncPortRow();
-			if (onChanged != null) {
-				onChanged.run();
-			}
+			reload();
 		} catch (DshException e) {
 			LOG.warning("Failed to save instance settings", e);
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+		}
+	}
+
+	// Reads the stored instance back and shows what it says.
+	private void reload() {
+		DshInstance stored = InstanceStore.find(instance.id());
+		if (stored != null) instance = stored;
+
+		iconRow.setImage(DshInstanceIcons.load(instance));
+		syncPortRow();
+		onChanged.run();
+	}
+
+	private void refreshPort() {
+		try {
+			DshPorts.reassign(instance);
+		} catch (DshException e) {
+			LOG.warning("Could not choose another port for " + instance.id(), e);
+			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+			return;
+		}
+		reload();
+		if (DshLaunchService.state(instance.id()) != LaunchState.STOPPED) {
+			Controllers.dialog(i18n("dsh.instance.port.refresh.running"),
+			                   i18n("dsh.instance.port.refresh"),
+			                   MessageType.WARNING);
 		}
 	}
 }

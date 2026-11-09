@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.instance;
 
+import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.harness.DshSurface;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import org.junit.jupiter.api.Test;
@@ -33,13 +34,8 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the port policy that keeps an instance on one origin.
+// Verifies the port policy that keeps an instance on one origin.
 class DshPortsTest {
-	/// Builds an instance with the given port policy.
-	///
-	/// @param mode the policy
-	/// @param port the remembered or fixed port
-	/// @return the instance
 	private static DshInstance instance(DshPortMode mode, int port) {
 		return new DshInstance("test",
 		                       "0.0.0",
@@ -57,16 +53,10 @@ class DshPortsTest {
 		                       0L);
 	}
 
-	/// Creates an instance that exists on disk, which is where the two port facts are kept.
-	///
-	/// @param id the instance id
-	/// @return the instance
 	private static DshInstance managedInstance(String id) throws Exception {
 		Path workspace = Files.createTempDirectory("ports-workspace");
 		DshInstance existing = InstanceStore.find(id);
-		if (existing != null) {
-			DshInstanceManager.delete(id);
-		}
+		if (existing != null) DshInstanceManager.delete(id);
 		return DshInstanceManager.create(id,
 		                                 "0.1.6-alpha.2",
 		                                 DshInstance.DEFAULT_PROFILE,
@@ -99,8 +89,6 @@ class DshPortsTest {
 
 	@Test
 	void aReservationAvoidsThePortsOtherInstancesHold() throws Exception {
-		// Another instance already holds a port; a new one must not be given it,
-		// or the second instance to start would find its own port taken.
 		DshInstance existing = DshInstanceManager.create("holds-a-port",
 		                                                 "1.0.0",
 		                                                 DshInstance.DEFAULT_PROFILE,
@@ -120,23 +108,72 @@ class DshPortsTest {
 	}
 
 	@Test
+	void askingForAnotherPortGivesTheInstanceOneAndWritesItDown() throws Exception {
+		DshInstance instance = managedInstance("ports-reassign");
+		try {
+			int first = instance.portOrDefault();
+			assertTrue(first > 0, "creating an instance settles its port");
+
+			int second = DshPorts.reassign(instance);
+
+			assertNotEquals(first, second, "asking for another port has to give another one");
+			assertTrue(second >= 3081 && second <= 4081, "it comes from the launcher's band, got " + second);
+
+			DshInstance stored = InstanceStore.find(instance.id());
+			assertEquals(second, stored.portOrDefault(), "the record carries the port the instance now has");
+			assertEquals(second, DshPorts.autoPort(stored), "and the launcher's own number is the same one");
+		} finally {
+			DshInstanceManager.delete(instance.id());
+		}
+	}
+
+	@Test
+	void aPortWrittenIntoTheFilesFromOutsideCanBeGivenAnotherOne() throws Exception {
+		DshInstance instance = managedInstance("ports-outside");
+		try {
+			DshInstanceManager.update(instance.withPort(80));
+			int port = DshPorts.reassign(InstanceStore.find(instance.id()));
+
+			assertTrue(port >= 3081 && port <= 4081,
+			           "the port the launcher gives is one from its own band, got " + port);
+			assertEquals(port,
+			             InstanceStore.find(instance.id()).portOrDefault(),
+			             "and it is the port the instance now has");
+		} finally {
+			DshInstanceManager.delete(instance.id());
+		}
+	}
+
+	@Test
+	void anInstanceThatNamesItsPortKeepsIt() throws Exception {
+		DshInstance instance = managedInstance("ports-named");
+		try {
+			DshInstanceManager.update(DshPorts.withMode(instance, DshPortMode.FIXED)
+			                                  .withPortPolicy(DshPortMode.FIXED, 34567));
+
+			assertThrows(DshException.class,
+			             () -> DshPorts.reassign(InstanceStore.find(instance.id())),
+			             "a named port is the person's, and the launcher does not change it behind their back");
+			assertEquals(34567,
+			             InstanceStore.find(instance.id()).portOrDefault(),
+			             "and the port it had is the one it keeps");
+		} finally {
+			DshInstanceManager.delete(instance.id());
+		}
+	}
+
+	@Test
 	void namingAPortIsADetourAndAutomaticComesBackToTheLaunchersPort() throws Exception {
-		// The whole point of the two numbers. The port in the record is the one **in effect**, so a
-		// named port takes it over; the port the launcher gave the instance has to survive that,
-		// because it is the origin this instance's browser state lives at.
 		DshInstance instance = managedInstance("ports-detour");
 		try {
 			int given = instance.portOrDefault();
 			assertTrue(given > 0, "creating an instance settles its port");
 
-			// Naming one starts at the number the instance already has, so the field is an edit of a
-			// real port rather than a blank; the launcher's own choice is written down on the way.
 			DshInstance named = DshPorts.withMode(instance, DshPortMode.FIXED);
 			assertEquals(given, named.portOrDefault(), "the field starts at the port it had");
 			DshInstanceManager.update(named.withPortPolicy(DshPortMode.FIXED, 34567));
 
 			DshInstance back = DshPorts.withMode(InstanceStore.find(instance.id()), DshPortMode.AUTO);
-
 			assertEquals(given,
 			             back.portOrDefault(),
 			             "automatic gives back the port the launcher gave, not the named one");
@@ -150,14 +187,9 @@ class DshPortsTest {
 
 	@Test
 	void anInstanceThatLostItsAutomaticPortIsGivenAFreshOne() throws Exception {
-		// What an earlier version left behind: an instance switched to a named port without its own
-		// ever being written down, so the launcher's number is gone. The best that can be done is a
-		// new one from the launcher's own band — what must not happen is the named port coming back
-		// wearing an automatic label, which is what this test is here for.
 		DshInstance instance = managedInstance("ports-lost");
 		try {
 			DshInstanceManager.update(instance.withPortPolicy(DshPortMode.FIXED, 34567));
-
 			DshInstance back = DshPorts.withMode(InstanceStore.find(instance.id()), DshPortMode.AUTO);
 
 			assertNotEquals(34567, back.portOrDefault(), "automatic is not the named port in disguise");
@@ -175,7 +207,6 @@ class DshPortsTest {
 			int given = instance.portOrDefault();
 			DshInstanceManager.update(DshPorts.withMode(instance, DshPortMode.FIXED)
 			                                  .withPortPolicy(DshPortMode.FIXED, 34567));
-
 			Set<Integer> claimed = DshPorts.claimedPorts(null);
 
 			assertTrue(claimed.contains(34567), "the port in effect is claimed: " + claimed);
@@ -202,10 +233,12 @@ class DshPortsTest {
 
 	@Test
 	void thePortAnInstanceIsOnIsTheOneTheHarnessReported() {
-		assertEquals(3200, DshPorts.observedPort(URI.create("http://127.0.0.1:3200/?token=abc"), 3100),
+		assertEquals(3200,
+		             DshPorts.observedPort(URI.create("http://127.0.0.1:3200/?token=abc"), 3100),
 		             "the printed address is what the server bound, whatever the launcher asked for");
 		assertEquals(3100, DshPorts.observedPort(null, 3100), "no address is nothing to contradict");
-		assertEquals(3100, DshPorts.observedPort(URI.create("http://127.0.0.1/"), 3100),
+		assertEquals(3100,
+		             DshPorts.observedPort(URI.create("http://127.0.0.1/"), 3100),
 		             "an address with no port says nothing about which port it is");
 	}
 
@@ -216,14 +249,11 @@ class DshPortsTest {
 		assertEquals("http://127.0.0.1:3100/?token=abc",
 		             DshPorts.openAddress(fixed, URI.create("http://127.0.0.1:3100/?token=abc")).toString(),
 		             "the printed address carries the token, so it is used while it is the instance's own port");
-
-		// A harness that came up on another port is a different origin. A browser sent there would
-		// keep everything it stores under an address the instance is not recorded at, and lose it
-		// the day the port moves back — so the instance's own address is opened instead, plainly.
 		assertEquals("http://127.0.0.1:3100/",
 		             DshPorts.openAddress(fixed, URI.create("http://127.0.0.1:3200/?token=abc")).toString(),
 		             "a moved server is not where the instance is");
-		assertEquals("http://127.0.0.1:3100/", DshPorts.openAddress(fixed, null).toString(),
+		assertEquals("http://127.0.0.1:3100/",
+		             DshPorts.openAddress(fixed, null).toString(),
 		             "a stopped instance has no printed address and is opened at its own");
 	}
 
@@ -234,12 +264,9 @@ class DshPortsTest {
 		             DshPorts.launchToken(URI.create("http://127.0.0.1:3200/?x=1&token=a-b_c&y=2")),
 		             "the key is one parameter among others, and it is not the launcher's business what " +
 		             "the others are");
-
-		// Nothing to copy is one answer: an instance that is stopped has printed no address at all,
-		// a harness from before the key existed printed one without a query, and a key that is
-		// empty is not a key.
 		assertEquals(Optional.empty(), DshPorts.launchToken(null), "a stopped instance has nothing to copy");
-		assertEquals(Optional.empty(), DshPorts.launchToken(URI.create("http://127.0.0.1:3200/")),
+		assertEquals(Optional.empty(),
+		             DshPorts.launchToken(URI.create("http://127.0.0.1:3200/")),
 		             "a harness from before the key existed printed no query");
 		assertEquals(Optional.empty(), DshPorts.launchToken(URI.create("http://127.0.0.1:3200/?token=")));
 		assertEquals(Optional.empty(), DshPorts.launchToken(URI.create("http://127.0.0.1:3200/?x=1")));
