@@ -344,7 +344,7 @@ public final class DshLaunchService {
 		progress.setExecutor(executor, true);
 		Controllers.dialog(progress);
 
-		executor.start();
+		progress.startExecutor();
 	}
 
 	/// Reports how a launch ended and hands the process back.
