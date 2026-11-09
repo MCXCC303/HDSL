@@ -18,8 +18,8 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
-import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
+import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
@@ -37,6 +37,7 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.*;
+import org.jackhuang.hmcl.ui.animation.AnimationUtils;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -364,34 +365,25 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}
 	}
 
-	/// One row of the skill list.
-	///
-	/// The shape is HMCL's resource-pack row: a tick box, the pack's mark, the name with
-	/// its description beneath, and the per-row actions on the trailing edge.
+	/**
+	 * One row of the skill list.
+	 *
+	 * Referring to HMCL Resource Page.
+	 */
 	private static final class SkillItemCell extends MDListCell<DshSkill> {
-		/// The page whose actions the row's buttons run.
 		private final SkillListPage page;
-
-		/// The tick box reporting whether the agent can invoke the skill.
-		private final JFXCheckBox active = new JFXCheckBox();
-
-		/// The pack's mark. A skill has no icon of its own, so this is the mark every pack
-		/// shares.
+		private final JFXSwitch active = new JFXSwitch();
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The name and description line.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button that opens the pack in a file manager.
 		private final JFXButton reveal = FXUtils.newToggleButton4(SVG.FOLDER);
-
-		/// The button that removes the pack.
 		private final JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE);
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list
-		/// @param page     the page the row's actions belong to
+		/**
+		 * Creates the cell.
+		 *
+		 * @param listView the owning list
+		 * @param page     where the row's actions belong to
+		 */
 		SkillItemCell(JFXListView<DshSkill> listView, SkillListPage page) {
 			super(listView);
 			this.page = page;
@@ -414,7 +406,15 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 				}
 			});
 
-			container.getChildren().setAll(active, icon, content, reveal, remove);
+			HBox actions = new HBox(8);
+			actions.setAlignment(Pos.CENTER);
+			actions.getChildren().setAll(reveal, remove, active);
+			active.setSize(20);
+			active.setMinSize(30, 30);
+			active.setPrefSize(30, 30);
+			active.setMaxSize(30, 30);
+
+			container.getChildren().setAll(icon, content, actions);
 			StackPane.setMargin(container, new Insets(8));
 			getContainer().getChildren().setAll(container);
 		}
@@ -425,11 +425,14 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 				return;
 			}
 
+			active.setDisableAnimation(true);
 			active.setSelected(skill.enabled());
-			FXUtils.installFastTooltip(active,
-			                           skill.enabled()
-			                           ? i18n("dsh.instance.skills.toggle.off")
-			                           : i18n("dsh.instance.skills.toggle.on"));
+			active.setDisableAnimation(!AnimationUtils.isAnimationEnabled());
+			String hint = skill.enabled()
+			               ? i18n("dsh.instance.skills.toggle.off")
+			               : i18n("dsh.instance.skills.toggle.on");
+			FXUtils.installFastTooltip(active, hint);
+			active.setAccessibleText(hint);
 
 			content.setTitle(skill.name());
 			content.setSubtitle(skill.description().isEmpty() ? skill.fileName() : skill.description());
