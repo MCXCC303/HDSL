@@ -41,7 +41,6 @@ import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
 import org.jackhuang.hmcl.util.CircularArrayList;
-import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.util.function.ExceptionalRunnable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -335,12 +334,12 @@ public final class DshLaunchService {
 			}
 		});
 
-		TaskExecutorDialogPane progress = new TaskExecutorDialogPane(new TaskCancellationAction(it -> {
+		TaskExecutorDialogPane progress = new TaskExecutorDialogPane(it -> {
 			// Stopping waits for the child to drain, which is seconds the
 			// interface must not spend frozen on the launch dialog's behalf.
 			stop(instance.id(), null);
 			it.fireEvent(new DialogCloseEvent());
-		}));
+		});
 		progress.titleProperty().set(i18n("dsh.launch.launching", instance.id()));
 		progress.setExecutor(executor, true);
 		Controllers.dialog(progress);

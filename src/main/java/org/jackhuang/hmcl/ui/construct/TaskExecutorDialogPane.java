@@ -31,7 +31,7 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.util.i18n.I18n;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Consumer;
 
@@ -41,7 +41,7 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 public class TaskExecutorDialogPane extends BorderPane {
     private TaskExecutor executor;
-    private TaskCancellationAction onCancel;
+    private @Nullable TaskCancellationAction onCancel;
     @SuppressWarnings({"unused", "FieldCanBeLocal"})
     private final Consumer<FetchTask.SpeedEvent> speedEventHandler;
 
@@ -50,7 +50,7 @@ public class TaskExecutorDialogPane extends BorderPane {
     private final JFXButton btnCancel;
     private final TaskListPane taskListPane;
 
-    public TaskExecutorDialogPane(@NotNull TaskCancellationAction cancel) {
+    public TaskExecutorDialogPane(@Nullable TaskCancellationAction cancel) {
         this.getStyleClass().add("task-executor-dialog-layout");
 
         FXUtils.setLimitWidth(this, 500);
@@ -85,11 +85,13 @@ public class TaskExecutorDialogPane extends BorderPane {
 
         setCancel(cancel);
 
-        btnCancel.setDisable(onCancel.getCancellationAction() == null);
         btnCancel.setOnAction(e -> {
+            TaskCancellationAction action = onCancel;
+            if (action == null || !action.isEnabled())
+                return;
             if (executor != null)
                 executor.cancel();
-            onCancel.getCancellationAction().accept(this);
+            action.accept(this);
         });
 
         speedEventHandler = FetchTask.SPEED_EVENT.registerWeak(speedEvent -> {
@@ -144,9 +146,9 @@ public class TaskExecutorDialogPane extends BorderPane {
         lblTitle.setText(currentState);
     }
 
-    public void setCancel(TaskCancellationAction onCancel) {
+    public void setCancel(@Nullable TaskCancellationAction onCancel) {
         this.onCancel = onCancel;
 
-        runInFX(() -> btnCancel.setDisable(onCancel == null));
+        runInFX(() -> btnCancel.setDisable(onCancel == null || !onCancel.isEnabled()));
     }
 }
