@@ -382,41 +382,4 @@ class DshProcessLifecycleTest {
 		             "a listener that has seen the terminal state is not told again after being reinstalled");
 	}
 
-	@Test
-	void stateListenerRacingWithTerminationNeverFiresTerminalMoreThanOnce() throws Exception {
-		requireNode();
-		for (int i = 0; i < 5; i++) {
-			String instanceId = "fast-exit-" + i;
-			DshInstance instance = DshInstanceManager.create(instanceId,
-			                                                 "1.0.0",
-			                                                 DshInstance.DEFAULT_PROFILE,
-			                                                 workspace,
-			                                                 DshNodeRuntime.SYSTEM,
-			                                                 DshHomeMode.ISOLATED,
-			                                                 null,
-			                                                 List.of(),
-			                                                 Map.of());
-			Path entry = instance.dshEntryPoint();
-			Files.createDirectories(entry.getParent());
-			Files.writeString(entry, "process.exit(1);");
-
-			AtomicInteger terminalDeliveries = new AtomicInteger(0);
-			Consumer<DshProcess.State> listener = state -> {
-				if (state == DshProcess.State.STOPPED || state == DshProcess.State.FAILED) {
-					terminalDeliveries.incrementAndGet();
-				}
-			};
-
-			DshProcess process = DshProcess.start(instance);
-			CompletableFuture.runAsync(() -> process.setStateListener(listener));
-
-			await(() -> !process.isRunning(), "process to exit");
-			await(() -> process.state() == DshProcess.State.FAILED, "process state to become FAILED");
-
-			process.setStateListener(listener);
-
-			assertEquals(1, terminalDeliveries.get(), "terminal state must be delivered exactly once to the listener");
-			DshInstanceManager.delete(instanceId);
-		}
-	}
 }

@@ -182,6 +182,10 @@ public final class DshProcess {
 		}
 	}
 
+	private static boolean isTerminal(State state) {
+		return state == State.STOPPED || state == State.FAILED;
+	}
+
 	public DshInstance instance() {
 		return plan.instance();
 	}
@@ -271,9 +275,6 @@ public final class DshProcess {
 		State current;
 		boolean notifyImmediate = false;
 		synchronized (stateLock) {
-			if (this.stateListener == listener && isTerminal(state) && terminalListener == listener) {
-				return;
-			}
 			this.stateListener = listener;
 			current = this.state;
 			if (listener != null && isTerminal(current) && terminalListener != listener) {
@@ -399,12 +400,8 @@ public final class DshProcess {
 	private void transitionTo(State next) {
 		Consumer<State> listener = null;
 		synchronized (stateLock) {
-			if (isTerminal(state)) {
-				return;
-			}
-			if (state == next) {
-				return;
-			}
+			if (isTerminal(state)) return;
+
 			state = next;
 			if (isTerminal(next)) {
 				if (stateListener != null && terminalListener != stateListener) {
@@ -422,10 +419,6 @@ public final class DshProcess {
 				LOG.warning("State listener failed", e);
 			}
 		}
-	}
-
-	private static boolean isTerminal(State state) {
-		return state == State.STOPPED || state == State.FAILED;
 	}
 
 	public Path workingDirectory() {
