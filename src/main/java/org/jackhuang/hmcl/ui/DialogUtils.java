@@ -83,6 +83,12 @@ public final class DialogUtils {
 
     public static void show(StackPane container, Node content, @Nullable Consumer<JFXDialog> onDialogCreated) {
         FXUtils.checkFxUserThread();
+        if (isShowing(content))
+            return;
+
+        // A closing dialog may retain its content until its exit animation finishes.
+        if (content.getParent() instanceof JFXDialogPane previousPane)
+            previousPane.pop(content);
 
         JFXDialog dialog = (JFXDialog) container.getProperties().get(PROPERTY_DIALOG_INSTANCE);
         JFXDialogPane dialogPane = (JFXDialogPane) container.getProperties().get(PROPERTY_DIALOG_PANE_INSTANCE);
@@ -170,15 +176,23 @@ public final class DialogUtils {
         queue.add(showDialogAction);
     }
 
+    /// Returns whether content belongs to a dialog that has not been closed.
+    ///
+    /// Content covered by another dialog is still considered shown.
+    public static boolean isShowing(Node content) {
+        FXUtils.checkFxUserThread();
+        return content.getProperties().containsKey(PROPERTY_PARENT_DIALOG_REF);
+    }
+
     @SuppressWarnings("unchecked")
     public static void close(Node content) {
         FXUtils.checkFxUserThread();
 
-        Optional.ofNullable(content.getProperties().get(PROPERTY_DIALOG_CLOSE_HANDLER))
+        Optional.ofNullable(content.getProperties().remove(PROPERTY_DIALOG_CLOSE_HANDLER))
                 .ifPresent(handler -> content.removeEventHandler(DialogCloseEvent.CLOSE, (EventHandler<DialogCloseEvent>) handler));
 
-        JFXDialogPane pane = (JFXDialogPane) content.getProperties().get(PROPERTY_PARENT_PANE_REF);
-        JFXDialog dialog = (JFXDialog) content.getProperties().get(PROPERTY_PARENT_DIALOG_REF);
+        JFXDialogPane pane = (JFXDialogPane) content.getProperties().remove(PROPERTY_PARENT_PANE_REF);
+        JFXDialog dialog = (JFXDialog) content.getProperties().remove(PROPERTY_PARENT_DIALOG_REF);
 
         Runnable showNextDialogAction = null;
 
