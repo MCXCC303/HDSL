@@ -34,6 +34,7 @@ import org.jackhuang.hmcl.task.TaskListener;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.DialogUtils;
 import org.jackhuang.hmcl.ui.FXUtils;
+import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jackhuang.hmcl.util.TaskManager;
 import org.jackhuang.hmcl.util.i18n.I18n;
@@ -82,6 +83,8 @@ public class TaskExecutorDialogPane extends BorderPane implements DialogAware {
     private final Label lblProgress;
     /// The action that requests cancellation.
     private final JFXButton btnCancel;
+    /// The action that hides the dialog without cancelling its executor.
+    private final JFXButton btnBackground;
     /// The retained task progress view.
     private final TaskListPane taskListPane;
 
@@ -105,10 +108,19 @@ public class TaskExecutorDialogPane extends BorderPane implements DialogAware {
             lblTitle.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(lblTitle, Priority.ALWAYS);
 
+            btnBackground = FXUtils.newToggleButton4(SVG.MINIMIZE_CENTER);
+            btnBackground.setAccessibleText(i18n("task.background"));
+            FXUtils.installFastTooltip(btnBackground, i18n("task.background"));
+            btnBackground.setDisable(true);
+            btnBackground.setOnAction(event -> runInBackground());
+
+            HBox header = new HBox(8, lblTitle, btnBackground);
+            header.setAlignment(Pos.CENTER_LEFT);
+
             taskListPane = new TaskListPane();
             VBox.setVgrow(taskListPane, Priority.ALWAYS);
 
-            center.getChildren().setAll(lblTitle, taskListPane);
+            center.getChildren().setAll(header, taskListPane);
         }
 
         HBox bottom = new HBox();
@@ -358,6 +370,7 @@ public class TaskExecutorDialogPane extends BorderPane implements DialogAware {
 
     /// Updates action availability from the current execution and cancellation state.
     private void updateButtons() {
+        btnBackground.setDisable(!running && !queued.get());
         btnCancel.setDisable((!running && !queued.get()) || onCancel == null || !onCancel.isEnabled()
                 || executor == null || executor.isCancelled());
     }
