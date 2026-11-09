@@ -99,7 +99,7 @@ public final class ProgressDialog {
 
 		pane.setExecutor(executor, true);
 		Controllers.dialog(pane);
-		executor.start();
+		pane.startExecutor();
 	}
 
 	/// Work that takes time and can fail.
