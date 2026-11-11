@@ -1,19 +1,21 @@
+# Compile and distrs
 .gradle/
 build/
-*.class
-.idea/
-*.iml
 out/
 dist/
+bin/
+*.class
+*.iml
 
-# Working notes, verification captures and references. Not part of the product
+# Stable agent working station
 .dev/
 .verify/
+
 # Unnecessary notes
 docs/*
 !docs/plugin-guide/
 
-# build outputs, but keep the vendored JFoenix patch base
+# Build outputs, but keep the vendored JFoenix patch base
 *.jar
 !lib/JFoenix.jar
 !gradle/wrapper/*.jar
@@ -24,3 +26,12 @@ patches/
 *.diff
 *.rej
 *.orig
+
+# IDE & editors' stuff
+.idea/
+.vscode/
+.deepseek/
+.claude/
+.settings/
+.classpath
+.project
