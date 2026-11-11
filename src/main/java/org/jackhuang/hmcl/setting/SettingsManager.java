@@ -61,9 +61,9 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class SettingsManager {
 	// The settings file inside the per-user HDSL home.
-	private static final Path SETTINGS_PATH = Metadata.HMCL_USER_HOME.resolve("launcher-settings.json");
+	private static final Path SETTINGS_PATH = Metadata.HDSL_USER_HOME.resolve("launcher-settings.json");
 	// The window state file inside the per-user HDSL home.
-	private static final Path STATE_PATH = Metadata.HMCL_USER_HOME.resolve("launcher-state.json");
+	private static final Path STATE_PATH = Metadata.HDSL_USER_HOME.resolve("launcher-state.json");
 	// The lazily created settings singleton.
 	private static @Nullable LauncherSettings launcherSettings;
 	// The lazily created window state singleton.

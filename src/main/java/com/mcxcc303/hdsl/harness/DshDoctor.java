@@ -81,7 +81,7 @@ public final class DshDoctor {
 		out.println();
 
 		out.println("Directories");
-		out.println("  user home: " + Metadata.HMCL_USER_HOME);
+		out.println("  user home: " + Metadata.HDSL_USER_HOME);
 		out.println("  instances: " + DshPaths.INSTANCES);
 		out.println();
 

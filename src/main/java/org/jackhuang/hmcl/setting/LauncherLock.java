@@ -63,7 +63,7 @@ public final class LauncherLock {
 	private static final String FILE_NAME = "launcher.lock";
 
 	/// The lock of this launcher's home.
-	private static final LauncherLock SHARED = new LauncherLock(Metadata.HMCL_USER_HOME.resolve(FILE_NAME));
+	private static final LauncherLock SHARED = new LauncherLock(Metadata.HDSL_USER_HOME.resolve(FILE_NAME));
 
 	/// The file this lock is taken on.
 	private final Path file;

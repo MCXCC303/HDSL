@@ -298,7 +298,7 @@ public final class DshCrashDialog extends Stage {
 		}
 
 		try {
-			Path target = Metadata.HMCL_USER_HOME.resolve("crash-reports")
+			Path target = Metadata.HDSL_USER_HOME.resolve("crash-reports")
 			                                     .resolve("crash-" + instance.id() + "-" +
 			                                              DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
 			                                                               .format(LocalDateTime.now()) + ".txt");

@@ -39,7 +39,7 @@ import java.nio.file.Path;
 @NotNullByDefault
 public final class DshPaths {
 	/// The root of all HDSL user data.
-	public static final Path ROOT = Metadata.HMCL_USER_HOME;
+	public static final Path ROOT = Metadata.HDSL_USER_HOME;
 	/// One directory per installed DeepSeek Harness version, each an npm prefix.
 	/// One directory per launcher instance.
 	public static final Path INSTANCES = ROOT.resolve("instances");

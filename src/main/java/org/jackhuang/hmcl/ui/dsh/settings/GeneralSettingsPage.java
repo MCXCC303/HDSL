@@ -130,8 +130,8 @@ public final class GeneralSettingsPage extends ScrollPane {
 	private LineButton buildStorageRow() {
 		LineButton home = new LineButton();
 		home.setTitle(i18n("dsh.settings.home"));
-		home.setSubtitle(Metadata.HMCL_USER_HOME.toString());
-		home.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HMCL_USER_HOME));
+		home.setSubtitle(Metadata.HDSL_USER_HOME.toString());
+		home.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HDSL_USER_HOME));
 		return home;
 	}
 }

@@ -48,7 +48,7 @@ class InstanceIsolationDefaultsTest {
 		assertTrue(configured != null && !configured.isBlank(), "a dedicated test HOME is required");
 		Path testHome = Path.of(configured).toAbsolutePath().normalize();
 		assertTrue(testHome.endsWith(Path.of("build", "test-home")), "only the build's test HOME may be written");
-		assertEquals(testHome, Metadata.HMCL_USER_HOME.toAbsolutePath().normalize());
+		assertEquals(testHome, Metadata.HDSL_USER_HOME.toAbsolutePath().normalize());
 		settingsFile = testHome.resolve("launcher-settings.json");
 		assertTrue(!Files.isSymbolicLink(testHome) && !Files.isSymbolicLink(settingsFile));
 		previousFile = Files.isRegularFile(settingsFile) ? Files.readAllBytes(settingsFile) : null;
