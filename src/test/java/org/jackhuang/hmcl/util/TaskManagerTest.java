@@ -141,7 +141,7 @@ final class TaskManagerTest {
         AtomicInteger nextBodies = new AtomicInteger();
         Submission first = submit(Task.runAsync(() -> {
             entered.countDown();
-            await(release);
+            awaitIgnoringInterrupt(release);
         }), null);
         Submission next = submit(Task.runAsync(nextBodies::incrementAndGet), null);
         try {
@@ -261,6 +261,17 @@ final class TaskManagerTest {
     /// Waits for a controlled phase, failing rather than hanging if scheduling stops progressing.
     private static void await(CountDownLatch latch) throws InterruptedException {
         assertTrue(latch.await(10, TimeUnit.SECONDS));
+    }
+
+    // Waits for a controlled phase while a cancellation interrupt cannot end the waiting body.
+    private static void awaitIgnoringInterrupt(CountDownLatch latch) {
+        while (true) {
+            try {
+                assertTrue(latch.await(10, TimeUnit.SECONDS));
+                return;
+            } catch (InterruptedException ignored) {
+            }
+        }
     }
 
     /// Executes an operation on the JavaFX thread and waits for its result.
