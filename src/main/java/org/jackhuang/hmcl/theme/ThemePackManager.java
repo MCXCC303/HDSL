@@ -71,10 +71,10 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class ThemePackManager {
     /// Directory where imported theme packs are stored for the launcher UI.
-    public static final Path THEME_PACKS_DIRECTORY = Metadata.HMCL_LOCAL_HOME.resolve("themes");
+    public static final Path THEME_PACKS_DIRECTORY = Metadata.HDSL_LOCAL_HOME.resolve("themes");
 
     /// Directory where user-wide theme packs are discovered.
-    private static final Path USER_THEME_PACKS_DIRECTORY = Metadata.HMCL_USER_HOME.resolve("themes");
+    private static final Path USER_THEME_PACKS_DIRECTORY = Metadata.HDSL_USER_HOME.resolve("themes");
 
     /// Default version used when exporting the current launcher appearance.
     public static final String CURRENT_THEME_PACK_VERSION = "1.0.0";

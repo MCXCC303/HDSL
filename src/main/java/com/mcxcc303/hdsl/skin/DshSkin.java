@@ -109,7 +109,7 @@ public final class DshSkin {
 	/// @param accountKey the account's key
 	/// @return the path, which may not exist
 	public static Path file(String accountKey) {
-		return Metadata.HMCL_USER_HOME.resolve(DIRECTORY).resolve(hashedName(accountKey) + SUFFIX);
+		return Metadata.HDSL_USER_HOME.resolve(DIRECTORY).resolve(hashedName(accountKey) + SUFFIX);
 	}
 
 	/// Returns the file an account's cape is kept in.
@@ -120,7 +120,7 @@ public final class DshSkin {
 	/// @param accountKey the account's key
 	/// @return the path, which may not exist
 	public static Path capeFile(String accountKey) {
-		return Metadata.HMCL_USER_HOME.resolve(DIRECTORY).resolve(hashedName(accountKey) + CAPE_SUFFIX);
+		return Metadata.HDSL_USER_HOME.resolve(DIRECTORY).resolve(hashedName(accountKey) + CAPE_SUFFIX);
 	}
 
 	/// Returns the identity the launcher picks an account's default skin from.

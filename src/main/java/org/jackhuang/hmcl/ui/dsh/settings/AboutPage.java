@@ -100,8 +100,8 @@ public final class AboutPage extends ScrollPane {
 		userHome.setLargeTitle(true);
 		userHome.setLeading(SVG.FOLDER_OPEN, 24);
 		userHome.setTitle(i18n("dsh.settings.home"));
-		userHome.setSubtitle(Metadata.HMCL_USER_HOME.toString());
-		userHome.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HMCL_USER_HOME));
+		userHome.setSubtitle(Metadata.HDSL_USER_HOME.toString());
+		userHome.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HDSL_USER_HOME));
 
 		ComponentList list = new ComponentList();
 		list.getContent().add(userHome);

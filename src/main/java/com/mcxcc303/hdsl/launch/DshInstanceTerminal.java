@@ -182,7 +182,7 @@ public final class DshInstanceTerminal {
 	}
 
 	static Path getTermSessionsDir() {
-		return Metadata.HMCL_USER_HOME.resolve(TERM_SESSIONS_DIRECTORY);
+		return Metadata.HDSL_USER_HOME.resolve(TERM_SESSIONS_DIRECTORY);
 	}
 
 	/**
