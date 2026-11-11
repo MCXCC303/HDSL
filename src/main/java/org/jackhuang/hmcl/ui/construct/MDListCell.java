@@ -17,11 +17,15 @@
  */
 package org.jackhuang.hmcl.ui.construct;
 
+import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
 import javafx.beans.binding.DoubleBinding;
 import javafx.css.PseudoClass;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
+import javafx.scene.control.SelectionModel;
+import javafx.scene.input.MouseButton;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import org.jackhuang.hmcl.ui.FXUtils;
@@ -96,6 +100,38 @@ public abstract class MDListCell<T> extends ListCell<T> {
         FXUtils.onChangeAndOperate(selectedProperty(), selected -> {
             root.pseudoClassStateChanged(SELECTED, selected);
         });
+    }
+
+    /// Creates a tick box that shows whether the row is selected.
+    ///
+    /// @return the tick box
+    protected JFXCheckBox createSelectionTick() {
+        JFXCheckBox tick = new JFXCheckBox();
+        tick.selectedProperty().bind(selectedProperty());
+        tick.addEventFilter(MouseEvent.MOUSE_PRESSED, event -> {
+            if (event.getButton() != MouseButton.PRIMARY) {
+                return;
+            }
+            event.consume();
+            toggleSelection();
+        });
+        return tick;
+    }
+
+    /// Turns this row's selection on and off.
+    private void toggleSelection() {
+        ListView<T> listView = getListView();
+        int index = getIndex();
+        if (listView == null || index < 0) {
+            return;
+        }
+
+        SelectionModel<T> model = listView.getSelectionModel();
+        if (model.isSelected(index)) {
+            model.clearSelection(index);
+        } else {
+            model.select(index);
+        }
     }
 
     protected void onClicked(Runnable action) {

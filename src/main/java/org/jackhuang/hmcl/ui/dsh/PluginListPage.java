@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.jfoenix.controls.JFXButton;
+import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
@@ -60,60 +61,27 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Lists the plugins installed into an instance's profile.
-///
-/// Modelled on HMCL's mod list, which is the original's answer to the same
-/// question: what is installed, and is it actually in effect. The tick box is
-/// that second part — a package can be a dependency without being an active
-/// bundle, which happens whenever a reconciling `dsh plugin` run did not
-/// finish, and a list that only showed the dependency would hide exactly the
-/// case worth seeing.
-///
-/// The box toggles: a plugin is switched off by a row in the profile's own patch
-/// layer, which the loader re-applies on every boot, so the state survives a
-/// restart. Only a package that is an active bundle with its own insert rows can
-/// be switched; one that is merely a dependency, or that declares no rows, keeps
-/// its box disabled and its explanation.
 @NotNullByDefault
 public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow> implements Refreshable {
-	/// The instance whose profile is listed.
 	private final DshInstance instance;
-	/// The page's toolbar, which swaps itself for a search field.
 	private final ListSearchBar toolbar = new ListSearchBar(this::refresh);
-	/// The toolbar shown while plugins are selected.
 	private final HBox selectingToolbar = new HBox(8);
-	/// The box the two toolbars swap in.
 	private final StackPane toolbarPane = new StackPane(toolbar, selectingToolbar);
-	/// Whether a load is already running.
 	private boolean busy;
 
-	/// Creates the page.
-	///
-	/// @param instance the instance whose plugins are listed
 	public PluginListPage(DshInstance instance) {
 		this.instance = instance;
 		refresh();
 	}
 
-	/**
-	 * Reports whether the patch layer can switch the plugin off.
-	 *
-	 * <p>A switch writes {@code disabled: true} onto the rows the bundle inserts, so only a
-	 * loaded bundle with rows qualifies.
-	 *
-	 * @return whether the plugin has switchable rows
-	 */
+	/// Reports whether the patch layer can switch the plugin off.
 	private static boolean switchable(DshInstalledPlugins.Installed plugin) {
 		return !plugin.rowIds().isEmpty() &&
 		       (plugin.state() == DshInstalledPlugins.State.ACTIVE ||
 		        plugin.state() == DshInstalledPlugins.State.DISABLED);
 	}
 
-	/**
-	 * Reads the picture a package declares for itself.
-	 *
-	 * @param file the picture, or {@code null} when the package declares none
-	 * @return the picture, or {@code null} when it cannot be shown
-	 */
+	/// Reads the picture a package declares for itself.
 	private static @Nullable Image iconOf(@Nullable Path file) {
 		if (file == null) {
 			return null;
@@ -171,13 +139,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	}
 
 	/// Removes the given plugins after confirmation.
-	///
-	/// Both the row's own button and the toolbar's go through here, so a batch
-	/// and a single removal differ only in how many names are passed: the
-	/// original's confirm dialog, one `dsh plugin remove a b c` run, and the list
-	/// read again afterwards.
-	///
-	/// @param rows the rows to remove
 	private void removeSelected(Collection<PluginRow> rows) {
 		List<String> names = rows.stream().map(PluginRow::name).toList();
 		if (names.isEmpty()) {
@@ -197,24 +158,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		                    null);
 	}
 
-	/**
-	 * Switches one plugin on or off in the profile's patch layer.
-	 *
-	 * @param row the row that was clicked
-	 * @param box the switch, disabled while the write runs
-	 */
+	/// Switches one plugin on or off in the profile's patch layer.
 	private void toggle(PluginRow row, JFXSwitch box) {
 		box.setDisable(true);
 		apply(List.of(row), row.state() != DshInstalledPlugins.State.ACTIVE);
 	}
 
 	/// Switches the selected plugins on or off.
-	///
-	/// A plugin already in the asked-for state is left alone, so a batch of
-	/// mixed rows writes only the ones that move.
-	///
-	/// @param rows    the selected rows
-	/// @param enabled whether they should run
 	private void setEnabled(Collection<PluginRow> rows, boolean enabled) {
 		DshInstalledPlugins.State wanted = enabled
 		                                   ? DshInstalledPlugins.State.DISABLED
@@ -226,9 +176,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	}
 
 	/// Writes the switch into the patch layer and reads the profile again.
-	///
-	/// @param rows    the plugins to switch
-	/// @param enabled whether they should run
 	private void apply(List<PluginRow> rows, boolean enabled) {
 		CompletableFuture.runAsync(() -> {
 			try {
@@ -251,11 +198,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	}
 
 	/// Opens the page that lists the community's plugins.
-	///
-	/// Opened *for this instance*, which is the whole of what 下载 means on this page: a plugin
-	/// installed from here belongs to the instance whose list this is. The market's own picker
-	/// defaults to whatever the launcher has selected, and opening an instance does not select it —
-	/// so without this, 下载 installed into an instance the person was not looking at.
 	private void openMarket() {
 		DownloadPage page = Controllers.getDownloadPage();
 		page.openPluginsFor(instance);
@@ -263,13 +205,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	}
 
 	/// Installs a plugin from a packed file the user chooses.
-	///
-	/// The file is copied into the instance before it is installed, because the
-	/// profile records the path it installed from and resolves it again on every
-	/// later operation: a plugin installed from wherever the file happened to be
-	/// stops the whole profile from resolving the day that file moves. That is also
-	/// why the copy is the thing worth saying out loud — the plugin is part of the
-	/// instance now, and the file the user picked can go.
 	private void installFromFile() {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("dsh.instance.plugins.add"));
@@ -287,19 +222,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	}
 
 	/// Installs a plugin from the source a person names.
-	///
-	/// A repository is what somebody has when a plugin is a fork, a branch being worked on, or a
-	/// package nobody ever published: there is no registry entry to name it by, and the revision is
-	/// as much a part of what is installed as the repository is. A directory on this machine is what
-	/// somebody has while writing the plugin at all, and `file:` / `link:` are how the profile names
-	/// one. The address and the revision are asked for together, and the installation is the
-	/// profile's usual one — a `dsh plugin add` behind the progress dialog, with what went wrong
-	/// reported there.
-	///
-	/// Only the address is checked for being there, which is the part the dialog can say; whether it
-	/// can be written as a specification, whether the revision exists, whether the directory holds a
-	/// package, and whether the package builds are all settled by the work, which says which of them
-	/// failed.
 	private void installFromSource() {
 		Controllers.dialog(new PluginSourceDialog((source, handler) -> {
 			if (source.repository() == null || source.repository().isBlank()) {
@@ -316,32 +238,15 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}));
 	}
 
-	/// Holds the list the page is drawn in, and gives the page the toolbar that
-	/// acts on a selection.
-	///
-	/// The skin owns the list view, and the toolbar has to be built after it
-	/// exists — the base skin builds its toolbars before it creates the list —
-	/// so the skin hands the list over once it has one, rather than the page
-	/// reaching for a list that does not exist yet.
-	///
-	/// @param listView the page's list
+	/// Gives the page the toolbar that acts on the selection in the list.
 	private void attachList(JFXListView<PluginRow> listView) {
 		toolbar.setButtons(ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
-		                   // The original's mod list adds a mod from a file the same way; a
-		                   // plugin is a package, so the file is a packed one.
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add"),
 		                                                            SVG.ADD,
 		                                                            this::installFromFile),
-		                   // The same package from wherever it is published: a plugin that is a fork, a
-		                   // branch, or a repository nobody published has a repository and a revision
-		                   // rather than a registry entry, and this is how one of those gets in.
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add.url"),
 		                                                            SVG.PUBLIC,
 		                                                            this::installFromSource),
-		                   // The original's mod list also carries 下载, which leads to the list
-		                   // of what can be installed rather than to a file dialog; this is
-		                   // that, pointing at the download page's plugin tab. What the button
-		                   // says is what it downloads — a plugin, not a mod.
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.download"),
 		                                                            SVG.DOWNLOAD,
 		                                                            this::openMarket),
@@ -381,9 +286,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		FXUtils.onChangeAndOperate(listView.getSelectionModel().selectedItemProperty(),
 		                           selected -> showSelectingToolbar(selected != null));
 
-		// Selecting everything through the button rather than `selectAll()`, which
-		// clears first and makes the whole list flicker; and disabling the button
-		// once there is nothing left to select, as the original does.
+		// `selectAll()` clears the selection first, which makes the whole list flicker.
 		ListChangeListener<Object> listener = change -> selectAll.setDisable(!listView.getItems().isEmpty() &&
 		                                                                     listView.getSelectionModel()
 		                                                                             .getSelectedItems()
@@ -394,8 +297,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	}
 
 	/// Shows the toolbar that acts on a selection, or the ordinary one.
-	///
-	/// @param selecting whether anything is selected
 	private void showSelectingToolbar(boolean selecting) {
 		selectingToolbar.setVisible(selecting);
 		selectingToolbar.setManaged(selecting);
@@ -429,14 +330,10 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
 	/// The page's skin: a toolbar above the plugin list.
 	private static final class PluginListPageSkin extends ToolbarListPageSkin<PluginRow, PluginListPage> {
-		/// Creates the skin.
-		///
-		/// @param control the page
 		PluginListPageSkin(PluginListPage control) {
 			super(control);
 			setPlaceholder(i18n("dsh.plugins.empty"));
-			// After the base skin has made the list: the selection toolbar acts on
-			// it, and it does not exist while the toolbars are being built.
+			// The selection toolbar acts on the list, which the base skin creates after the toolbars.
 			control.attachList(listView);
 		}
 
@@ -456,18 +353,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	// One row of the plugin list.
 	private static final class PluginItemCell extends MDListCell<PluginRow> {
 		private final PluginListPage page;
+		private final JFXCheckBox tick = createSelectionTick();
 		private final JFXSwitch active = new JFXSwitch();
 		private final ImageContainer icon = new ImageContainer(32);
 		private final TwoLineListItem content = new TwoLineListItem();
 		private final JFXButton info = FXUtils.newToggleButton4(SVG.INFO);
 		private final JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE);
 
-		/**
-		 * Creates the cell.
-		 *
-		 * @param listView the owning list
-		 * @param page     which page the row's actions belong to
-		 */
 		PluginItemCell(JFXListView<PluginRow> listView, PluginListPage page) {
 			super(listView);
 			this.page = page;
@@ -496,7 +388,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 			active.setPrefSize(30, 30);
 			active.setMaxSize(30, 30);
 
-			container.getChildren().setAll(icon, content, actions);
+			container.getChildren().setAll(tick, icon, content, actions);
 			StackPane.setMargin(container, new Insets(8));
 			getContainer().getChildren().setAll(container);
 		}
