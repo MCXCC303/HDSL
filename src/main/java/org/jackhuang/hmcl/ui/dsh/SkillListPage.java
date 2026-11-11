@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.ui.dsh;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
+import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
@@ -37,6 +38,7 @@ import javafx.scene.layout.StackPane;
 import javafx.stage.FileChooser;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.*;
+import org.jackhuang.hmcl.ui.animation.AnimationUtils;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
@@ -60,38 +62,18 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// Lists the skill packs installed in an instance's DSH home.
-///
-/// Modelled on HMCL's resource-pack list, which is the original's answer to the same
-/// question: what has been put here, and which of it is in effect. The tick box is that
-/// second part — the harness's own frontmatter key, {@code disable-model-invocation},
-/// is what hides a skill from the agent, so switching one off writes exactly that line
-/// and switching it on takes it away.
-///
-/// What is listed is what the harness discovers: one level under {@code <dshHome>/skills},
-/// either a directory holding a {@code SKILL.md} or a flat {@code .md} file, and nothing
-/// else. A pack the user adds from disk is validated against the same frontmatter rules
-/// before it is copied, because the harness silently ignores a pack without a name or a
-/// description.
 @NotNullByDefault
 public final class SkillListPage extends ListPageBase<DshSkill> implements Refreshable {
-	/// The two shapes the harness reads: a folder bundle and a Markdown file. Both are validated again when the pack is read, so this only drives the drop cursor.
+	/// The two shapes the harness reads; this only drives the drop cursor.
 	private static final PathMatcher SKILL_PACKS = path ->
 			Files.isDirectory(path) || (path.getFileName() != null && (path.getFileName().toString().endsWith(".md") ||
 			                                                           path.getFileName().toString().endsWith(".zip")));
-	/// The instance whose skills are listed.
 	private final DshInstance instance;
-	/// The page's toolbar, which swaps itself for a search field.
 	private final ListSearchBar toolbar = new ListSearchBar(this::refresh);
-	/// The toolbar shown while packs are selected.
 	private final HBox selectingToolbar = new HBox(8);
-	/// The box the two toolbars swap in.
 	private final StackPane toolbarPane = new StackPane(toolbar, selectingToolbar);
-	/// Whether a load is already running.
 	private boolean busy;
 
-	/// Creates the page.
-	///
-	/// @param instance the instance whose skills are listed
 	public SkillListPage(DshInstance instance) {
 		this.instance = instance;
 		FXUtils.applyDragListener(this, SKILL_PACKS, this::addFiles);
@@ -99,9 +81,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	}
 
 	/// Returns the failure a {@link CompletableFuture} completed with.
-	///
-	/// @param throwable what the future reported
-	/// @return the cause, when the wrapper has one
 	private static Throwable causeOf(Throwable throwable) {
 		return throwable instanceof CompletionException && throwable.getCause() != null
 		       ? throwable.getCause()
@@ -147,12 +126,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	}
 
 	/// Switches the given skills off for the agent, or back on.
-	///
-	/// A skill already in the asked-for state is left alone, so a mixed batch writes only
-	/// the ones that actually move.
-	///
-	/// @param skills  the skills to switch
-	/// @param enabled whether the agent should be able to invoke them
 	private void setEnabled(Collection<DshSkill> skills, boolean enabled) {
 		List<DshSkill> targets = skills.stream().filter(skill -> skill.enabled() != enabled).toList();
 		if (targets.isEmpty()) {
@@ -178,8 +151,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	}
 
 	/// Removes the given packs after confirmation.
-	///
-	/// @param skills the packs to remove
 	private void removeSelected(Collection<DshSkill> skills) {
 		List<DshSkill> targets = List.copyOf(skills);
 		if (targets.isEmpty()) {
@@ -208,8 +179,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	}
 
 	/// Copies the given packs into the instance, saying which ones would not go.
-	///
-	/// @param files the packs the user picked or dropped
 	private void addFiles(List<Path> files) {
 		if (files.isEmpty()) {
 			return;
@@ -240,9 +209,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	}
 
 	/// Asks the user for the Markdown packs to add.
-	///
-	/// A folder bundle cannot be picked in the same dialog as a file, which is what the
-	/// drop target is for: dragging one on is how a bundle is added by hand.
 	private void onAdd() {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("dsh.instance.skills.add"));
@@ -273,21 +239,12 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}
 	}
 
-	/// Holds the list the page is drawn in, and gives the page the toolbars that act on it.
-	///
-	/// The skin owns the list view, and the toolbar has to be built after it exists — the
-	/// base skin builds its toolbars before it creates the list — so the skin hands the
-	/// list over once it has one.
-	///
-	/// @param listView the page's list
+	/// Gives the page the toolbars that act on the selection in the list.
 	private void attachList(JFXListView<DshSkill> listView) {
 		toolbar.setButtons(ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.add"),
 		                                                            SVG.ADD,
 		                                                            this::onAdd),
-		                   // The original's pack list carries a download button, which leads to what
-		                   // can be installed rather than to a file dialog; this is that, and it says
-		                   // what it downloads — a skill pack.
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.download"),
 		                                                            SVG.DOWNLOAD,
 		                                                            this::openMarket),
@@ -328,8 +285,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	}
 
 	/// Shows the toolbar that acts on a selection, or the ordinary one.
-	///
-	/// @param selecting whether anything is selected
 	private void showSelectingToolbar(boolean selecting) {
 		selectingToolbar.setVisible(selecting);
 		selectingToolbar.setManaged(selecting);
@@ -340,14 +295,10 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	/// The page's skin: a toolbar above the skill list, and the placeholder the harness's
 	/// own empty state reads as.
 	private static final class SkillListPageSkin extends ToolbarListPageSkin<DshSkill, SkillListPage> {
-		/// Creates the skin.
-		///
-		/// @param control the page
 		SkillListPageSkin(SkillListPage control) {
 			super(control);
 			setPlaceholder(i18n("dsh.skills.empty"));
-			// After the base skin has made the list: the selection toolbar acts on it, and
-			// it does not exist while the toolbars are being built.
+			// The selection toolbar acts on the list, which the base skin creates after the toolbars.
 			control.attachList(listView);
 		}
 
@@ -364,34 +315,16 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}
 	}
 
-	/// One row of the skill list.
-	///
-	/// The shape is HMCL's resource-pack row: a tick box, the pack's mark, the name with
-	/// its description beneath, and the per-row actions on the trailing edge.
+	// One row of the skill list.
 	private static final class SkillItemCell extends MDListCell<DshSkill> {
-		/// The page whose actions the row's buttons run.
 		private final SkillListPage page;
-
-		/// The tick box reporting whether the agent can invoke the skill.
-		private final JFXCheckBox active = new JFXCheckBox();
-
-		/// The pack's mark. A skill has no icon of its own, so this is the mark every pack
-		/// shares.
+		private final JFXCheckBox tick = createSelectionTick();
+		private final JFXSwitch active = new JFXSwitch();
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The name and description line.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button that opens the pack in a file manager.
 		private final JFXButton reveal = FXUtils.newToggleButton4(SVG.FOLDER);
-
-		/// The button that removes the pack.
 		private final JFXButton remove = FXUtils.newToggleButton4(SVG.DELETE);
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list
-		/// @param page     the page the row's actions belong to
 		SkillItemCell(JFXListView<DshSkill> listView, SkillListPage page) {
 			super(listView);
 			this.page = page;
@@ -414,7 +347,15 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 				}
 			});
 
-			container.getChildren().setAll(active, icon, content, reveal, remove);
+			HBox actions = new HBox(8);
+			actions.setAlignment(Pos.CENTER);
+			actions.getChildren().setAll(reveal, remove, active);
+			active.setSize(20);
+			active.setMinSize(30, 30);
+			active.setPrefSize(30, 30);
+			active.setMaxSize(30, 30);
+
+			container.getChildren().setAll(tick, icon, content, actions);
 			StackPane.setMargin(container, new Insets(8));
 			getContainer().getChildren().setAll(container);
 		}
@@ -425,11 +366,14 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 				return;
 			}
 
+			active.setDisableAnimation(true);
 			active.setSelected(skill.enabled());
-			FXUtils.installFastTooltip(active,
-			                           skill.enabled()
-			                           ? i18n("dsh.instance.skills.toggle.off")
-			                           : i18n("dsh.instance.skills.toggle.on"));
+			active.setDisableAnimation(!AnimationUtils.isAnimationEnabled());
+			String hint = skill.enabled()
+			               ? i18n("dsh.instance.skills.toggle.off")
+			               : i18n("dsh.instance.skills.toggle.on");
+			FXUtils.installFastTooltip(active, hint);
+			active.setAccessibleText(hint);
 
 			content.setTitle(skill.name());
 			content.setSubtitle(skill.description().isEmpty() ? skill.fileName() : skill.description());
