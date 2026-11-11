@@ -25,7 +25,6 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
-import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -74,7 +73,7 @@ public final class ProgressDialog {
 		DshInstallProgress progress = new DshInstallProgress();
 
 		Task<Void> task = Task.runAsync(title, () -> work.run(progress::accept));
-		TaskExecutorDialogPane pane = new TaskExecutorDialogPane(new TaskCancellationAction(it -> it.fireEvent(new DialogCloseEvent())));
+		TaskExecutorDialogPane pane = new TaskExecutorDialogPane(it -> it.fireEvent(new DialogCloseEvent()));
 		pane.titleProperty().bind(progress.messageProperty());
 
 		TaskExecutor executor = task.executor();
@@ -100,7 +99,7 @@ public final class ProgressDialog {
 
 		pane.setExecutor(executor, true);
 		Controllers.dialog(pane);
-		executor.start();
+		pane.startExecutor();
 	}
 
 	/// Work that takes time and can fail.

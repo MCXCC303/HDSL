@@ -15,7 +15,6 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.DialogCloseEvent;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.TaskExecutorDialogPane;
-import org.jackhuang.hmcl.util.TaskCancellationAction;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -80,10 +79,10 @@ public final class DshInstanceUpgradeService {
 			LOG.info("Instance " + instance.id() + " now runs DeepSeek Harness " + version);
 		});
 
-		TaskExecutorDialogPane pane = new TaskExecutorDialogPane(new TaskCancellationAction(it -> {
+		TaskExecutorDialogPane pane = new TaskExecutorDialogPane(it -> {
 			DshCommand.stopRunning();
 			it.fireEvent(new DialogCloseEvent());
-		}));
+		});
 		pane.titleProperty().bind(progress.messageProperty());
 
 		TaskExecutor executor = task.executor();
@@ -106,7 +105,7 @@ public final class DshInstanceUpgradeService {
 
 		pane.setExecutor(executor, true);
 		Controllers.dialog(pane);
-		executor.start();
+		pane.startExecutor();
 	}
 
 	public static void reinstall(DshInstance instance, @Nullable Runnable onDone) {
