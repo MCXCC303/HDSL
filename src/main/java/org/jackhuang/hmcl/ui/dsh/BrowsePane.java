@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import javafx.geometry.Insets;
 import javafx.scene.control.ScrollPane;
@@ -26,6 +27,7 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.LineButton;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,20 +37,8 @@ import java.util.List;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists the directories that belong to an instance and opens them.
-///
-/// This is the counterpart of HMCL's browse page for an instance: a place to
-/// reach the files a launcher manages without hunting for them, and the only
-/// route to them for a user who does not know how a DeepSeek Harness home is
-/// laid out.
-///
-/// A directory that does not exist yet is shown disabled rather than hidden, so
-/// the layout is learnable before anything has been created in it.
 @NotNullByDefault
 public final class BrowsePane extends ScrollPane {
-	/// Creates the pane for an instance.
-	///
-	/// @param instance the instance whose directories are listed
 	public BrowsePane(DshInstance instance) {
 		setFitToWidth(true);
 
@@ -61,15 +51,10 @@ public final class BrowsePane extends ScrollPane {
 		root.setPadding(new Insets(10));
 		setContent(root);
 
-		// Must run after the content is installed: smooth scrolling binds to the
-		// content node and throws on a null content.
+		// Smooth scrolling binds to the content node, so it must run after the content is installed.
 		FXUtils.smoothScrolling(this);
 	}
 
-	/// Collects the directories an instance owns.
-	///
-	/// @param instance the instance
-	/// @return the directories, in the order they are shown
 	private static List<Directory> directoriesOf(DshInstance instance) {
 		List<Directory> directories = new ArrayList<>();
 		directories.add(new Directory(i18n("dsh.instance.open_workspace"), instance.workspacePath(), null));
@@ -84,11 +69,7 @@ public final class BrowsePane extends ScrollPane {
 		return directories;
 	}
 
-	/// Resolves an instance's home without failing the whole page.
-	///
-	/// @param instance the instance
-	/// @return the home, or `null` when it cannot be resolved
-	private static Path safeHome(DshInstance instance) {
+	private static @Nullable Path safeHome(DshInstance instance) {
 		try {
 			return instance.homeDirectory();
 		} catch (DshException e) {
@@ -97,10 +78,6 @@ public final class BrowsePane extends ScrollPane {
 		}
 	}
 
-	/// Builds one directory row.
-	///
-	/// @param directory the directory
-	/// @return the row
 	private static LineButton buildRow(Directory directory) {
 		LineButton row = new LineButton();
 		row.setTitle(directory.title());
@@ -112,15 +89,13 @@ public final class BrowsePane extends ScrollPane {
 
 		row.setSubtitle(directory.path().toString());
 		row.setDisable(!Files.isDirectory(directory.path()));
-		row.setOnAction(event -> FXUtils.showFileInExplorer(directory.path()));
+		row.setOnAction(event -> DshFileManager.openDirectory(directory.path()));
 		return row;
 	}
 
-	/// One directory the browse page offers.
-	///
-	/// @param title the row label
-	/// @param path  the directory, or `null` when it cannot be resolved
-	/// @param note  an optional note shown with the path
-	private record Directory(String title, Path path, String note) {
-	}
+	/**
+	 * One directory the browse page offers
+	 * {@code path} is {@code null} when it cannot be resolved.
+	 */
+	private record Directory(String title, @Nullable Path path, @Nullable String note) {}
 }

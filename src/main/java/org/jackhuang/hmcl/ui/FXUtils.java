@@ -501,6 +501,10 @@ public final class FXUtils {
         node.getProperties().put(animationKey, animation);
     }
 
+    /**
+     * @deprecated for {@link com.mcxcc303.hdsl.core.DshFileManager#openDirectory(Path)}.
+     */
+    @Deprecated
     public static void openFolder(Path file) {
         if (file.getFileSystem() != FileSystems.getDefault()) {
             LOG.warning("Cannot open folder as the file system is not supported: " + file);
@@ -550,6 +554,10 @@ public final class FXUtils {
         });
     }
 
+    /**
+     * @deprecated for {@link com.mcxcc303.hdsl.core.DshFileManager#reveal(Path)},
+     */
+    @Deprecated
     public static void showFileInExplorer(Path file) {
         String path = file.toAbsolutePath().toString();
 

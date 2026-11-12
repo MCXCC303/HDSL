@@ -22,6 +22,7 @@ import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.skill.DshSkill;
@@ -61,13 +62,15 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists the skill packs installed in an instance's DSH home.
 @NotNullByDefault
 public final class SkillListPage extends ListPageBase<DshSkill> implements Refreshable {
-	/// The two shapes the harness reads; this only drives the drop cursor.
-	private static final PathMatcher SKILL_PACKS = path ->
-			Files.isDirectory(path) || (path.getFileName() != null && (path.getFileName().toString().endsWith(".md") ||
-			                                                           path.getFileName().toString().endsWith(".zip")));
+	private static final PathMatcher SKILL_PACKS = path -> Files.isDirectory(path) || (path.getFileName() != null &&
+	                                                                                   (path.getFileName()
+	                                                                                        .toString()
+	                                                                                        .endsWith(".md") ||
+	                                                                                    path.getFileName()
+	                                                                                        .toString()
+	                                                                                        .endsWith(".zip")));
 	private final DshInstance instance;
 	private final ListSearchBar toolbar = new ListSearchBar(this::refresh);
 	private final HBox selectingToolbar = new HBox(8);
@@ -80,7 +83,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		refresh();
 	}
 
-	/// Returns the failure a {@link CompletableFuture} completed with.
 	private static Throwable causeOf(Throwable throwable) {
 		return throwable instanceof CompletionException && throwable.getCause() != null
 		       ? throwable.getCause()
@@ -94,12 +96,10 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 
 	@Override
 	public void refresh() {
-		if (busy) {
-			return;
-		}
+		if (busy) return;
+
 		busy = true;
 		setLoading(true);
-
 		CompletableFuture.supplyAsync(() -> {
 			try {
 				return DshSkillManager.list(instance.homeDirectory());
@@ -125,12 +125,10 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}));
 	}
 
-	/// Switches the given skills off for the agent, or back on.
 	private void setEnabled(Collection<DshSkill> skills, boolean enabled) {
 		List<DshSkill> targets = skills.stream().filter(skill -> skill.enabled() != enabled).toList();
-		if (targets.isEmpty()) {
-			return;
-		}
+		if (targets.isEmpty()) return;
+
 		CompletableFuture.runAsync(() -> {
 			try {
 				for (DshSkill skill : targets) {
@@ -150,12 +148,10 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}));
 	}
 
-	/// Removes the given packs after confirmation.
 	private void removeSelected(Collection<DshSkill> skills) {
 		List<DshSkill> targets = List.copyOf(skills);
-		if (targets.isEmpty()) {
-			return;
-		}
+		if (targets.isEmpty()) return;
+
 		String message = targets.size() == 1
 		                 ? i18n("dsh.instance.skills.remove.confirm", targets.get(0).name())
 		                 : i18n("button.remove.confirm");
@@ -178,11 +174,9 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		})), null);
 	}
 
-	/// Copies the given packs into the instance, saying which ones would not go.
 	private void addFiles(List<Path> files) {
-		if (files.isEmpty()) {
-			return;
-		}
+		if (files.isEmpty()) return;
+
 		CompletableFuture.supplyAsync(() -> {
 			List<String> failures = new ArrayList<>();
 			for (Path file : files) {
@@ -208,7 +202,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}));
 	}
 
-	/// Asks the user for the Markdown packs to add.
 	private void onAdd() {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("dsh.instance.skills.add"));
@@ -220,26 +213,23 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}
 	}
 
-	/// Opens the page that lists the community's skill packs.
 	private void openMarket() {
 		DownloadPage page = Controllers.getDownloadPage();
 		Controllers.navigate(page);
 		page.openTab("skills");
 	}
 
-	/// Opens the skills directory, making it first when the instance has none yet.
 	private void reveal() {
 		try {
 			Path directory = DshSkillManager.directory(instance.homeDirectory());
 			Files.createDirectories(directory);
-			FXUtils.showFileInExplorer(directory);
+			DshFileManager.openDirectory(directory);
 		} catch (Exception e) {
 			LOG.warning("Failed to open the skills directory", e);
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
 		}
 	}
 
-	/// Gives the page the toolbars that act on the selection in the list.
 	private void attachList(JFXListView<DshSkill> listView) {
 		toolbar.setButtons(ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.skills.add"),
@@ -284,7 +274,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		                           selected -> showSelectingToolbar(selected != null));
 	}
 
-	/// Shows the toolbar that acts on a selection, or the ordinary one.
 	private void showSelectingToolbar(boolean selecting) {
 		selectingToolbar.setVisible(selecting);
 		selectingToolbar.setManaged(selecting);
@@ -292,13 +281,10 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		toolbar.setManaged(!selecting);
 	}
 
-	/// The page's skin: a toolbar above the skill list, and the placeholder the harness's
-	/// own empty state reads as.
 	private static final class SkillListPageSkin extends ToolbarListPageSkin<DshSkill, SkillListPage> {
 		SkillListPageSkin(SkillListPage control) {
 			super(control);
 			setPlaceholder(i18n("dsh.skills.empty"));
-			// The selection toolbar acts on the list, which the base skin creates after the toolbars.
 			control.attachList(listView);
 		}
 
@@ -315,7 +301,6 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		}
 	}
 
-	// One row of the skill list.
 	private static final class SkillItemCell extends MDListCell<DshSkill> {
 		private final SkillListPage page;
 		private final JFXCheckBox tick = createSelectionTick();
@@ -362,16 +347,14 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 
 		@Override
 		protected void updateControl(@Nullable DshSkill skill, boolean empty) {
-			if (empty || skill == null) {
-				return;
-			}
+			if (empty || skill == null) return;
 
 			active.setDisableAnimation(true);
 			active.setSelected(skill.enabled());
 			active.setDisableAnimation(!AnimationUtils.isAnimationEnabled());
 			String hint = skill.enabled()
-			               ? i18n("dsh.instance.skills.toggle.off")
-			               : i18n("dsh.instance.skills.toggle.on");
+			              ? i18n("dsh.instance.skills.toggle.off")
+			              : i18n("dsh.instance.skills.toggle.on");
 			FXUtils.installFastTooltip(active, hint);
 			active.setAccessibleText(hint);
 
@@ -382,7 +365,7 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 				content.addTagWarning(i18n("dsh.instance.skills.disabled"));
 			}
 
-			reveal.setOnAction(event -> FXUtils.showFileInExplorer(skill.entry()));
+			reveal.setOnAction(event -> DshFileManager.reveal(skill.entry()));
 			remove.setOnAction(event -> page.removeSelected(List.of(skill)));
 		}
 	}

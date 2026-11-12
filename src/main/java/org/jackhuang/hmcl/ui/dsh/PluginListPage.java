@@ -22,6 +22,7 @@ import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.plugin.*;
@@ -60,7 +61,6 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists the plugins installed into an instance's profile.
 @NotNullByDefault
 public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow> implements Refreshable {
 	private final DshInstance instance;
@@ -74,18 +74,13 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		refresh();
 	}
 
-	/// Reports whether the patch layer can switch the plugin off.
 	private static boolean switchable(DshInstalledPlugins.Installed plugin) {
-		return !plugin.rowIds().isEmpty() &&
-		       (plugin.state() == DshInstalledPlugins.State.ACTIVE ||
-		        plugin.state() == DshInstalledPlugins.State.DISABLED);
+		return !plugin.rowIds().isEmpty() && (plugin.state() == DshInstalledPlugins.State.ACTIVE ||
+		                                      plugin.state() == DshInstalledPlugins.State.DISABLED);
 	}
 
-	/// Reads the picture a package declares for itself.
 	private static @Nullable Image iconOf(@Nullable Path file) {
-		if (file == null) {
-			return null;
-		}
+		if (file == null) return null;
 		try {
 			Image image = FXUtils.loadImage(file, 32, 32, true, true);
 			return image.isError() || image.getWidth() <= 0 ? null : image;
@@ -102,12 +97,10 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
 	@Override
 	public void refresh() {
-		if (busy) {
-			return;
-		}
+		if (busy) return;
+
 		busy = true;
 		setLoading(true);
-
 		CompletableFuture.supplyAsync(() -> {
 			try {
 				return DshInstalledPlugins.of(instance);
@@ -131,19 +124,20 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 				if (!toolbar.accepts(plugin.name()) && !toolbar.accepts(plugin.displayName())) {
 					continue;
 				}
-				rows.add(new PluginRow(plugin.name(), plugin.displayName(), plugin.declared(), plugin.state(),
-				                       switchable(plugin), iconOf(plugin.icon())));
+				rows.add(new PluginRow(plugin.name(),
+				                       plugin.displayName(),
+				                       plugin.declared(),
+				                       plugin.state(),
+				                       switchable(plugin),
+				                       iconOf(plugin.icon())));
 			}
 			getItems().setAll(rows);
 		}));
 	}
 
-	/// Removes the given plugins after confirmation.
 	private void removeSelected(Collection<PluginRow> rows) {
 		List<String> names = rows.stream().map(PluginRow::name).toList();
-		if (names.isEmpty()) {
-			return;
-		}
+		if (names.isEmpty()) return;
 
 		String message = names.size() == 1
 		                 ? i18n("dsh.instance.plugins.remove.confirm", names.get(0))
@@ -158,24 +152,19 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		                    null);
 	}
 
-	/// Switches one plugin on or off in the profile's patch layer.
 	private void toggle(PluginRow row, JFXSwitch box) {
 		box.setDisable(true);
 		apply(List.of(row), row.state() != DshInstalledPlugins.State.ACTIVE);
 	}
 
-	/// Switches the selected plugins on or off.
 	private void setEnabled(Collection<PluginRow> rows, boolean enabled) {
 		DshInstalledPlugins.State wanted = enabled
 		                                   ? DshInstalledPlugins.State.DISABLED
 		                                   : DshInstalledPlugins.State.ACTIVE;
 		List<PluginRow> targets = rows.stream().filter(row -> row.switchable() && row.state() == wanted).toList();
-		if (!targets.isEmpty()) {
-			apply(targets, enabled);
-		}
+		if (!targets.isEmpty()) apply(targets, enabled);
 	}
 
-	/// Writes the switch into the patch layer and reads the profile again.
 	private void apply(List<PluginRow> rows, boolean enabled) {
 		CompletableFuture.runAsync(() -> {
 			try {
@@ -197,23 +186,19 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}));
 	}
 
-	/// Opens the page that lists the community's plugins.
 	private void openMarket() {
 		DownloadPage page = Controllers.getDownloadPage();
 		page.openPluginsFor(instance);
 		Controllers.navigate(page);
 	}
 
-	/// Installs a plugin from a packed file the user chooses.
 	private void installFromFile() {
 		FileChooser chooser = new FileChooser();
 		chooser.setTitle(i18n("dsh.instance.plugins.add"));
 		chooser.getExtensionFilters()
 		       .add(new FileChooser.ExtensionFilter(i18n("dsh.instance.plugins.add.filter"), "*.tgz"));
 		File chosen = chooser.showOpenDialog(Controllers.getStage());
-		if (chosen == null) {
-			return;
-		}
+		if (chosen == null) return;
 
 		Path file = chosen.toPath();
 		PluginInstalls.run(instance,
@@ -221,7 +206,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		                   this::refresh);
 	}
 
-	/// Installs a plugin from the source a person names.
 	private void installFromSource() {
 		Controllers.dialog(new PluginSourceDialog((source, handler) -> {
 			if (source.repository() == null || source.repository().isBlank()) {
@@ -238,7 +222,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}));
 	}
 
-	/// Gives the page the toolbar that acts on the selection in the list.
 	private void attachList(JFXListView<PluginRow> listView) {
 		toolbar.setButtons(ToolbarListPageSkin.createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, this::refresh),
 		                   ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.add"),
@@ -254,12 +237,11 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		                                                            SVG.FOLDER_OPEN,
 		                                                            this::revealProfile));
 
-		JFXButton selectAll = ToolbarListPageSkin.createToolbarButton2(i18n("button.select_all"),
-		                                                               SVG.SELECT_ALL,
-		                                                               () -> listView.getSelectionModel()
-		                                                                             .selectRange(0,
-		                                                                                          listView.getItems()
-		                                                                                                  .size()));
+		JFXButton selectAll = ToolbarListPageSkin.createToolbarButton2(
+				i18n("button.select_all"),
+				SVG.SELECT_ALL,
+				() -> listView.getSelectionModel()
+				              .selectRange(0, listView.getItems().size()));
 		selectingToolbar.getChildren()
 		                .setAll(ToolbarListPageSkin.createToolbarButton2(i18n("dsh.instance.plugins.enable"),
 		                                                                 SVG.CHECK,
@@ -282,7 +264,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		                                                                               .clearSelection()));
 
 		listView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-
 		FXUtils.onChangeAndOperate(listView.getSelectionModel().selectedItemProperty(),
 		                           selected -> showSelectingToolbar(selected != null));
 
@@ -296,7 +277,6 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		listView.getItems().addListener(listener);
 	}
 
-	/// Shows the toolbar that acts on a selection, or the ordinary one.
 	private void showSelectingToolbar(boolean selecting) {
 		selectingToolbar.setVisible(selecting);
 		selectingToolbar.setManaged(selecting);
@@ -304,36 +284,32 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		toolbar.setManaged(!selecting);
 	}
 
-	/// Opens the profile directory.
 	private void revealProfile() {
 		try {
-			FXUtils.showFileInExplorer(instance.homeDirectory().resolve("profiles").resolve(instance.profile()));
+			Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
+			if (!DshFileManager.openDirectory(profileDirectory)) {
+				Controllers.dialog(i18n("dsh.instance.open.unavailable"), i18n("message.error"), MessageType.ERROR);
+			}
 		} catch (DshException e) {
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
 		}
 	}
 
 	/**
-	 * One installed plugin.
+	 * A row to show an installed plugin.
 	 *
-	 * @param name        the package name
-	 * @param displayName the name the plugin goes by in the harness
-	 * @param declared    the declared version range
-	 * @param state       whether the profile loads it, and whether its own rows are switched off
-	 * @param switchable  whether its own loader rows can be switched
-	 * @param icon        the picture the package declares, or {@code null} when it declares none
-	 *                    that can be read
+	 * @param state      whether the profile loads it, and whether its own rows are switched off
+	 * @param switchable whether its own loader rows can be switched
+	 * @param icon       the picture the package declares, or {@code null} when it declares none
+	 *                   that can be read
 	 */
 	public record PluginRow(String name, String displayName, String declared, DshInstalledPlugins.State state,
-	                        boolean switchable, @Nullable Image icon) {
-	}
+	                        boolean switchable, @Nullable Image icon) {}
 
-	/// The page's skin: a toolbar above the plugin list.
 	private static final class PluginListPageSkin extends ToolbarListPageSkin<PluginRow, PluginListPage> {
 		PluginListPageSkin(PluginListPage control) {
 			super(control);
 			setPlaceholder(i18n("dsh.plugins.empty"));
-			// The selection toolbar acts on the list, which the base skin creates after the toolbars.
 			control.attachList(listView);
 		}
 
@@ -350,7 +326,9 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 		}
 	}
 
-	// One row of the plugin list.
+	/**
+	 * A row of the plugin list.
+	 */
 	private static final class PluginItemCell extends MDListCell<PluginRow> {
 		private final PluginListPage page;
 		private final JFXCheckBox tick = createSelectionTick();
