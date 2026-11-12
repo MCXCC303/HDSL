@@ -93,6 +93,22 @@ public final class DshToolchain {
 	}
 
 	/**
+	 * Returns the npm bundled with the selected Node.js runtime.
+	 *
+	 * @return the npm executable from the selected Node.js runtime
+	 * @throws DshException if the selected Node.js runtime has no bundled npm
+	 */
+	public static Path npm() throws DshException {
+		DshNodeRuntime runtime = node();
+		Path npm = runtime.npm();
+		if (npm == null) {
+			throw new DshException("the Node.js at " + runtime.node() + " carries no npm; " +
+				                       "reading the registry and installing a pnpm require one");
+		}
+		return npm;
+	}
+
+	/**
 	 * Resolves the selected pnpm.
 	 *
 	 * @param node the Node.js that runs a managed pnpm; {@code null} lets pnpm resolve Node.js
