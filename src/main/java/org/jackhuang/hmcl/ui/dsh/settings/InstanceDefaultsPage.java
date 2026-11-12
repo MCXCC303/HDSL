@@ -25,9 +25,6 @@ import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
 import com.mcxcc303.hdsl.launch.DshEnvironment;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
-import com.mcxcc303.hdsl.runtime.NodeRuntime;
-import com.mcxcc303.hdsl.runtime.NodeRuntimeManager;
 import javafx.beans.property.StringProperty;
 import javafx.scene.Node;
 import javafx.scene.control.ScrollPane;
@@ -70,7 +67,7 @@ public final class InstanceDefaultsPage extends ScrollPane {
 		root.getStyleClass().add("card-list");
 		setContent(root);
 
-		// Smooth scrolling binds to the content node, so it must run after the content is installed.
+		// Smooth scrolling binds to the content node; run this after installing the content.
 		FXUtils.smoothScrolling(this);
 	}
 
@@ -86,27 +83,6 @@ public final class InstanceDefaultsPage extends ScrollPane {
 
 	private ComponentList buildEnvironmentList() {
 		ComponentList list = new ComponentList();
-
-		LineSelectButton<String> node = new LineSelectButton<>();
-		node.setTitle(i18n("dsh.settings.default_node"));
-
-		List<String> runtimes = new ArrayList<>();
-		runtimes.add(DshNodeRuntime.SYSTEM);
-		for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
-			runtimes.add(runtime.version());
-		}
-		node.setItems(runtimes);
-		node.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
-		                                       ? i18n("dsh.install.node.system")
-		                                       : selection);
-		node.setValue(settings().defaultNodeRuntimeProperty().get());
-		node.valueProperty().addListener((observable, was, value) -> {
-			if (value != null && !value.equals(was)) {
-				settings().defaultNodeRuntimeProperty().set(value);
-				SettingsManager.save();
-			}
-		});
-		list.getContent().add(node);
 
 		LineSelectButton<DshHomeMode> home = new LineSelectButton<>();
 		home.setTitle(i18n("dsh.settings.default_home"));
