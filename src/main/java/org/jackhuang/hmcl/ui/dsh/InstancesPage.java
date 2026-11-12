@@ -21,6 +21,7 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXPopup;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
@@ -419,12 +420,14 @@ public final class InstancesPage extends DecoratorAnimatedPage implements Decora
 		           0);
 	}
 
-	/// Shows an instance's own directory in the file manager.
+	/// Opens an instance's own directory in the file manager.
 	///
 	/// @param instance the instance
 	private void showInstanceDirectory(DshInstance instance) {
 		try {
-			FXUtils.showFileInExplorer(instance.instanceDirectory());
+			if (!DshFileManager.openDirectory(instance.instanceDirectory())) {
+				Controllers.dialog(i18n("dsh.instance.open.unavailable"), i18n("message.error"), MessageType.ERROR);
+			}
 		} catch (DshException e) {
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
 		}

@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh.settings;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
@@ -43,6 +44,7 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -141,6 +143,18 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManagem
 	/// Reads the packs and redraws.
 	void reload() {
 		refresh();
+	}
+
+	/// Opens the folder the packs are installed in.
+	void openThemePackDirectory() {
+		try {
+			Files.createDirectories(ThemePackManager.THEME_PACKS_DIRECTORY);
+		} catch (IOException e) {
+			LOG.warning("Failed to create the theme pack folder", e);
+			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
+			return;
+		}
+		DshFileManager.openDirectory(ThemePackManager.THEME_PACKS_DIRECTORY);
 	}
 
 	/// Asks for a theme-pack file and installs it.
@@ -277,7 +291,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManagem
 			                                                                 page::importThemePack),
 			                        ToolbarListPageSkin.createToolbarButton2(i18n("theme_pack.directory"),
 			                                                                 SVG.FOLDER_OPEN,
-			                                                                 () -> FXUtils.openFolder(ThemePackManager.THEME_PACKS_DIRECTORY)));
+			                                                                 page::openThemePackDirectory));
 			return List.of(page.toolbar);
 		}
 

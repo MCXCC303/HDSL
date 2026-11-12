@@ -21,6 +21,7 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXPopup;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcons;
 import com.mcxcc303.hdsl.instance.DshWorkspace;
@@ -263,8 +264,8 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 	/// Opens a session's directory.
 	///
 	/// @param session the session
-	private void reveal(DshSession session) {
-		FXUtils.showFileInExplorer(session.directory());
+	private void openSessionDirectory(DshSession session) {
+		DshFileManager.openDirectory(session.directory());
 	}
 
 	/// Shows the instances a session can move to.
@@ -474,7 +475,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 			                               popup),
 			            new IconedMenuItem(SVG.FOLDER_OPEN,
 			                               i18n("dsh.session.reveal"),
-			                               () -> page.reveal(session),
+			                               () -> page.openSessionDirectory(session),
 			                               popup),
 			            // What is gone cannot be got back, so it is fenced off from what can.
 			            new MenuSeparator(),

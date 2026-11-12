@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.ui.dsh.settings;
 
+import com.mcxcc303.hdsl.core.DshFileManager;
 import javafx.geometry.Insets;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.image.Image;
@@ -101,7 +102,7 @@ public final class AboutPage extends ScrollPane {
 		userHome.setLeading(SVG.FOLDER_OPEN, 24);
 		userHome.setTitle(i18n("dsh.settings.home"));
 		userHome.setSubtitle(Metadata.HDSL_USER_HOME.toString());
-		userHome.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HDSL_USER_HOME));
+		userHome.setOnAction(event -> DshFileManager.openDirectory(Metadata.HDSL_USER_HOME));
 
 		ComponentList list = new ComponentList();
 		list.getContent().add(userHome);

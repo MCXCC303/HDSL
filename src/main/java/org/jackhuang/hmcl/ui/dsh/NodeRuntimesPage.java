@@ -20,6 +20,7 @@ package org.jackhuang.hmcl.ui.dsh;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import com.mcxcc303.hdsl.runtime.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.NodeRuntimeManager;
@@ -173,10 +174,10 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	/// @param subtitle  the secondary line
 	/// @param badge     the number shown in the version chip
 	/// @param tags      the chips shown after the title
-	/// @param directory the runtime directory, or `null` when there is none
+	/// @param node      the `node` executable, or `null` when there is none
 	/// @param removable the version to remove, or `null` when it cannot be
 	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
-	               @Nullable Path directory, @Nullable String removable) {
+	               @Nullable Path node, @Nullable String removable) {
 
 		/// Builds the row for an installed runtime.
 		///
@@ -188,7 +189,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			                   runtime.node().toString(),
 			                   major,
 			                   List.of(i18n("dsh.node.tag.managed")),
-			                   runtime.directory(),
+			                   runtime.node(),
 			                   runtime.version());
 		}
 
@@ -205,7 +206,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			                           runtime.isNodeSupported()
 			                           ? i18n("dsh.node.tag.supported")
 			                           : i18n("dsh.node.tag.unsupported")),
-			                   runtime.binDirectory(),
+			                   runtime.node(),
 			                   null);
 		}
 
@@ -301,8 +302,8 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			FXUtils.installFastTooltip(reveal, i18n("reveal.in_file_manager"));
 			reveal.setOnAction(event -> {
 				NodeRow row = getItem();
-				if (row != null && row.directory() != null) {
-					FXUtils.showFileInExplorer(row.directory());
+				if (row != null && row.node() != null) {
+					DshFileManager.reveal(row.node());
 				}
 			});
 			right.getChildren().setAll(reveal, action);
@@ -331,9 +332,9 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 			boolean removable = row.removable() != null;
 
-			reveal.setDisable(row.directory() == null);
-			reveal.setVisible(row.directory() != null);
-			reveal.setManaged(row.directory() != null);
+			reveal.setDisable(row.node() == null);
+			reveal.setVisible(row.node() != null);
+			reveal.setManaged(row.node() != null);
 
 			action.setVisible(removable);
 			action.setManaged(removable);

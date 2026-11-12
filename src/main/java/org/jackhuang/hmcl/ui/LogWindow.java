@@ -35,6 +35,7 @@ import javafx.scene.control.*;
 import javafx.scene.input.KeyCode;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshLogs;
 import org.jackhuang.hmcl.setting.StyleSheets;
 import org.jackhuang.hmcl.task.Schedulers;
@@ -260,7 +261,7 @@ public final class LogWindow extends Stage {
                     DialogUtils.show(stackPane, dialog);
                 });
 
-                FXUtils.showFileInExplorer(logFile);
+                DshFileManager.reveal(logFile);
             });
         }
 

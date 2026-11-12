@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.ui.dsh.settings;
 
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.VBox;
@@ -131,7 +132,7 @@ public final class GeneralSettingsPage extends ScrollPane {
 		LineButton home = new LineButton();
 		home.setTitle(i18n("dsh.settings.home"));
 		home.setSubtitle(Metadata.HDSL_USER_HOME.toString());
-		home.setOnAction(event -> FXUtils.showFileInExplorer(Metadata.HDSL_USER_HOME));
+		home.setOnAction(event -> DshFileManager.openDirectory(Metadata.HDSL_USER_HOME));
 		return home;
 	}
 }

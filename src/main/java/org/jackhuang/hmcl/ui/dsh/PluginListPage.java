@@ -22,6 +22,7 @@ import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.plugin.*;
@@ -307,7 +308,10 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 	/// Opens the profile directory.
 	private void revealProfile() {
 		try {
-			FXUtils.showFileInExplorer(instance.homeDirectory().resolve("profiles").resolve(instance.profile()));
+			Path profileDirectory = instance.homeDirectory().resolve("profiles").resolve(instance.profile());
+			if (!DshFileManager.openDirectory(profileDirectory)) {
+				Controllers.dialog(i18n("dsh.instance.open.unavailable"), i18n("message.error"), MessageType.ERROR);
+			}
 		} catch (DshException e) {
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
 		}

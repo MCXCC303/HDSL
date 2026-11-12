@@ -22,6 +22,7 @@ import com.jfoenix.controls.JFXCheckBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXSwitch;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.skill.DshSkill;
@@ -232,7 +233,7 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 		try {
 			Path directory = DshSkillManager.directory(instance.homeDirectory());
 			Files.createDirectories(directory);
-			FXUtils.showFileInExplorer(directory);
+			DshFileManager.openDirectory(directory);
 		} catch (Exception e) {
 			LOG.warning("Failed to open the skills directory", e);
 			Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
@@ -382,7 +383,7 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 				content.addTagWarning(i18n("dsh.instance.skills.disabled"));
 			}
 
-			reveal.setOnAction(event -> FXUtils.showFileInExplorer(skill.entry()));
+			reveal.setOnAction(event -> DshFileManager.reveal(skill.entry()));
 			remove.setOnAction(event -> page.removeSelected(List.of(skill)));
 		}
 	}

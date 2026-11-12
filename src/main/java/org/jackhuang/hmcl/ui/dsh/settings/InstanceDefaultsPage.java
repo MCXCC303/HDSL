@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh.settings;
 
 import com.jfoenix.controls.JFXTextField;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
@@ -301,10 +302,9 @@ public final class InstanceDefaultsPage extends ScrollPane {
 		folder.setTitle(i18n("settings.launcher.launcher_log.reveal"));
 		folder.setSubtitle(DshPaths.LOGS.toString());
 		folder.setLeading(SVG.FOLDER_OPEN, 16);
-		// Revealed rather than opened: the file explorer selects the folder this way, and the
-		// folder is made first so that the first run — which has not written one yet — gives a
+		// The folder is made first so that the first run — which has not written one yet — gives a
 		// window with the place in it rather than an error about a path that is not there.
-		folder.setOnAction(event -> FXUtils.showFileInExplorer(logFolder()));
+		folder.setOnAction(event -> DshFileManager.openDirectory(logFolder()));
 
 		ComponentList list = new ComponentList();
 		list.getContent().add(debug);

@@ -21,6 +21,7 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXPopup;
 import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.instance.DshPorts;
@@ -255,27 +256,27 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		List<Node> entries = new ArrayList<>();
 		entries.add(new IconedMenuItem(SVG.STADIA_CONTROLLER,
 		                               i18n("dsh.instance.open_home"),
-		                               () -> revealQuietly(instanceDirectoryOrNull()),
+		                               () -> openDirectoryQuietly(instanceDirectoryOrNull()),
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.FOLDER,
 		                               i18n("dsh.instance.open_home.dsh"),
-		                               () -> revealQuietly(homeChild("")),
+		                               () -> openDirectoryQuietly(homeChild("")),
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.FOLDER_OPEN,
 		                               i18n("dsh.instance.open_workspace"),
-		                               () -> revealQuietly(instance.workspacePath()),
+		                               () -> openDirectoryQuietly(instance.workspacePath()),
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.FOLDER_COPY,
 		                               i18n("dsh.instance.open.sessions"),
-		                               () -> revealQuietly(homeChild("sessions")),
+		                               () -> openDirectoryQuietly(homeChild("sessions")),
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.EXTENSION,
 		                               i18n("dsh.instance.open.profiles"),
-		                               () -> revealQuietly(homeChild("profiles")),
+		                               () -> openDirectoryQuietly(homeChild("profiles")),
 		                               popup));
 		entries.add(new IconedMenuItem(SVG.ARCHIVE,
 		                               i18n("dsh.instance.open.storages"),
-		                               () -> revealQuietly(homeChild("storages")),
+		                               () -> openDirectoryQuietly(homeChild("storages")),
 		                               popup));
 		menu.getContent().setAll(entries);
 
@@ -354,15 +355,15 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}
 	}
 
-	/// Reveals a directory, reporting rather than throwing when it is missing.
+	/// Opens a directory, reporting rather than throwing when it is missing.
 	///
-	/// @param directory the directory to reveal, or `null`
-	private void revealQuietly(@Nullable Path directory) {
+	/// @param directory the directory to open, or `null`
+	private void openDirectoryQuietly(@Nullable Path directory) {
 		if (directory == null || !Files.isDirectory(directory)) {
 			Controllers.dialog(i18n("dsh.instance.open.unavailable"), i18n("message.error"), MessageType.ERROR);
 			return;
 		}
-		FXUtils.showFileInExplorer(directory);
+		DshFileManager.openDirectory(directory);
 	}
 
 	/// Opens the running instance's live output, or its diagnostics folder when it is stopped.
@@ -382,7 +383,7 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 			Controllers.dialog(i18n("dsh.instance.logs.none"), i18n("dsh.instance.open_logs"), MessageType.WARNING);
 			return;
 		}
-		FXUtils.showFileInExplorer(logs);
+		DshFileManager.openDirectory(logs);
 	}
 
 	/// Renames this instance.

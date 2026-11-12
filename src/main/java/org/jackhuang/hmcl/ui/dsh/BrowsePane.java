@@ -18,6 +18,7 @@
 package org.jackhuang.hmcl.ui.dsh;
 
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import javafx.geometry.Insets;
 import javafx.scene.control.ScrollPane;
@@ -112,7 +113,7 @@ public final class BrowsePane extends ScrollPane {
 
 		row.setSubtitle(directory.path().toString());
 		row.setDisable(!Files.isDirectory(directory.path()));
-		row.setOnAction(event -> FXUtils.showFileInExplorer(directory.path()));
+		row.setOnAction(event -> DshFileManager.openDirectory(directory.path()));
 		return row;
 	}
 
