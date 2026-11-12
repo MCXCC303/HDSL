@@ -82,22 +82,22 @@ public final class DshToolchain {
 	 */
 	public static DshNodeRuntime resolve(String selection) throws DshException {
 		if (SYSTEM.equalsIgnoreCase(selection)) {
-			DshNodeRuntime runtime = DshNodeRuntime.detect()
-			                                       .orElseThrow(() -> new DshException(
-					                                       "Node.js was not found on PATH; " +
-					                                       DshNodeRuntime.requirement()));
+			DshNodeRuntime runtime = DshNodeRuntime.detect().orElseThrow(() -> new DshMissingToolException(
+					DshMissingToolException.Tool.NODE,
+					"Node.js was not found on PATH; " + DshNodeRuntime.requirement()));
 			if (!runtime.isNodeSupported()) {
-				throw new DshException(
-						"The system Node.js " + runtime.nodeVersion() + " is outside the supported range (" +
-						DshNodeRuntime.requirement() +
-						"). Install a suitable runtime on the Node page, or pick one for this instance.");
+				throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
+				                                  "The system Node.js " + runtime.nodeVersion() +
+				                                  " is outside the supported range (" + DshNodeRuntime.requirement() +
+				                                  "). Install a suitable runtime on the Node page, or pick one for this instance.");
 			}
 			return runtime;
 		}
 		NodeRuntime managed = NodeRuntimeManager.findInstalled(selection);
 		if (managed == null) {
-			throw new DshException(
-					"Node.js " + selection + " is not installed; install it on the Node page or pick the system one");
+			throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
+			                                  "Node.js " + selection +
+			                                  " is not installed; install it on the Node page or pick the system one");
 		}
 		return DshNodeRuntime.fromManaged(managed);
 	}
@@ -124,8 +124,9 @@ public final class DshToolchain {
 		DshNodeRuntime runtime = node();
 		Path npm = runtime.npm();
 		if (npm == null) {
-			throw new DshException("the Node.js at " + runtime.node() + " carries no npm; " +
-			                       "reading the registry and installing a pnpm require one");
+			throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
+			                                  "the Node.js at " + runtime.node() + " carries no npm; " +
+			                                  "reading the registry and installing a pnpm require one");
 		}
 		return npm;
 	}
@@ -141,8 +142,9 @@ public final class DshToolchain {
 	public static DshPnpm pnpm(@Nullable Path node) throws DshException {
 		DshPnpm pnpm = findPnpm(node);
 		if (pnpm == null) {
-			throw new DshException("pnpm " + pnpmSelection() +
-			                       " is not installed; install one on the pnpm page or pick the system one");
+			throw new DshMissingToolException(DshMissingToolException.Tool.PNPM,
+			                                  "pnpm " + pnpmSelection() +
+			                                  " is not installed; install one on the pnpm page or pick the system one");
 		}
 		return pnpm;
 	}

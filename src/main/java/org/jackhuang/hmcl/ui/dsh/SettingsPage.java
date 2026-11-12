@@ -98,6 +98,7 @@ public final class SettingsPage extends DecoratorAnimatedPage implements Decorat
 			case "defaults" -> tab.select(defaultsTab, false);
 			case "general" -> tab.select(generalTab, false);
 			case "node" -> tab.select(nodeTab, false);
+			case "pnpm" -> tab.select(pnpmTab, false);
 			case "appearance" -> tab.select(appearanceTab, false);
 			case "download" -> tab.select(downloadTab, false);
 			case "about" -> tab.select(aboutTab, false);

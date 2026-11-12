@@ -36,6 +36,9 @@ import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.dsh.DshInstallProgress;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardProvider;
+import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
+import org.jackhuang.hmcl.ui.dsh.DshToolchainPrompt;
+import org.jackhuang.hmcl.ui.wizard.WizardProvider;
 import org.jackhuang.hmcl.util.SettingsMap;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -50,23 +53,14 @@ import java.util.function.Consumer;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Drives the create-an-instance wizard.
-///
-/// Two steps, matching HMCL's install flow: pick the DeepSeek Harness version,
-/// then fill in the quick-install page. Finishing returns a [Task] that the
-/// wizard displayer runs with a progress dialog — creating the instance first
-/// and then installing the selected plugins, so a partly-installed instance is
-/// still visible and usable rather than silently lost.
 @NotNullByDefault
 public final class DshInstallWizardProvider implements WizardProvider {
-	/// The settings key holding the chosen DeepSeek Harness version.
 	/// The chosen application boot library version.
 	///
-	/// Absent means the launcher's own version, which is the pairing that is
-	/// known to work; the two are published together and a mismatch is found at
-	/// start-up rather than degraded around.
+	/// Absent means the launcher's own version.
 	public static final SettingsMap.Key<String> APP_BOOT = new SettingsMap.Key<>("dsh.appBoot");
 
+	/// The chosen DeepSeek Harness version.
 	public static final SettingsMap.Key<String> VERSION = new SettingsMap.Key<>("dsh.version");
 
 	/// The settings key holding the instance name.
@@ -130,6 +124,16 @@ public final class DshInstallWizardProvider implements WizardProvider {
 			settings.put(VERSION, preselectedVersion);
 		}
 		settings.put(PRESET_CHOICES, new LinkedHashMap<String, String>());
+		// A machine with no Node.js and no pnpm can still use the launcher; it is
+		// only when something is installed that their absence matters, and then
+		// the page that lists what can be installed is where the answer is.
+		settings.put(WizardProvider.FailureCallback.KEY, (map, exception, next) -> {
+			if (!DshToolchainPrompt.offer(exception)) {
+				Controllers.dialog(exception.getMessage(), i18n("wizard.failed"), MessageType.ERROR, next);
+				return;
+			}
+			next.run();
+		});
 	}
 
 	@Override

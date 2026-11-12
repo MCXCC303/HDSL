@@ -109,6 +109,9 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 				                  : throwable;
 				LOG.warning("Failed to fetch the pnpm versions", cause);
 				spinner.setFailedReason(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
+				if (cause instanceof Exception exception) {
+					DshToolchainPrompt.offer(exception);
+				}
 				return;
 			}
 			spinner.setFailedReason(null);

@@ -32,22 +32,6 @@ import java.util.function.Supplier;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Installs plugins, asking about install scripts when the setting says to ask.
-///
-/// A package manager will not run a package's install script until it is told to, and it
-/// only says which packages it is waiting for *after* it has refused to install them. So
-/// the question cannot be asked before the installation starts; it is asked when the
-/// package manager raises it, and the installation carries on from there — with the
-/// answer written into the profile, which is where the package manager looks for it.
-///
-/// Every path that installs plugins goes through here rather than through the progress
-/// dialog directly, because the asking is the same whatever is being installed.
-///
-/// This is also where "once per installation" is kept true. A package the profile refused
-/// before is asked about again when it is installed again, and an answer of *no* leaves the
-/// profile in the state that asks — refused, and being installed — so the asking has to be
-/// bounded by the installation rather than by the run of the command: a new installation
-/// starts the asking afresh, and everything this one has been told stays told.
 @NotNullByDefault
 public final class PluginInstalls {
 	private PluginInstalls() {
@@ -112,6 +96,9 @@ public final class PluginInstalls {
 			}
 		}, failure -> {
 			failed.set(true);
+			if (DshToolchainPrompt.offer(failure)) {
+				return true;
+			}
 			if (!(failure instanceof DshPluginInstaller.DshBuildScriptApprovalRequired required)) {
 				return false;
 			}
