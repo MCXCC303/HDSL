@@ -32,27 +32,23 @@ import java.util.*;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Describes the JavaScript toolchain the launcher found on this machine.
+ * A Node.js installation together with its npm.
  * <p>
- * DeepSeek Harness needs Node {@code ^22.19.0 || >=24.0.0} and pnpm {@value #MINIMUM_PNPM} or newer
- * to install it. pnpm is also needed for {@code dsh plugin}; without it, plugin management is unavailable.
+ * DeepSeek Harness needs Node {@code ^22.19.0 || >=24.0.0}.
  *
- * @param node        the resolved node executable
- * @param nodeVersion the node version string, without a leading v
- * @param npm         the resolved npm executable, or null when absent
- * @param npmVersion  the npm version string, or null when absent
- * @param pnpm        the resolved pnpm executable, or null when absent
- * @param pnpmVersion the pnpm version string, or null when absent
+ * @param node        the node executable
+ * @param nodeVersion the node version, without a leading {@code v}
+ * @param npm         the npm executable, or {@code null} when absent
+ * @param npmVersion  the npm version, or {@code null} when absent
  */
 @NotNullByDefault
-public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, @Nullable String npmVersion,
-                             @Nullable Path pnpm, @Nullable String pnpmVersion) {
+public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, @Nullable String npmVersion) {
 
 	/// The selection value meaning "use whatever is on `PATH`".
 	public static final String SYSTEM = "system";
 	/// The selection meaning "whatever the launcher is set to".
 	public static final String GLOBAL = "global";
-	/** The oldest pnpm that can install DeepSeek Harness */
+	/** The oldest pnpm that can install DeepSeek Harness. */
 	public static final String MINIMUM_PNPM = "10.9";
 	private static final int NODE_22_MAJOR = 22;
 	private static final int MINIMUM_NODE_22_MINOR = 19;
@@ -61,24 +57,13 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 
 	/// Describes a launcher-managed runtime in the same shape as a probed one.
 	///
-	/// `pnpm` is deliberately left unset when the runtime has none: a runtime
-	/// without pnpm is still a runtime, so plugin management falls back to
-	/// whatever the system provides.
-	///
 	/// @param runtime the installed runtime
 	/// @return the descriptor
 	public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
-		// pnpm lives beside node, not in the distribution metadata, so it is
-		// probed directly. Leaving it unresolved made every managed runtime look
-		// incapable of plugin management even after pnpm was installed into it.
-		Path pnpm = NodeRuntime.pnpmIn(runtime.directory());
-
 		return new DshNodeRuntime(runtime.node(),
 		                          runtime.version(),
 		                          runtime.npm(),
-		                          runtime.npm() == null ? null : versionOf(runtime.npm()),
-		                          pnpm,
-		                          pnpm == null ? null : versionOf(pnpm));
+		                          runtime.npm() == null ? null : versionOf(runtime.npm()));
 	}
 
 	/// Probes the toolchain on the current `PATH`.
@@ -96,14 +81,11 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		}
 
 		Path npm = which("npm").orElse(null);
-		Path pnpm = which("pnpm").orElse(null);
 
 		return Optional.of(new DshNodeRuntime(node,
 		                                      nodeVersion,
 		                                      npm,
-		                                      npm == null ? null : versionOf(npm),
-		                                      pnpm,
-		                                      pnpm == null ? null : versionOf(pnpm)));
+		                                      npm == null ? null : versionOf(npm)));
 	}
 
 	/// Tests a version string against DeepSeek Harness's Node range.
@@ -129,21 +111,13 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		       " or newer for installing DeepSeek Harness; pnpm is also needed for plugin management";
 	}
 
-	/// Asks an executable for its version.
+	/// Probes a program for its version.
 	///
-	/// Asked twice before giving up, because a probe that fails once is not a runtime that is
-	/// missing: each probe starts a fresh process, and a machine under load fails to start one now
-	/// and then. Measured on a CI runner: one `node --version` of the five in one second failed
-	/// while the four around it answered, and what the launcher said about it was "Node.js was not
-	/// found on PATH" — in a test that had read that same version a hundred milliseconds earlier.
-	/// One failed probe deciding that a machine has no Node.js is the wrong conclusion to draw from
-	/// it, and it is drawn every time a person launches an instance.
-	///
-	/// The reason the last probe failed is logged rather than kept: it is the only thing that says
-	/// whether this was a load problem or a `node` that is genuinely broken.
+	/// Probes twice: one failed probe does not mean the program is missing. The last failure is
+	/// logged.
 	///
 	/// @param executable the program to run with `--version`
-	/// @return the trimmed first output line, or `null` when no probe answered
+	/// @return the first output line, trimmed, or `null` when no probe answered
 	static @Nullable String versionOf(Path executable) {
 		String failure = null;
 		for (int attempt = 0; attempt < 2; attempt++) {
@@ -169,12 +143,8 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 
 	/// Resolves an executable on `PATH`.
 	///
-	/// On Windows a program is not one file name but a family of them: `node`
-	/// is `node.exe`, and `npm` and `pnpm` are `.cmd` shims. Every extension
-	/// `PATHEXT` names is tried, and `.exe`/`.cmd`/`.bat` with it, because a
-	/// `PATHEXT` that has been edited is not a `PATHEXT` that can be trusted to
-	/// still name the common three. The file's existence is the test there —
-	/// Windows has no execute bit for `Files#isExecutable` to read.
+	/// On Windows a program is a name plus the extensions `PATHEXT` names, and the file's
+	/// existence is the test, because Windows has no execute bit.
 	///
 	/// @param name the executable name
 	/// @return the resolved path, or empty when it is not on `PATH`
@@ -252,19 +222,10 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		return npm != null && npmVersion != null;
 	}
 
-	/// Reports whether plugin management through `dsh plugin` is possible.
-	///
-	/// @return whether `pnpm` is available
-	public boolean canManagePlugins() {
-		return pnpm != null;
-	}
-
 	/// Returns the environment entries that put this runtime's tools first.
 	///
-	/// DeepSeek Harness resolves `pnpm` by name through PATH, so any child the
-	/// launcher starts for an instance must be given the instance's runtime
-	/// ahead of the system's. Otherwise a managed runtime silently borrows the
-	/// system tooling, or finds none.
+	/// The runtime's directory comes first, so a child process finds these tools before the
+	/// system's.
 	///
 	/// @return the environment additions
 	public Map<String, String> pathEnvironment() {
@@ -275,10 +236,8 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 
 	/// Returns the directory holding this runtime's executables.
 	///
-	/// Used to put the runtime ahead of the system's tooling on the child's
-	/// PATH, which is what makes a managed runtime self-contained. That
-	/// directory is `bin` on Linux and the distribution root on Windows, which
-	/// is where the platform's own node executable already sits.
+	/// `bin` on Linux, and the distribution root on Windows, where the node executable already
+	/// sits.
 	///
 	/// @return the directory of the `node` executable
 	public Path binDirectory() {

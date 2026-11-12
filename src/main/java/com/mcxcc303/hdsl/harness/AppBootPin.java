@@ -24,6 +24,8 @@ import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -38,28 +40,23 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The `appBoot` pin: which version of the boot library an instance starts with, and the
-/// override that says so in the instance's own profile.
-///
-/// A value read back out of a profile is checked against what the manifest declares, because a
-/// profile somebody edited by hand is a profile the launcher has to be able to refuse.
+/**
+ * The {@code appBoot} pin: which boot library version an instance starts with, and the override
+ * that records the choice in the instance profile.
+ * <p>
+ * A value read back from a profile is checked against the manifest.
+ */
 @NotNullByDefault
 public final class AppBootPin {
 	/// The npm package that provides the application boot library.
 	///
-	/// Held to the same version as DeepSeek Harness itself: the two are
-	/// published together, and a mismatch between them is a failure at import
-	/// rather than a degradation.
+	/// Published together with DeepSeek Harness. A mismatch fails at import.
 	public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
 
 	/// The line that pins the boot library, as the file writes it.
 	///
-	/// Anchored on the key rather than looked for anywhere in a line, and that is the whole point:
-	/// the workspace file also *lists* packages, in entries spelled "- '@scope/name@1.2.3'", and a
-	/// scan for the name alone reads the boot library out of one of those. What it answers with then
-	/// still carries the "@" that separated the two halves of that list entry — and that value
-	/// travels: an exported pack records it, and installing it writes a workspace file whose pin is
-	/// not a version at all, which pnpm then refuses.
+	/// Anchored on the key, not the name. The workspace file also lists packages as
+	/// {@code - '@scope/name@1.2.3'}, and a scan for the name returns that whole entry.
 	private static final Pattern APP_BOOT_PIN = Pattern.compile(
 			"^[ \\t]*['\"]?" + Pattern.quote(APP_BOOT_PACKAGE) + "['\"]?[ \\t]*:[ \\t]*(\\S+)[ \\t]*$",
 			Pattern.MULTILINE);
@@ -79,11 +76,11 @@ public final class AppBootPin {
 	}
 
 	/**
-	 * Holds an instance's copy to a boot library version, reporting the HarnessInstaller.install.
+	 * Holds an instance's copy to a boot library version, reporting the package manager's output.
 	 *
 	 * @param instance the instance to change
 	 * @param appBoot  the boot library version to hold it to
-	 * @param onLine   receives the package manager's output, or `null`
+	 * @param onLine   receives the package manager's output, or {@code null}
 	 * @throws DshException when the manifest cannot be written or pnpm fails
 	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot, @Nullable Consumer<String> onLine)
@@ -94,9 +91,7 @@ public final class AppBootPin {
 		}
 
 		DshNodeRuntime runtime = HarnessInstaller.requireRuntime();
-		if (!runtime.canManagePlugins()) {
-			throw new DshException("pnpm was not found on PATH; changing the boot library requires it");
-		}
+		DshPnpm pnpm = DshToolchain.pnpm(runtime.node());
 
 		HarnessInstaller.writeManifest(target,
 		                               instance.version(),
@@ -104,7 +99,7 @@ public final class AppBootPin {
 		                               runtime,
 		                               SettingsManager.settings().dependencyPolicy());
 
-		List<String> command = HarnessInstaller.buildInstallCommand(runtime, target);
+		List<String> command = HarnessInstaller.buildInstallCommand(pnpm, target);
 
 		LOG.info("Holding " + instance.id() + " to boot library " + appBoot);
 		int exitCode;

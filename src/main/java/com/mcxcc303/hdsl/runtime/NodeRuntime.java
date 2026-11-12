@@ -77,31 +77,6 @@ public record NodeRuntime(String version, Path directory) {
 		       : directory.resolve("bin").resolve("npx");
 	}
 
-	/// Returns the `pnpm` entry point of a distribution directory, if it has one.
-	///
-	/// pnpm is never part of a Node distribution: it is installed into one by
-	/// npm, which writes a `pnpm` shim on Linux and a `pnpm.cmd` on Windows.
-	/// Every spelling that can be there is accepted, and the first one that
-	/// exists is the answer.
-	///
-	/// @param directory the unpacked distribution
-	/// @return the pnpm entry point, or `null` when the distribution has none
-	public static Path pnpmIn(Path directory) {
-		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-			// npm writes `pnpm.cmd`; corepack and a standalone installer have
-			// also been seen to leave `pnpm.exe`. Both run the same package.
-			for (String name : new String[]{"pnpm.cmd", "pnpm.exe", "pnpm"}) {
-				Path candidate = directory.resolve(name);
-				if (Files.isRegularFile(candidate)) {
-					return candidate;
-				}
-			}
-			return null;
-		}
-		Path pnpm = directory.resolve("bin").resolve("pnpm");
-		return Files.isRegularFile(pnpm) || Files.isSymbolicLink(pnpm) ? pnpm : null;
-	}
-
 	/// Returns the `node` executable.
 	///
 	/// @return the path of the distribution's node executable
@@ -125,14 +100,6 @@ public record NodeRuntime(String version, Path directory) {
 	/// @return the path of the distribution's npx entry point
 	public Path npx() {
 		return npxIn(directory);
-	}
-
-	/// Returns the `pnpm` entry point, if this runtime has one.
-	///
-	/// @return the path of the pnpm entry point, or `null` when pnpm was never
-	///         installed into this runtime
-	public Path pnpm() {
-		return pnpmIn(directory);
 	}
 
 	/// Reports whether the archive was unpacked completely.

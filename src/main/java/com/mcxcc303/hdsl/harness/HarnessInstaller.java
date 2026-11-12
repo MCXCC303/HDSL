@@ -28,6 +28,8 @@ import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -409,12 +411,12 @@ public final class HarnessInstaller {
 	/**
 	 * Refuses a pnpm older than {@link DshNodeRuntime#MINIMUM_PNPM}
 	 *
-	 * @param runtime the runtime to install with
+	 * @param pnpm the pnpm to install with
 	 * @throws DshException when its pnpm is too old
 	 */
-	static void requireSupportedPnpm(DshNodeRuntime runtime) throws DshException {
-		if (isPnpmTooOld(runtime.pnpmVersion())) {
-			throw new DshException("pnpm " + runtime.pnpmVersion() +
+	static void requireSupportedPnpm(DshPnpm pnpm) throws DshException {
+		if (isPnpmTooOld(pnpm.version())) {
+			throw new DshException("pnpm " + pnpm.version() +
 			                       " is too old; installing DeepSeek Harness requires pnpm " +
 			                       DshNodeRuntime.MINIMUM_PNPM + " or newer");
 		}
@@ -423,27 +425,26 @@ public final class HarnessInstaller {
 	/**
 	 * The pnpm install command for a project
 	 *
-	 * @param runtime the runtime whose pnpm runs the install; its pnpm must not be null
+	 * @param pnpm    the pnpm that runs the install
 	 * @param project the project directory, whose manifest must already be written
 	 * @return the command
 	 */
-	static List<String> buildInstallCommand(DshNodeRuntime runtime, Path project) {
+	static List<String> buildInstallCommand(DshPnpm pnpm, Path project) {
 		// pnpm rather than npm: its store shares package contents between projects.
 		// append-only: the launcher's progress parser reads the "Progress: resolved ..." tally line.
 		// Dependency build scripts: npm runs them by default and pnpm 10 does not; a package that
 		// needs one can fail on first use.
-		List<String> command = new ArrayList<>(List.of(runtime.pnpm().toString(),
-		                                               "install",
-		                                               "--dir",
-		                                               project.toString(),
-		                                               "--reporter=append-only",
-		                                               "--config.dangerously-allow-all-builds=true"));
+		List<String> arguments = new ArrayList<>(List.of("install",
+		                                                "--dir",
+		                                                project.toString(),
+		                                                "--reporter=append-only",
+		                                                "--config.dangerously-allow-all-builds=true"));
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
 			// Windows falls back to junctions, which name absolute paths and break when the tree
 			// is moved; the hoisted linker lays the packages out directly instead.
-			command.add("--config.node-linker=hoisted");
+			arguments.add("--config.node-linker=hoisted");
 		}
-		return List.copyOf(command);
+		return pnpm.commandFor(arguments);
 	}
 
 	/**
@@ -495,7 +496,7 @@ public final class HarnessInstaller {
 	 */
 	public static void install(DshInstance instance, String version, @Nullable Consumer<String> onLine)
 	throws DshException {
-		install(instance, version, onLine, null);
+		install(instance, version, onLine, null, null);
 	}
 
 	/**
@@ -512,7 +513,8 @@ public final class HarnessInstaller {
 	 *                      resolved, another operation holds the instance, or the install fails
 	 */
 	static void install(DshInstance instance, String version, @Nullable Consumer<String> onLine,
-	                    @Nullable DshNodeRuntime detected) throws DshException {
+	                    @Nullable DshNodeRuntime detected,
+	                    @Nullable DshPnpm detectedPnpm) throws DshException {
 		Path target = instance.dshDirectory();
 		// Take the lock before the runtime is looked at: a caller turned away should hear that the
 		// instance is busy, not that its own runtime is missing a tool.
@@ -520,19 +522,21 @@ public final class HarnessInstaller {
 			if (!Files.isDirectory(instance.instanceDirectory(), LinkOption.NOFOLLOW_LINKS)) {
 				throw new DshException("Instance " + instance.id() + " no longer exists");
 			}
-			DshNodeRuntime runtime = detected != null ? detected : requireRuntime();
-			if (!runtime.canManagePlugins()) {
-				throw new DshException("pnpm was not found on PATH; installing DeepSeek Harness requires it");
-			}
-			requireSupportedPnpm(runtime);
+			// The runtime of the instance is the one the tree is built for, and the pnpm runs on
+			// it: the version that builds a tree is the version that runs it.
+			DshNodeRuntime runtime = detected != null
+			                        ? detected
+			                        : DshToolchain.resolve(instance.nodeRuntimeOrDefault());
+			DshPnpm pnpm = detectedPnpm != null ? detectedPnpm : DshToolchain.pnpm(runtime.node());
+			requireSupportedPnpm(pnpm);
 
 			if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
 				// Windows falls back to absolute junctions when it refuses symlinks; installing
 				// where the tree ends up removes the rename that would break them.
-				installInPlace(instance, version, runtime, target, onLine);
+				installInPlace(instance, version, runtime, pnpm, target, onLine);
 			} else {
 				// Relative links survive a rename, so the other platforms keep the staged install.
-				installStaged(instance, version, runtime, onLine);
+				installStaged(instance, version, runtime, pnpm, onLine);
 			}
 		});
 	}
@@ -540,6 +544,7 @@ public final class HarnessInstaller {
 	private static void installStaged(DshInstance instance,
 	                                  String version,
 	                                  DshNodeRuntime runtime,
+	                                  DshPnpm pnpm,
 	                                  @Nullable Consumer<String> onLine) throws DshException {
 		Path target = instance.dshDirectory();
 		Path staging = stagingDirectory(instance);
@@ -555,7 +560,7 @@ public final class HarnessInstaller {
 
 		writeManifest(staging, version, version, runtime, SettingsManager.settings().dependencyPolicy());
 
-		List<String> command = buildInstallCommand(runtime, staging);
+		List<String> command = buildInstallCommand(pnpm, staging);
 
 		LOG.info("Installing DSH " + version + " for " + instance.id() + ": " + String.join(" ", command));
 
@@ -603,6 +608,7 @@ public final class HarnessInstaller {
 	private static void installInPlace(DshInstance instance,
 	                                   String version,
 	                                   DshNodeRuntime runtime,
+	                                   DshPnpm pnpm,
 	                                   Path target,
 	                                   @Nullable Consumer<String> onLine) throws DshException {
 		Path aside = setAsideDirectory(instance);
@@ -638,7 +644,7 @@ public final class HarnessInstaller {
 		try {
 			Files.createDirectories(target);
 			writeManifest(target, version, version, runtime, SettingsManager.settings().dependencyPolicy());
-			List<String> command = buildInstallCommand(runtime, target);
+			List<String> command = buildInstallCommand(pnpm, target);
 
 			LOG.info("Installing DSH " + version + " for " + instance.id() + ": " + String.join(" ", command));
 
@@ -736,13 +742,11 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * The Node runtime found on PATH.
+	 * The Node runtime the launcher works with.
 	 *
-	 * @throws DshException when no {@code node} was found
+	 * @throws DshException when the selected one is not there
 	 */
 	public static DshNodeRuntime requireRuntime() throws DshException {
-		return DshNodeRuntime.detect()
-		                     .orElseThrow(() -> new DshException(
-				                     "Node.js was not found on PATH; " + DshNodeRuntime.requirement()));
+		return DshToolchain.node();
 	}
 }

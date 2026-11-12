@@ -18,6 +18,7 @@
 package com.mcxcc303.hdsl.harness;
 
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;
 
@@ -33,13 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class HarnessInstallerLinkerTest {
 	@Test
 	void onlyWindowsInstallsWithoutLinks() {
-		DshNodeRuntime runtime = new DshNodeRuntime(Path.of("node"),
-		                                            "24.11.1",
-		                                            Path.of("npm"),
-		                                            null,
-		                                            Path.of("pnpm"),
-		                                            "12.14.0");
-		List<String> command = HarnessInstaller.buildInstallCommand(runtime, Path.of("project"));
+		DshPnpm pnpm = new DshPnpm(Path.of("pnpm"), null, "12.14.0", Path.of("bin"));
+		List<String> command = HarnessInstaller.buildInstallCommand(pnpm, Path.of("project"));
 
 		boolean linked = command.contains("--config.node-linker=hoisted");
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {

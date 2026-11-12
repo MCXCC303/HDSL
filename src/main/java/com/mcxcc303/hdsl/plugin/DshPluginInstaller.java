@@ -29,6 +29,8 @@ import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.launch.DshEnvironment;
 import com.mcxcc303.hdsl.launch.DshLauncher;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -125,14 +127,12 @@ public final class DshPluginInstaller {
 		}
 
 		DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
-		if (!runtime.canManagePlugins()) {
-			throw new DshException("pnpm was not found on PATH; installing plugins requires it");
-		}
+		DshPnpm pnpm = DshToolchain.pnpm(runtime.node());
 
 		Path home = instance.homeDirectory();
 		for (String spec : specs) {
 			report(onLine, "Installing " + spec + " ...");
-			runPluginCommand(instance, runtime, home, List.of("add", spec), List.of(spec), onLine);
+			runPluginCommand(instance, runtime, pnpm, home, List.of("add", spec), List.of(spec), onLine);
 			report(onLine, "Installed " + spec);
 		}
 	}
@@ -151,10 +151,8 @@ public final class DshPluginInstaller {
 	/// @throws DshException when pnpm is missing or the resolve fails
 	public static void resolve(DshInstance instance, @Nullable Consumer<String> onLine) throws DshException {
 		DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
-		if (!runtime.canManagePlugins()) {
-			throw new DshException("pnpm was not found on PATH; installing plugins requires it");
-		}
-		runPluginCommand(instance, runtime, instance.homeDirectory(), List.of("install"), List.of(), onLine);
+		DshPnpm pnpm = DshToolchain.pnpm(runtime.node());
+		runPluginCommand(instance, runtime, pnpm, instance.homeDirectory(), List.of("install"), List.of(), onLine);
 	}
 
 	/// Removes a package from an instance's profile.
@@ -189,15 +187,13 @@ public final class DshPluginInstaller {
 		}
 
 		DshNodeRuntime runtime = DshLauncher.resolveRuntime(instance);
-		if (!runtime.canManagePlugins()) {
-			throw new DshException("pnpm was not found on PATH; removing plugins requires it");
-		}
+		DshPnpm pnpm = DshToolchain.pnpm(runtime.node());
 
 		report(onLine, "Removing " + String.join(", ", specs) + " ...");
 		List<String> command = new ArrayList<>();
 		command.add("remove");
 		command.addAll(specs);
-		runPluginCommand(instance, runtime, instance.homeDirectory(), command, List.of(), onLine);
+		runPluginCommand(instance, runtime, pnpm, instance.homeDirectory(), command, List.of(), onLine);
 		report(onLine, "Removed " + specs.size() + " package(s)");
 	}
 
@@ -289,6 +285,7 @@ public final class DshPluginInstaller {
 	/// @throws DshException when the command cannot be run or exits non-zero
 	private static void runPluginCommand(DshInstance instance,
 	                                     DshNodeRuntime runtime,
+	                                     DshPnpm pnpm,
 	                                     Path home,
 	                                     List<String> args,
 	                                     List<String> packages,
@@ -316,7 +313,7 @@ public final class DshPluginInstaller {
 		// wrong would silently operate on the user's real ~/.dsh.
 		Map<String, String> environment = new LinkedHashMap<>();
 		environment.put("DSH_HOME", home.toString());
-		environment.putAll(runtime.pathEnvironment());
+		environment.putAll(DshToolchain.pathEnvironment(runtime.node(), pnpm));
 		environment.putAll(DshEnvironment.of(instance));
 
 		boolean retried = false;

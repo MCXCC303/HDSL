@@ -23,6 +23,7 @@ import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Assumptions;
@@ -290,13 +291,18 @@ class HarnessInstallerTest {
 	 *
 	 * <p>The names must not be on {@code PATH}; {@code Path.of("pnpm")} would run the real one.
 	 */
-	private static DshNodeRuntime absentTools(@Nullable String pnpmVersion) {
+		private static DshNodeRuntime absentTools() {
 		return new DshNodeRuntime(Path.of("no-such-node"),
-		                          "24.11.1",
-		                          Path.of("no-such-npm"),
-		                          null,
-		                          Path.of("no-such-pnpm"),
-		                          pnpmVersion);
+					 "24.11.1",
+					 Path.of("no-such-npm"),
+					 null);
+	}
+
+	/**
+	 * A pnpm that is not there, so the install fails the way it would on a machine without one.
+	 */
+	private static DshPnpm absentPnpm() {
+		return new DshPnpm(Path.of("no-such-pnpm"), null, null, Path.of("no-such-bin"));
 	}
 
 	@Test
@@ -312,7 +318,7 @@ class HarnessInstallerTest {
 		                                    () -> HarnessInstaller.install(instance,
 		                                                                   instance.version(),
 		                                                                   null,
-		                                                                   absentTools(null)));
+		                                                                   absentTools(), absentPnpm()));
 		assertTrue(failure.getMessage().contains("Failed to run pnpm"), failure.getMessage());
 
 		// Back where it was, contents and all: a rename, so a junction naming the final path
@@ -341,7 +347,7 @@ class HarnessInstallerTest {
 		Files.writeString(previous.resolve("old-tree"), "the old tree");
 
 		assertThrows(DshException.class,
-		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(null)));
+		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(), absentPnpm()));
 
 		assertFalse(Files.exists(instance.dshDirectory()));
 		assertTrue(HarnessInstaller.isInstalling(instance));
@@ -366,7 +372,7 @@ class HarnessInstallerTest {
 		                                    () -> HarnessInstaller.install(instance,
 		                                                                   instance.version(),
 		                                                                   null,
-		                                                                   absentTools(null)));
+		                                                                   absentTools(), absentPnpm()));
 
 		assertTrue(refusal.getMessage().contains("no longer exists"), refusal.getMessage());
 		assertFalse(Files.exists(instance.instanceDirectory()));
@@ -377,7 +383,7 @@ class HarnessInstallerTest {
 		DshInstance instance = instance();
 
 		assertThrows(DshException.class,
-		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(null)));
+		             () -> HarnessInstaller.install(instance, instance.version(), null, absentTools(), absentPnpm()));
 
 		assertFalse(Files.exists(instance.dshDirectory()));
 		assertFalse(HarnessInstaller.isInstalling(instance));
@@ -386,13 +392,8 @@ class HarnessInstallerTest {
 
 	@Test
 	void theBuildScriptsAreAllowed() {
-		DshNodeRuntime runtime = new DshNodeRuntime(Path.of("node"),
-		                                            "24.11.1",
-		                                            Path.of("npm"),
-		                                            null,
-		                                            Path.of("pnpm"),
-		                                            "12.14.0");
-		List<String> command = HarnessInstaller.buildInstallCommand(runtime, Path.of("project"));
+		DshPnpm pnpm = new DshPnpm(Path.of("pnpm"), null, "12.14.0", Path.of("bin"));
+		List<String> command = HarnessInstaller.buildInstallCommand(pnpm, Path.of("project"));
 
 		assertTrue(command.contains("--config.dangerously-allow-all-builds=true"), command.toString());
 	}

@@ -43,9 +43,7 @@ class DshInstanceTerminalTest {
 		return new DshNodeRuntime(bin.resolve(WINDOWS ? "node.exe" : "node"),
 		                          "22.19.0",
 		                          bin.resolve(WINDOWS ? "npm.cmd" : "npm"),
-		                          "10.9.0",
-		                          null,
-		                          null);
+		                          "10.9.0");
 	}
 
 	// How this platform's script assigns a variable.

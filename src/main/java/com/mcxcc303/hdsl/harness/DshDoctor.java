@@ -22,6 +22,8 @@ import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceListing;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.theme.ThemePackManager;
@@ -36,12 +38,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-/// Prints a diagnostics report describing everything HDSL needs to run.
-///
-/// This is the launcher's `--doctor`: it lets a user (or a bug report) show the
-/// detected toolchain, the on-disk layout and registry reachability without
-/// starting the JavaFX interface. It is also how the version-management core is
-/// exercised outside the UI.
+/**
+ * Prints the launcher's {@code --doctor} report: the detected toolchain, the on-disk layout and
+ * registry reachability, without starting the interface.
+ */
 @NotNullByDefault
 public final class DshDoctor {
 	private DshDoctor() {
@@ -86,24 +86,24 @@ public final class DshDoctor {
 		out.println();
 
 		out.println("JavaScript toolchain");
-		Optional<DshNodeRuntime> detected = DshNodeRuntime.detect();
 		boolean runtimeOk;
-		if (detected.isEmpty()) {
-			out.println("  node:  NOT FOUND");
-			out.println("  required: " + DshNodeRuntime.requirement());
-			runtimeOk = false;
-		} else {
-			DshNodeRuntime runtime = detected.get();
-			boolean pnpmTooOld = HarnessInstaller.isPnpmTooOld(runtime.pnpmVersion());
+		try {
+			DshNodeRuntime runtime = DshToolchain.node();
+			DshPnpm pnpm = DshToolchain.findPnpm(runtime.node());
+			boolean pnpmTooOld = HarnessInstaller.isPnpmTooOld(pnpm == null ? null : pnpm.version());
 			out.println("  node:  " + runtime.nodeVersion() + "  (" + runtime.node() + ")" +
 			            (runtime.isNodeSupported() ? "  [supported]" : "  [UNSUPPORTED]"));
 			out.println("  npm:   " + describe(runtime.npm(), runtime.npmVersion()));
-			out.println("  pnpm:  " + describe(runtime.pnpm(), runtime.pnpmVersion()) +
-			            (runtime.canManagePlugins() ? "" : "  [plugin management unavailable]") +
+			out.println("  pnpm:  " + describe(pnpm == null ? null : pnpm.command(),
+			                                   pnpm == null ? null : pnpm.version()) +
+			            (pnpm == null ? "  [plugin management unavailable]" : "") +
 			            (pnpmTooOld ? "  [too old for installation]" : ""));
 			out.println("  required: " + DshNodeRuntime.requirement());
-			runtimeOk = runtime.isNodeSupported() && runtime.canInstall() &&
-			            runtime.canManagePlugins() && !pnpmTooOld;
+			runtimeOk = runtime.isNodeSupported() && runtime.canInstall() && pnpm != null && !pnpmTooOld;
+		} catch (DshException e) {
+			out.println("  node:  NOT FOUND");
+			out.println("  required: " + DshNodeRuntime.requirement());
+			runtimeOk = false;
 		}
 		out.println();
 
@@ -152,8 +152,8 @@ public final class DshDoctor {
 
 	/// Renders an optional executable and its version.
 	///
-	/// @param path    the executable, or `null`
-	/// @param version the reported version, or `null`
+	/// @param path    the executable, or {@code null}
+	/// @param version the reported version, or {@code null}
 	/// @return a display string
 	private static String describe(@Nullable Path path, @Nullable String version) {
 		if (path == null) {

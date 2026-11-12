@@ -73,16 +73,26 @@ public final class DshToolchain {
 
 	/**
 	 * Resolves the selected Node.js runtime.
+	 * <p>
+	 * A system runtime is refused if it's outside the supported range.
 	 *
+	 * @param selection {@link #SYSTEM} or the version of an installed runtime
 	 * @return the runtime
-	 * @throws DshException if the selected runtime is not installed or not on {@code PATH}
+	 * @throws DshException if the selected runtime is not installed, unsupported or not on {@code PATH}
 	 */
-	public static DshNodeRuntime node() throws DshException {
-		String selection = nodeSelection();
+	public static DshNodeRuntime resolve(String selection) throws DshException {
 		if (SYSTEM.equalsIgnoreCase(selection)) {
-			return DshNodeRuntime.detect()
-			                     .orElseThrow(() -> new DshException(
-					                     "Node.js was not found on PATH; " + DshNodeRuntime.requirement()));
+			DshNodeRuntime runtime = DshNodeRuntime.detect()
+			                                       .orElseThrow(() -> new DshException(
+					                                       "Node.js was not found on PATH; " +
+					                                       DshNodeRuntime.requirement()));
+			if (!runtime.isNodeSupported()) {
+				throw new DshException(
+						"The system Node.js " + runtime.nodeVersion() + " is outside the supported range (" +
+						DshNodeRuntime.requirement() +
+						"). Install a suitable runtime on the Node page, or pick one for this instance.");
+			}
+			return runtime;
 		}
 		NodeRuntime managed = NodeRuntimeManager.findInstalled(selection);
 		if (managed == null) {
@@ -93,17 +103,29 @@ public final class DshToolchain {
 	}
 
 	/**
-	 * Returns the npm bundled with the selected Node.js runtime.
+	 * Resolves the selected Node.js.
 	 *
-	 * @return the npm executable from the selected Node.js runtime
-	 * @throws DshException if the selected Node.js runtime has no bundled npm
+	 * @return the runtime
+	 * @throws DshException when the selected Node.js is not there
+	 */
+	public static DshNodeRuntime node() throws DshException {
+		return resolve(nodeSelection());
+	}
+
+	/**
+	 * Resolves the npm bundled with the selected Node.js runtime.
+	 * <p>
+	 * A Node.js installation carries an npm, and there is no npm to choose.
+	 *
+	 * @return the npm executable
+	 * @throws DshException when the selected Node.js carries none
 	 */
 	public static Path npm() throws DshException {
 		DshNodeRuntime runtime = node();
 		Path npm = runtime.npm();
 		if (npm == null) {
 			throw new DshException("the Node.js at " + runtime.node() + " carries no npm; " +
-				                       "reading the registry and installing a pnpm require one");
+			                       "reading the registry and installing a pnpm require one");
 		}
 		return npm;
 	}
@@ -117,19 +139,28 @@ public final class DshToolchain {
 	 * @throws DshException if the selected pnpm is not installed or not on {@code PATH}
 	 */
 	public static DshPnpm pnpm(@Nullable Path node) throws DshException {
+		DshPnpm pnpm = findPnpm(node);
+		if (pnpm == null) {
+			throw new DshException("pnpm " + pnpmSelection() +
+			                       " is not installed; install one on the pnpm page or pick the system one");
+		}
+		return pnpm;
+	}
+
+	/**
+	 * Looks for the selected pnpm without failing.
+	 *
+	 * @param node the Node.js running a managed pnpm, or {@code null} when the pnpm resolves
+	 *             Node.js through the shim
+	 * @return the pnpm, or {@code null} when there is none
+	 */
+	public static @Nullable DshPnpm findPnpm(@Nullable Path node) {
 		String selection = pnpmSelection();
 		if (SYSTEM.equalsIgnoreCase(selection)) {
-			DshPnpm system = PnpmRuntimeManager.detect();
-			if (system == null) {
-				throw new DshException("pnpm was not found on PATH; install one on the pnpm page or pick the system one");
-			}
-			return system;
+			return PnpmRuntimeManager.detect();
 		}
 		PnpmRuntime managed = PnpmRuntimeManager.findInstalled(selection);
-		if (managed == null) {
-			throw new DshException(
-					"pnpm " + selection + " is not installed; install it on the pnpm page or pick the system one");
-		}
+		if (managed == null) return null;
 		return new DshPnpm(managed.cli(), node, managed.version(), managed.shimDirectory());
 	}
 
