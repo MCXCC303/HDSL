@@ -57,57 +57,25 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Lists one workspace's sessions and moves them between instances.
-///
-/// Modelled on HMCL's world list, which answers the same shape of question: a
-/// list of things belonging to one instance, each with an identity, a when, and
-/// a small set of things you can do to it. The row is that original's — a
-/// thumbnail-sized icon, a two-line label with a tag, and the actions on the
-/// trailing edge — because the launcher's job here is to show what DeepSeek
-/// Harness persisted without reading it.
-///
-/// The page is one **workspace**, not the whole instance: the sessions are filed
-/// by the directory they were recorded in, so a workspace is the natural unit to
-/// look at, export, or move. The whole instance is the [WorkspaceListPage] one
-/// step back.
 @NotNullByDefault
 public final class SessionListPage extends ListPageBase<DshSession> implements Refreshable {
-	/// Formats a session's last activity the way a person reads it.
 	private static final DateTimeFormatter TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 	                                                                    .withZone(ZoneId.systemDefault());
-
-	/// The instance whose sessions are listed.
 	private final DshInstance instance;
-
-	/// The workspace being looked at.
 	private final DshWorkspace workspace;
-	/// The ordinary toolbar.
 	private final HBox toolbar = new HBox(8);
-	/// The toolbar shown while sessions are selected.
 	private final HBox selectingToolbar = new HBox(8);
-	/// The box the two toolbars swap in.
 	private final StackPane toolbarPane = new StackPane(toolbar, selectingToolbar);
-	/// The popups this page has opened, so a menu row can close its own.
 	private final Map<Node, JFXPopup> popups = new HashMap<>();
-	/// Whether migrating also removes the session here.
 	private boolean moveAfterMigrating = true;
-	/// Whether a load is already running.
 	private boolean busy;
 
-	/// Creates the page.
-	///
-	/// @param instance  the instance whose sessions are listed
-	/// @param workspace the workspace whose sessions are listed
 	public SessionListPage(DshInstance instance, DshWorkspace workspace) {
 		this.instance = instance;
 		this.workspace = workspace;
 		refresh();
 	}
 
-	/// Describes a session's last activity and working directory.
-	///
-	/// @param session the session
-	/// @return the text
 	private static String describe(DshSession session) {
 		StringBuilder builder = new StringBuilder();
 		builder.append(session.modifiedAt() > 0
@@ -127,12 +95,10 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 
 	@Override
 	public void refresh() {
-		if (busy) {
-			return;
-		}
+		if (busy) return;
+
 		busy = true;
 		setLoading(true);
-
 		CompletableFuture.supplyAsync(() -> {
 			try {
 				List<DshSession> sessions = new ArrayList<>();
@@ -160,13 +126,6 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		}));
 	}
 
-	/// Holds the list and gives the page the toolbar that acts on a selection.
-	///
-	/// The skin owns the list view, and the selection toolbar acts on it, so the
-	/// skin hands it over once it exists rather than the page reaching for a list
-	/// that is not built yet.
-	///
-	/// @param listView the page's list
 	private void attachList(JFXListView<DshSession> listView) {
 		toolbar.setAlignment(Pos.CENTER_LEFT);
 		toolbar.getChildren()
@@ -209,9 +168,6 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		FXUtils.onChangeAndOperate(listView.getSelectionModel().selectedItemProperty(),
 		                           selected -> showSelectingToolbar(selected != null));
 
-		// Selecting everything through the button rather than `selectAll()`, which
-		// clears first and makes the whole list flicker; and disabling the button
-		// once there is nothing left to select, as the original does.
 		ListChangeListener<Object> listener = change -> selectAll.setDisable(!listView.getItems().isEmpty() &&
 		                                                                     listView.getSelectionModel()
 		                                                                             .getSelectedItems()
@@ -222,9 +178,6 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		showSelectingToolbar(false);
 	}
 
-	/// Shows the toolbar that acts on a selection, or the ordinary one.
-	///
-	/// @param selecting whether anything is selected
 	private void showSelectingToolbar(boolean selecting) {
 		selectingToolbar.setVisible(selecting);
 		selectingToolbar.setManaged(selecting);
@@ -232,13 +185,8 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		toolbar.setManaged(!selecting);
 	}
 
-	/// Deletes the selected sessions after one confirmation.
-	///
-	/// @param sessions the sessions to delete
 	private void deleteSelected(Collection<DshSession> sessions) {
-		if (sessions.isEmpty()) {
-			return;
-		}
+		if (sessions.isEmpty()) return;
 		String message = sessions.size() == 1
 		                 ? i18n("dsh.session.delete.confirm", sessions.iterator().next().label())
 		                 : i18n("dsh.session.delete.confirm.many", sessions.size());
@@ -261,17 +209,10 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		}, null);
 	}
 
-	/// Opens a session's directory.
-	///
-	/// @param session the session
 	private void openSessionDirectory(DshSession session) {
 		DshFileManager.openDirectory(session.directory());
 	}
 
-	/// Shows the instances a session can move to.
-	///
-	/// @param session the session to migrate
-	/// @param anchor  the button the popup is anchored to
 	private void showTargets(DshSession session, Node anchor) {
 		List<DshInstance> targets = new ArrayList<>();
 		for (DshInstance candidate : InstanceListing.list()) {
@@ -311,9 +252,8 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 			String finalRefusal = refusal;
 			row.setOnAction(event -> {
 				popupOf(anchor).ifPresent(JFXPopup::hide);
-				if (finalRefusal == null) {
-					migrate(session, target);
-				}
+				if (finalRefusal == null) migrate(session, target);
+
 			});
 			menu.add(row);
 		}
@@ -327,18 +267,10 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		           0);
 	}
 
-	/// Returns the popup anchored to a node.
-	///
-	/// @param anchor the anchor
-	/// @return the popup, or empty when none was opened for it
 	private Optional<JFXPopup> popupOf(Node anchor) {
 		return Optional.ofNullable(popups.get(anchor));
 	}
 
-	/// Migrates a session after confirmation.
-	///
-	/// @param session the session
-	/// @param target  the destination instance
 	private void migrate(DshSession session, DshInstance target) {
 		boolean move = moveAfterMigrating;
 		Controllers.confirm(i18n(move ? "dsh.session.confirm.move" : "dsh.session.confirm.copy",
@@ -354,16 +286,10 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		}, null);
 	}
 
-	/// The page's skin: a toolbar above the session list.
 	private static final class SessionListPageSkin extends ToolbarListPageSkin<DshSession, SessionListPage> {
-		/// Creates the skin.
-		///
-		/// @param control the page
 		SessionListPageSkin(SessionListPage control) {
 			super(control);
 			setPlaceholder(i18n("dsh.sessions.empty"));
-			// After the base skin has made the list: the selection toolbar acts on
-			// it, and it does not exist while the toolbars are being built.
 			control.attachList(listView);
 		}
 
@@ -380,35 +306,14 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		}
 	}
 
-	/// One row of the session list.
-	///
-	/// The shape is HMCL's world row: a small image on the left, the two-line
-	/// label, and the actions on the trailing edge. A session has no thumbnail,
-	/// so the instance's own icon stands in — it keeps the rows aligned without
-	/// inventing artwork the data does not have.
 	private static final class SessionListCell extends MDListCell<DshSession> {
-		/// The page whose actions the row's buttons run.
 		private final SessionListPage page;
-
-		/// The session image.
 		private final ImageContainer icon = new ImageContainer(32);
-
-		/// The label and its tags.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button that exports this session alone.
 		private final JFXButton export = FXUtils.newToggleButton4(SVG.ARCHIVE);
-
-		/// The button that moves the session elsewhere.
 		private final JFXButton migrate = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
-
-		/// The button that opens the row menu.
 		private final JFXButton more = FXUtils.newToggleButton4(SVG.MORE_VERT);
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list
-		/// @param page     the page the row's actions belong to
 		SessionListCell(JFXListView<DshSession> listView, SessionListPage page) {
 			super(listView);
 			this.page = page;
@@ -451,10 +356,6 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 			getContainer().getChildren().setAll(container);
 		}
 
-		/// Shows the row's own menu.
-		///
-		/// @param session the session
-		/// @param anchor  the button the popup is anchored to
 		private void showRowMenu(DshSession session, Node anchor) {
 			PopupMenu menu = new PopupMenu();
 			JFXPopup popup = new JFXPopup(menu);
@@ -464,10 +365,6 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 			                               i18n("dsh.session.pack.export.session"),
 			                               () -> SessionPackActions.export(page.instance, List.of(session)),
 			                               popup),
-			            // A subagent's conversation lives in its own session directory and is reached
-			            // through its parent, so the unit worth moving is the project the sessions were
-			            // recorded in — which is exactly the directory they share, and exactly this
-			            // page's list.
 			            new IconedMenuItem(SVG.ARCHIVE,
 			                               i18n("dsh.session.pack.export.project"),
 			                               () -> SessionPackActions.export(page.instance,
@@ -477,7 +374,6 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 			                               i18n("dsh.session.reveal"),
 			                               () -> page.openSessionDirectory(session),
 			                               popup),
-			            // What is gone cannot be got back, so it is fenced off from what can.
 			            new MenuSeparator(),
 			            new IconedMenuItem(SVG.DELETE,
 			                               i18n("dsh.session.delete"),
@@ -493,18 +389,14 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 
 		@Override
 		protected void updateControl(@Nullable DshSession session, boolean empty) {
-			if (empty || session == null) {
-				return;
-			}
+			if (empty || session == null) return;
 
 			icon.setImage(DshInstanceIcons.load(page.instance));
 			content.setTitle(session.label());
 			content.setSubtitle(describe(session));
 			content.getTags().clear();
 			content.addTag("v" + session.formatVersion());
-			if (session.locked()) {
-				content.addTag(i18n("dsh.session.in_use"));
-			}
+			if (session.locked()) content.addTag(i18n("dsh.session.in_use"));
 		}
 	}
 }

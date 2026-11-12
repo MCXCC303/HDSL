@@ -68,11 +68,7 @@ public final class LogWindow extends Stage {
     private final Map<Log4jLevel, SimpleIntegerProperty> levelCountMap = new EnumMap<>(Log4jLevel.class);
     private final Map<Log4jLevel, SimpleBooleanProperty> levelShownMap = new EnumMap<>(Log4jLevel.class);
 
-    /// How many lines this window keeps.
-    ///
-    /// The original keeps this number in its log window rather than in the launcher's
-    /// settings, and the same is done here: the count belongs to the window that
-    /// applies it, so there is one control for it rather than two that can disagree.
+    /** How many lines will this window keeps. */
     private int retainedLines = LogLine.DEFAULT_LOG_LINES;
 
     {
@@ -95,16 +91,11 @@ public final class LogWindow extends Stage {
         this(gameProcess, logs, null);
     }
 
-    /// Creates the window.
-    ///
-    /// @param gameProcess the process whose output is shown
-    /// @param logs        the lines already collected
-    /// @param instanceId  the instance the lines came from, or `null`
     private LogWindow(ManagedProcess gameProcess, CircularArrayList<LogLine> logs, @Nullable String instanceId) {
         this(gameProcess, logs, instanceId, null);
     }
 
-    /// Creates the window with an explicit action for its terminate button.
+    /** Creates the window with an explicit action for its terminate button. */
     public LogWindow(ManagedProcess gameProcess,
                      CircularArrayList<LogLine> logs,
                      @Nullable String instanceId,
@@ -217,9 +208,6 @@ public final class LogWindow extends Stage {
             cboLines.getSelectionModel().selectedItemProperty().addListener((a, b, newValue) -> {
                 if (newValue != null) {
                     retainedLines = newValue;
-                    // The count is used at once rather than at the next start: the buffer is
-                    // trimmed here, which is what makes the box mean something the moment it
-                    // is set.
                     checkLogCount();
                 }
             });
@@ -431,15 +419,11 @@ public final class LogWindow extends Stage {
 
                 JFXButton terminateButton = new JFXButton(i18n("logwindow.terminate_game"));
                 terminateButton.setOnAction(e -> {
-                    // One request per window. The stop the instance hands in is asynchronous and
-                    // only ends with the process, which would otherwise leave the button live for
-                    // the whole shutdown grace and let a second click run the stop twice.
                     terminateButton.setDisable(true);
                     getSkinnable().onTerminateGame();
                 });
 
-                // HDSL launches Node processes, so the JVM jstack dump action
-                // has no meaning here and is not offered.
+                // HDSL launches Node processes, so the JVM jstack dump action is not offered.
 
                 JFXButton clearButton = new JFXButton(i18n("button.clear"));
                 clearButton.setOnAction(e -> getSkinnable().onClear());

@@ -55,24 +55,14 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Manages the Node.js runtimes HDSL can pin an instance to.
-///
-/// The page is built on HMCL's own list-page stack — [ListPageBase] with a
-/// [ToolbarListPageSkin] and cells derived from the same shape its Java
-/// management uses — because that is what the original's page is. A toolbar
-/// above a list, and a row of version badge, name, tags and path, are the
-/// original's answers to "show the runtimes installed on this machine", and the
-/// counterparts here are close enough that a reader of HMCL can find their way
-/// around it.
+/**
+ * Manages Node.js runtimes.
+ */
 @NotNullByDefault
 public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRow> implements Refreshable {
-	/// Whether a load is already running.
 	private boolean busy;
-
-	/// The runtimes detected on `PATH`, refreshed with the rest.
 	private DshNodeRuntime system = DshNodeRuntime.detect().orElse(null);
 
-	/// Creates the page.
 	public NodeRuntimesPage() {
 		refresh();
 	}
@@ -84,12 +74,10 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 	@Override
 	public void refresh() {
-		if (busy) {
-			return;
-		}
+		if (busy) return;
+
 		busy = true;
 		setLoading(true);
-
 		CompletableFuture.supplyAsync(() -> {
 			system = DshNodeRuntime.detect().orElse(null);
 			return NodeRuntimeManager.listInstalled();
@@ -108,26 +96,15 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			}
 			DshNodeRuntime detected = system;
 			rows.add(detected == null ? NodeRow.systemMissing() : NodeRow.system(detected));
-
-			// Mutate the list rather than replacing it: the skin binds the list
-			// view's content to this very list, and HMCL fills its page the same
-			// way.
 			getItems().setAll(rows);
 		}));
 	}
 
-	/// Adopts a Node.js installation the user already has.
-	///
-	/// The chosen directory is copied into the managed runtimes so the instance
-	/// pinning it does not depend on where it happened to live, which is what
-	/// HMCL's add-Java does with a chosen home.
 	private void addLocal() {
 		DirectoryChooser chooser = new DirectoryChooser();
 		chooser.setTitle(i18n("dsh.node.add"));
 		Path chosen = Controllers.showDialog(chooser);
-		if (chosen == null) {
-			return;
-		}
+		if (chosen == null) return;
 
 		String version = NodeRuntimeManager.versionOfDirectory(chosen);
 		if (version == null) {
@@ -154,9 +131,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}));
 	}
 
-	/// Removes an installed runtime after confirmation.
-	///
-	/// @param version the version to remove
 	private void uninstall(String version) {
 		Controllers.confirm(i18n("dsh.node.uninstall.confirm", version), i18n("dsh.node.uninstall"), () -> {
 			try {
@@ -168,21 +142,9 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}, null);
 	}
 
-	/// One row of the runtime list.
-	///
-	/// @param title     the primary line
-	/// @param subtitle  the secondary line
-	/// @param badge     the number shown in the version chip
-	/// @param tags      the chips shown after the title
-	/// @param node      the `node` executable, or `null` when there is none
-	/// @param removable the version to remove, or `null` when it cannot be
-	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
-	               @Nullable Path node, @Nullable String removable) {
+	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags, @Nullable Path node,
+	               @Nullable String removable) {
 
-		/// Builds the row for an installed runtime.
-		///
-		/// @param runtime the runtime
-		/// @return the row
 		static NodeRow installed(NodeRuntime runtime) {
 			String major = runtime.version().split("\\.")[0];
 			return new NodeRow("Node.js " + runtime.version(),
@@ -193,10 +155,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			                   runtime.version());
 		}
 
-		/// Builds the row for the runtime on `PATH`.
-		///
-		/// @param runtime the detected runtime
-		/// @return the row
 		static NodeRow system(DshNodeRuntime runtime) {
 			String version = runtime.nodeVersion();
 			return new NodeRow("Node.js " + version,
@@ -210,9 +168,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			                   null);
 		}
 
-		/// Builds the row shown when no runtime is on `PATH`.
-		///
-		/// @return the row
 		static NodeRow systemMissing() {
 			return new NodeRow(i18n("dsh.node.system.missing.title"),
 			                   DshNodeRuntime.requirement(),
@@ -223,7 +178,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 	}
 
-	// toolbar above the runtime list.
 	private static final class NodeRuntimesPageSkin extends ToolbarListPageSkin<NodeRow, NodeRuntimesPage> {
 		NodeRuntimesPageSkin(NodeRuntimesPage control) {
 			super(control);
@@ -246,37 +200,14 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 	}
 
-	/// One row of the runtime list.
-	///
-	/// The shape follows HMCL's Java rows: a version chip, the two-line label,
-	/// and the per-row actions on the trailing edge.
 	private static final class NodeItemCell extends ListCell<NodeRow> {
-		/// The version chip.
 		private final Label badge = new Label();
-
-		/// The name, path and tags.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The button that reveals the runtime directory.
 		private final JFXButton reveal = FXUtils.newToggleButton4(SVG.FOLDER_OPEN);
-
-		/// The button that installs or removes.
 		private final JFXButton action = FXUtils.newToggleButton4(SVG.DOWNLOAD);
-
-		/// The page whose actions the row's buttons run.
 		private final NodeRuntimesPage page;
-
-		/// The row's graphic, built once and re-installed by [updateItem].
-		///
-		/// A `ListCell` is recycled by the virtual flow, so the graphic has to
-		/// be set again for every non-empty item: clearing it for an empty cell
-		/// otherwise leaves every later row blank.
 		private final RipplerContainer graphic;
 
-		/// Creates the cell.
-		///
-		/// @param listView the owning list, used for cell width
-		/// @param page     the page the row's actions belong to
 		NodeItemCell(JFXListView<NodeRow> listView, NodeRuntimesPage page) {
 			this.page = page;
 			BorderPane root = new BorderPane();
@@ -338,8 +269,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 			action.setVisible(removable);
 			action.setManaged(removable);
-			// Twenty-four in a pane of the same size, as the original's remove
-			// button is; the icon was a fifth smaller than its counterpart's.
 			StackPane removeIconPane = new StackPane();
 			removeIconPane.setAlignment(Pos.CENTER);
 			FXUtils.setLimitWidth(removeIconPane, 24);
@@ -349,9 +278,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			FXUtils.installFastTooltip(action, i18n("dsh.node.uninstall"));
 
 			action.setOnAction(event -> {
-				if (removable) {
-					page.uninstall(row.removable());
-				}
+				if (removable) page.uninstall(row.removable());
 			});
 		}
 	}

@@ -192,28 +192,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		refreshLaunchItem();
 	}
 
-	/// Names the action this page offers on the instance.
-	///
-	/// A stopped instance is started from here as a test, which is what the
-	/// original's own instance page calls it; a running one is stopped, and that
-	/// is the only thing the entry may be called then.
-	///
-	/// @param state the instance's state
-	/// @return the label
 	private static String actionLabel(LaunchState state) {
 		return state == LaunchState.STOPPED ? i18n("dsh.instance.test_launch") : DshLaunchService.actionLabel(state);
 	}
 
-	/// Returns the key the instance's harness is asking for, when it is up and printed one.
-	///
-	/// @param instance the instance
-	/// @return the key, or empty when the instance is not running or its harness printed none
 	private static Optional<String> launchToken(DshInstance instance) {
 		return DshProcessManager.findRunning(instance).flatMap(DshProcessManager.Running::webUrl)
 		                        .flatMap(DshPorts::launchToken);
 	}
 
-	/// Draws the sidebar entry from the instance's state.
+	/**
+	 * Draws the sidebar entry from the instance's state.
+	 */
 	private void refreshLaunchItem() {
 		LaunchState state = DshLaunchService.state(instance.id());
 		launchItem.setTitle(actionLabel(state));
@@ -243,12 +233,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		refreshLaunchItem();
 	}
 
-	/// Shows the folders this instance owns.
-	///
-	/// The original puts these in a popup on the sidebar rather than on a tab:
-	/// they are places to go, not a view to read, and a popup says so.
-	///
-	/// @param anchor the sidebar item the popup is anchored to
+	/**
+	 * Shows the folders this instance owns.
+	 *
+	 * @param anchor the sidebar item the popup is anchored to
+	 */
 	private void showBrowsePopup(AdvancedListItem anchor) {
 		PopupMenu menu = new PopupMenu();
 		JFXPopup popup = new JFXPopup(menu);
@@ -283,18 +272,18 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		popup.show(anchor, JFXPopup.PopupVPosition.BOTTOM, JFXPopup.PopupHPosition.LEFT, anchor.getWidth(), 0);
 	}
 
-	/// Writes this instance into a pack, through the original's wizard.
-	///
-	/// The wizard asks what kind of pack, what it says about itself and what of the
-	/// instance goes into it, which is the order the original asks in — and writing
-	/// it is what the last step does.
+	/**
+	 * Writes this instance into a pack, through the export wizard.
+	 */
 	private void exportModpack() {
 		Controllers.getDecorator().startWizard(new ModpackExportWizardProvider(instance), i18n("modpack.wizard"));
 	}
 
-	/// Shows the operations available on this instance.
-	///
-	/// @param anchor the sidebar item the popup is anchored to
+	/**
+	 * Shows the operations available on this instance.
+	 *
+	 * @param anchor the sidebar item the popup is anchored to
+	 */
 	private void showManagePopup(AdvancedListItem anchor) {
 		PopupMenu menu = new PopupMenu();
 		JFXPopup popup = new JFXPopup(menu);
@@ -305,18 +294,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		                               actionLabel(state),
 		                               this::testLaunch,
 		                               popup));
-		// Right below the launch entry, because it is what a person reaches for next: the instance
-		// is up and the page it serves is where the work happens. Offered whether it is running or
-		// not, the same as the instance list's menu — see [InstanceBrowser].
 		entries.add(new IconedMenuItem(SVG.PUBLIC,
 		                               i18n("dsh.instance.open_browser"),
 		                               () -> InstanceBrowser.open(instance),
 		                               popup));
-		// Right under the browser entry, because it is the other half of the same thing: the address
-		// the harness serves is behind a key, and reaching it from another window means carrying the
-		// key over. An instance that is not running has none, and a harness from before the key
-		// existed printed none either — the entry is disabled rather than gone, so that what is
-		// missing is visible instead of being a menu that changes shape.
 		IconedMenuItem copyToken = new IconedMenuItem(SVG.CONTENT_COPY,
 		                                              i18n("dsh.instance.copy_token"),
 		                                              this::copyLaunchToken,
@@ -355,9 +336,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}
 	}
 
-	/// Opens a directory, reporting rather than throwing when it is missing.
-	///
-	/// @param directory the directory to open, or `null`
 	private void openDirectoryQuietly(@Nullable Path directory) {
 		if (directory == null || !Files.isDirectory(directory)) {
 			Controllers.dialog(i18n("dsh.instance.open.unavailable"), i18n("message.error"), MessageType.ERROR);
@@ -366,12 +344,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		DshFileManager.openDirectory(directory);
 	}
 
-	/// Opens the running instance's live output, or its diagnostics folder when it is stopped.
-	///
-	/// A running instance has a process this launcher holds, and that process has the output
-	/// the log window is for. When it is not running there is no live feed; the harness writes
-	/// a report under its own home when a start-up audit fails, which is the thing worth reading
-	/// when an instance will not run, so that is what is opened then.
 	private void openLogs() {
 		DshProcess process = DshProcessManager.find(instance.id()).orElse(null);
 		if (process != null) {
@@ -386,7 +358,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		DshFileManager.openDirectory(logs);
 	}
 
-	/// Renames this instance.
 	private void renameInstance() {
 		Controllers.dialog(new InputDialogPane(i18n("instance.manage.rename"), instance.id(), (newId, handler) -> {
 			try {
@@ -399,14 +370,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		}));
 	}
 
-	/// Copies this instance into a new one.
-	///
-	/// The copy is filled from a pack the launcher writes and reads back — version, profile, plugin
-	/// list, patch layer, local plugin files, plugin settings, skills — and the work runs behind a
-	/// progress dialog, because installing a harness and resolving its plugins takes minutes rather
-	/// than a click. That dialog is also what asks about install scripts, and the copy it made is
-	/// kept for the answer: see [DshInstanceManager#duplicate]. Saying that it finished is the
-	/// dialog's own toast, the same one every other installation ends with.
 	private void duplicateInstance() {
 		String newId = DshInstanceManager.nextId(instance.id());
 		PluginInstalls.runCreating(i18n("dsh.instance.duplicating", instance.id()),
@@ -415,11 +378,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		                           null);
 	}
 
-	/// Starts or stops this instance from its own page.
-	/// Opens a terminal on this instance, set up the way a launch sets it up.
-	///
-	/// The way out of a launch that will not start: the same home, the same environment and
-	/// the instance's own toolchain, in a shell where the harness can be run by hand.
 	private void openTerminal() {
 		try {
 			DshInstanceTerminal.open(instance, DshAccount.forInstance(instance));
@@ -430,17 +388,10 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 	}
 
 	private void testLaunch() {
-		// Test launch shows the output: the point of launching from here is to
-		// see what the program does, which is what the original's test game does
-		// too. Stopping it is the same action everywhere and shows nothing.
+		// The launch opens the process's log window; stopping shows nothing.
 		DshLaunchService.toggle(instance, this::refresh, true);
 	}
 
-	/// Puts the key the running harness asks for on the clipboard.
-	///
-	/// The entry that calls this is disabled unless there is one, so an empty key here means the
-	/// instance stopped between the menu being drawn and the entry being pressed. Said rather than
-	/// swallowed: a copy that copied nothing looks exactly like one that worked.
 	private void copyLaunchToken() {
 		Optional<String> token = launchToken(instance);
 		if (token.isEmpty()) {
@@ -450,20 +401,9 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		FXUtils.copyText(token.get(), i18n("dsh.instance.token_copied"));
 	}
 
-	/// Deletes this instance after confirmation, leaving the page afterwards.
-	///
-	/// The question is the launcher's own, and so is what follows it: the progress dialog every
-	/// other operation of this size is shown in, which runs the removal and stays until it has
-	/// finished. The removal waits twice — an instance that is running is stopped first and the
-	/// stop waits for the child to drain, and the tree is then taken away with retries because a
-	/// handle that is closing takes a moment to close — so it is work with a beginning and an end,
-	/// and what is shown for it is a progress dialog rather than a question. Run on the interface
-	/// thread instead, the window stops repainting for as long as the child takes to die: Windows
-	/// paints it white and offers to end it, and what the person reports is a launcher that has
-	/// crashed.
-	///
-	/// The page is left only once the instance is gone. A failure keeps it where it is, beside the
-	/// error, because there is still an instance there to try again on.
+	/**
+	 * Deletes this instance after confirmation.
+	 */
 	private void removeInstance() {
 		String id = instance.id();
 		Controllers.confirm(i18n("dsh.instance.remove.confirm", id), i18n("dsh.instance.remove"), () -> {
@@ -494,8 +434,6 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 			return;
 		}
 
-		// Only the packages the user added; the in-box bundles every profile
-		// starts with are not the user's to manage.
 		int shown = 0;
 		for (DshInstalledPlugins.Installed plugin : plugins) {
 			pluginList.getContent().add(buildPluginRow(plugin));
@@ -526,9 +464,11 @@ public final class InstancePage extends DecoratorAnimatedPage implements Decorat
 		return row;
 	}
 
-	/// Removes an installed plugin after confirmation.
-	///
-	/// @param name the package name
+	/**
+	 * Removes an installed plugin after confirmation.
+	 *
+	 * @param name the package name
+	 */
 	private void removePlugin(String name) {
 		Controllers.confirm(i18n("dsh.instance.plugins.remove.confirm", name),
 		                    i18n("dsh.instance.plugins.remove"),
