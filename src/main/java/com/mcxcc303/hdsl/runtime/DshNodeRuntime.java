@@ -43,22 +43,20 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  */
 @NotNullByDefault
 public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, @Nullable String npmVersion) {
-
-	/// The selection value meaning "use whatever is on `PATH`".
 	public static final String SYSTEM = "system";
-	/// The selection meaning "whatever the launcher is set to".
 	public static final String GLOBAL = "global";
-	/** The oldest pnpm that can install DeepSeek Harness. */
+	// Oldest pnpm that can install DeepSeek Harness.
 	public static final String MINIMUM_PNPM = "10.9";
 	private static final int NODE_22_MAJOR = 22;
 	private static final int MINIMUM_NODE_22_MINOR = 19;
-	/// The lowest supported Node 24-or-newer release.
 	private static final int MINIMUM_NODE_MODERN_MAJOR = 24;
 
-	/// Describes a launcher-managed runtime in the same shape as a probed one.
-	///
-	/// @param runtime the installed runtime
-	/// @return the descriptor
+	/**
+	 * Returns a launcher-managed runtime in the same shape as a probed one.
+	 *
+	 * @param runtime the installed runtime
+	 * @return the descriptor
+	 */
 	public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
 		return new DshNodeRuntime(runtime.node(),
 		                          runtime.version(),
@@ -66,58 +64,54 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		                          runtime.npm() == null ? null : versionOf(runtime.npm()));
 	}
 
-	/// Probes the toolchain on the current `PATH`.
-	///
-	/// @return the detected runtime, or empty when no usable `node` was found
+	/**
+	 * Probes the toolchain on the current {@code PATH}.
+	 *
+	 * @return the detected runtime, or empty when no usable {@code node} was found
+	 */
 	public static Optional<DshNodeRuntime> detect() {
 		Path node = which("node").orElse(null);
 		if (node == null) {
 			return Optional.empty();
 		}
-
 		String nodeVersion = versionOf(node);
 		if (nodeVersion == null) {
 			return Optional.empty();
 		}
-
 		Path npm = which("npm").orElse(null);
-
-		return Optional.of(new DshNodeRuntime(node,
-		                                      nodeVersion,
-		                                      npm,
-		                                      npm == null ? null : versionOf(npm)));
+		return Optional.of(new DshNodeRuntime(node, nodeVersion, npm, npm == null ? null : versionOf(npm)));
 	}
 
-	/// Tests a version string against DeepSeek Harness's Node range.
-	///
-	/// @param version the version string, optionally prefixed with `v`
-	/// @return whether the version is supported
+	/**
+	 * Tests a version string against DeepSeek Harness's Node range.
+	 *
+	 * @param version the version string, optionally prefixed with {@code v}
+	 * @return whether the version is supported
+	 */
 	public static boolean isSupportedNodeVersion(String version) {
 		Semver parsed = Semver.parse(version);
-		if (parsed == null) {
-			return false;
-		}
-		if (parsed.major() >= MINIMUM_NODE_MODERN_MAJOR) {
-			return true;
-		}
+		if (parsed == null) return false;
+		if (parsed.major() >= MINIMUM_NODE_MODERN_MAJOR) return true;
+
 		return parsed.major() == NODE_22_MAJOR && parsed.minor() >= MINIMUM_NODE_22_MINOR;
 	}
 
-	/// Returns the toolchain requirement shown to the user.
-	///
-	/// @return a human-readable requirement string
+	/**
+	 * Returns the toolchain requirement shown to the user.
+	 *
+	 * @return a human-readable requirement string
+	 */
 	public static String requirement() {
 		return "Node.js ^22.19.0 || >=24.0.0, plus pnpm " + MINIMUM_PNPM +
 		       " or newer for installing DeepSeek Harness; pnpm is also needed for plugin management";
 	}
 
-	/// Probes a program for its version.
-	///
-	/// Probes twice: one failed probe does not mean the program is missing. The last failure is
-	/// logged.
-	///
-	/// @param executable the program to run with `--version`
-	/// @return the first output line, trimmed, or `null` when no probe answered
+	/**
+	 * Probes a program for its version.
+	 *
+	 * @param executable the program to run with {@code --version}
+	 * @return the first output line, trimmed, or {@code null} when no probe answered
+	 */
 	static @Nullable String versionOf(Path executable) {
 		String failure = null;
 		for (int attempt = 0; attempt < 2; attempt++) {
@@ -131,33 +125,28 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 			} catch (IOException e) {
 				failure = "`" + executable + " --version` could not be started: " + e;
 			} catch (InterruptedException e) {
-				// An interrupted probe is not one that answers on a second try.
 				Thread.currentThread().interrupt();
 				return null;
 			}
 		}
-
 		LOG.warning("Could not read the version of " + executable + ": " + failure);
 		return null;
 	}
 
-	/// Resolves an executable on `PATH`.
-	///
-	/// On Windows a program is a name plus the extensions `PATHEXT` names, and the file's
-	/// existence is the test, because Windows has no execute bit.
-	///
-	/// @param name the executable name
-	/// @return the resolved path, or empty when it is not on `PATH`
+	/**
+	 * Resolves an executable on {@code PATH}.
+	 *
+	 * @param name the executable name
+	 * @return the resolved path, or empty when it is not on {@code PATH}
+	 */
 	public static Optional<Path> which(String name) {
 		String path = System.getenv("PATH");
-		if (path == null || path.isBlank()) {
-			return Optional.empty();
-		}
+		if (path == null || path.isBlank()) return Optional.empty();
+
 		List<String> candidates = executableNames(name);
 		for (String entry : path.split(File.pathSeparator)) {
-			if (entry.isBlank()) {
-				continue;
-			}
+			if (entry.isBlank()) continue;
+
 			Path directory = Path.of(entry);
 			for (String candidate : candidates) {
 				Path file = directory.resolve(candidate);
@@ -169,16 +158,16 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		return Optional.empty();
 	}
 
-	/// Returns the file names one program name can be found under.
-	///
-	/// @param name the program name as typed
-	/// @return the names to look for, the plain one first
+	/**
+	 * Returns the file names one program name can be found under.
+	 *
+	 * @param name the program name as typed
+	 * @return the names to look for, the plain one first
+	 */
 	private static List<String> executableNames(String name) {
 		if (OperatingSystem.CURRENT_OS != OperatingSystem.WINDOWS) {
 			return List.of(name);
 		}
-		// A name that already carries an extension is looked for as it is; the
-		// caller that spelled `npm.cmd` out knows which file it means.
 		for (String suffix : new String[]{".exe", ".cmd", ".bat", ".com"}) {
 			if (name.toLowerCase(Locale.ROOT).endsWith(suffix)) {
 				return List.of(name);
@@ -200,46 +189,52 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 		return List.copyOf(names);
 	}
 
-	/// Reports whether a file can be run as a program.
-	///
-	/// @param file the file
-	/// @return whether it is executable, which every regular file is on Windows
+	/**
+	 * Returns whether a file can be run as a program.
+	 *
+	 * @param file the file
+	 * @return whether it is executable, which every regular file is on Windows
+	 */
 	private static boolean isExecutable(Path file) {
 		return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS || Files.isExecutable(file);
 	}
 
-	/// Reports whether this Node release satisfies DeepSeek Harness's `engines` range.
-	///
-	/// @return whether the version is `^22.19.0` or `>=24.0.0`
+	/**
+	 * Returns whether this Node release satisfies DeepSeek Harness's {@code engines} range.
+	 *
+	 * @return whether the version is {@code ^22.19.0} or {@code >=24.0.0}
+	 */
 	public boolean isNodeSupported() {
 		return isSupportedNodeVersion(nodeVersion);
 	}
 
-	/// Reports whether this runtime can install DeepSeek Harness versions.
-	///
-	/// @return whether `npm` is available
+	/**
+	 * Returns whether this runtime can install DeepSeek Harness versions.
+	 *
+	 * @return whether {@code npm} is available
+	 */
 	public boolean canInstall() {
 		return npm != null && npmVersion != null;
 	}
 
-	/// Returns the environment entries that put this runtime's tools first.
-	///
-	/// The runtime's directory comes first, so a child process finds these tools before the
-	/// system's.
-	///
-	/// @return the environment additions
+	/**
+	 * Returns the environment entries that put this runtime's tools first. The runtime's
+	 * directory comes first, so a child process finds these tools before the system's.
+	 *
+	 * @return the environment additions
+	 */
 	public Map<String, String> pathEnvironment() {
 		String existing = System.getenv("PATH");
 		String bin = binDirectory().toString();
 		return Map.of("PATH", existing == null || existing.isBlank() ? bin : bin + File.pathSeparator + existing);
 	}
 
-	/// Returns the directory holding this runtime's executables.
-	///
-	/// `bin` on Linux, and the distribution root on Windows, where the node executable already
-	/// sits.
-	///
-	/// @return the directory of the `node` executable
+	/**
+	 * Returns the directory holding this runtime's executables. {@code bin} on Linux, and the
+	 * distribution root on Windows, where the node executable already sits.
+	 *
+	 * @return the directory of the {@code node} executable
+	 */
 	public Path binDirectory() {
 		Path parent = node.getParent();
 		return parent == null ? node : parent;

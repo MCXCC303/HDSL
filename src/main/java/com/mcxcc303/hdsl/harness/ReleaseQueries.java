@@ -45,7 +45,7 @@ public final class ReleaseQueries {
 
 	/**
 	 * Queries the npm registry for every published DeepSeek Harness version.
-	 *
+	 * <p>
 	 * Dist-tags are fetched in a second call and merged into the releases.
 	 *
 	 * @return the published releases, newest first
@@ -163,7 +163,7 @@ public final class ReleaseQueries {
 
 	/**
 	 * Reads when each version was published.
-	 *
+	 * <p>
 	 * A failure is not fatal: a version is listed without its date.
 	 *
 	 * @param npm the npm executable
@@ -180,7 +180,7 @@ public final class ReleaseQueries {
 
 	/**
 	 * Returns the object npm printed.
-	 *
+	 * <p>
 	 * Handles both shapes npm uses: a bare object, and an array holding one object.
 	 *
 	 * @param parsed the parsed value, possibly {@code null}

@@ -38,19 +38,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
-/**
- * Prints the launcher's {@code --doctor} report: the detected toolchain, the on-disk layout and
- * registry reachability, without starting the interface.
- */
+// Prints the launcher's diagnose information.
 @NotNullByDefault
 public final class DshDoctor {
-	private DshDoctor() {
-	}
+	private DshDoctor() {}
 
-	/// Runs the diagnostics and prints them.
-	///
-	/// @param out the stream to print to
-	/// @return the process exit code, non-zero when a hard requirement is missing
 	public static int report(PrintStream out) {
 		out.println("HDSL " + Metadata.VERSION + " diagnostics");
 		out.println("Java:      " + System.getProperty("java.vm.name") + " " + System.getProperty("java.version"));
@@ -150,15 +142,8 @@ public final class DshDoctor {
 		return runtimeOk ? 0 : 1;
 	}
 
-	/// Renders an optional executable and its version.
-	///
-	/// @param path    the executable, or {@code null}
-	/// @param version the reported version, or {@code null}
-	/// @return a display string
 	private static String describe(@Nullable Path path, @Nullable String version) {
-		if (path == null) {
-			return "NOT FOUND";
-		}
+		if (path == null) return "NOT FOUND";
 		return (version == null ? "unknown" : version) + "  (" + path + ")";
 	}
 }

@@ -40,36 +40,21 @@ import java.util.regex.Pattern;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/**
- * The {@code appBoot} pin: which boot library version an instance starts with, and the override
- * that records the choice in the instance profile.
- * <p>
- * A value read back from a profile is checked against the manifest.
- */
 @NotNullByDefault
 public final class AppBootPin {
-	/// The npm package that provides the application boot library.
-	///
-	/// Published together with DeepSeek Harness. A mismatch fails at import.
 	public static final String APP_BOOT_PACKAGE = "@deepseek-ai/dsh-app-boot";
-
-	/// The line that pins the boot library, as the file writes it.
-	///
-	/// Anchored on the key, not the name. The workspace file also lists packages as
-	/// {@code - '@scope/name@1.2.3'}, and a scan for the name returns that whole entry.
 	private static final Pattern APP_BOOT_PIN = Pattern.compile(
 			"^[ \\t]*['\"]?" + Pattern.quote(APP_BOOT_PACKAGE) + "['\"]?[ \\t]*:[ \\t]*(\\S+)[ \\t]*$",
 			Pattern.MULTILINE);
 
-	private AppBootPin() {
-	}
+	private AppBootPin() {}
 
 	/**
 	 * Holds an instance's boot library to a different release.
 	 *
 	 * @param instance the instance to change
 	 * @param appBoot  the boot library version to hold it to
-	 * @throws DshException when the manifest cannot be written or pnpm fails
+	 * @throws DshException if the manifest cannot be written or pnpm fails
 	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot) throws DshException {
 		overrideAppBoot(instance, appBoot, null);
@@ -81,7 +66,7 @@ public final class AppBootPin {
 	 * @param instance the instance to change
 	 * @param appBoot  the boot library version to hold it to
 	 * @param onLine   receives the package manager's output, or {@code null}
-	 * @throws DshException when the manifest cannot be written or pnpm fails
+	 * @throws DshException if the manifest cannot be written or pnpm fails
 	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot, @Nullable Consumer<String> onLine)
 	throws DshException {
@@ -120,18 +105,15 @@ public final class AppBootPin {
 		}
 	}
 
-	/// Returns the boot library version the workspace file pins, or null when it pins none.
-	///
-	/// The seam the reader is written against, so the parse can be tested on a file's own text
-	/// rather than through an instance that has to exist first.
-	///
-	/// @param workspace the file's text
-	/// @return the pinned version, or null
+	/**
+	 * Returns the boot library version pinned in a workspace file, or {@code null} if none.
+	 *
+	 * @param workspace the workspace file text
+	 * @return the pinned version, or {@code null}
+	 */
 	static @Nullable String appBootPin(String workspace) {
 		Matcher pin = APP_BOOT_PIN.matcher(workspace);
-		if (!pin.find()) {
-			return null;
-		}
+		if (!pin.find()) return null;
 		String version = pin.group(1).trim();
 		if (version.length() > 1 && (version.charAt(0) == '\'' || version.charAt(0) == '"') &&
 		    version.charAt(version.length() - 1) == version.charAt(0)) {
@@ -140,15 +122,12 @@ public final class AppBootPin {
 		return version.isEmpty() ? null : version;
 	}
 
-	/// Returns the boot library version an instance is held to.
-	///
-	/// The pin is read back from where it was written, because that is the
-	/// instance's own record of the choice: asking pnpm which copy it linked
-	/// would mean reproducing its store layout, and the version that matters to
-	/// the page is the one the instance asks for.
-	///
-	/// @param instance the instance
-	/// @return the version, or `null` when the instance has no pin to read
+	/**
+	 * Returns the boot library version an instance is held to.
+	 *
+	 * @param instance the instance
+	 * @return the version, or {@code null} if the instance has no pin
+	 */
 	public static @Nullable String readAppBoot(DshInstance instance) {
 		Path prefix;
 		try {
@@ -170,9 +149,7 @@ public final class AppBootPin {
 		}
 
 		Path manifest = prefix.resolve("package.json");
-		if (!Files.isRegularFile(manifest)) {
-			return null;
-		}
+		if (!Files.isRegularFile(manifest)) return null;
 		try {
 			JsonObject root = JsonParser.parseString(Files.readString(manifest)).getAsJsonObject();
 			JsonElement overrides = root.get("overrides");
