@@ -27,11 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Pins how a pnpm is run. */
 class DshPnpmTest {
-
 	@Test
 	void aManagedPnpmIsRunByTheNodeThatWasNamed() {
 		// Naming the Node.js makes the version that installs a tree the version that runs it.
-		DshPnpm pnpm = new DshPnpm(Path.of("prefix", "pnpm.cjs"), Path.of("bin", "node"), "11.28.11");
+		DshPnpm pnpm = new DshPnpm(Path.of("prefix", "pnpm.cjs"), Path.of("bin", "node"), "11.28.11",
+		                           Path.of("prefix", "bin"));
 		assertEquals(List.of("bin" + File.separator + "node",
 		                     "prefix" + File.separator + "pnpm.cjs",
 		                     "install"),
@@ -40,7 +40,7 @@ class DshPnpmTest {
 
 	@Test
 	void aSystemPnpmRunsItself() {
-		DshPnpm pnpm = new DshPnpm(Path.of("pnpm"), null, "11.28.11");
+		DshPnpm pnpm = new DshPnpm(Path.of("pnpm"), null, "11.28.11", Path.of("usr", "bin"));
 		assertEquals(List.of("pnpm", "install"), pnpm.commandFor(List.of("install")));
 	}
 }

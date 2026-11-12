@@ -40,17 +40,10 @@ import java.util.function.Consumer;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
- * Installs and enumerates the pnpm versions HDSL owns.
- *
- * <p>A pnpm is installed the way npm installs one: as a package in a prefix of its own. The prefix
- * is what makes the installation a unit — the package and everything it was published with sit
- * under it — and what lets a version be removed without touching anything else.
- *
- * @author HDSL contributors
+ * Installs and enumerates the launcher-managed pnpm versions.
  */
 @NotNullByDefault
 public final class PnpmRuntimeManager {
-	/// The package the pnpm distribution is published under.
 	public static final String PACKAGE_NAME = "pnpm";
 
 	private PnpmRuntimeManager() {
@@ -85,7 +78,7 @@ public final class PnpmRuntimeManager {
 	 * Finds an installed pnpm by version.
 	 *
 	 * @param version the version string
-	 * @return the installation, or {@code null} when it is not installed
+	 * @return the installed pnpm, or {@code null} when no such version is installed
 	 */
 	public static @Nullable PnpmRuntime findInstalled(String version) {
 		for (PnpmRuntime runtime : listInstalled()) {
@@ -97,26 +90,23 @@ public final class PnpmRuntimeManager {
 	}
 
 	/**
-	 * Reads the pnpm that is on {@code PATH}.
-	 *
-	 * <p>It is run through its own shim, which means it runs on the Node.js it was installed with
-	 * rather than on the one the launcher happens to name.
-	 *
-	 * @return the pnpm, or {@code null} when the machine has none
+	 * Finds the pnpm on {@code PATH}.
 	 */
 	public static @Nullable DshPnpm detect() {
 		Path pnpm = DshNodeRuntime.which("pnpm").orElse(null);
 		if (pnpm == null) {
 			return null;
 		}
-		return new DshPnpm(pnpm, null, DshNodeRuntime.versionOf(pnpm));
+		Path parent = pnpm.getParent();
+		return new DshPnpm(pnpm, null, DshNodeRuntime.versionOf(pnpm),
+		                   parent == null ? Path.of(".") : parent);
 	}
 
 	/**
-	 * Reads the versions of pnpm the registry publishes.
+	 * Reads the published pnpm versions from the registry.
 	 *
-	 * @param npm the npm executable to ask
-	 * @return the published versions, newest first
+	 * @param npm the npm executable to query
+	 * @return the versions, newest first
 	 * @throws DshException when the registry cannot be reached
 	 */
 	public static List<String> fetchVersions(Path npm) throws DshException {
@@ -148,15 +138,12 @@ public final class PnpmRuntimeManager {
 	}
 
 	/**
-	 * Installs a pnpm version into a prefix of its own.
-	 *
-	 * <p>The install is staged and then moved into place, so an interrupted install cannot be
-	 * mistaken for a usable one.
+	 * Installs a pnpm version into an npm prefix.
 	 *
 	 * @param version the version to install, with or without a leading {@code v}
-	 * @param npm     the npm executable to install it with
+	 * @param npm     the npm executable installing pnpm
 	 * @param onStage receives progress lines, or {@code null}
-	 * @return the installation
+	 * @return the installed pnpm
 	 * @throws DshException when the install fails
 	 */
 	public static PnpmRuntime install(String version, Path npm, @Nullable Consumer<String> onStage)
@@ -173,7 +160,7 @@ public final class PnpmRuntimeManager {
 		Path staging = target.resolveSibling(target.getFileName() + ".installing");
 		try {
 			Files.createDirectories(DshPaths.PNPM);
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			Files.createDirectories(staging);
 		} catch (IOException e) {
 			throw new DshException("Failed to prepare " + staging, e);
@@ -184,9 +171,6 @@ public final class PnpmRuntimeManager {
 		                               PACKAGE_NAME + "@" + normalized, "--no-audit", "--no-fund");
 
 		ProcessBuilder builder = new ProcessBuilder(command);
-		// npm's own shim finds node on PATH. The directory npm sits in comes first, so that the
-		// npm of a managed Node runs on that Node rather than on whichever one the launcher
-		// happened to start with.
 		Path npmDirectory = npm.getParent();
 		if (npmDirectory != null) {
 			builder.environment()
@@ -204,23 +188,23 @@ public final class PnpmRuntimeManager {
 			}
 			int exit = process.waitFor();
 			if (exit != 0) {
-				deleteQuietly(staging);
+				DshFiles.deleteTreeQuietly(staging);
 				throw new DshException("npm exited with code " + exit + " while installing pnpm " + normalized);
 			}
 		} catch (IOException e) {
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Failed to install pnpm " + normalized + ": " + e.getMessage(), e);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Installing pnpm " + normalized + " was interrupted", e);
 		}
 
 		try {
-			deleteQuietly(target);
+			DshFiles.deleteTreeQuietly(target);
 			Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
 		} catch (IOException e) {
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Failed to move the pnpm installation into " + target + ": " + e.getMessage(), e);
 		}
 
@@ -253,24 +237,9 @@ public final class PnpmRuntimeManager {
 		LOG.info("Removed pnpm " + version);
 	}
 
-	/**
-	 * Reports a progress stage when a consumer is attached.
-	 *
-	 * @param onStage the consumer, or {@code null}
-	 * @param message the message
-	 */
 	private static void stage(@Nullable Consumer<String> onStage, String message) {
 		if (onStage != null) {
 			onStage.accept(message);
 		}
-	}
-
-	/**
-	 * Deletes a path, ignoring failures and absence.
-	 *
-	 * @param path the path to delete
-	 */
-	private static void deleteQuietly(Path path) {
-		DshFiles.deleteTreeQuietly(path);
 	}
 }
