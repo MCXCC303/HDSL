@@ -17,7 +17,6 @@
  */
 package com.mcxcc303.hdsl.harness;
 
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
 import com.mcxcc303.hdsl.runtime.DshPnpm;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;

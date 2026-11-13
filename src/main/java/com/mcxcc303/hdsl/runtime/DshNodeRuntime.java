@@ -112,7 +112,7 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 	 * @param executable the program to run with {@code --version}
 	 * @return the first output line, trimmed, or {@code null} when no probe answered
 	 */
-	static @Nullable String versionOf(Path executable) {
+	public static @Nullable String versionOf(Path executable) {
 		String failure = null;
 		for (int attempt = 0; attempt < 2; attempt++) {
 			try {
