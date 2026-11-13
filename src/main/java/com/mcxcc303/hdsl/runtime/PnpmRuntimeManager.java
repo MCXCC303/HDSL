@@ -35,6 +35,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -170,27 +171,9 @@ public final class PnpmRuntimeManager {
 		List<String> command = List.of(npm.toString(), "install", "--global", "--prefix", staging.toString(),
 		                               PACKAGE_NAME + "@" + normalized, "--no-audit", "--no-fund");
 
-		ProcessBuilder builder = new ProcessBuilder(command);
-		Path npmDirectory = npm.getParent();
-		if (npmDirectory != null) {
-			builder.environment()
-			       .put("PATH", npmDirectory + File.pathSeparator + System.getenv("PATH"));
-		}
-		builder.redirectErrorStream(true);
-
+		DshCommand.Result result;
 		try {
-			Process process = builder.start();
-			try (var reader = process.inputReader()) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					stage(onStage, line);
-				}
-			}
-			int exit = process.waitFor();
-			if (exit != 0) {
-				DshFiles.deleteTreeQuietly(staging);
-				throw new DshException("npm exited with code " + exit + " while installing pnpm " + normalized);
-			}
+			result = DshCommand.run(command, null, null, npmEnvironment(npm), onStage);
 		} catch (IOException e) {
 			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Failed to install pnpm " + normalized + ": " + e.getMessage(), e);
@@ -198,6 +181,11 @@ public final class PnpmRuntimeManager {
 			Thread.currentThread().interrupt();
 			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Installing pnpm " + normalized + " was interrupted", e);
+		}
+		if (!result.isSuccess()) {
+			DshFiles.deleteTreeQuietly(staging);
+			throw new DshException("npm exited with code " + result.exitCode() + " while installing pnpm " +
+					normalized);
 		}
 
 		try {
@@ -235,6 +223,17 @@ public final class PnpmRuntimeManager {
 					e);
 		}
 		LOG.info("Removed pnpm " + version);
+	}
+
+	private static Map<String, String> npmEnvironment(Path npm) {
+		Path directory = npm.getParent();
+		if (directory == null) return Map.of();
+
+		String existing = System.getenv("PATH");
+		String path = existing == null || existing.isBlank()
+		              ? directory.toString()
+		              : directory + File.pathSeparator + existing;
+		return Map.of("PATH", path);
 	}
 
 	private static void stage(@Nullable Consumer<String> onStage, String message) {
