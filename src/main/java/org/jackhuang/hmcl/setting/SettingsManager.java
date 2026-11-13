@@ -50,19 +50,15 @@ import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/*
- * Owns the single [LauncherSettings] instance and persists it to disk.
- *
- * Persistence is deliberately explicit rather than reflective: the settings
- * object holds JavaFX properties, which serialise poorly, so a plain
- * serialisable snapshot is written instead. This keeps the on-disk format
- * stable and easy to migrate as HDSL grows.
+/**
+ * Owns the single {@link LauncherSettings} instance and persists the settings to disk.
+ * <p>
+ * The settings object holds JavaFX properties. The file holds a plain serializable snapshot
+ * instead.
  */
 @NotNullByDefault
 public final class SettingsManager {
-	// The settings file inside the per-user HDSL home.
 	private static final Path SETTINGS_PATH = Metadata.HDSL_USER_HOME.resolve("launcher-settings.json");
-	// The window state file inside the per-user HDSL home.
 	private static final Path STATE_PATH = Metadata.HDSL_USER_HOME.resolve("launcher-state.json");
 	// The lazily created settings singleton.
 	private static @Nullable LauncherSettings launcherSettings;
@@ -72,7 +68,7 @@ public final class SettingsManager {
 	private SettingsManager() {}
 
 	/**
-	 * Returns the process-wide window state, loading it on first use.
+	 * Returns the process-wide window state, loaded on first use.
 	 *
 	 * @return the launcher window state singleton
 	 */
@@ -87,7 +83,7 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Reads persisted window geometry into `state`, ignoring a missing file.
+	 * Reads persisted window geometry into {@code state}, ignoring a missing file.
 	 *
 	 * @param state the state to populate
 	 */
@@ -138,8 +134,9 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Loads settings from disk, returning defaults when the file is absent or unreadable.
-	 * Package-private so that a test can read back what {@link #save()} wrote without disturbing the instance the launcher is holding.
+	 * Loads settings from disk. Falls back to defaults if the file is absent or unreadable.
+	 * <p>
+	 * This is package-private so a test can {@link save()} settings and load them back.
 	 *
 	 * @return the loaded settings
 	 */
@@ -150,14 +147,13 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Resolves a stored theme colour.
+	 * Resolves a stored theme color.
 	 * <p>
-	 * Older settings files hold one of the standard colour names; the current
-	 * format holds the colour itself as `#RRGGBB`, which is what lets a colour
-	 * chosen in the picker survive a restart. Both are accepted.
+	 * The stored value can be a standard color name or a hex value such as {@code #RRGGBB}.
+	 * Standard names are matched case-insensitively. Older settings files store standard names.
 	 *
 	 * @param stored the stored name or hex value
-	 * @return the resolved colour, or the default when the value is unusable
+	 * @return the resolved color, or {@link ThemeColor#DEFAULT} if the value cannot be resolved
 	 */
 	private static ThemeColor resolveThemeColor(String stored) {
 		String value = stored.trim();
@@ -184,18 +180,15 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Renders a background colour for the settings file.
+	 * Renders a background color for the settings file.
 	 * <p>
-	 * Only a flat colour is stored: the appearance page's pickers produce one, and a
-	 * gradient in a settings file would be a value nothing can edit.
+	 * This stores a flat color only.
 	 *
-	 * @param paint the colour, or `null`
-	 * @return its hex form, or `null` when there is nothing to store
+	 * @param paint the color, or {@code null}
+	 * @return the hex form, or {@code null} when there is nothing to store
 	 */
 	private static @Nullable String paintToString(@Nullable Paint paint) {
-		if (!(paint instanceof Color color)) {
-			return null;
-		}
+		if (!(paint instanceof Color color)) return null;
 		return String.format("#%02X%02X%02X",
 		                     Math.round(color.getRed() * 255),
 		                     Math.round(color.getGreen() * 255),
@@ -203,14 +196,14 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Reads a background colour written by [SettingsManager#paintToString].
+	 * Reads a background color written by {@link paintToString}.
 	 *
 	 * @param value the stored hex string
-	 * @return the colour, or `null` when it cannot be read
+	 * @return the color, or {@code null} when the value is unreadable
 	 */
 	private static javafx.scene.paint.@Nullable Paint paintOf(String value) {
 		try {
-			return javafx.scene.paint.Color.web(value.trim());
+			return Color.web(value.trim());
 		} catch (IllegalArgumentException e) {
 			LOG.warning("Unknown background colour in settings: " + value);
 			return null;
@@ -219,25 +212,18 @@ public final class SettingsManager {
 
 	/**
 	 * Writes the current launcher settings to disk.
-	 * <p>
-	 * Failures are logged rather than propagated so that a read-only home
-	 * directory cannot make the launcher unusable.
 	 */
 	public static void save() {
 		writeSnapshot(Snapshot.of(settings()));
 	}
 
 	/**
-	 * Adds a folder to the settings file, and selects it, in one read-modify-write.
+	 * Adds a folder to the settings file, and selects the folder, in one read-modify-write.
 	 * <p>
-	 * This is how a folder is added from the command line. It is written into the file as that file
-	 * is on disk, rather than out of this process's copy of the settings: the copy was read when the
-	 * process started and holds every other setting as it was then, so publishing it would put back
-	 * whatever the window changed in between. The caller holds the launcher's lock, so nothing else
-	 * is writing while this runs.
+	 * The change is written to the file on disk.
 	 *
 	 * @param path the folder to add
-	 * @return the entry for it, the one already there or a new one
+	 * @return the folder entry, new or already there
 	 */
 	public static GameDirectory addGameDirectory(Path path) {
 		Snapshot snapshot = readSnapshot();
@@ -252,7 +238,7 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * Reads the settings file as it is on disk.
+	 * Reads the settings file from disk.
 	 *
 	 * @return the snapshot, empty when there is no readable file
 	 */
@@ -273,11 +259,7 @@ public final class SettingsManager {
 	/**
 	 * Writes a snapshot to the settings file.
 	 * <p>
-	 * Through a file beside it and a move, rather than over it. Writing over it means truncating it
-	 * first, and a reader that arrives in between — another launcher reading the settings at
-	 * start-up, which is the usual case — opens a file that is empty or half written: for this file
-	 * that is no accounts, no API keys, nothing. Through a move, what a reader opens is either the
-	 * file as it was or the file as it is, whole either way.
+	 * Writes to a file beside the settings, then moves that file to replace the old one.
 	 *
 	 * @param snapshot the snapshot to write
 	 */
@@ -285,7 +267,7 @@ public final class SettingsManager {
 		try {
 			Path directory = SETTINGS_PATH.getParent();
 			if (directory == null) {
-				// A path with no parent is the root of a filesystem, which this file is never in.
+				// A path with no parent is the root of a filesystem. The settings file never is.
 				throw new IOException("The settings file has no directory: " + SETTINGS_PATH);
 			}
 			Files.createDirectories(directory);
@@ -307,23 +289,22 @@ public final class SettingsManager {
 	 * Puts a written file in place of the settings file.
 	 *
 	 * @param written the file to move
-	 * @param target  where it goes
-	 * @throws IOException when it cannot be moved
+	 * @param target  where the file goes
+	 * @throws IOException when the file cannot be moved
 	 */
 	private static void move(Path written, Path target) throws IOException {
 		try {
 			Files.move(written, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 		} catch (AtomicMoveNotSupportedException e) {
-			// A filesystem that cannot do it atomically — a network mount, some Windows
-			// configurations — still gets the replacement, and with it the part that matters most:
-			// the reader opens one file or the other, never a half-written one.
+			// A filesystem without atomic moves (such as a network mount) still gets the replacement.
+			// The reader opens one file or the other, never a half-written one.
 			LOG.info("Moving " + written + " into place atomically is not supported here", e);
 			Files.move(written, target, StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
 
 	/**
-	 * Makes the settings file readable only by its owner.
+	 * Makes the settings file readable only by the owner.
 	 * <p>
 	 * The file holds the accounts' API keys.
 	 *
@@ -336,12 +317,11 @@ public final class SettingsManager {
 	/**
 	 * Applies the selection written before selections were kept per folder.
 	 * <p>
-	 * A launcher that kept one selection for the whole program was showing one
-	 * folder, so the value belongs to the folder it owns. A value already chosen
-	 * since is left alone: it is the newer answer.
+	 * The selection goes to the folder owned by the launcher. If a newer selection already exists,
+	 * the launcher does not overwrite it.
 	 *
 	 * @param settings the settings to update
-	 * @param legacyId the instance id an older launcher stored, or `null`
+	 * @param legacyId the instance id an older launcher stored, or {@code null}
 	 */
 	static void applyLegacySelection(LauncherSettings settings, @Nullable String legacyId) {
 		if (legacyId == null || settings.getSelectedInstance(GameDirectory.DEFAULT_ID) != null) {
@@ -351,11 +331,9 @@ public final class SettingsManager {
 	}
 
 	/**
-	 * The serialisable view of [LauncherSettings].
+	 * The serializable view of {@link LauncherSettings}.
 	 * <p>
-	 * Every field is nullable so that a partially written or older file still
-	 * loads; missing values keep the defaults already present in
-	 * [LauncherSettings].
+	 * Every field is nullable. missing values will keep the defaults already present.
 	 */
 	private static final class Snapshot {
 		@SerializedName("selectedThemePackId")
@@ -387,6 +365,9 @@ public final class SettingsManager {
 
 		@SerializedName("defaultNodeRuntime")
 		private @Nullable String defaultNodeRuntime;
+
+		@SerializedName("defaultPnpm")
+		private @Nullable String defaultPnpm;
 
 		@SerializedName("defaultHomeMode")
 		private @Nullable String defaultHomeMode;
@@ -499,7 +480,7 @@ public final class SettingsManager {
 		@SerializedName("marketSource")
 		private @Nullable String marketSource;
 
-		// The catalogue skills are searched in, by [SkillSource#id], or absent for the community's own index.
+		// The skill catalogue, by id, or absent for the community's own index.
 		@SerializedName("skillSource")
 		private @Nullable String skillSource;
 
@@ -542,7 +523,7 @@ public final class SettingsManager {
 		private @Nullable String proxyPassword;
 
 		/**
-		 * Captures the current settings into a serialisable snapshot.
+		 * Captures the current settings into a serializable snapshot.
 		 *
 		 * @param settings the settings to capture
 		 * @return the snapshot
@@ -560,6 +541,7 @@ public final class SettingsManager {
 			snapshot.titleBarTransparent = settings.titleBarTransparentProperty().get();
 			snapshot.launcherFontFamily = settings.launcherFontFamilyProperty().get();
 			snapshot.defaultNodeRuntime = settings.defaultNodeRuntimeProperty().get();
+			snapshot.defaultPnpm = settings.defaultPnpmProperty().get();
 			snapshot.defaultHomeMode = settings.defaultHomeModeProperty().get().name();
 			snapshot.gameDirectories = List.copyOf(settings.gameDirectoriesProperty().get());
 			snapshot.selectedGameDirectoryId = settings.selectedGameDirectoryIdProperty().get();
@@ -643,8 +625,6 @@ public final class SettingsManager {
 		 * @param settings the settings to update
 		 */
 		void applyTo(LauncherSettings settings) {
-			// Each field is applied on its own: a single unreadable value must
-			// not silently discard every setting that follows it.
 			if (selectedThemePackId != null) {
 				settings.selectedThemeProperty().set(new ThemeReference(selectedThemePackId, selectedThemeId));
 			}
@@ -668,6 +648,9 @@ public final class SettingsManager {
 			}
 			if (defaultNodeRuntime != null) {
 				settings.defaultNodeRuntimeProperty().set(defaultNodeRuntime);
+			}
+			if (defaultPnpm != null) {
+				settings.defaultPnpmProperty().set(defaultPnpm);
 			}
 			if (defaultHomeMode != null) {
 				settings.defaultHomeModeProperty()
@@ -756,10 +739,7 @@ public final class SettingsManager {
 							        account.label(),
 							        account.model(),
 							        new DshSkinChoice(
-									        // Read through the forgiving reader rather than the enum's own:
-									        // a name this launcher does not know — a file written by a later
-									        // version, or one edited by hand — must not stop the whole
-									        // settings file from loading.
+									        // an unknown name from a later version or a hand-edited file must not stop the settings file from loading.
 									        Objects.requireNonNullElse(DshSkinChoice.Type.fromStorage(account.skinType()),
 									                                   DshSkinChoice.Type.DEFAULT),
 									        DshSkinChoice.TextureModel.fromStorage(account.skinModel()),
@@ -769,9 +749,6 @@ public final class SettingsManager {
 			}
 			if (vendors != null) {
 				for (VendorSnapshot vendor : vendors) {
-					// A supplier with no address cannot be routed, so a row that has lost one — a
-					// hand-edited file, or a version that wrote it differently — is dropped rather
-					// than offered as something that cannot work.
 					if (vendor.baseUrl() == null || vendor.baseUrl().isBlank()) {
 						continue;
 					}
@@ -827,9 +804,8 @@ public final class SettingsManager {
 			}
 			if (debugLog != null) {
 				settings.debugLogProperty().set(debugLog);
-				// The switch decides whether lines are written, so the logger has to be
-				// told as well: without this it stays as the interface left it, which
-				// after a restart is off.
+				// The logger keeps its own flag. Without this call the flag keeps the value
+				// the interface set before, which is off after a restart.
 				org.jackhuang.hmcl.util.logging.Logger.setDebugEnabled(debugLog);
 			}
 			if (preLaunchCommand != null) {
@@ -845,8 +821,7 @@ public final class SettingsManager {
 				settings.packMarketUrlProperty().set(packMarketUrl);
 			}
 			if (dependencyPolicy != null) {
-				// A name this launcher does not know is left at the default rather than refusing the
-				// whole settings file: a policy is a preference, and losing it costs one choice.
+				// The launcher keeps the default value when the name is unknown.
 				try {
 					settings.dependencyPolicyProperty().set(DshDependencyPolicy.valueOf(dependencyPolicy));
 				} catch (IllegalArgumentException e) {
@@ -892,12 +867,12 @@ public final class SettingsManager {
 		}
 
 		/**
-		 * One account as it is stored.
+		 * One stored account.
 		 *
 		 * @param vendorId the vendor's id
 		 * @param apiKey   the key
 		 * @param baseUrl  the endpoint, for a vendor whose address is per account
-		 * @param label    what the person calls it
+		 * @param label    the name a person gives the account
 		 */
 		private record AccountSnapshot(@Nullable DshAccount.AccountKind kind, String vendorId, String apiKey,
 		                               @Nullable String baseUrl, @Nullable String label, @Nullable String model,
@@ -905,13 +880,12 @@ public final class SettingsManager {
 		                               @Nullable String skinCapePath) {}
 
 		/**
-		 * A supplier somebody added by address.
+		 * A supplier added by address.
 		 * <p>
-		 * All five fields, because all five are what the harness needs to route it: the id becomes
-		 * the route name, the address is where the calls go, the protocol is what the route
-		 * declares, and the variable is where the key is read from.
+		 * The harness needs all five fields to route a request.
 		 */
-		private record VendorSnapshot(String id, String displayName, String apiKeyEnv, String api, String baseUrl) {}
+		private record VendorSnapshot(String id, @Nullable String displayName, @Nullable String apiKeyEnv,
+		                              @Nullable String api, @Nullable String baseUrl) {}
 	}
 
 	// The serializable view of [LauncherState].

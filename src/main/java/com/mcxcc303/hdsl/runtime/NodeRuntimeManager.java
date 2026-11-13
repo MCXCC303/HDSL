@@ -61,9 +61,6 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  */
 @NotNullByDefault
 public final class NodeRuntimeManager {
-	// Corepack would take the newest pnpm; the harness is written against 11.
-	private static final String PNPM_MAJOR = "11";
-
 	private NodeRuntimeManager() {
 	}
 
@@ -344,51 +341,8 @@ public final class NodeRuntimeManager {
 			throw new DshException("Node.js " + normalized + " unpacked without a node executable");
 		}
 
-		provisionPnpm(runtime, onStage);
 		LOG.info("Installed Node.js " + normalized + " into " + target);
 		return runtime;
-	}
-
-	/**
-	 * Installs the pnpm a managed runtime needs to run DeepSeek Harness.
-	 *
-	 * @param runtime the freshly installed runtime
-	 * @param onStage receives progress lines, or `null`
-	 */
-	private static void provisionPnpm(NodeRuntime runtime, @Nullable Consumer<String> onStage) {
-		Path npm = NodeRuntime.npmIn(runtime.directory());
-		if (!Files.isRegularFile(npm)) {
-			stage(onStage, "npm is missing, so pnpm was not installed");
-			return;
-		}
-		stage(onStage, "Installing pnpm " + PNPM_MAJOR + ".x");
-
-		List<String> command = List.of(npm.toString(), "install", "--global", "pnpm@" + PNPM_MAJOR);
-		String shimDirectory = npm.getParent().toString();
-
-		ProcessBuilder builder = new ProcessBuilder(command);
-		builder.environment().put("PATH", shimDirectory + File.pathSeparator + System.getenv("PATH"));
-		builder.redirectErrorStream(true);
-
-		try {
-			Process process = builder.start();
-			try (var reader = process.inputReader()) {
-				String line;
-				while ((line = reader.readLine()) != null) {
-					stage(onStage, line);
-				}
-			}
-			int exit = process.waitFor();
-			if (exit != 0) {
-				LOG.warning("Installing pnpm into " + runtime.directory() + " exited with " + exit);
-				stage(onStage, "pnpm could not be installed (npm exited with " + exit + ")");
-			}
-		} catch (IOException e) {
-			LOG.warning("Failed to install pnpm into " + runtime.directory(), e);
-			stage(onStage, "pnpm could not be installed: " + e.getMessage());
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
 	}
 
 	public static @Nullable String versionOfDirectory(Path directory) {
@@ -434,7 +388,6 @@ public final class NodeRuntimeManager {
 		if (!runtime.isUsable()) {
 			throw new DshException("The chosen directory does not contain a usable Node.js installation");
 		}
-		provisionPnpm(runtime, null);
 		return runtime;
 	}
 

@@ -25,141 +25,118 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 
-/// The directory layout HDSL owns on disk.
-///
-/// Two distinct kinds of state live here and must not be confused:
-///
-/// - [#VERSIONS] holds DeepSeek Harness *installations* (code). Several
-///   versions coexist, each in its own npm prefix.
-/// - [#INSTANCES] holds launcher *instances*. An instance owns a `DSH_HOME`
-///   and a profile, and references one installed version.
-///
-/// Keeping them separate is what lets two instances share one version while
-/// still keeping their profiles, sessions and credentials apart.
+/**
+ * The HDSL directory layout on disk.
+ * <p>
+ * Each instance keeps a copy of DeepSeek Harness under {@link #INSTANCES}.
+ */
 @NotNullByDefault
 public final class DshPaths {
-	/// The root of all HDSL user data.
+	// Root of all HDSL user data.
 	public static final Path ROOT = Metadata.HDSL_USER_HOME;
-	/// One directory per installed DeepSeek Harness version, each an npm prefix.
-	/// One directory per launcher instance.
 	public static final Path INSTANCES = ROOT.resolve("instances");
-	/// Holds the homes that are shared between instances of one version.
 	public static final Path HOMES = ROOT.resolve("homes");
-	/// One directory per Node.js runtime the launcher installed.
-	///
-	/// Kept separate from [#VERSIONS] because a DeepSeek Harness version and a
-	/// Node runtime are independent choices: many instances share one runtime,
-	/// and one instance can be repinned without touching the other.
 	public static final Path RUNTIMES = ROOT.resolve("runtimes");
-	/// Cached copies of remote catalogues such as the quick-install presets.
+	public static final Path PNPM = ROOT.resolve("pnpm");
 	public static final Path CATALOG = ROOT.resolve("catalog");
-	/// Where the launcher keeps logs: its own, and the ones a person exports from the log window.
-	///
-	/// The launcher's log is a file rather than only a stream because the thing it is for is
-	/// reading after the fact: the switch that turns the debug lines on says "in the launcher's
-	/// log", and a person who turns it on to diagnose something wants to find the file
-	/// afterwards. The name and the layout are [#org.jackhuang.hmcl.util.logging.Logger]'s, which
-	/// is the transplanted HMCL logger and writes `2026-09-26T23-34-07.log` here, compressed to
-	/// `.xz` when the run ends.
-	///
-	/// What somebody exports from the log window lands here too. **Not** the process's working
-	/// directory, which is what an export relative to it amounts to: what somebody exports is
-	/// something they will look for again, and a file written into whatever directory the launcher
-	/// happened to be started in is a file they cannot find.
+	/**
+	 * Launcher log directory. The log file and logs exported from the log window are written here.
+	 * <p>
+	 * The log file uses the naming and layout of
+	 * {@link org.jackhuang.hmcl.util.logging.Logger}.
+	 * The logger compresses the file to {@code .xz} at the end of a run.
+	 * <p>
+	 * Exported logs are also written here. They are not written to the process working directory.
+	 */
 	public static final Path LOGS = ROOT.resolve("logs");
 
-	private DshPaths() {
-	}
+	private DshPaths() {}
 
-	/// Returns the npm prefix directory for a DeepSeek Harness version.
-	///
-	/// The directory is returned whether or not it exists.
-	///
-	/// @param version the version string, which must be a safe path segment
-	/// @param version the version
-	/// @return the version's prefix directory
-	/// @return the home directory
-	/// @throws DshException when the version string cannot be used as a directory name
-	/// The home shared between every instance running one version.
-	///
-	/// Outside the version's own files: each instance has its own copy of the
-	/// runtime now, and a home that two instances share cannot live inside one
-	/// of them.
-	/// @throws DshException when the version is not usable as a path segment
+	/**
+	 * Returns the home directory for a harness version.
+	 *
+	 * @param version the harness version
+	 * @return the home directory
+	 * @throws DshException if version cannot be used as a path segment
+	 */
 	public static Path versionHomeDirectory(String version) throws DshException {
 		return HOMES.resolve(segment(version, "version"));
 	}
 
-	/// The directory holding an instance's own copy of DeepSeek Harness.
-	///
-	/// Its own rather than shared between every instance that runs the same
-	/// version. Sharing is cheaper on paper and worse in practice: the boot
-	/// library is installed into the copy, so changing it for one instance
-	/// changed it for all of them, and an instance that carries its own copy is
-	/// an instance that can be moved, exported or thrown away whole. pnpm links
-	/// a second copy of the same packages from a store it keeps, so the second
-	/// one costs a fraction of the first.
-	///
-	/// @param instanceId the instance
-	/// @return the directory
-	/// @throws DshException when the identifier is not usable as a path segment
+	/**
+	 * Returns the DSH directory for an instance.
+	 * <p>
+	 * The directory holds the instance's DeepSeek Harness copy.
+	 * The boot library is installed into this directory.
+	 *
+	 * @param instanceId the instance id
+	 * @return the instance's DSH directory
+	 * @throws DshException if instanceId cannot be used as a path segment
+	 */
 	public static Path instanceVersionDirectory(String instanceId) throws DshException {
 		return instanceDirectory(instanceId).resolve("dsh");
 	}
 
-	/// Returns the directory for a launcher-managed Node runtime.
-	///
-	/// @param version the Node version, which must be a safe path segment
-	/// @return the runtime directory
-	/// @throws DshException when the version cannot be used as a directory name
+	/**
+	 * Returns the directory for a launcher-installed Node.js runtime.
+	 *
+	 * @param version the Node version
+	 * @return the runtime directory
+	 * @throws DshException if version cannot be used as a path segment
+	 */
 	public static Path runtimeDirectory(String version) throws DshException {
 		return RUNTIMES.resolve(segment(version, "runtime version"));
 	}
 
-	/// Returns the launcher instance directory for an instance id.
-	///
-	/// The directory is returned whether or not it exists.
-	///
-	/// @param instanceId the instance identifier
-	/// @return the instance directory
-	/// @throws DshException when the identifier cannot be used as a directory name
+	/**
+	 * Returns the npm prefix directory for a launcher-managed pnpm.
+	 *
+	 * @param version the pnpm version
+	 * @return the npm prefix directory
+	 * @throws DshException if version cannot be used as a path segment
+	 */
+	public static Path pnpmDirectory(String version) throws DshException {
+		return PNPM.resolve(segment(version, "pnpm version"));
+	}
+
+	/**
+	 * Returns the directory for a launcher instance.
+	 *
+	 * @param instanceId the instance id
+	 * @return the instance directory
+	 * @throws DshException if instanceId cannot be used as a path segment
+	 */
 	public static Path instanceDirectory(String instanceId) throws DshException {
 		return INSTANCES.resolve(segment(instanceId, "instance id"));
 	}
 
-	/// Reports whether a value can be used as one segment of a path.
-	///
-	/// The same rule [#segment(String, String)] enforces, asked in advance so that a
-	/// page can refuse a name before it is used to make a directory.
-	///
-	/// @param value the value to test
-	/// @return whether it is usable
+	/**
+	 * Reports whether value can be used as one path segment.
+	 * <p>
+	 * The rule is same as {@link segment(String, String)}.
+	 *
+	 * @param value the value to test
+	 * @return true if the value is usable
+	 */
 	public static boolean isUsableSegment(@Nullable String value) {
 		String trimmed = value == null ? "" : value.trim();
 		return isSafeSegment(trimmed);
 	}
 
-	/// Reports whether a trimmed string is a usable single path segment.
-	///
-	/// The rule is the one the transplanted HMCL has always used for the names
-	/// it makes directories from, [FileUtils#isNameValid(OperatingSystem, String)],
-	/// and it covers everything a hand-written list here used to: the reserved
-	/// device names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`…`COM9`, `LPT1`…`LPT9`,
-	/// and the superscript spellings, with or without an extension), the
-	/// trailing dot or space Windows strips off a name, the drive-separated
-	/// colon, the separators, the control characters and the code points that
-	/// are not characters.
-	///
-	/// Windows' answer is the one asked for, on every platform, and that is
-	/// deliberate: the three systems this launcher runs on share one repository
-	/// and one set of instance folders, and a name one of them accepts and
-	/// another cannot even write is a folder that stops working the moment it
-	/// is copied to the other. Separators are refused by that rule on Windows
-	/// and are named here as well, because they are what would turn one segment
-	/// into two — the one failure the caller can never recover from.
-	///
-	/// @param trimmed the value, already trimmed
-	/// @return whether it is usable
+	/**
+	 * Reports whether a trimmed string is a usable single path
+	 * segment. The rule comes from {@link FileUtils#isNameValid(OperatingSystem, String)}.
+	 * <p>
+	 * The Windows rule applies on every platform. Three systems
+	 * share one repository and one set of instance folders.
+	 * <p>
+	 * A name must stay valid after a copy between them.
+	 * The following values are refused: reserved device names, a trailing dot or space,
+	 * the drive colon, path separators, control characters, and non-character code points.
+	 *
+	 * @param trimmed the value, already trimmed
+	 * @return true if the value is usable
+	 */
 	private static boolean isSafeSegment(String trimmed) {
 		if (trimmed.isEmpty() || trimmed.contains("/") || trimmed.contains("\\")) {
 			return false;
@@ -167,16 +144,14 @@ public final class DshPaths {
 		return FileUtils.isNameValid(OperatingSystem.WINDOWS, trimmed);
 	}
 
-	/// Returns a value as a path segment, refusing one that cannot be a directory name.
-	///
-	/// Public because a caller that has a folder of its own — the folder the
-	/// user is looking at, which is where a new instance goes — has to apply the
-	/// same rule this class applies to the folders it owns.
-	///
-	/// @param value the candidate segment
-	/// @param what  a human-readable name for the value, used in the error message
-	/// @return the trimmed segment
-	/// @throws DshException when the value cannot be used as a directory name
+	/**
+	 * Returns value as a path segment.
+	 *
+	 * @param value the candidate segment
+	 * @param what  a human-readable name for value, used in the error message
+	 * @return the trimmed segment
+	 * @throws DshException if value cannot be used as a directory name
+	 */
 	public static String segment(@Nullable String value, String what) throws DshException {
 		String trimmed = value == null ? "" : value.trim();
 		if (!isSafeSegment(trimmed)) {

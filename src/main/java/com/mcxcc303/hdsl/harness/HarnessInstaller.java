@@ -28,6 +28,8 @@ import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -42,34 +44,18 @@ import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Installing a version of the harness into an instance.
-///
-/// The manifest is written by hand, so every value that is not a plain YAML scalar is quoted; the
-/// dependencies a package declares are held to the floors they name, which is what keeps a package
-/// the launcher never chose from arriving underneath it.
+/**
+ * Installs a version of the harness into an instance.
+ */
 @NotNullByDefault
 public final class HarnessInstaller {
-	/// The npm package name of the DeepSeek Harness CLI.
 	public static final String PACKAGE_NAME = "@deepseek-ai/dsh";
-
-	/// The characters YAML reserves at the start of a plain scalar.
-	///
-	/// A scalar beginning with one of these is an indicator to the reader rather than text, so
-	/// anything starting with one has to be quoted.
+	// The characters YAML reserves at the start of a plain scalar.
 	private static final String RESERVED_FIRST = "-?:,[]{}#&*!|>'\"%@`";
-
-	/**
-	 * The oldest pnpm that can install DeepSeek Harness
-	 */
 	private static final Semver MINIMUM_PNPM_VERSION = Objects.requireNonNull(Semver.parse(DshNodeRuntime.MINIMUM_PNPM));
 
-	private HarnessInstaller() {
-	}
+	private HarnessInstaller() {}
 
-	/**
-	 * Whether the instance's own DeepSeek Harness is in place: its entry script is there and no install
-	 * is outstanding.
-	 */
 	public static boolean isInstalled(DshInstance instance) {
 		try {
 			return !isInstalling(instance) && Files.isRegularFile(instance.dshEntryPoint());
@@ -78,9 +64,6 @@ public final class HarnessInstaller {
 		}
 	}
 
-	/**
-	 * Whether an install into the instance is outstanding.
-	 */
 	public static boolean isInstalling(DshInstance instance) {
 		try {
 			return Files.exists(pendingMarker(instance), LinkOption.NOFOLLOW_LINKS);
@@ -89,44 +72,31 @@ public final class HarnessInstaller {
 		}
 	}
 
-	/// Writes the manifest npm installs from.
-	///
-	/// The launcher states its dependencies rather than letting npm pick them,
-	/// so a version is reproducible and the libraries stay with the launcher
-	/// that expects them.
-	///
-	/// @param prefix  the directory the version is installed into
-	/// @param version the DeepSeek Harness version
-	/// @param appBoot the application boot library version to hold it to
-	/// @throws DshException when the manifest cannot be written
+	/**
+	 * Writes the {@code package.json} and the {@code pnpm-workspace.yaml} of an installation.
+	 *
+	 * @param prefix  the directory to install the version into
+	 * @param version the DeepSeek Harness version
+	 * @param appBoot the application boot library version to hold the harness to
+	 * @throws DshException when the manifest cannot be written
+	 */
 	static void writeManifest(Path prefix,
 	                          String version,
 	                          String appBoot,
 	                          @Nullable DshNodeRuntime runtime,
 	                          DshDependencyPolicy policy) throws DshException {
 		JsonObject dependencies = new JsonObject();
-		// A caret cannot express the lockstep: a range like ^0.1.6-alpha.1 resolves to alpha.2's
-		// libraries, and a release whose code and libraries disagree fails at import. Pin the launcher
-		// and the boot library to the same version.
+		// The harness version and the boot library version are written exactly, not as ranges.
 		dependencies.addProperty(PACKAGE_NAME, version);
 
-		// One map, and both files are written from it. Two computations — one per file — is how the
-		// same key came to be written twice: the boot library is put in explicitly *and* it is one of
-		// the vendor's packages, so the policy named it again and pnpm refused the file with
-		// `duplicated mapping key`. Building the answer once makes that unrepresentable.
+		// Both files are written from one map.
 		Map<String, String> overrides = mergeOverrides(appBoot, heldDependencies(runtime, version, appBoot, policy));
 
 		JsonObject manifest = new JsonObject();
 		manifest.addProperty("private", true);
 		manifest.add("dependencies", dependencies);
 
-		// The override goes in a file of its own, not in this one. npm reads an
-		// `overrides` field here and pnpm does not: since pnpm 10 the settings it
-		// used to take from `package.json` live in `pnpm-workspace.yaml`, and a
-		// `pnpm` field here is ignored with a warning. Writing only npm's spelling
-		// left the pinning silently not applied, and a runtime came out with the
-		// launcher at one version and its boot library at another — a pairing that
-		// fails at import rather than degrading. The tests cover the pair.
+		// pnpm reads `overrides` from `pnpm-workspace.yaml`, not from `package.json`.
 		StringBuilder workspace = new StringBuilder("overrides:\n");
 		overrides.forEach((name, held) -> workspace.append("  ")
 		                                           .append(yamlScalar(name))
@@ -144,16 +114,14 @@ public final class HarnessInstaller {
 		}
 	}
 
-	/// Combines the boot library's pin with the ones the policy holds.
-	///
-	/// The boot library wins where the two name the same package, and that is not a tie-break but the
-	/// point: it is the one the **caller** chose — the create page offers it — while the policy only
-	/// knows what the harness's ranges say. Keeping them in one map is also what stops the same key
-	/// being written twice, which is a file pnpm refuses outright.
-	///
-	/// @param appBoot the boot library version the caller asked for
-	/// @param held    the versions the policy holds
-	/// @return the overrides, boot library first
+	/**
+	 * Combines the boot library's pin with the policy's pins. The boot library's pin takes
+	 * precedence.
+	 *
+	 * @param appBoot the boot library version the caller asked for
+	 * @param held    the versions held by the policy
+	 * @return the overrides, boot library first
+	 */
 	static Map<String, String> mergeOverrides(String appBoot, Map<String, String> held) {
 		Map<String, String> overrides = new LinkedHashMap<>();
 		overrides.put(AppBootPin.APP_BOOT_PACKAGE, appBoot);
@@ -161,51 +129,38 @@ public final class HarnessInstaller {
 		return overrides;
 	}
 
-	/// Returns a value written so that YAML reads it back as the string it is.
-	///
-	/// The file is built by hand rather than through an emitter, so a value that is not a plain
-	/// scalar has to be quoted here or the file stops being YAML. Both halves of an override can be
-	/// such a value: a package name starts with `@`, which YAML reserves, and a pin can be a range
-	/// or a protocol as readily as a version. One this cannot write plainly is single-quoted, which
-	/// is where a quote of its own is doubled — the one escape that style has.
-	///
-	/// @param value the value
-	/// @return it as a YAML scalar
+	/**
+	 * Returns a value YAML reads back as a string.
+	 * <p>
+	 * A value needing quotes is single-quoted, and a quote in the value is doubled.
+	 *
+	 * @param value the value
+	 * @return it as a YAML scalar
+	 */
 	static String yamlScalar(String value) {
 		boolean plain = !value.isEmpty() && RESERVED_FIRST.indexOf(value.charAt(0)) < 0 && value.equals(value.trim()) &&
 		                !value.contains(": ") && !value.contains(" #") && value.indexOf('\n') < 0;
 		return plain ? value : "'" + value.replace("'", "''") + "'";
 	}
 
-	/// Returns the dependencies to hold to the versions the harness declares.
-	///
-	/// The declared value is a range — `^4.0.2` — and its **floor** is the version the author built
-	/// against: a caret asks for that version or anything newer that claims compatibility, and
-	/// "anything newer" is what has twice broken a launch. So the floor is read out and written as an
-	/// override, which is not a guess about what works but a statement of what the package itself
-	/// says it was written for.
-	///
-	/// Read from the **published manifests** rather than from disk: this runs before `pnpm install`,
-	/// when the harness's own `package.json` is not on the machine yet. Both packages that take part
-	/// in the pairing are asked — the harness, and the boot library it is held to — because each
-	/// declares part of the tree and the boot library is where the plugin framework is named.
-	///
-	/// **A failure here must not fail the install.** A registry that cannot be reached, or a range
-	/// this does not recognise, leaves that dependency to resolve freely — which is exactly the
-	/// behaviour of [DshDependencyPolicy#LATEST] and better than refusing to install at all.
-	///
-	/// @param runtime the runtime whose npm reads the registry
-	/// @param version the harness version
-	/// @param appBoot the boot library version
-	/// @param policy  how much of the tree to hold
-	/// @return the name-to-version overrides
+	/**
+	 * Returns the dependencies to hold to the versions declared by the harness.
+	 * <p>
+	 * The floors are read from the published manifests through npm.
+	 * <p>
+	 * A failure here does not fail the installation. The dependency is left to resolve freely.
+	 *
+	 * @param runtime the Node.js installation npm reads the registry with
+	 * @param version the harness version
+	 * @param appBoot the boot library version
+	 * @param policy  how much of the tree to hold
+	 * @return the name-to-version overrides
+	 */
 	static Map<String, String> heldDependencies(@Nullable DshNodeRuntime runtime,
 	                                            String version,
 	                                            String appBoot,
 	                                            DshDependencyPolicy policy) {
 		Map<String, String> held = new LinkedHashMap<>();
-		// No runtime means no npm, which means no registry to read the declarations from. Nothing is
-		// held, which is the same answer as `LATEST` and better than refusing to install.
 		if (policy == DshDependencyPolicy.LATEST || runtime == null) {
 			return held;
 		}
@@ -219,8 +174,7 @@ public final class HarnessInstaller {
 				}
 				for (Map.Entry<String, JsonElement> entry : declared.entrySet()) {
 					String name = entry.getKey();
-					// First answer wins: the harness's own declaration is the one that matters, and
-					// the boot library is asked second only for what the harness did not name.
+					// The harness's own declaration takes precedence over the boot library's.
 					if (!policy.pins(name) || held.containsKey(name) || !entry.getValue().isJsonPrimitive()) {
 						continue;
 					}
@@ -238,19 +192,15 @@ public final class HarnessInstaller {
 		return held;
 	}
 
-	/// Reads a `dependencies` object out of what npm answered.
-	///
-	/// npm answers a question about a **version specifier** with an array — one entry per version it
-	/// matched — even when the specifier names exactly one, so `npm view pkg@1.2.3 dependencies
-    /// --json` gives `[{…}]` rather than `{…}`. Reading only the object shape therefore found
-	/// nothing, silently: the policy would have been offered, selected, saved, and applied to
-	/// nothing at all. Hence a method of its own with the real shape written down, and a test that
-	/// feeds it the real answer.
-	///
-	/// A primitive is npm's answer for a package that declares no dependencies at all.
-	///
-	/// @param json npm's answer
-	/// @return the dependencies, or `null` when there are none to read
+	/**
+	 * Reads the {@code dependencies} object out of npm's output.
+	 * <p>
+	 * A query for a version specifier produces an array, one entry per match, even when the
+	 * specifier names a single version. A package with no dependencies produces a primitive.
+	 *
+	 * @param json npm's output
+	 * @return the dependencies, or {@code null} when there are none to read
+	 */
 	static @Nullable JsonObject declaredDependencies(@Nullable String json) {
 		JsonElement parsed = ReleaseQueries.parseJson(json);
 		if (parsed == null || parsed.isJsonNull()) {
@@ -269,15 +219,15 @@ public final class HarnessInstaller {
 		return null;
 	}
 
-	/// Reads the floor out of a declared version range.
-	///
-	/// Only the shapes that have a floor are answered: `4.0.2`, `^4.0.2`, `~4.0.2` and `>=4.0.2`.
-	/// Anything else — `*`, `latest`, a tag, a git address, a compound range — is answered with
-	/// `null` and left alone, because a range whose floor this cannot name is one it must not guess
-	/// at.
-	///
-	/// @param range the declared range
-	/// @return the version, or `null`
+	/**
+	 * Reads the floor out of a declared version range.
+	 * <p>
+	 * Only {@code 4.0.2}, {@code ^4.0.2}, {@code ~4.0.2} and {@code >=4.0.2} have a floor.
+	 * Everything else returns {@code null}.
+	 *
+	 * @param range the declared range
+	 * @return the version, or {@code null}
+	 */
 	static @Nullable String floorOf(@Nullable String range) {
 		String text = range == null ? "" : range.trim();
 		for (String prefix : List.of("^", "~", ">=")) {
@@ -290,8 +240,7 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * The marker whose presence means an install into the instance is outstanding. It sits beside the
-	 * harness, so an install that deletes the tree does not delete it.
+	 * The marker of an outstanding installation into the instance.
 	 *
 	 * @throws DshException when the instance directory cannot be resolved
 	 */
@@ -314,13 +263,13 @@ public final class HarnessInstaller {
 		try {
 			Files.deleteIfExists(pendingMarker(instance));
 		} catch (IOException | DshException e) {
-			// A marker that cannot be removed costs a reinstall; it does not endanger the tree.
+			// A marker that cannot be removed costs a reinstall.
 			LOG.warning("Could not remove the install marker of " + instance.id(), e);
 		}
 	}
 
 	/**
-	 * Removes the partial harness left by an interrupted install.
+	 * Removes the partial harness of an interrupted installation.
 	 */
 	public static void discardPartial(DshInstance instance) {
 		// Only call this after a failed install, or before deleting the instance.
@@ -346,7 +295,7 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * The reason an instance cannot run, or {@code null} when it can.
+	 * The reason an instance cannot run, or {@code null} when the instance can run.
 	 *
 	 * @throws DshException when the instance directory cannot be resolved
 	 */
@@ -366,8 +315,8 @@ public final class HarnessInstaller {
 			       pendingMarker(instance) + " is still there. Reinstall it to finish the job.";
 		}
 
-		// A link inside a finished tree can name a directory that is gone. A junction answers
-		// false to Files.isSymbolicLink, so use DshFiles' reparse-point check.
+		// A link inside a finished tree can name a missing directory.
+		// A junction returns false from Files.isSymbolicLink.
 		Path packageLink = harness.resolve(DshVersion.PACKAGE_PATH);
 		if (DshFiles.isReparsePoint(packageLink) && Files.exists(packageLink, LinkOption.NOFOLLOW_LINKS) &&
 		    !Files.exists(packageLink)) {
@@ -379,9 +328,9 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * Requires that the instance has a DeepSeek Harness to run.
+	 * Requires the instance to have a DeepSeek Harness to run.
 	 *
-	 * @throws DshException when it has none, with {@link #incompleteReason} as the message
+	 * @throws DshException when the instance has none, with {@link #incompleteReason} as the message
 	 */
 	public static void requireInstalled(DshInstance instance) throws DshException {
 		String reason = incompleteReason(instance);
@@ -393,7 +342,8 @@ public final class HarnessInstaller {
 	/**
 	 * Reports whether a pnpm version is known to be below {@link DshNodeRuntime#MINIMUM_PNPM}
 	 * <p>
-	 * A null or unreadable version is not old; only a version that can be read is refused.
+	 * A null or unreadable version is not old. Only a readable version can be below the
+	 * minimum.
 	 *
 	 * @param version the reported pnpm version, or null
 	 * @return whether the version is known to be too old
@@ -409,47 +359,45 @@ public final class HarnessInstaller {
 	/**
 	 * Refuses a pnpm older than {@link DshNodeRuntime#MINIMUM_PNPM}
 	 *
-	 * @param runtime the runtime to install with
-	 * @throws DshException when its pnpm is too old
+	 * @param pnpm the pnpm to install with
+	 * @throws DshException when the pnpm is too old
 	 */
-	static void requireSupportedPnpm(DshNodeRuntime runtime) throws DshException {
-		if (isPnpmTooOld(runtime.pnpmVersion())) {
-			throw new DshException("pnpm " + runtime.pnpmVersion() +
-			                       " is too old; installing DeepSeek Harness requires pnpm " +
-			                       DshNodeRuntime.MINIMUM_PNPM + " or newer");
+	static void requireSupportedPnpm(DshPnpm pnpm) throws DshException {
+		if (isPnpmTooOld(pnpm.version())) {
+			throw new DshException(
+					"pnpm " + pnpm.version() + " is too old; installing DeepSeek Harness requires pnpm " +
+					DshNodeRuntime.MINIMUM_PNPM + " or newer");
 		}
 	}
 
 	/**
 	 * The pnpm install command for a project
 	 *
-	 * @param runtime the runtime whose pnpm runs the install; its pnpm must not be null
-	 * @param project the project directory, whose manifest must already be written
+	 * @param pnpm    the pnpm running the installation
+	 * @param project the project directory, with the manifest already written
 	 * @return the command
 	 */
-	static List<String> buildInstallCommand(DshNodeRuntime runtime, Path project) {
-		// pnpm rather than npm: its store shares package contents between projects.
-		// append-only: the launcher's progress parser reads the "Progress: resolved ..." tally line.
-		// Dependency build scripts: npm runs them by default and pnpm 10 does not; a package that
-		// needs one can fail on first use.
-		List<String> command = new ArrayList<>(List.of(runtime.pnpm().toString(),
-		                                               "install",
-		                                               "--dir",
-		                                               project.toString(),
-		                                               "--reporter=append-only",
-		                                               "--config.dangerously-allow-all-builds=true"));
+	static List<String> buildInstallCommand(DshPnpm pnpm, Path project) {
+		// The launcher's progress parser reads the "Progress: resolved ..." tally line. Only the
+		// append-only reporter prints the tally line.
+		// pnpm does not run dependency build scripts by default. A package with build scripts
+		// can fail on first use.
+		List<String> arguments = new ArrayList<>(List.of("install",
+		                                                 "--dir",
+		                                                 project.toString(),
+		                                                 "--reporter=append-only",
+		                                                 "--config.dangerously-allow-all-builds=true"));
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-			// Windows falls back to junctions, which name absolute paths and break when the tree
-			// is moved; the hoisted linker lays the packages out directly instead.
-			command.add("--config.node-linker=hoisted");
+			// Windows uses the hoisted linker and lays the packages out directly.
+			arguments.add("--config.node-linker=hoisted");
 		}
-		return List.copyOf(command);
+		return pnpm.commandFor(arguments);
 	}
 
 	/**
-	 * Installs the version the instance records
-	 *
-	 * <p>Equivalent to {@code install(instance, instance.version(), onLine)}.
+	 * Installs the version recorded by the instance
+	 * <p>
+	 * Equivalent to {@code install(instance, instance.version(), onLine)}.
 	 *
 	 * @param instance the instance to install into
 	 * @param onLine   receives pnpm's output lines, or {@code null}
@@ -461,7 +409,7 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * Where a failed install keeps the tree it replaced.
+	 * Where a failed install keeps the replaced tree.
 	 *
 	 * @throws DshException when the instance directory cannot be resolved
 	 */
@@ -470,8 +418,8 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * The directory an instance's copy is staged in while it is installed. It sits inside the instance,
-	 * so moving it into place is a rename within one filesystem.
+	 * The directory for staging an instance's copy during the installation. It sits inside the
+	 * instance.
 	 *
 	 * @throws DshException when the identifier is not usable as a path segment
 	 */
@@ -480,59 +428,60 @@ public final class HarnessInstaller {
 	}
 
 	/**
-	 * Installs a version into the instance without changing the version it records.
-	 *
-	 * <p>The install holds the instance lock. If pnpm fails, a tree that was already installed is
-	 * kept; on Windows, one that cannot be moved back is left in the instance's
-	 * {@code dsh.previous} directory for manual recovery.
+	 * Installs a version into the instance without changing the version recorded by the instance.
+	 * <p>
+	 * The installation holds the instance lock. If pnpm fails, an already installed tree is kept.
+	 * On Windows, an already installed tree stays in the instance's {@code dsh.previous}
+	 * directory for manual recovery.
 	 *
 	 * @param instance the instance to install into
 	 * @param version  the DeepSeek Harness version
 	 * @param onLine   receives pnpm's output lines, or {@code null}
 	 * @throws DshException when Node.js or pnpm is missing, pnpm is older than
 	 *                      {@link DshNodeRuntime#MINIMUM_PNPM}, the instance directory cannot be
-	 *                      resolved, another operation holds the instance, or the install fails
+	 *                      resolved, another operation holds the instance, or the installation fails
 	 */
 	public static void install(DshInstance instance, String version, @Nullable Consumer<String> onLine)
 	throws DshException {
-		install(instance, version, onLine, null);
+		install(instance, version, onLine, null, null);
 	}
 
 	/**
-	 * Installs with the runtime supplied, or detects one when {@code detected} is {@code null}.
+	 * Installs with the runtime supplied, or detects a runtime when {@code detected} is
+	 * {@code null}.
 	 *
-	 * <p>Tests pass a runtime to drive the failure path without a registry or a real pnpm.
+	 * <p>Tests pass a runtime through this overload.
 	 *
 	 * @param instance the instance to install into
 	 * @param version  the DeepSeek Harness version
 	 * @param onLine   receives pnpm's output lines, or {@code null}
-	 * @param detected the runtime to install with, or {@code null} to detect one
-	 * @throws DshException when no runtime is found, its pnpm is missing or older than
-	 *                      {@link DshNodeRuntime#MINIMUM_PNPM}, the instance directory cannot be
-	 *                      resolved, another operation holds the instance, or the install fails
+	 * @param detected the runtime to install with, or {@code null} to detect a runtime
+	 * @throws DshException when no runtime is found, or the pnpm of the runtime is missing or
+	 *                      older than {@link DshNodeRuntime#MINIMUM_PNPM}, the instance directory
+	 *                      cannot be resolved, another operation holds the instance, or the installation
+	 *                      fails
 	 */
-	static void install(DshInstance instance, String version, @Nullable Consumer<String> onLine,
-	                    @Nullable DshNodeRuntime detected) throws DshException {
+	static void install(DshInstance instance,
+	                    String version,
+	                    @Nullable Consumer<String> onLine,
+	                    @Nullable DshNodeRuntime detected,
+	                    @Nullable DshPnpm detectedPnpm) throws DshException {
 		Path target = instance.dshDirectory();
-		// Take the lock before the runtime is looked at: a caller turned away should hear that the
-		// instance is busy, not that its own runtime is missing a tool.
+		// Take the lock before the runtime is looked at.
 		InstanceLocks.withLock(instance, "installed into", () -> {
 			if (!Files.isDirectory(instance.instanceDirectory(), LinkOption.NOFOLLOW_LINKS)) {
 				throw new DshException("Instance " + instance.id() + " no longer exists");
 			}
-			DshNodeRuntime runtime = detected != null ? detected : requireRuntime();
-			if (!runtime.canManagePlugins()) {
-				throw new DshException("pnpm was not found on PATH; installing DeepSeek Harness requires it");
-			}
-			requireSupportedPnpm(runtime);
+			// The runtime of the instance builds the tree, and the pnpm runs on the runtime.
+			DshNodeRuntime runtime =
+					detected != null ? detected : DshToolchain.resolve(instance.nodeRuntimeOrDefault());
+			DshPnpm pnpm = detectedPnpm != null ? detectedPnpm : DshToolchain.pnpm(runtime.node());
+			requireSupportedPnpm(pnpm);
 
 			if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
-				// Windows falls back to absolute junctions when it refuses symlinks; installing
-				// where the tree ends up removes the rename that would break them.
-				installInPlace(instance, version, runtime, target, onLine);
+				installInPlace(instance, version, runtime, pnpm, target, onLine);
 			} else {
-				// Relative links survive a rename, so the other platforms keep the staged install.
-				installStaged(instance, version, runtime, onLine);
+				installStaged(instance, version, runtime, pnpm, onLine);
 			}
 		});
 	}
@@ -540,6 +489,7 @@ public final class HarnessInstaller {
 	private static void installStaged(DshInstance instance,
 	                                  String version,
 	                                  DshNodeRuntime runtime,
+	                                  DshPnpm pnpm,
 	                                  @Nullable Consumer<String> onLine) throws DshException {
 		Path target = instance.dshDirectory();
 		Path staging = stagingDirectory(instance);
@@ -552,11 +502,9 @@ public final class HarnessInstaller {
 		} catch (IOException e) {
 			throw new DshException("Failed to prepare " + staging, e);
 		}
-
 		writeManifest(staging, version, version, runtime, SettingsManager.settings().dependencyPolicy());
 
-		List<String> command = buildInstallCommand(runtime, staging);
-
+		List<String> command = buildInstallCommand(pnpm, staging);
 		LOG.info("Installing DSH " + version + " for " + instance.id() + ": " + String.join(" ", command));
 
 		int exitCode;
@@ -572,7 +520,7 @@ public final class HarnessInstaller {
 		}
 
 		if (exitCode != 0) {
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException(
 					"pnpm exited with code " + exitCode + " while installing " + version + " for " + instance.id() +
 					":\n" + ReleaseQueries.tail(commandResult.output()));
@@ -580,22 +528,20 @@ public final class HarnessInstaller {
 
 		Path bin = staging.resolve(DshVersion.PACKAGE_PATH).resolve("lib/bin.js");
 		if (!Files.isRegularFile(bin)) {
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("pnpm reported success but " + bin + " is missing");
 		}
 
 		try {
-			if (Files.exists(target)) {
-				DshFiles.deleteTree(target);
-			}
+			if (Files.exists(target)) DshFiles.deleteTree(target);
 			Files.createDirectories(target.getParent());
 			Files.move(staging, target);
 		} catch (IOException e) {
-			deleteQuietly(staging);
+			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Failed to move the staged install into " + target, e);
 		}
 
-		// A marker can arrive with an instance copied from Windows; clear it after a successful staged installation.
+		// A marker can arrive with an instance copied from Windows.
 		clearInstalling(instance);
 		LOG.info("Installed DSH " + version + " for " + instance.id() + " into " + target);
 	}
@@ -603,11 +549,12 @@ public final class HarnessInstaller {
 	private static void installInPlace(DshInstance instance,
 	                                   String version,
 	                                   DshNodeRuntime runtime,
+	                                   DshPnpm pnpm,
 	                                   Path target,
 	                                   @Nullable Consumer<String> onLine) throws DshException {
 		Path aside = setAsideDirectory(instance);
 
-		// An existing marker means target is unfinished but may still be the only copy; keep it for recovery.
+		// An existing marker means the target is unfinished but may still be the only copy.
 		boolean wasInstalling = isInstalling(instance);
 		markInstalling(instance);
 
@@ -624,8 +571,7 @@ public final class HarnessInstaller {
 			} else {
 				DshFiles.deleteTreeQuietly(aside);
 				if (Files.isDirectory(target, LinkOption.NOFOLLOW_LINKS)) {
-					// Moved rather than deleted
-					// absolute links inside it still name this path.
+					// Moved rather than deleted.
 					Files.move(target, aside);
 					hadPrevious = true;
 				}
@@ -638,13 +584,12 @@ public final class HarnessInstaller {
 		try {
 			Files.createDirectories(target);
 			writeManifest(target, version, version, runtime, SettingsManager.settings().dependencyPolicy());
-			List<String> command = buildInstallCommand(runtime, target);
 
+			List<String> command = buildInstallCommand(pnpm, target);
 			LOG.info("Installing DSH " + version + " for " + instance.id() + ": " + String.join(" ", command));
 
 			int exitCode;
 			DshCommand.Result commandResult;
-
 			try {
 				commandResult = DshCommand.run(command, null, onLine);
 				exitCode = commandResult.exitCode();
@@ -685,17 +630,18 @@ public final class HarnessInstaller {
 					kept.add(recovery.toString());
 				}
 				if (!kept.isEmpty()) {
-					failure = new DshException(failure.getMessage() + "\nThe unfinished harness was kept at " +
-					                           String.join(", ", kept) + "; it is not reported as installed.",
-					                           failure);
+					failure = new DshException(
+							failure.getMessage() + "\nThe unfinished harness was kept at " + String.join(", ", kept) +
+							"; it is not reported as installed.", failure);
 				}
 				throw failure;
 			}
 
 			discardPartial(instance);
 			if (hadPrevious && !restore(aside, target)) {
-				failure = new DshException(failure.getMessage() + "\nThe DeepSeek Harness that was there has been " +
-				                           "kept in " + aside + " and has to be moved back by hand", failure);
+				failure = new DshException(
+						failure.getMessage() + "\nThe DeepSeek Harness that was there has been " + "kept in " + aside +
+						" and has to be moved back by hand", failure);
 			}
 			throw failure;
 		}
@@ -724,25 +670,12 @@ public final class HarnessInstaller {
 		}
 	}
 
-	/// Deletes a directory, ignoring failures.
-	///
-	/// The trees here are a package manager's: thousands of files, some of them
-	/// read-only and some of them junctions. Removed with [DshFiles], which is
-	/// what makes that work on Windows; see it for what was measured.
-	///
-	/// @param directory the directory to remove
-	static void deleteQuietly(Path directory) {
-		DshFiles.deleteTreeQuietly(directory);
-	}
-
 	/**
-	 * The Node runtime found on PATH.
+	 * The Node runtime used by the launcher.
 	 *
-	 * @throws DshException when no {@code node} was found
+	 * @throws DshException when the selected runtime is not there
 	 */
 	public static DshNodeRuntime requireRuntime() throws DshException {
-		return DshNodeRuntime.detect()
-		                     .orElseThrow(() -> new DshException(
-				                     "Node.js was not found on PATH; " + DshNodeRuntime.requirement()));
+		return DshToolchain.node();
 	}
 }

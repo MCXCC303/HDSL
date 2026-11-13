@@ -19,6 +19,7 @@ package com.mcxcc303.hdsl.harness;
 
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshPnpm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -35,9 +36,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class HarnessInstallerPnpmTest {
 
-	private static DshNodeRuntime runtime(String pnpmVersion) {
-		return new DshNodeRuntime(Path.of("node"), "24.11.1", Path.of("npm"), "11.20.0",
-		                          Path.of("pnpm"), pnpmVersion);
+		private static DshPnpm pnpm(String pnpmVersion) {
+		return new DshPnpm(Path.of("pnpm"), null, pnpmVersion, Path.of("bin"));
 	}
 
 	@Test
@@ -75,7 +75,7 @@ class HarnessInstallerPnpmTest {
 	@Test
 	void theRefusalNamesTheVersion() {
 		DshException refusal = assertThrows(DshException.class,
-		                                   () -> HarnessInstaller.requireSupportedPnpm(runtime("10.8.9")));
+		                                   () -> HarnessInstaller.requireSupportedPnpm(pnpm("10.8.9")));
 		assertTrue(refusal.getMessage().contains("10.8.9 is too old"), refusal.getMessage());
 		assertTrue(refusal.getMessage().contains("10.9 or newer"), refusal.getMessage());
 	}

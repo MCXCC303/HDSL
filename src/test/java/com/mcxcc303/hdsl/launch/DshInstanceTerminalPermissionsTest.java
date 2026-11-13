@@ -132,7 +132,7 @@ class DshInstanceTerminalPermissionsTest {
 
 	private DshNodeRuntime runtime() {
 		Path bin = folder.resolve("node").resolve("bin");
-		return new DshNodeRuntime(bin.resolve("node"), "22.19.0", bin.resolve("npm"), "10.9.0", null, null);
+		return new DshNodeRuntime(bin.resolve("node"), "22.19.0", bin.resolve("npm"), "10.9.0");
 	}
 
 	private Path session() {
