@@ -36,7 +36,6 @@ import java.io.PrintStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 // Prints the launcher's diagnose information.
 @NotNullByDefault
@@ -93,8 +92,11 @@ public final class DshDoctor {
 			out.println("  required: " + DshNodeRuntime.requirement());
 			runtimeOk = runtime.isNodeSupported() && runtime.canInstall() && pnpm != null && !pnpmTooOld;
 		} catch (DshException e) {
-			out.println("  node:  NOT FOUND");
-			out.println("  required: " + DshNodeRuntime.requirement());
+			String reason = e.getMessage() == null ? e.toString() : e.getMessage();
+			out.println("  node:  " + reason);
+			if (!reason.contains(DshNodeRuntime.requirement())) {
+				out.println("  required: " + DshNodeRuntime.requirement());
+			}
 			runtimeOk = false;
 		}
 		out.println();
