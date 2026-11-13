@@ -150,12 +150,27 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 	private void uninstall(String version) {
 		Controllers.confirm(i18n("dsh.node.uninstall.confirm", version), i18n("dsh.node.uninstall"), () -> {
-			try {
-				NodeRuntimeManager.uninstall(version);
-			} catch (DshException e) {
-				Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-			}
-			refresh();
+			if (busy) return;
+
+			busy = true;
+			setLoading(true);
+			CompletableFuture.runAsync(() -> {
+				try {
+					NodeRuntimeManager.uninstall(version);
+				} catch (DshException e) {
+					throw new CompletionException(e);
+				}
+			}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+				busy = false;
+				setLoading(false);
+				if (throwable != null) {
+					Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+					                  ? throwable.getCause()
+					                  : throwable;
+					Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
+				}
+				refresh();
+			}));
 		}, null);
 	}
 

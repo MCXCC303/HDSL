@@ -23,9 +23,9 @@ import com.jfoenix.controls.JFXRadioButton;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFileManager;
 import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import com.mcxcc303.hdsl.runtime.PnpmRuntime;
 import com.mcxcc303.hdsl.runtime.PnpmRuntimeManager;
-import com.mcxcc303.hdsl.runtime.DshToolchain;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -52,6 +52,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
@@ -118,12 +119,27 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 
 	private void uninstall(String version) {
 		Controllers.confirm(i18n("dsh.pnpm.uninstall.confirm", version), i18n("dsh.pnpm.uninstall"), () -> {
-			try {
-				PnpmRuntimeManager.uninstall(version);
-			} catch (DshException e) {
-				Controllers.dialog(e.getMessage(), i18n("message.error"), MessageType.ERROR);
-			}
-			refresh();
+			if (busy) return;
+
+			busy = true;
+			setLoading(true);
+			CompletableFuture.runAsync(() -> {
+				try {
+					PnpmRuntimeManager.uninstall(version);
+				} catch (DshException e) {
+					throw new CompletionException(e);
+				}
+			}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+				busy = false;
+				setLoading(false);
+				if (throwable != null) {
+					Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+					                  ? throwable.getCause()
+					                  : throwable;
+					Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
+				}
+				refresh();
+			}));
 		}, null);
 	}
 
