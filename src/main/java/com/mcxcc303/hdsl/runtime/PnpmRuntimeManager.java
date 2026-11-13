@@ -17,11 +17,9 @@
  */
 package com.mcxcc303.hdsl.runtime;
 
-import com.google.gson.JsonElement;
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFiles;
-import com.mcxcc303.hdsl.core.DshJson;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.harness.VersionOrder;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -101,41 +99,6 @@ public final class PnpmRuntimeManager {
 		Path parent = pnpm.getParent();
 		return new DshPnpm(pnpm, null, DshNodeRuntime.versionOf(pnpm),
 		                   parent == null ? Path.of(".") : parent);
-	}
-
-	/**
-	 * Reads the published pnpm versions from the registry.
-	 *
-	 * @param npm the npm executable to query
-	 * @return the versions, newest first
-	 * @throws DshException when the registry cannot be reached
-	 */
-	public static List<String> fetchVersions(Path npm) throws DshException {
-		List<String> command = List.of(npm.toString(), "view", PACKAGE_NAME, "versions", "--json");
-		DshCommand.Result result;
-		try {
-			result = DshCommand.run(command);
-		} catch (IOException e) {
-			throw new DshException("Failed to run npm", e);
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			throw new DshException("Reading the pnpm version list was interrupted", e);
-		}
-		if (!result.isSuccess()) {
-			throw new DshException("npm view exited with code " + result.exitCode() + ": " + result.text());
-		}
-
-		JsonElement parsed = DshJson.parseFirstValue(result.text());
-		List<String> versions = new ArrayList<>();
-		if (parsed != null && parsed.isJsonArray()) {
-			for (JsonElement element : parsed.getAsJsonArray()) {
-				if (element.isJsonPrimitive()) {
-					versions.add(element.getAsString());
-				}
-			}
-		}
-		versions.sort((left, right) -> VersionOrder.compareVersions(right, left));
-		return List.copyOf(versions);
 	}
 
 	/**

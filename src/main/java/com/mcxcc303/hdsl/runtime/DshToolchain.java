@@ -31,8 +31,8 @@ import java.util.function.Supplier;
 /**
  * Provides the launcher's Node.js and pnpm.
  * <p>
- * Each instance runs the DeepSeek Harness with its own Node.js, separate from the launcher's selection.
- * Selections come from suppliers installed by {@link #install}.
+ * Each instance runs DeepSeek Harness with its own Node.js, separate from the launcher's selection.
+ * The current selections come from the suppliers set by {@link install}.
  */
 @NotNullByDefault
 public final class DshToolchain {
@@ -56,16 +56,16 @@ public final class DshToolchain {
 	/**
 	 * Returns the Node.js selection.
 	 *
-	 * @return {@link #SYSTEM}, or the version of an installed runtime
+	 * @return {@link SYSTEM}, or the version of an installed runtime
 	 */
 	public static String nodeSelection() {
 		return nodeSelection.get();
 	}
 
 	/**
-	 * Returns the pnpm selection.
+	 * Returns the current pnpm selection.
 	 *
-	 * @return {@link #SYSTEM}, or the version of an installed pnpm
+	 * @return {@link SYSTEM}, or the version of an installed pnpm
 	 */
 	public static String pnpmSelection() {
 		return pnpmSelection.get();
@@ -76,20 +76,22 @@ public final class DshToolchain {
 	 * <p>
 	 * A system runtime is refused if it's outside the supported range.
 	 *
-	 * @param selection {@link #SYSTEM} or the version of an installed runtime
+	 * @param selection {@link SYSTEM} or the version of an installed runtime
 	 * @return the runtime
 	 * @throws DshException if the selected runtime is not installed, unsupported or not on {@code PATH}
 	 */
 	public static DshNodeRuntime resolve(String selection) throws DshException {
 		if (SYSTEM.equalsIgnoreCase(selection)) {
-			DshNodeRuntime runtime = DshNodeRuntime.detect().orElseThrow(() -> new DshMissingToolException(
-					DshMissingToolException.Tool.NODE,
-					"Node.js was not found on PATH; " + DshNodeRuntime.requirement()));
+			DshNodeRuntime runtime = DshNodeRuntime.detect()
+			                                       .orElseThrow(() -> new DshMissingToolException(
+					                                       DshMissingToolException.Tool.NODE,
+					                                       "Node.js not found on PATH. " +
+					                                       DshNodeRuntime.requirement()));
 			if (!runtime.isNodeSupported()) {
 				throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
-				                                  "The system Node.js " + runtime.nodeVersion() +
+				                                  "System Node.js " + runtime.nodeVersion() +
 				                                  " is outside the supported range (" + DshNodeRuntime.requirement() +
-				                                  "). Install a suitable runtime on the Node page, or pick one for this instance.");
+				                                  "). Install a supported runtime on the Node page, or select one for this instance.");
 			}
 			return runtime;
 		}
@@ -97,7 +99,7 @@ public final class DshToolchain {
 		if (managed == null) {
 			throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
 			                                  "Node.js " + selection +
-			                                  " is not installed; install it on the Node page or pick the system one");
+			                                  " is not installed. Install it on the Node page, or select the system Node.js.");
 		}
 		return DshNodeRuntime.fromManaged(managed);
 	}
@@ -106,7 +108,7 @@ public final class DshToolchain {
 	 * Resolves the selected Node.js.
 	 *
 	 * @return the runtime
-	 * @throws DshException when the selected Node.js is not there
+	 * @throws DshException if the selected Node.js cannot be resolved
 	 */
 	public static DshNodeRuntime node() throws DshException {
 		return resolve(nodeSelection());
@@ -114,19 +116,17 @@ public final class DshToolchain {
 
 	/**
 	 * Resolves the npm bundled with the selected Node.js runtime.
-	 * <p>
-	 * A Node.js installation carries an npm, and there is no npm to choose.
 	 *
 	 * @return the npm executable
-	 * @throws DshException when the selected Node.js carries none
+	 * @throws DshException if the selected Node.js bundles no npm
 	 */
 	public static Path npm() throws DshException {
 		DshNodeRuntime runtime = node();
 		Path npm = runtime.npm();
 		if (npm == null) {
 			throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
-			                                  "the Node.js at " + runtime.node() + " carries no npm; " +
-			                                  "reading the registry and installing a pnpm require one");
+			                                  "Node.js at " + runtime.node() +
+			                                  " has no npm. Installing pnpm requires npm.");
 		}
 		return npm;
 	}
@@ -144,7 +144,7 @@ public final class DshToolchain {
 		if (pnpm == null) {
 			throw new DshMissingToolException(DshMissingToolException.Tool.PNPM,
 			                                  "pnpm " + pnpmSelection() +
-			                                  " is not installed; install one on the pnpm page or pick the system one");
+			                                  " is not installed. Install it on the pnpm page, or select the system pnpm.");
 		}
 		return pnpm;
 	}
