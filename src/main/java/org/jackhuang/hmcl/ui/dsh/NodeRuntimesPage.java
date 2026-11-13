@@ -149,6 +149,12 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	}
 
 	private void uninstall(String version) {
+		if (version.equals(settings().defaultNodeRuntimeProperty().get())) {
+			Controllers.dialog(i18n("dsh.node.uninstall.in_use", version), i18n("dsh.node.uninstall"),
+			                   MessageType.INFO);
+			return;
+		}
+
 		Controllers.confirm(i18n("dsh.node.uninstall.confirm", version), i18n("dsh.node.uninstall"), () -> {
 			if (busy) return;
 
