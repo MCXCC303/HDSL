@@ -22,7 +22,7 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.harness.DshVersion;
 import com.mcxcc303.hdsl.launch.DshEnvironment;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;

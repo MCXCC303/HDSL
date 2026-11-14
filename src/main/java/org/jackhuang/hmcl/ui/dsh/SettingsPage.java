@@ -27,6 +27,8 @@ import org.jackhuang.hmcl.ui.construct.PageAware;
 import org.jackhuang.hmcl.ui.construct.TabHeader;
 import org.jackhuang.hmcl.ui.decorator.DecoratorAnimatedPage;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
+import org.jackhuang.hmcl.ui.dsh.runtime.NodeRuntimesPage;
+import org.jackhuang.hmcl.ui.dsh.runtime.PnpmRuntimesPage;
 import org.jackhuang.hmcl.ui.dsh.settings.*;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;

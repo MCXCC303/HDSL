@@ -28,7 +28,8 @@ import com.mcxcc303.hdsl.launch.DshLauncher;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import com.mcxcc303.hdsl.plugin.DshPluginRequirements;
 import com.mcxcc303.hdsl.plugin.DshPluginVersions;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshNpmDocument;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
@@ -44,6 +45,7 @@ import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.ui.dsh.runtime.ReleaseChannelMarks;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -57,9 +59,6 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/**
- * One package's published versions, arranged by the harness each of them was written for.
- */
 @NotNullByDefault
 public final class PluginVersionList extends VBox {
 	private final @Nullable String packageName;
@@ -156,7 +155,7 @@ public final class PluginVersionList extends VBox {
 						                         : DshLauncher.resolveRuntime(instance);
 						for (String version : ReleaseQueries.fetchPackageVersions(runtime, packageName)) {
 							published.add(new DshPluginVersions.Published(version,
-							                                              DshPluginVersions.channelOf(version, null),
+							                                              DshNpmDocument.channelOf(version, null),
 							                                              null,
 							                                              new JsonObject(),
 							                                              List.of()));
@@ -167,7 +166,7 @@ public final class PluginVersionList extends VBox {
 				}
 			} else if (pinnedVersion != null) {
 				published.add(new DshPluginVersions.Published(pinnedVersion,
-				                                              DshPluginVersions.channelOf(pinnedVersion, null),
+				                                              DshNpmDocument.channelOf(pinnedVersion, null),
 				                                              null,
 				                                              new JsonObject(),
 				                                              List.of()));
@@ -215,8 +214,6 @@ public final class PluginVersionList extends VBox {
 		}));
 	}
 
-	// Draws the groups that were loaded, honouring which of them are open.
-	// One list rather than one per group: a package with a hundred releases would otherwise put a hundred rows into a box that does not know how to scroll them.
 	private void render() {
 		List<Row> drawn = new ArrayList<>();
 		if (groups.isEmpty()) {
@@ -238,32 +235,15 @@ public final class PluginVersionList extends VBox {
 		rows.setAll(drawn);
 	}
 
-	/**
-	 * Returns what one version says about the harness the list is for.
-	 *
-	 * @param version the version
-	 * @return what it says
-	 */
 	private DshPluginVersions.Fit fitOf(DshPluginVersions.Published version) {
 		return DshPluginVersions.fitOf(version, harnessVersion, harnessCore);
 	}
 
-	/**
-	 * Opens or closes one group.
-	 *
-	 * @param key the group's key
-	 */
 	private void toggleGroup(String key) {
 		if (!opened.remove(key)) opened.add(key);
 		render();
 	}
 
-	/**
-	 * Returns the heading a group is drawn under.
-	 *
-	 * @param group the group
-	 * @return the heading
-	 */
 	private static String headingOf(DshPluginVersions.Group group) {
 		if (group.recommended()) return i18n("dsh.market.recommend", group.harnessVersion());
 
@@ -272,12 +252,6 @@ public final class PluginVersionList extends VBox {
 		       : i18n("dsh.market.group", group.harnessVersion());
 	}
 
-	/**
-	 * Builds the message a list with nothing in it shows.
-	 *
-	 * @param message the message
-	 * @return the placeholder
-	 */
 	private static Node placeholder(String message) {
 		Label label = new Label(message);
 		StackPane container = new StackPane(label);
@@ -285,58 +259,10 @@ public final class PluginVersionList extends VBox {
 		return container;
 	}
 
-	/**
-	 * Returns the mark a channel is drawn with.
-	 *
-	 * @param channel the channel
-	 * @return the mark, or null for a channel that is drawn without one
-	 */
-	private static @Nullable SVG channelMark(DshPluginVersions.Channel channel) {
-		return switch (channel) {
-			case STABLE -> SVG.RELEASE_CIRCLE;
-			case RC, BETA -> SVG.BETA_CIRCLE;
-			case ALPHA -> SVG.ALPHA_CIRCLE;
-			case OTHER -> null;
-		};
-	}
-
-	/**
-	 * Returns the colour a channel's mark is drawn in.
-	 *
-	 * @param channel the channel
-	 * @return the style class
-	 */
-	private static String channelStyle(DshPluginVersions.Channel channel) {
-		return switch (channel) {
-			case STABLE -> "release";
-			case RC, BETA -> "beta";
-			case ALPHA -> "alpha";
-			case OTHER -> "";
-		};
-	}
-
-	/**
-	 * Returns the label a channel is shown with.
-	 *
-	 * @param channel the channel
-	 * @return the translation key
-	 */
-	private static String channelKey(DshPluginVersions.Channel channel) {
-		return switch (channel) {
-			case STABLE -> "download.type.stable";
-			case RC -> "download.type.rc";
-			case BETA -> "download.type.beta";
-			case ALPHA -> "download.type.alpha";
-			case OTHER -> "download.type.other";
-		};
-	}
-
 	// A heading, or a version under one
 	private sealed interface Row permits HeadingRow, VersionRow {}
 
 	/**
-	 * What one load read.
-	 *
 	 * @param versions       the versions, newest first
 	 * @param groups         the groups they were arranged into, or an empty list when no document
 	 *                       could be read and there is nothing to arrange them by
@@ -349,8 +275,6 @@ public final class PluginVersionList extends VBox {
 	                      @Nullable String held) {}
 
 	/**
-	 * A group's heading, which opens and closes it.
-	 *
 	 * @param key   the group's key
 	 * @param title what it says
 	 * @param count how many versions are under it
@@ -403,11 +327,6 @@ public final class PluginVersionList extends VBox {
 			}
 		}
 
-		/**
-		 * Draws a group's heading: what it is about, how many versions are under it, and whether it is open.
-		 *
-		 * @param heading the heading
-		 */
 		private void updateHeading(HeadingRow heading) {
 			Label title = new Label(heading.title());
 
@@ -425,20 +344,15 @@ public final class PluginVersionList extends VBox {
 			getContainer().getChildren().setAll(line);
 		}
 
-		/**
-		 * Draws one version: its channel, its name, when it was published, and what it says about the harness the list is for.
-		 *
-		 * @param version the version
-		 */
 		private void updateVersion(VersionRow version) {
 			DshPluginVersions.Published published = version.published();
 
 			content.getTags().clear();
 			mark.getChildren().clear();
-			SVG channel = channelMark(published.channel());
+			SVG channel = ReleaseChannelMarks.channelMark(published.channel());
 			if (channel != null) {
 				SVGContainer icon = channel.createIcon(24);
-				icon.getStyleClass().addAll("addon-channel-icon", channelStyle(published.channel()));
+				icon.getStyleClass().addAll("addon-channel-icon", ReleaseChannelMarks.channelStyle(published.channel()));
 				mark.getChildren().setAll(icon);
 			}
 			mark.setPadding(new Insets(0, 8, 0, 0));
@@ -446,7 +360,7 @@ public final class PluginVersionList extends VBox {
 
 			content.setTitle(published.version());
 			content.setSubtitle(published.published() == null ? null : I18n.formatDateTime(published.published()));
-			content.addTag(i18n(channelKey(published.channel())));
+			content.addTag(i18n(ReleaseChannelMarks.label(published.channel())));
 			if (version.fit() == DshPluginVersions.Fit.NOT_FITS) content.addTag(i18n("dsh.market.not_fitting"));
 			if (version.current()) content.addTag(i18n("dsh.instance.upgrade.current"));
 

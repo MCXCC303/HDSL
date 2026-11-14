@@ -18,8 +18,7 @@
 package com.mcxcc303.hdsl.harness;
 
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
-import com.mcxcc303.hdsl.runtime.DshPnpm;
+import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;

@@ -23,6 +23,8 @@ import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane;
 import org.jetbrains.annotations.NotNullByDefault;
 
+import java.util.concurrent.CompletionException;
+
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 @NotNullByDefault
@@ -37,7 +39,10 @@ public final class DshToolchainPrompt {
 	 * @return whether the failure was a missing tool, and the guidance was shown
 	 */
 	public static boolean offer(Exception failure) {
-		if (!(failure instanceof DshMissingToolException missing)) {
+		Throwable cause = failure instanceof CompletionException && failure.getCause() != null
+		                   ? failure.getCause()
+		                   : failure;
+		if (!(cause instanceof DshMissingToolException missing)) {
 			return false;
 		}
 		boolean node = missing.tool() == Tool.NODE;
@@ -53,7 +58,7 @@ public final class DshToolchainPrompt {
 	/**
 	 * Opens the page that lists the tool.
 	 *
-	 * @param tool the tool
+	 * @param tool {@code node} or {@code pnpm}
 	 */
 	private static void open(Tool tool) {
 		SettingsPage page = new SettingsPage();

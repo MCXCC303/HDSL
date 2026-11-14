@@ -24,7 +24,7 @@ import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.harness.HarnessInstaller;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.util.platform.ManagedProcess;
 import org.jetbrains.annotations.NotNullByDefault;

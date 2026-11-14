@@ -28,7 +28,7 @@ import com.mcxcc303.hdsl.pack.PackExporter;
 import com.mcxcc303.hdsl.pack.PackManifest;
 import com.mcxcc303.hdsl.plugin.DshLocalPluginPaths;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 

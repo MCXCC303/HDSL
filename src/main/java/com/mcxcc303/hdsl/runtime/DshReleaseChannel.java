@@ -18,17 +18,11 @@
 package com.mcxcc303.hdsl.runtime;
 
 import org.jetbrains.annotations.NotNullByDefault;
-import org.jetbrains.annotations.Nullable;
 
+/**
+ * The release channel a published version belongs to.
+ */
 @NotNullByDefault
-public record NodeRelease(String version, @Nullable String lts, String date, @Nullable NodeSchedule schedule) {
-	public boolean isLts() {
-		return lts != null && !lts.isBlank();
-	}
-	public boolean isSupported() {
-		return DshNodeRuntime.isSupportedNodeVersion(version);
-	}
-	public String label() {
-		return isLts() ? lts : "";
-	}
+public enum DshReleaseChannel {
+	STABLE, RC, BETA, ALPHA, OTHER;
 }

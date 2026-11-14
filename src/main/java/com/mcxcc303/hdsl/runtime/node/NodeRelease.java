@@ -15,11 +15,20 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.mcxcc303.hdsl.runtime;
+package com.mcxcc303.hdsl.runtime.node;
 
+import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.time.LocalDate;
-
-public record NodeSchedule(@Nullable LocalDate alpha, LocalDate start, @Nullable LocalDate lts,
-                           @Nullable LocalDate maintenance, LocalDate end, String codename) {}
+@NotNullByDefault
+public record NodeRelease(String version, @Nullable String lts, String date, @Nullable NodeSchedule schedule) {
+	public boolean isLts() {
+		return lts != null && !lts.isBlank();
+	}
+	public boolean isSupported() {
+		return DshNodeRuntime.isSupportedNodeVersion(version);
+	}
+	public String label() {
+		return isLts() ? lts : "";
+	}
+}
