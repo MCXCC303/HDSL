@@ -25,7 +25,6 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.core.Semver;
-import com.mcxcc303.hdsl.harness.VersionOrder;
 import kala.compress.archivers.ArchiveEntry;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
@@ -133,7 +132,7 @@ public final class NodeRuntimeManager {
 		} catch (IOException e) {
 			LOG.warning("Failed to enumerate installed Node runtimes in " + root, e);
 		}
-		runtimes.sort(Comparator.comparing(NodeRuntime::version, VersionOrder::compareVersions).reversed());
+		runtimes.sort(Comparator.comparing(NodeRuntime::version, Semver::compare).reversed());
 		return runtimes;
 	}
 
@@ -269,7 +268,7 @@ public final class NodeRuntimeManager {
 			                             scheduleMap.get(familyVer)));
 		}
 
-		releases.sort(Comparator.comparing(NodeRelease::version, VersionOrder::compareVersions).reversed());
+		releases.sort(Comparator.comparing(NodeRelease::version, Semver::compare).reversed());
 		return releases;
 	}
 

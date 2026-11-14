@@ -207,7 +207,7 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 
 	private final class RowCell extends MDListCell<Row> {
 		private final TwoLineListItem content = new TwoLineListItem();
-		private final HBox mark = new HBox(2);
+		private final StackPane mark = new StackPane();
 		private final JFXButton downloadButton = FXUtils.newToggleButton4(SVG.ARROW_FORWARD);
 
 		RowCell(JFXListView<Row> listView) {
@@ -271,20 +271,12 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 			content.getTags().clear();
 			mark.getChildren().clear();
 
-			SVG channel = NpmChannelMarks.mark(release.channel());
-			if (channel != null) {
-				SVGContainer icon = channel.createIcon(24);
-				icon.getStyleClass().addAll("addon-channel-icon", NpmChannelMarks.style(release.channel()));
-				mark.getChildren().add(icon);
-			} else {
-				mark.getChildren().add(SVG.PACKAGE2.createIcon(24));
+			String deprecated = release.deprecated();
+			SVGContainer icon = ReleaseChannelMarks.icon(release.channel(), deprecated != null);
+			if (deprecated != null) {
+				FXUtils.installFastTooltip(icon, deprecated);
 			}
-			if (release.deprecated() != null) {
-				SVGContainer icon = SVG.ERROR.createIcon(24);
-				icon.getStyleClass().addAll("addon-channel-icon", "eol");
-				FXUtils.installFastTooltip(icon, release.deprecated());
-				mark.getChildren().add(icon);
-			}
+			mark.getChildren().setAll(icon);
 			mark.setPadding(new Insets(0, 8, 0, 0));
 			mark.setMinWidth(24);
 

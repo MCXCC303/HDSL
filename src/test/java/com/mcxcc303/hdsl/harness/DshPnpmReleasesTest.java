@@ -19,7 +19,7 @@ package com.mcxcc303.hdsl.harness;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.mcxcc303.hdsl.runtime.DshNpmChannel;
+import com.mcxcc303.hdsl.runtime.DshReleaseChannel;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -74,7 +74,7 @@ class DshPnpmReleasesTest {
 		List<DshPnpmReleases.Release> releases = DshPnpmReleases.read(document());
 
 		DshPnpmReleases.Release alpha = release(releases, "10.0.0-alpha.1");
-		assertEquals(DshNpmChannel.ALPHA, alpha.channel(), "the suffix in the name says what it is");
+		assertEquals(DshReleaseChannel.ALPHA, alpha.channel(), "the suffix in the name says what it is");
 		assertEquals(Instant.parse("2025-01-02T03:04:05Z"), alpha.published());
 		assertNull(alpha.deprecated(), "a version the author did not deprecate says nothing about it");
 		assertNull(alpha.nodeEngine(), "a version that declares no Node.js says nothing about it");

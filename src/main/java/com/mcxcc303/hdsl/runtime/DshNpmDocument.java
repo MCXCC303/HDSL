@@ -24,10 +24,54 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.Locale;
+import java.util.Map;
 
 @NotNullByDefault
 public final class DshNpmDocument {
 	private DshNpmDocument() {}
+
+	/**
+	 * Reads the release channel a version belongs to.
+	 *
+	 * @param version the version
+	 * @param tags    the document's dist-tags, or {@code null} when it has none
+	 * @return the channel
+	 */
+	public static DshReleaseChannel channelOf(String version, @Nullable JsonObject tags) {
+		int dash = version.indexOf('-');
+		if (dash >= 0) {
+			String pre = version.substring(dash + 1).toLowerCase(Locale.ROOT);
+			if (pre.startsWith("rc")) return DshReleaseChannel.RC;
+			if (pre.startsWith("beta")) return DshReleaseChannel.BETA;
+			if (pre.startsWith("alpha")) return DshReleaseChannel.ALPHA;
+			return DshReleaseChannel.OTHER;
+		}
+		if (tags != null) {
+			for (Map.Entry<String, JsonElement> tag : tags.entrySet()) {
+				if (!tag.getValue().isJsonPrimitive() || !version.equals(tag.getValue().getAsString())) {
+					continue;
+				}
+				switch (tag.getKey().toLowerCase(Locale.ROOT)) {
+					case "rc" -> {
+						return DshReleaseChannel.RC;
+					}
+					case "beta" -> {
+						return DshReleaseChannel.BETA;
+					}
+					case "alpha" -> {
+						return DshReleaseChannel.ALPHA;
+					}
+					case "dev", "next", "canary", "snapshot" -> {
+						return DshReleaseChannel.OTHER;
+					}
+					default -> {
+					}
+				}
+			}
+		}
+		return DshReleaseChannel.STABLE;
+	}
 
 	/**
 	 * Reads an object member.
@@ -51,12 +95,10 @@ public final class DshNpmDocument {
 	 * @return the text, or {@code null} when it is absent, is not text, or is blank
 	 */
 	public static @Nullable String text(@Nullable JsonObject object, String name) {
-		if (object == null)
-			return null;
+		if (object == null) return null;
 
 		JsonElement element = object.get(name);
-		if (element == null || !element.isJsonPrimitive())
-			return null;
+		if (element == null || !element.isJsonPrimitive()) return null;
 
 		String value = element.getAsString();
 		return value.isBlank() ? null : value;

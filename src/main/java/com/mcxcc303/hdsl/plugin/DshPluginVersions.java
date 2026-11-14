@@ -19,9 +19,9 @@ package com.mcxcc303.hdsl.plugin;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.mcxcc303.hdsl.runtime.DshNpmChannel;
-import com.mcxcc303.hdsl.runtime.DshNpmDocument;
 import com.mcxcc303.hdsl.harness.VersionOrder;
+import com.mcxcc303.hdsl.runtime.DshNpmDocument;
+import com.mcxcc303.hdsl.runtime.DshReleaseChannel;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -76,7 +76,7 @@ public final class DshPluginVersions {
 			}
 			JsonObject peers = harnessPeers(DshNpmDocument.object(manifest, "peerDependencies"));
 			published.add(new Published(version,
-			                            DshNpmChannel.of(version, tags),
+			                            DshNpmDocument.channelOf(version, tags),
 			                            DshNpmDocument.moment(times, version),
 			                            peers,
 			                            claimedOf(peers)));
@@ -237,7 +237,7 @@ public final class DshPluginVersions {
 	 * @param harnessPeers declared harness peers
 	 * @param claimed      harness versions named by harnessPeers, newest first
 	 */
-	public record Published(String version, DshNpmChannel channel, @Nullable Instant published, JsonObject harnessPeers,
+	public record Published(String version, DshReleaseChannel channel, @Nullable Instant published, JsonObject harnessPeers,
 	                        List<String> claimed) {}
 
 	/**

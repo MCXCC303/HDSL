@@ -20,8 +20,8 @@ package com.mcxcc303.hdsl.harness;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.runtime.DshNpmChannel;
 import com.mcxcc303.hdsl.runtime.DshNpmDocument;
+import com.mcxcc303.hdsl.runtime.DshReleaseChannel;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
@@ -30,20 +30,24 @@ import java.time.Instant;
 import java.util.*;
 
 /**
- * Published pnpm releases, read from the registry document for the {@value PACKAGE} package.
+ * Published pnpm releases, read from the registry document for the
+ * {@value PACKAGE} package.
  * <p>
- * A release records its publishing time, channel, dist-tags, deprecation, and required Node.js version.
+ * A release records its publishing time, channel, dist-tags, deprecation, and
+ * required Node.js version.
  */
 @NotNullByDefault
 public final class DshPnpmReleases {
 	public static final String PACKAGE = "pnpm";
 
-	private DshPnpmReleases() {}
+	private DshPnpmReleases() {
+	}
 
 	/**
 	 * Reads the published pnpm releases.
 	 *
-	 * @param refresh whether to fetch the registry document instead of using the cache
+	 * @param refresh whether to fetch the registry document instead of using the
+	 *                cache
 	 * @return the releases, newest first
 	 * @throws DshException when the registry document cannot be read
 	 */
@@ -63,7 +67,8 @@ public final class DshPnpmReleases {
 	 */
 	public static List<Release> read(JsonObject document) {
 		JsonObject versions = DshNpmDocument.object(document, "versions");
-		if (versions == null) return List.of();
+		if (versions == null)
+			return List.of();
 
 		JsonObject times = DshNpmDocument.object(document, "time");
 		JsonObject tags = DshNpmDocument.object(document, "dist-tags");
@@ -71,19 +76,22 @@ public final class DshPnpmReleases {
 
 		List<Release> releases = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> entry : versions.entrySet()) {
-			if (!entry.getValue().isJsonObject()) continue;
+			if (!entry.getValue().isJsonObject())
+				continue;
 
 			JsonObject manifest = entry.getValue().getAsJsonObject();
 			String version = DshNpmDocument.text(manifest, "version");
-			if (version == null) version = entry.getKey();
-			if (version.isBlank()) continue;
+			if (version == null)
+				version = entry.getKey();
+			if (version.isBlank())
+				continue;
 
 			releases.add(new Release(version,
-			                         DshNpmChannel.of(version, tags),
-			                         DshNpmDocument.moment(times, version),
-			                         List.copyOf(tagged.getOrDefault(version, List.of())),
-			                         DshNpmDocument.text(manifest, "deprecated"),
-			                         nodeEngine(manifest)));
+					DshNpmDocument.channelOf(version, tags),
+					DshNpmDocument.moment(times, version),
+					List.copyOf(tagged.getOrDefault(version, List.of())),
+					DshNpmDocument.text(manifest, "deprecated"),
+					nodeEngine(manifest)));
 		}
 
 		releases.sort(Comparator.comparing(Release::published, Comparator.nullsLast(Comparator.reverseOrder())));
@@ -93,7 +101,8 @@ public final class DshPnpmReleases {
 	/**
 	 * Maps each version to the dist-tags pointing at it.
 	 * <p>
-	 * The document maps tags to versions; this inverts that. {@code latest} sorts first, the rest
+	 * The document maps tags to versions; this inverts that. {@code latest} sorts
+	 * first, the rest
 	 * keep document order.
 	 *
 	 * @param tags the document's dist-tags, or null
@@ -101,10 +110,12 @@ public final class DshPnpmReleases {
 	 */
 	private static Map<String, List<String>> tagsOf(@Nullable JsonObject tags) {
 		Map<String, List<String>> tagged = new LinkedHashMap<>();
-		if (tags == null) return tagged;
+		if (tags == null)
+			return tagged;
 
 		for (Map.Entry<String, JsonElement> tag : tags.entrySet()) {
-			if (!tag.getValue().isJsonPrimitive()) continue;
+			if (!tag.getValue().isJsonPrimitive())
+				continue;
 			tagged.computeIfAbsent(tag.getValue().getAsString(), version -> new ArrayList<>()).add(tag.getKey());
 		}
 		for (List<String> names : tagged.values()) {
@@ -137,6 +148,7 @@ public final class DshPnpmReleases {
 	 * @param deprecated deprecation message, or null
 	 * @param nodeEngine required Node.js range, or null
 	 */
-	public record Release(String version, DshNpmChannel channel, @Nullable Instant published,
-	                      @Unmodifiable List<String> tags, @Nullable String deprecated, @Nullable String nodeEngine) {}
+	public record Release(String version, DshReleaseChannel channel, @Nullable Instant published,
+			@Unmodifiable List<String> tags, @Nullable String deprecated, @Nullable String nodeEngine) {
+	}
 }

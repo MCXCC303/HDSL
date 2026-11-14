@@ -21,6 +21,7 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.Semver;
+import com.mcxcc303.hdsl.runtime.DshReleaseChannel;
 import com.mcxcc303.hdsl.runtime.node.NodeRelease;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
 import com.mcxcc303.hdsl.runtime.node.NodeSchedule;
@@ -36,7 +37,6 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
-import org.jackhuang.hmcl.ui.SVGContainer;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
@@ -252,20 +252,6 @@ public final class NodejsDownloadPage extends VBox implements DecoratorPage {
 			}
 		}
 
-		private SVG getIcon(boolean isLts, boolean isAlpha, boolean isEol) {
-			if (isEol) return SVG.ERROR;
-			if (isLts) return SVG.RELEASE_CIRCLE;
-			if (isAlpha) return SVG.ALPHA_CIRCLE;
-			return SVG.BETA_CIRCLE;
-		}
-
-		private String getStyle(boolean isLts, boolean isAlpha, boolean isEol) {
-			if (isEol) return "eol";
-			if (isLts) return "release";
-			if (isAlpha) return "alpha";
-			return "beta";
-		}
-
 		private void updateHeading(HeadingRow heading) {
 			Label title = new Label("Node.js " + heading.major());
 
@@ -292,15 +278,14 @@ public final class NodejsDownloadPage extends VBox implements DecoratorPage {
 			NodeSchedule schedule = release.schedule();
 			LocalDate now = LocalDate.now();
 
-			boolean isEol = schedule != null && schedule.end().isBefore(now);
+			boolean unsupported = schedule != null && schedule.end().isBefore(now);
 			boolean isLts = release.isLts();
 			boolean isAlpha = semver != null && semver.prerelease() != null &&
 			                  "alpha".equalsIgnoreCase(semver.prerelease().getFirst());
+			DshReleaseChannel channel = isLts ? DshReleaseChannel.STABLE
+			                       : isAlpha ? DshReleaseChannel.ALPHA : DshReleaseChannel.BETA;
 
-			SVGContainer icon = getIcon(isLts, isAlpha, isEol).createIcon(24);
-			icon.getStyleClass().addAll("addon-channel-icon", getStyle(isLts, isAlpha, isEol));
-
-			mark.getChildren().setAll(icon);
+			mark.getChildren().setAll(ReleaseChannelMarks.icon(channel, unsupported));
 			mark.setPadding(new Insets(0, 8, 0, 0));
 			mark.setMinWidth(24);
 
@@ -308,7 +293,7 @@ public final class NodejsDownloadPage extends VBox implements DecoratorPage {
 			content.setSubtitle(i18n("dsh.node.download.publish_date", release.date()));
 			if (release.isSupported()) content.addTag(i18n("dsh.node.download.compatible"));
 			if (release.isLts()) content.addTag(i18n("dsh.node.download.tag_lts", release.lts()));
-			if (isEol) content.addTag(i18n("dsh.node.download.tag_eol"));
+			if (unsupported) content.addTag(i18n("dsh.node.download.tag_eol"));
 
 			HBox line = new HBox(mark, content, downloadButton);
 			line.setAlignment(Pos.CENTER_LEFT);

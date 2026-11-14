@@ -21,7 +21,6 @@ import com.google.gson.JsonObject;
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.runtime.DshNpmChannel;
 import com.mcxcc303.hdsl.harness.DshPackageRegistry;
 import com.mcxcc303.hdsl.harness.ReleaseQueries;
 import com.mcxcc303.hdsl.instance.DshInstance;
@@ -29,6 +28,7 @@ import com.mcxcc303.hdsl.launch.DshLauncher;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import com.mcxcc303.hdsl.plugin.DshPluginRequirements;
 import com.mcxcc303.hdsl.plugin.DshPluginVersions;
+import com.mcxcc303.hdsl.runtime.DshNpmDocument;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -45,7 +45,7 @@ import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
-import org.jackhuang.hmcl.ui.dsh.runtime.NpmChannelMarks;
+import org.jackhuang.hmcl.ui.dsh.runtime.ReleaseChannelMarks;
 import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -155,7 +155,7 @@ public final class PluginVersionList extends VBox {
 						                         : DshLauncher.resolveRuntime(instance);
 						for (String version : ReleaseQueries.fetchPackageVersions(runtime, packageName)) {
 							published.add(new DshPluginVersions.Published(version,
-							                                              DshNpmChannel.of(version, null),
+							                                              DshNpmDocument.channelOf(version, null),
 							                                              null,
 							                                              new JsonObject(),
 							                                              List.of()));
@@ -166,7 +166,7 @@ public final class PluginVersionList extends VBox {
 				}
 			} else if (pinnedVersion != null) {
 				published.add(new DshPluginVersions.Published(pinnedVersion,
-				                                              DshNpmChannel.of(pinnedVersion, null),
+				                                              DshNpmDocument.channelOf(pinnedVersion, null),
 				                                              null,
 				                                              new JsonObject(),
 				                                              List.of()));
@@ -349,10 +349,10 @@ public final class PluginVersionList extends VBox {
 
 			content.getTags().clear();
 			mark.getChildren().clear();
-			SVG channel = NpmChannelMarks.mark(published.channel());
+			SVG channel = ReleaseChannelMarks.channelMark(published.channel());
 			if (channel != null) {
 				SVGContainer icon = channel.createIcon(24);
-				icon.getStyleClass().addAll("addon-channel-icon", NpmChannelMarks.style(published.channel()));
+				icon.getStyleClass().addAll("addon-channel-icon", ReleaseChannelMarks.channelStyle(published.channel()));
 				mark.getChildren().setAll(icon);
 			}
 			mark.setPadding(new Insets(0, 8, 0, 0));
@@ -360,7 +360,7 @@ public final class PluginVersionList extends VBox {
 
 			content.setTitle(published.version());
 			content.setSubtitle(published.published() == null ? null : I18n.formatDateTime(published.published()));
-			content.addTag(i18n(NpmChannelMarks.label(published.channel())));
+			content.addTag(i18n(ReleaseChannelMarks.label(published.channel())));
 			if (version.fit() == DshPluginVersions.Fit.NOT_FITS) content.addTag(i18n("dsh.market.not_fitting"));
 			if (version.current()) content.addTag(i18n("dsh.instance.upgrade.current"));
 
