@@ -18,7 +18,7 @@
 package com.mcxcc303.hdsl.instance;
 
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;

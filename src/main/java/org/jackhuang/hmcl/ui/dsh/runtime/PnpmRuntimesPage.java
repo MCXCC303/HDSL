@@ -15,16 +15,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.jackhuang.hmcl.ui.dsh;
+package org.jackhuang.hmcl.ui.dsh.runtime;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXRadioButton;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFileManager;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
-import com.mcxcc303.hdsl.runtime.NodeRuntime;
-import com.mcxcc303.hdsl.runtime.NodeRuntimeManager;
+import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
+import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntime;
+import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntimeManager;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -36,7 +37,6 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
-import javafx.stage.DirectoryChooser;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.*;
@@ -60,18 +60,18 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 @NotNullByDefault
-public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRow> implements Refreshable {
+public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRow> implements Refreshable {
 	private boolean busy;
-	private DshNodeRuntime system = DshNodeRuntime.detect().orElse(null);
-	private List<NodeRuntime> installed = List.of();
+	private DshPnpm system = PnpmRuntimeManager.detect();
+	private List<PnpmRuntime> installed = List.of();
 
-	public NodeRuntimesPage() {
+	public PnpmRuntimesPage() {
 		refresh();
 	}
 
 	@Override
 	protected Skin<?> createDefaultSkin() {
-		return new NodeRuntimesPageSkin(this);
+		return new PnpmRuntimesPageSkin(this);
 	}
 
 	@Override
@@ -81,13 +81,13 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		busy = true;
 		setLoading(true);
 		CompletableFuture.supplyAsync(() -> {
-			system = DshNodeRuntime.detect().orElse(null);
-			return NodeRuntimeManager.listInstalled();
+			system = PnpmRuntimeManager.detect();
+			return PnpmRuntimeManager.listInstalled();
 		}, Schedulers.io()).whenComplete((found, throwable) -> runInFX(() -> {
 			busy = false;
 			setLoading(false);
 			if (throwable != null) {
-				LOG.warning("Failed to load Node runtimes", throwable);
+				LOG.warning("Failed to load the pnpm versions", throwable);
 				setFailedReason(i18n("dsh.versions.load_failed"));
 				return;
 			}
@@ -97,72 +97,41 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	}
 
 	private void rebuildRows() {
-		String chosen = settings().defaultNodeRuntimeProperty().get();
-		List<NodeRow> rows = new ArrayList<>();
-		for (NodeRuntime runtime : installed) {
-			rows.add(NodeRow.installed(runtime, runtime.version().equals(chosen)));
+		String chosen = settings().defaultPnpmProperty().get();
+		List<PnpmRow> rows = new ArrayList<>();
+		for (PnpmRuntime runtime : installed) {
+			rows.add(PnpmRow.installed(runtime, runtime.version().equals(chosen)));
 		}
-		DshNodeRuntime detected = system;
+		DshPnpm detected = system;
 		rows.add(detected == null
-		         ? NodeRow.systemMissing()
-		         : NodeRow.system(detected, DshNodeRuntime.SYSTEM.equals(chosen)));
+		         ? PnpmRow.systemMissing()
+		         : PnpmRow.system(detected, DshToolchain.SYSTEM.equals(chosen)));
 		getItems().setAll(rows);
 	}
 
 	private void select(String value) {
-		if (value.equals(settings().defaultNodeRuntimeProperty().get())) return;
+		if (value.equals(settings().defaultPnpmProperty().get())) return;
 
-		settings().defaultNodeRuntimeProperty().set(value);
+		settings().defaultPnpmProperty().set(value);
 		SettingsManager.save();
 		rebuildRows();
 	}
 
-	private void addLocal() {
-		DirectoryChooser chooser = new DirectoryChooser();
-		chooser.setTitle(i18n("dsh.node.add"));
-		Path chosen = Controllers.showDialog(chooser);
-		if (chosen == null) return;
-
-		String version = NodeRuntimeManager.versionOfDirectory(chosen);
-		if (version == null) {
-			Controllers.dialog(i18n("dsh.node.add.not_node"), i18n("dsh.node.add"), MessageType.ERROR);
-			return;
-		}
-
-		setLoading(true);
-		CompletableFuture.runAsync(() -> {
-			try {
-				NodeRuntimeManager.adopt(chosen, version);
-			} catch (DshException e) {
-				throw new CompletionException(e);
-			}
-		}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-			setLoading(false);
-			if (throwable != null) {
-				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-				                  ? throwable.getCause()
-				                  : throwable;
-				Controllers.dialog(cause.getMessage(), i18n("dsh.node.add"), MessageType.ERROR);
-			}
-			refresh();
-		}));
-	}
-
 	private void uninstall(String version) {
-		if (version.equals(settings().defaultNodeRuntimeProperty().get())) {
-			Controllers.dialog(i18n("dsh.node.uninstall.in_use", version), i18n("dsh.node.uninstall"),
+		if (version.equals(settings().defaultPnpmProperty().get())) {
+			Controllers.dialog(i18n("dsh.pnpm.uninstall.in_use", version), i18n("dsh.pnpm.uninstall"),
 			                   MessageType.INFO);
 			return;
 		}
 
-		Controllers.confirm(i18n("dsh.node.uninstall.confirm", version), i18n("dsh.node.uninstall"), () -> {
+		Controllers.confirm(i18n("dsh.pnpm.uninstall.confirm", version), i18n("dsh.pnpm.uninstall"), () -> {
 			if (busy) return;
 
 			busy = true;
 			setLoading(true);
 			CompletableFuture.runAsync(() -> {
 				try {
-					NodeRuntimeManager.uninstall(version);
+					PnpmRuntimeManager.uninstall(version);
 				} catch (DshException e) {
 					throw new CompletionException(e);
 				}
@@ -180,41 +149,38 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}, null);
 	}
 
-	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags, @Nullable Path node,
-	               @Nullable String removable, @Nullable String selection, boolean selected) {
+	record PnpmRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
+	               @Nullable Path node, @Nullable String removable, @Nullable String selection, boolean selected) {
 
-		static NodeRow installed(NodeRuntime runtime, boolean selected) {
+		static PnpmRow installed(PnpmRuntime runtime, boolean selected) {
 			String major = runtime.version().split("\\.")[0];
-			return new NodeRow("Node.js " + runtime.version(),
-			                   runtime.node().toString(),
+			return new PnpmRow("pnpm " + runtime.version(),
+			                   runtime.cli().toString(),
 			                   major,
-			                   List.of(i18n("dsh.node.tag.managed")),
-			                   runtime.node(),
+			                   List.of(i18n("dsh.pnpm.tag.managed")),
+			                   runtime.cli(),
 			                   runtime.version(),
 			                   runtime.version(),
 			                   selected);
 		}
 
-		static NodeRow system(DshNodeRuntime runtime, boolean selected) {
-			String version = runtime.nodeVersion();
-			return new NodeRow("Node.js " + version,
-			                   runtime.node().toString(),
+		static PnpmRow system(DshPnpm pnpm, boolean selected) {
+			String version = pnpm.version() == null ? "-" : pnpm.version();
+			return new PnpmRow("pnpm " + version,
+			                   pnpm.command().toString(),
 			                   version.split("\\.")[0],
-			                   List.of(i18n("dsh.node.tag.system"),
-			                           runtime.isNodeSupported()
-			                           ? i18n("dsh.node.tag.supported")
-			                           : i18n("dsh.node.tag.unsupported")),
-			                   runtime.node(),
+			                   List.of(i18n("dsh.pnpm.tag.system")),
+			                   pnpm.command(),
 			                   null,
-			                   DshNodeRuntime.SYSTEM,
+			                   DshToolchain.SYSTEM,
 			                   selected);
 		}
 
-		static NodeRow systemMissing() {
-			return new NodeRow(i18n("dsh.node.system.missing.title"),
-			                   DshNodeRuntime.requirement(),
+		static PnpmRow systemMissing() {
+			return new PnpmRow(i18n("dsh.pnpm.system.missing.title"),
+			                   "",
 			                   "-",
-			                   List.of(i18n("dsh.node.tag.missing")),
+			                   List.of(i18n("dsh.pnpm.tag.missing")),
 			                   null,
 			                   null,
 			                   null,
@@ -222,33 +188,32 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 	}
 
-	private static final class NodeRuntimesPageSkin extends ToolbarListPageSkin<NodeRow, NodeRuntimesPage> {
-		NodeRuntimesPageSkin(NodeRuntimesPage control) {
+	private static final class PnpmRuntimesPageSkin extends ToolbarListPageSkin<PnpmRow, PnpmRuntimesPage> {
+		PnpmRuntimesPageSkin(PnpmRuntimesPage control) {
 			super(control);
 		}
 
 		@Override
-		protected List<Node> initializeToolbar(NodeRuntimesPage page) {
+		protected List<Node> initializeToolbar(PnpmRuntimesPage page) {
 			List<Node> toolbar = new ArrayList<>();
 			toolbar.add(createToolbarButton2(i18n("button.refresh"), SVG.REFRESH, page::refresh));
-			toolbar.add(createToolbarButton2(i18n("dsh.node.download"),
+			toolbar.add(createToolbarButton2(i18n("dsh.pnpm.download"),
 			                                 SVG.DOWNLOAD,
-			                                 () -> Controllers.navigate(new NodejsDownloadPage(page::refresh))));
-			toolbar.add(createToolbarButton2(i18n("dsh.node.add"), SVG.ADD, page::addLocal));
+			                                 () -> Controllers.navigate(new PnpmDownloadPage(page::refresh))));
 			return toolbar;
 		}
 
 		@Override
-		protected ListCell<NodeRow> createListCell(JFXListView<NodeRow> listView) {
-			return new NodeItemCell(listView, getSkinnable());
+		protected ListCell<PnpmRow> createListCell(JFXListView<PnpmRow> listView) {
+			return new PnpmItemCell(listView, getSkinnable());
 		}
 	}
 
-	private static final class NodeItemCell extends ListCell<NodeRow> {
+	private static final class PnpmItemCell extends ListCell<PnpmRow> {
 		private final JFXRadioButton selector = new JFXRadioButton() {
 			@Override
 			public void fire() {
-				NodeRow row = getItem();
+				PnpmRow row = getItem();
 				if (!isDisable() && !isSelected() && row != null && row.selection() != null) {
 					fireEvent(new ActionEvent());
 					page.select(row.selection());
@@ -260,10 +225,10 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		private final TwoLineListItem content = new TwoLineListItem();
 		private final JFXButton reveal = FXUtils.newToggleButton4(SVG.FOLDER_OPEN);
 		private final JFXButton action = FXUtils.newToggleButton4(SVG.DOWNLOAD);
-		private final NodeRuntimesPage page;
+		private final PnpmRuntimesPage page;
 		private final RipplerContainer graphic;
 
-		NodeItemCell(JFXListView<NodeRow> listView, NodeRuntimesPage page) {
+		PnpmItemCell(JFXListView<PnpmRow> listView, PnpmRuntimesPage page) {
 			this.page = page;
 			BorderPane root = new BorderPane();
 			root.getStyleClass().add("md-list-cell");
@@ -292,7 +257,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			right.setAlignment(Pos.CENTER_RIGHT);
 			FXUtils.installFastTooltip(reveal, i18n("reveal.in_file_manager"));
 			reveal.setOnAction(event -> {
-				NodeRow row = getItem();
+				PnpmRow row = getItem();
 				if (row != null && row.node() != null) {
 					DshFileManager.reveal(row.node());
 				}
@@ -306,7 +271,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}
 
 		@Override
-		protected void updateItem(@Nullable NodeRow row, boolean empty) {
+		protected void updateItem(@Nullable PnpmRow row, boolean empty) {
 			super.updateItem(row, empty);
 
 			if (empty || row == null) {
@@ -340,7 +305,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			FXUtils.setLimitHeight(removeIconPane, 24);
 			removeIconPane.getChildren().setAll(SVG.DELETE.createIcon(24));
 			action.setGraphic(removeIconPane);
-			FXUtils.installFastTooltip(action, i18n("dsh.node.uninstall"));
+			FXUtils.installFastTooltip(action, i18n("dsh.pnpm.uninstall"));
 
 			action.setOnAction(event -> {
 				if (removable) page.uninstall(row.removable());

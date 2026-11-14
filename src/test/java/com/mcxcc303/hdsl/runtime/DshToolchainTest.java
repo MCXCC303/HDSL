@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.runtime;
 
+import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
 import org.junit.jupiter.api.Test;
 
 import java.io.File;

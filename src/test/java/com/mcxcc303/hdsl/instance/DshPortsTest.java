@@ -19,7 +19,7 @@ package com.mcxcc303.hdsl.instance;
 
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.harness.DshSurface;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.net.InetAddress;

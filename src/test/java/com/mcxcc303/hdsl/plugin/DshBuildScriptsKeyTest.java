@@ -20,7 +20,7 @@ package com.mcxcc303.hdsl.plugin;
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

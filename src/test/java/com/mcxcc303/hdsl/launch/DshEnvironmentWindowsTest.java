@@ -21,7 +21,7 @@ import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.instance.InstanceFolders;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;

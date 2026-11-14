@@ -18,7 +18,7 @@
 package com.mcxcc303.hdsl.plugin;
 
 import com.mcxcc303.hdsl.instance.*;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 

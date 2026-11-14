@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.runtime;
 
+import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntime;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;
 

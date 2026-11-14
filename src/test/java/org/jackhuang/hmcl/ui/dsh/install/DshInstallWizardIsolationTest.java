@@ -23,7 +23,7 @@ import com.mcxcc303.hdsl.instance.DshInstanceManager;
 import com.mcxcc303.hdsl.instance.DshIsolationPolicy;
 import com.mcxcc303.hdsl.instance.InstanceFolders;
 import com.mcxcc303.hdsl.instance.InstanceStore;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import javafx.application.Platform;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
