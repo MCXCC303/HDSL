@@ -21,6 +21,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshCommand;
+import com.mcxcc303.hdsl.core.DshDeadlines;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.plugin.Catalog.Plugin;
@@ -44,6 +45,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
@@ -284,7 +286,11 @@ public final class CatalogClient {
 				DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(),
 				                                                  "config",
 				                                                  "get",
-				                                                  "registry"));
+				                                                  "registry"),
+				                                          DshDeadlines.REGISTRY,
+				                                          null,
+				                                          Map.of(),
+				                                          null);
 				if (result.isSuccess()) {
 					String configured = result.text().strip();
 					// npm prints a warning on the same stream when it dislikes something, so the
