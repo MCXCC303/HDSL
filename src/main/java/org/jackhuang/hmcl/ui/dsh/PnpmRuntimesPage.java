@@ -66,6 +66,7 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 	private List<PnpmRuntime> installed = List.of();
 
 	public PnpmRuntimesPage() {
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -88,7 +89,7 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 			setLoading(false);
 			if (throwable != null) {
 				LOG.warning("Failed to load the pnpm versions", throwable);
-				setFailedReason(i18n("dsh.versions.load_failed"));
+				setFailedReason(DshLoads.registry().message(i18n("dsh.versions.load_failed"), throwable));
 				return;
 			}
 			installed = found;

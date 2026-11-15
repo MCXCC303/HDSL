@@ -30,7 +30,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.layout.*;
-import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
@@ -44,11 +43,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -58,6 +55,7 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 			"dsh.pnpm.download.title")));
 	private final ObservableList<Row> rows = FXCollections.observableArrayList();
 	private final SpinnerPane spinner = new SpinnerPane();
+	private final DshLoads loads = DshLoads.registry();
 	private final Set<Integer> openedGroups = new LinkedHashSet<>();
 	private final Runnable onInstalled;
 
@@ -94,33 +92,26 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 	}
 
 	private void load() {
-		spinner.setLoading(true);
-		CompletableFuture.supplyAsync(() -> {
-			try {
-				return PnpmRuntimeManager.fetchVersions(DshToolchain.npm());
-			} catch (DshException e) {
-				throw new CompletionException(e);
-			}
-		}, Schedulers.io()).whenComplete((versions, throwable) -> runInFX(() -> {
-			spinner.setLoading(false);
-			if (throwable != null) {
-				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-				                  ? throwable.getCause()
-				                  : throwable;
-				LOG.warning("Failed to fetch the pnpm versions", cause);
-				spinner.setFailedReason(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
-				if (cause instanceof Exception exception) {
-					DshToolchainPrompt.offer(exception);
-				}
-				return;
-			}
-			spinner.setFailedReason(null);
-			groups = group(versions);
-			if (!groups.isEmpty()) {
-				openedGroups.add(groups.getFirst().major());
-			}
-			render();
-		}));
+		loads.run(spinner,
+				() -> PnpmRuntimeManager.fetchVersions(DshToolchain.npm()),
+				this::onLoaded,
+				this::onFailed);
+	}
+
+	private void onLoaded(List<String> versions) {
+		groups = group(versions);
+		if (!groups.isEmpty()) {
+			openedGroups.add(groups.getFirst().major());
+		}
+		render();
+	}
+
+	private void onFailed(Throwable failure) {
+		LOG.warning("Failed to fetch the pnpm versions", failure);
+		spinner.setFailedReason(loads.message(i18n("dsh.versions.load_failed"), failure));
+		if (failure instanceof Exception exception) {
+			DshToolchainPrompt.offer(exception);
+		}
 	}
 
 	private static List<Group> group(List<String> versions) {

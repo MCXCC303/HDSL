@@ -66,6 +66,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	private List<NodeRuntime> installed = List.of();
 
 	public NodeRuntimesPage() {
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -88,7 +89,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			setLoading(false);
 			if (throwable != null) {
 				LOG.warning("Failed to load Node runtimes", throwable);
-				setFailedReason(i18n("dsh.versions.load_failed"));
+				setFailedReason(DshLoads.registry().message(i18n("dsh.versions.load_failed"), throwable));
 				return;
 			}
 			installed = found;

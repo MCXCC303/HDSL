@@ -22,7 +22,6 @@ import com.jfoenix.controls.JFXComboBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXTextField;
 import com.mcxcc303.hdsl.pack.DshPackMarket;
-import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -33,7 +32,6 @@ import javafx.scene.Node;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.layout.*;
-import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.ImageContainer;
@@ -45,12 +43,10 @@ import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /// The community's modpack market, browsable and installable.
 ///
@@ -78,6 +74,7 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 	private final JFXListView<DshPackMarket.Entry> listView = new JFXListView<>();
 	/// The pane that reports loading and failure.
 	private final SpinnerPane spinner = new SpinnerPane();
+	private final DshLoads loads = DshLoads.registry();
 	/// What to search for.
 	private final JFXTextField nameField = new JFXTextField();
 	/// Which category to keep.
@@ -128,6 +125,7 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		listView.setCellFactory(view -> new PackCell((JFXListView<DshPackMarket.Entry>) view));
 		listView.setPlaceholder(placeholder(i18n("search.no_results_found")));
 		spinner.setContent(listView);
+		spinner.setOnFailedAction(event -> refresh());
 		root.getChildren().add(spinner);
 
 		getChildren().add(root);
@@ -276,72 +274,53 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 	/// Reads the index again.
 	@Override
 	public void refresh() {
-		spinner.showSpinner();
-		CompletableFuture.supplyAsync(() -> {
-			try {
-				return DshPackMarket.fetch();
-			} catch (Exception e) {
-				throw new CompletionException(e);
-			}
-		}, Schedulers.io()).whenComplete((index, failure) -> Platform.runLater(() -> {
-			spinner.hideSpinner();
-			if (getScene() == null) {
-				return;
-			}
-			if (failure != null) {
-				Throwable cause = failure.getCause() == null ? failure : failure.getCause();
-				shown.clear();
-				all.clear();
-				listView.setPlaceholder(placeholder(
-						cause.getMessage() == null ? i18n("message.error") : cause.getMessage()));
-				return;
-			}
-			listView.setPlaceholder(placeholder(i18n("search.no_results_found")));
-			all.setAll(index.entries());
-			generatedAt = index.generatedAt();
-			// The date alone: the index is assembled once a day, so the time of day says nothing a
-			// person acts on and costs the width the buttons need. The whole value is in the tooltip
-			// for anybody who does want it.
-			String shown = generatedAt == null
-			               ? null
-			               : generatedAt.length() >= 10 ? generatedAt.substring(0, 10) : generatedAt;
-			updatedLabel.setText(shown == null ? "" : i18n("dsh.market.updated", shown));
-			FXUtils.installFastTooltip(updatedLabel, generatedAt == null ? "" : generatedAt);
+		loads.run(spinner, DshPackMarket::fetch, this::onLoaded, this::onFailed);
+	}
 
-			// The categories are the ones the index actually holds, not a list invented here: the
-			// collector's categories are whatever the authors' manifests said, and a fixed list would
-			// offer filters that match nothing and hide ones that match something.
-			String chosen = categoryBox.getValue();
-			List<String> categories = new ArrayList<>();
-			categories.add(i18n("download.type.all"));
-			for (DshPackMarket.Entry entry : index.entries()) {
-				if (entry.category() != null && !entry.category().isBlank() && !categories.contains(entry.category())) {
-					categories.add(entry.category());
-				}
+	private void onLoaded(DshPackMarket.Index index) {
+		if (getScene() == null) {
+			return;
+		}
+		listView.setPlaceholder(placeholder(i18n("search.no_results_found")));
+		all.setAll(index.entries());
+		generatedAt = index.generatedAt();
+		String shown = generatedAt == null
+		               ? null
+		               : generatedAt.length() >= 10 ? generatedAt.substring(0, 10) : generatedAt;
+		updatedLabel.setText(shown == null ? "" : i18n("dsh.market.updated", shown));
+		FXUtils.installFastTooltip(updatedLabel, generatedAt == null ? "" : generatedAt);
+
+		String chosen = categoryBox.getValue();
+		List<String> categories = new ArrayList<>();
+		categories.add(i18n("download.type.all"));
+		for (DshPackMarket.Entry entry : index.entries()) {
+			if (entry.category() != null && !entry.category().isBlank() && !categories.contains(entry.category())) {
+				categories.add(entry.category());
 			}
-			categoryBox.getItems().setAll(categories);
-			categoryBox.setValue(categories.contains(chosen) ? chosen : categories.get(0));
+		}
+		categoryBox.getItems().setAll(categories);
+		categoryBox.setValue(categories.contains(chosen) ? chosen : categories.get(0));
 
-			// The versions the index actually holds, newest first, by the same reasoning the
-			// categories are gathered: a filter that matches nothing is worse than no filter, and a
-			// fixed list of versions would go stale the day a pack pinned a new one.
-			String chosenVersion = versionBox.getValue();
-			List<String> versions = new ArrayList<>();
-			versions.add(i18n("download.type.all"));
-			index.entries()
-			     .stream()
-			     .map(DshPackMarket.Entry::dshVersion)
-			     .filter(value -> value != null && !value.isBlank())
-			     .distinct()
-			     .sorted(Comparator.reverseOrder())
-			     .forEach(versions::add);
-			versionBox.getItems().setAll(versions);
-			// Kept when it is still there, so re-reading the index does not throw away what somebody
-			// was looking at.
-			versionBox.setValue(versions.contains(chosenVersion) ? chosenVersion : versions.get(0));
+		String chosenVersion = versionBox.getValue();
+		List<String> versions = new ArrayList<>();
+		versions.add(i18n("download.type.all"));
+		index.entries()
+		     .stream()
+		     .map(DshPackMarket.Entry::dshVersion)
+		     .filter(value -> value != null && !value.isBlank())
+		     .distinct()
+		     .sorted(Comparator.reverseOrder())
+		     .forEach(versions::add);
+		versionBox.getItems().setAll(versions);
+		versionBox.setValue(versions.contains(chosenVersion) ? chosenVersion : versions.get(0));
+		search();
+	}
 
-			search();
-		}));
+	private void onFailed(Throwable failure) {
+		LOG.warning("Failed to read the modpack index", failure);
+		shown.clear();
+		all.clear();
+		spinner.setFailedReason(loads.message(i18n("dsh.pack.load_failed"), failure));
 	}
 
 	/// Filters, sorts, and pages what is in hand.

@@ -36,6 +36,7 @@ import org.jackhuang.hmcl.ui.*;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
 import org.jackhuang.hmcl.ui.construct.RipplerContainer;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
+import org.jackhuang.hmcl.ui.dsh.DshLoads;
 import org.jackhuang.hmcl.ui.dsh.ListSearchBar;
 import org.jackhuang.hmcl.ui.wizard.Refreshable;
 import org.jackhuang.hmcl.util.i18n.I18n;
@@ -66,6 +67,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManagem
 
 	public ThemePackManagementPage() {
 		getStyleClass().add("theme-pack-management-page");
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -105,7 +107,7 @@ public final class ThemePackManagementPage extends ListPageBase<ThemePackManagem
 			filter();
 		} catch (IOException | RuntimeException e) {
 			LOG.warning("Failed to read the installed theme packs", e);
-			setFailedReason(i18n("theme_pack.load.failed") + " " + e.getMessage());
+			setFailedReason(DshLoads.registry().message(e));
 		} finally {
 			busy = false;
 			setLoading(false);

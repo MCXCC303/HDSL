@@ -27,34 +27,25 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 
 @NotNullByDefault
-final class DshLoads {
+public final class DshLoads {
+	private static final DshLoads REGISTRY = new DshLoads(DshDeadlines.REGISTRY);
 	private final Duration deadline;
 
 	DshLoads(Duration deadline) {
 		this.deadline = deadline;
 	}
 
-	static DshLoads registry() {
-		return new DshLoads(DshDeadlines.REGISTRY);
+	public static DshLoads registry() {
+		return REGISTRY;
 	}
 
-	/**
-	 * Runs a load and reports how it ended.
-	 *
-	 * @param spinner  the pane that shows the load
-	 * @param work     the work, run off the interface thread
-	 * @param onLoaded what a load that answered does
-	 * @param onFailed what a load that did not answer does
-	 * @param <T>      what the load produces
-	 */
-	<T> void run(SpinnerPane spinner,
+	public <T> void run(SpinnerPane spinner,
 			Callable<T> work,
 			Consumer<T> onLoaded,
 			Consumer<Throwable> onFailed) {
@@ -79,12 +70,23 @@ final class DshLoads {
 		}));
 	}
 
-	String message(String subject, Throwable failure) {
-		String reason = failure.getMessage();
+	public String message(String subject, Throwable failure) {
+		String reason = cause(failure).getMessage();
 		if (reason == null || reason.isBlank()) {
-			reason = failure.toString();
+			reason = subject;
+		} else {
+			reason = subject + ": " + reason;
 		}
-		return i18n("dsh.load.failed", subject + ": " + reason);
+		return i18n("dsh.load.failed", reason);
+	}
+
+	public String message(Throwable failure) {
+		Throwable cause = cause(failure);
+		String reason = cause.getMessage();
+		if (reason == null || reason.isBlank()) {
+			reason = cause.toString();
+		}
+		return i18n("dsh.load.failed", reason);
 	}
 
 	private static Throwable cause(Throwable failure) {

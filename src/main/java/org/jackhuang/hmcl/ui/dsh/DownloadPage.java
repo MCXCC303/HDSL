@@ -92,6 +92,7 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 	private final JFXSpinner spinner = new JFXSpinner();
 	private final ObjectProperty<Status> status = new SimpleObjectProperty<>(Status.LOADING);
 
+	private @Nullable Label failedLabel;
 	// The last successful load, before filtering.
 	private List<DshRelease> loaded = List.of();
 	private boolean busy;
@@ -145,9 +146,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 
 		StackPane failedPane = new StackPane();
 		failedPane.getStyleClass().add("notice-pane");
-		Label retry = new Label(i18n("download.failed.refresh"));
-		FXUtils.onClicked(retry, this::refresh);
-		failedPane.getChildren().add(retry);
+		failedLabel = new Label(i18n("download.failed.refresh"));
+		FXUtils.onClicked(failedLabel, this::refresh);
+		failedPane.getChildren().add(failedLabel);
 
 		FXUtils.onChangeAndOperate(status, now -> contentPane.setContent(switch (now) {
 			case LOADING -> spinner;
@@ -232,6 +233,9 @@ public final class DownloadPage extends DecoratorAnimatedPage implements Decorat
 				                  ? throwable.getCause()
 				                  : throwable;
 				LOG.warning("Failed to fetch releases", cause);
+				if (failedLabel != null) {
+					failedLabel.setText(DshLoads.registry().message(i18n("dsh.versions.load_failed"), cause));
+				}
 				status.set(Status.FAILED);
 				return;
 			}

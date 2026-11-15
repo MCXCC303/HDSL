@@ -28,8 +28,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -52,6 +50,8 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 
 	/// Spins while the versions are being fetched.
 	private final SpinnerPane spinner = new SpinnerPane();
+
+	private final DshLoads loads = DshLoads.registry();
 
 	/// The rows, rebuilt when the filter changes.
 	private final VBox list = new VBox();
@@ -91,6 +91,7 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 		VBox.setVgrow(scroll, Priority.ALWAYS);
 
 		spinner.setContent(scroll);
+		spinner.setOnFailedAction(event -> load());
 		VBox.setVgrow(spinner, Priority.ALWAYS);
 
 		getChildren().setAll(filterBar, spinner);
@@ -105,33 +106,25 @@ public final class VersionPickerPage extends VBox implements DecoratorPage {
 
 	/// Loads the published versions.
 	private void load() {
-		list.getChildren().clear();
-		spinner.setLoading(true);
+		loads.run(spinner,
+				() -> {
+					VersionOrder.Lockstep twins = VersionOrder.lockstepVersionsAndOldest();
+					lockstep = twins.versions();
+					oldestLockstep = twins.oldest();
+					return ReleaseQueries.fetchReleases();
+				},
+				this::onLoaded,
+				this::onFailed);
+	}
 
-		CompletableFuture.supplyAsync(() -> {
-			try {
-				VersionOrder.Lockstep twins = VersionOrder.lockstepVersionsAndOldest();
-				lockstep = twins.versions();
-				oldestLockstep = twins.oldest();
-				return ReleaseQueries.fetchReleases();
-			} catch (DshException e) {
-				throw new CompletionException(e);
-			}
-		}).whenComplete((loaded, throwable) -> FXUtils.runInFX(() -> {
-			spinner.setLoading(false);
-			if (throwable != null) {
-				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-				                  ? throwable.getCause()
-				                  : throwable;
-				LOG.warning("Failed to list published versions", cause);
-				LineTextPane failure = new LineTextPane();
-				failure.setText(i18n("dsh.versions.load_failed") + ": " + cause.getMessage());
-				list.getChildren().add(failure);
-				return;
-			}
-			releases = loaded;
-			render();
-		}));
+	private void onLoaded(List<DshRelease> loaded) {
+		releases = loaded;
+		render();
+	}
+
+	private void onFailed(Throwable failure) {
+		LOG.warning("Failed to list published versions", failure);
+		spinner.setFailedReason(loads.message(i18n("dsh.versions.load_failed"), failure));
 	}
 
 	/// Rebuilds the rows from the loaded versions and the filters.
