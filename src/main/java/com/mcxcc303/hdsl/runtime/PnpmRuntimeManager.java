@@ -19,6 +19,7 @@ package com.mcxcc303.hdsl.runtime;
 
 import com.google.gson.JsonElement;
 import com.mcxcc303.hdsl.core.DshCommand;
+import com.mcxcc303.hdsl.core.DshDeadlines;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshJson;
@@ -114,12 +115,16 @@ public final class PnpmRuntimeManager {
 		List<String> command = List.of(npm.toString(), "view", PACKAGE_NAME, "versions", "--json");
 		DshCommand.Result result;
 		try {
-			result = DshCommand.run(command);
+			result = DshCommand.run(command, DshDeadlines.REGISTRY, null, Map.of(), null);
 		} catch (IOException e) {
 			throw new DshException("Failed to run npm", e);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new DshException("Reading the pnpm version list was interrupted", e);
+		}
+		if (result.timedOut()) {
+			throw new DshException("npm view did not answer within "
+					+ DshDeadlines.REGISTRY.toSeconds() + " seconds");
 		}
 		if (!result.isSuccess()) {
 			throw new DshException("npm view exited with code " + result.exitCode() + ": " + result.text());
