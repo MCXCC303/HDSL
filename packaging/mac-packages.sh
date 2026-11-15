@@ -1,20 +1,4 @@
 #!/usr/bin/env bash
-#
-# Builds the macOS packages Gradle does not: an HDSL.app bundle, a .dmg
-# containing it, and a .zip of the same bundle. All three wrap the
-# self-executing `.sh` that `makeExecutable` produces, and the bundle uses
-# the same application identifier the launcher reports, so the macOS
-# artifacts describe one application rather than three.
-#
-# The launcher needs a Java 21+ runtime, exactly as the `.deb` declares in its
-# `Depends`: none of these packages bundles a JVM, which is what HMCL ships too.
-#
-# usage: mac-packages.sh <version> <sh-artifact> <icon.png> <output-dir> [arch]
-#
-# The architecture defaults to the host (`uname -m`): arm64/aarch64 becomes
-# `aarch64`, x86_64/amd64 becomes `x64`. Pass it explicitly when packaging
-# for the other Mac.
-#
 
 set -euo pipefail
 
@@ -54,13 +38,6 @@ out_dir="$(cd "${out_dir}" && pwd)"
 stage="$(mktemp -d)"
 trap 'rm -rf "${stage}"' EXIT
 
-# ---------------------------------------------------------------- the bundle --
-# A bundle is a directory with a fixed layout: the stub in MacOS, the payload
-# in Java, the icon in Resources, and a plist tying them together. The stub
-# runs from the user's home, as the `.deb` wrapper and the AppImage AppRun do:
-# DeepSeek Harness scopes a session to the process's working directory, and
-# starting inside a mounted image would file the first session under a path
-# inside the mount.
 appdir="${stage}/HDSL.app/Contents"
 mkdir -p "${appdir}/MacOS" "${appdir}/Java" "${appdir}/Resources"
 cp "${sh_artifact}" "${appdir}/Java/${name}.sh"
@@ -75,8 +52,7 @@ if command -v sips >/dev/null 2>&1 && sips -s format icns "${icon}" --out "${app
 else
     echo "warning: sips is unavailable, bundle carries hdsl.png instead of hdsl.icns" >&2
 fi
-# The dock icon is passed to the JVM at startup through HDSL_DOCK_ICON (see
-# the launcher stub), so a png is always bundled beside the icns Finder uses.
+
 cp "${icon}" "${appdir}/Resources/hdsl.png"
 chmod 0644 "${appdir}/Resources/hdsl.png"
 
@@ -128,14 +104,9 @@ exec "\${APP_ROOT}/Java/${name}.sh" "\$@"
 EOF
 chmod 0755 "${appdir}/MacOS/HDSL"
 
-# PkgInfo is the four-letter creator stamp Finder still looks for.
 printf 'APPL????' > "${appdir}/PkgInfo"
 chmod 0644 "${appdir}/PkgInfo"
 
-# ------------------------------------------------------------------ the dmg ---
-# hdiutil is the system tool for this; ditto is the system tool that zips a
-# bundle without breaking its resource forks, which is why neither is taken
-# from PATH with a fallback.
 echo "== dmg =="
 dmg="${out_dir}/HDSL-${version}-${arch}.dmg"
 rm -f "${dmg}"
@@ -147,9 +118,6 @@ zip_artifact="${out_dir}/HDSL-${version}-${arch}.zip"
 rm -f "${zip_artifact}"
 (cd "${stage}" && ditto -c -k --sequesterRsrc --keepParent HDSL.app "${zip_artifact}")
 
-# ------------------------------------------------------------- the sums -------
-# One checksum file per artifact, as the Linux packages publish them, so a
-# download can be verified without a table.
 for artifact in "${dmg}" "${zip_artifact}"; do
     if command -v sha256sum >/dev/null 2>&1; then
         ( cd "${out_dir}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
