@@ -515,7 +515,7 @@ public final class HarnessInstaller {
 		int exitCode;
 		DshCommand.Result commandResult;
 		try {
-			commandResult = DshCommand.run(command, null, onLine);
+			commandResult = DshCommand.run(command, null, DshToolchain.pathEnvironment(runtime.node(), pnpm), onLine);
 			exitCode = commandResult.exitCode();
 		} catch (IOException e) {
 			throw new DshException("Failed to run pnpm", e);
@@ -596,7 +596,7 @@ public final class HarnessInstaller {
 			int exitCode;
 			DshCommand.Result commandResult;
 			try {
-				commandResult = DshCommand.run(command, null, onLine);
+				commandResult = DshCommand.run(command, null, DshToolchain.pathEnvironment(runtime.node(), pnpm), onLine);
 				exitCode = commandResult.exitCode();
 			} catch (IOException e) {
 				throw new DshException("Failed to run pnpm", e);
