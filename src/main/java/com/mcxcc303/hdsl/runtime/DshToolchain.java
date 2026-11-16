@@ -37,9 +37,6 @@ import java.util.function.Supplier;
 
 /**
  * Provides the launcher's Node.js, npm and pnpm.
- * <p>
- * Each instance runs DeepSeek Harness with its own Node.js, separate from the launcher's selection.
- * The current selections come from the suppliers set by {@link install}.
  */
 @NotNullByDefault
 public final class DshToolchain {
@@ -49,44 +46,19 @@ public final class DshToolchain {
 
 	private DshToolchain() {}
 
-	/**
-	 * Installs the suppliers that provide the selections.
-	 *
-	 * @param node supplies the Node.js selection
-	 * @param pnpm supplies the pnpm selection
-	 */
 	public static void install(Supplier<String> node, Supplier<String> pnpm) {
 		nodeSelection = node;
 		pnpmSelection = pnpm;
 	}
 
-	/**
-	 * Returns the Node.js selection.
-	 *
-	 * @return {@link SYSTEM}, or the version of an installed runtime
-	 */
 	public static String nodeSelection() {
 		return nodeSelection.get();
 	}
 
-	/**
-	 * Returns the current pnpm selection.
-	 *
-	 * @return {@link SYSTEM}, or the version of an installed pnpm
-	 */
 	public static String pnpmSelection() {
 		return pnpmSelection.get();
 	}
 
-	/**
-	 * Resolves the selected Node.js runtime.
-	 * <p>
-	 * A system runtime is refused if it's outside the supported range.
-	 *
-	 * @param selection {@link SYSTEM} or the version of an installed runtime
-	 * @return the runtime
-	 * @throws DshException if the selected runtime is not installed, unsupported or not on {@code PATH}
-	 */
 	public static DshNodeRuntime resolve(String selection) throws DshException {
 		if (SYSTEM.equalsIgnoreCase(selection)) {
 			DshNodeRuntime runtime = DshNodeRuntime.detect()
@@ -111,22 +83,10 @@ public final class DshToolchain {
 		return DshNodeRuntime.fromManaged(managed);
 	}
 
-	/**
-	 * Resolves the selected Node.js.
-	 *
-	 * @return the runtime
-	 * @throws DshException if the selected Node.js cannot be resolved
-	 */
 	public static DshNodeRuntime node() throws DshException {
 		return resolve(nodeSelection());
 	}
 
-	/**
-	 * Resolves the npm of the selected Node.js runtime.
-	 *
-	 * @return the npm
-	 * @throws DshException if the selected Node.js carries no npm
-	 */
 	public static DshNpm npm() throws DshException {
 		DshNodeRuntime runtime = node();
 		DshNpm npm = runtime.npm();
@@ -138,11 +98,6 @@ public final class DshToolchain {
 		return npm;
 	}
 
-	/**
-	 * Looks for the npm of the selected Node.js runtime without failing.
-	 *
-	 * @return the npm, or {@code null} when the selected Node.js carries none
-	 */
 	public static @Nullable DshNpm findNpm() {
 		try {
 			return node().npm();
@@ -151,14 +106,6 @@ public final class DshToolchain {
 		}
 	}
 
-	/**
-	 * Resolves the selected pnpm.
-	 *
-	 * @param node the Node.js that runs a managed pnpm; {@code null} lets pnpm resolve Node.js
-	 *             through its shim
-	 * @return the pnpm
-	 * @throws DshException if the selected pnpm is not installed or not on {@code PATH}
-	 */
 	public static DshPnpm pnpm(@Nullable Path node) throws DshException {
 		DshPnpm pnpm = findPnpm(node);
 		if (pnpm == null) {
@@ -169,13 +116,6 @@ public final class DshToolchain {
 		return pnpm;
 	}
 
-	/**
-	 * Looks for the selected pnpm without failing.
-	 *
-	 * @param node the Node.js running a managed pnpm, or {@code null} when the pnpm resolves
-	 *             Node.js through the shim
-	 * @return the pnpm, or {@code null} when there is none
-	 */
 	public static @Nullable DshPnpm findPnpm(@Nullable Path node) {
 		String selection = pnpmSelection();
 		if (SYSTEM.equalsIgnoreCase(selection)) {
@@ -186,14 +126,6 @@ public final class DshToolchain {
 		return new DshPnpm(managed.cli(), node, managed.version(), managed.shimDirectory());
 	}
 
-	/**
-	 * Returns environment entries that put the toolchain first on {@code PATH}.
-	 *
-	 * @param node the Node.js executable; its parent directory is prepended to {@code PATH}, or
-	 *             {@code null} to skip it
-	 * @param pnpm the pnpm; its shim directory is prepended after the Node.js directory
-	 * @return a map with a single {@code PATH} entry
-	 */
 	public static Map<String, String> pathEnvironment(@Nullable Path node, DshPnpm pnpm) {
 		List<String> entries = new ArrayList<>();
 		if (node != null) {

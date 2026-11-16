@@ -32,12 +32,6 @@ import java.util.*;
 
 /**
  * A Node.js installation together with its npm.
- * <p>
- * DeepSeek Harness needs Node {@code ^22.19.0 || >=24.0.0}.
- *
- * @param node        the node executable
- * @param nodeVersion the node version, without a leading {@code v}
- * @param npm         the npm of this runtime, or {@code null} when it carries none
  */
 @NotNullByDefault
 public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm) {
@@ -49,23 +43,12 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 	private static final int MINIMUM_NODE_22_MINOR = 19;
 	private static final int MINIMUM_NODE_MODERN_MAJOR = 24;
 
-	/**
-	 * Returns a launcher-managed runtime in the same shape as a probed one.
-	 *
-	 * @param runtime the installed runtime
-	 * @return the descriptor
-	 */
 	public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
 		return new DshNodeRuntime(runtime.node(),
 		                          runtime.version(),
 		                          NpmRuntimeManager.bundled(runtime.node()));
 	}
 
-	/**
-	 * Probes the toolchain on the current {@code PATH}.
-	 *
-	 * @return the detected runtime, or empty when no usable {@code node} was found
-	 */
 	public static Optional<DshNodeRuntime> detect() {
 		Path node = which("node").orElse(null);
 		if (node == null) {
@@ -81,12 +64,6 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 		                                      npm == null ? null : NpmRuntimeManager.onPath(npm)));
 	}
 
-	/**
-	 * Tests a version string against DeepSeek Harness's Node range.
-	 *
-	 * @param version the version string, optionally prefixed with {@code v}
-	 * @return whether the version is supported
-	 */
 	public static boolean isSupportedNodeVersion(String version) {
 		Semver parsed = Semver.parse(version);
 		if (parsed == null) return false;
@@ -95,32 +72,15 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 		return parsed.major() == NODE_22_MAJOR && parsed.minor() >= MINIMUM_NODE_22_MINOR;
 	}
 
-	/**
-	 * Returns the toolchain requirement shown to the user.
-	 *
-	 * @return a human-readable requirement string
-	 */
 	public static String requirement() {
 		return "Node.js ^22.19.0 || >=24.0.0, plus pnpm " + MINIMUM_PNPM +
 		       " or newer for installing DeepSeek Harness; pnpm is also needed for plugin management";
 	}
 
-	/**
-	 * Probes a program for its version.
-	 *
-	 * @param executable the program to run with {@code --version}
-	 * @return the first output line, trimmed, or {@code null} when no probe answered
-	 */
 	public static @Nullable String versionOf(Path executable) {
 		return DshCommand.versionOf(List.of(executable.toString(), "--version"));
 	}
 
-	/**
-	 * Resolves an executable on {@code PATH}.
-	 *
-	 * @param name the executable name
-	 * @return the resolved path, or empty when it is not on {@code PATH}
-	 */
 	public static Optional<Path> which(String name) {
 		String path = System.getenv("PATH");
 		if (path == null || path.isBlank()) return Optional.empty();
@@ -140,12 +100,6 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 		return Optional.empty();
 	}
 
-	/**
-	 * Returns the file names one program name can be found under.
-	 *
-	 * @param name the program name as typed
-	 * @return the names to look for, the plain one first
-	 */
 	private static List<String> executableNames(String name) {
 		if (OperatingSystem.CURRENT_OS != OperatingSystem.WINDOWS) {
 			return List.of(name);
@@ -171,52 +125,24 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 		return List.copyOf(names);
 	}
 
-	/**
-	 * Returns whether a file can be run as a program.
-	 *
-	 * @param file the file
-	 * @return whether it is executable, which every regular file is on Windows
-	 */
 	private static boolean isExecutable(Path file) {
 		return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS || Files.isExecutable(file);
 	}
 
-	/**
-	 * Returns whether this Node release satisfies DeepSeek Harness's {@code engines} range.
-	 *
-	 * @return whether the version is {@code ^22.19.0} or {@code >=24.0.0}
-	 */
 	public boolean isNodeSupported() {
 		return isSupportedNodeVersion(nodeVersion);
 	}
 
-	/**
-	 * Returns whether this runtime can install DeepSeek Harness versions.
-	 *
-	 * @return whether {@code npm} is available
-	 */
 	public boolean canInstall() {
 		return npm != null && npm.version() != null;
 	}
 
-	/**
-	 * Returns the environment entries that put this runtime's tools first. The runtime's
-	 * directory comes first, so a child process finds these tools before the system's.
-	 *
-	 * @return the environment additions
-	 */
 	public Map<String, String> pathEnvironment() {
 		String existing = System.getenv("PATH");
 		String bin = binDirectory().toString();
 		return Map.of("PATH", existing == null || existing.isBlank() ? bin : bin + File.pathSeparator + existing);
 	}
 
-	/**
-	 * Returns the directory holding this runtime's executables. {@code bin} on Linux, and the
-	 * distribution root on Windows, where the node executable already sits.
-	 *
-	 * @return the directory of the {@code node} executable
-	 */
 	public Path binDirectory() {
 		Path parent = node.getParent();
 		return parent == null ? node : parent;

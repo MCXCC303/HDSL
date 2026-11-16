@@ -25,22 +25,13 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * The npm of a Node.js runtime.
+ * Resolves the npm of a Node.js runtime.
  */
 @NotNullByDefault
 public final class NpmRuntimeManager {
 	private NpmRuntimeManager() {
 	}
 
-	/**
-	 * Resolves the npm bundled with a Node.js distribution.
-	 * <p>
-	 * The npm of a distribution is a script, and the Node.js of that distribution runs it, so
-	 * that the npm works on a machine that has no Node.js on {@code PATH}.
-	 *
-	 * @param node the node executable of the distribution
-	 * @return the npm, or {@code null} when the distribution carries none
-	 */
 	public static @Nullable DshNpm bundled(Path node) {
 		NpmRuntime runtime = NpmRuntime.of(node);
 		if (runtime == null || !runtime.isUsable()) {
@@ -54,12 +45,6 @@ public final class NpmRuntimeManager {
 		                  parent == null ? Path.of(".") : parent);
 	}
 
-	/**
-	 * Resolves the npm on {@code PATH}.
-	 *
-	 * @param shim the npm executable
-	 * @return the npm
-	 */
 	public static DshNpm onPath(Path shim) {
 		Path parent = shim.getParent();
 		return new DshNpm(shim,

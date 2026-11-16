@@ -28,22 +28,9 @@ import java.util.Map;
 
 /**
  * A resolved npm runtime for the launcher.
- * <p>
- * The command of an npm that ships with a Node.js distribution is the script the Node.js runs;
- * the shim directory is the one holding that distribution's executables.
- *
- * @param command       the npm entry point to run
- * @param node          the Node.js interpreter that runs {@code command}; {@code null} if
- *                      {@code command} is directly executable
- * @param version       the npm version, or {@code null} if unknown
- * @param shimDirectory the directory containing the {@code npm} shim
  */
 @NotNullByDefault
 public record DshNpm(Path command, @Nullable Path node, @Nullable String version, Path shimDirectory) {
-
-	/**
-	 * Builds the npm command line.
-	 */
 	public List<String> commandFor(List<String> arguments) {
 		List<String> command = new ArrayList<>();
 		if (node != null) {
@@ -54,13 +41,10 @@ public record DshNpm(Path command, @Nullable Path node, @Nullable String version
 		return List.copyOf(command);
 	}
 
-	/**
-	 * Returns the environment entries that put the npm's own directory first on {@code PATH}.
-	 */
 	public Map<String, String> pathEnvironment() {
 		String existing = System.getenv("PATH");
 		return Map.of("PATH", existing == null || existing.isBlank()
-		                     ? shimDirectory.toString()
-		                     : shimDirectory + File.pathSeparator + existing);
+				? shimDirectory.toString()
+				: shimDirectory + File.pathSeparator + existing);
 	}
 }

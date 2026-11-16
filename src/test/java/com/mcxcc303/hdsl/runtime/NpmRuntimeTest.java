@@ -82,9 +82,6 @@ class NpmRuntimeTest {
 		assertEquals("11.20.0", npm.version());
 	}
 
-	/**
-	 * Writes a Node.js that answers with a version: a batch file on Windows, a shell script elsewhere.
-	 */
 	private static Path writeNode(Path distribution) throws IOException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS) {
 			return write(distribution.resolve("node.cmd"), "11.20.0");

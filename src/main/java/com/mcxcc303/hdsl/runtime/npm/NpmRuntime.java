@@ -26,15 +26,10 @@ import java.nio.file.Path;
 
 /**
  * The npm bundled in a Node.js distribution.
- *
- * @param directory the distribution directory holding the npm package
  */
 @NotNullByDefault
 public record NpmRuntime(Path directory) {
 
-	/**
-	 * Returns the npm package directory inside a Node.js distribution.
-	 */
 	public static Path packageRootIn(Path directory) {
 		return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
 		       ? directory.resolve("node_modules").resolve("npm")
@@ -45,15 +40,6 @@ public record NpmRuntime(Path directory) {
 		return packageRootIn(directory).resolve("bin").resolve("npm-cli.js");
 	}
 
-	/**
-	 * Returns the npm of the distribution a node executable belongs to.
-	 * <p>
-	 * The node of a distribution is {@code bin/node} on Unix and {@code node.exe} on Windows,
-	 * so the distribution is the directory above {@code bin}, or the one holding the node.
-	 *
-	 * @param node the node executable
-	 * @return the npm of that distribution, or {@code null} when the node belongs to none
-	 */
 	public static @Nullable NpmRuntime of(Path node) {
 		Path parent = node.getParent();
 		Path directory = OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
@@ -62,16 +48,10 @@ public record NpmRuntime(Path directory) {
 		return directory == null ? null : new NpmRuntime(directory);
 	}
 
-	/**
-	 * Returns the npm script Node.js runs.
-	 */
 	public Path cli() {
 		return cliIn(directory);
 	}
 
-	/**
-	 * Reports whether the npm script exists.
-	 */
 	public boolean isUsable() {
 		return Files.isRegularFile(cli());
 	}
