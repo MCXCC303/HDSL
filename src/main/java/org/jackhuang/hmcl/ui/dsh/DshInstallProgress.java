@@ -36,13 +36,18 @@ import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 public final class DshInstallProgress {
 	private static final Pattern PNPM = Pattern.compile(
 			"Progress: resolved (\\d+), reused (\\d+), downloaded (\\d+), added (\\d+)");
-	private static final Pattern NPM_CACHE = Pattern.compile("npm http cache ");
 	private static final Pattern NPM_FETCH = Pattern.compile("npm http fetch ");
+	private static final Pattern NPM_CACHE = Pattern.compile("npm http cache ");
+	private static final Pattern DOWNLOAD_PERCENT = Pattern.compile("Downloading (\\d+)%");
 
-	private final SimpleStringProperty message = new SimpleStringProperty(i18n("message.doing"));
+	private final SimpleStringProperty message = new SimpleStringProperty("");
 	// -1 until the work can say how far along it is.
 	private final SimpleDoubleProperty fraction = new SimpleDoubleProperty(-1);
 
+	private int resolved;
+	private int reused;
+	private int downloaded;
+	private int added;
 	private int npmSeen;
 	private int npmCached;
 
@@ -61,13 +66,27 @@ public final class DshInstallProgress {
 	public void accept(String line) {
 		Matcher pnpm = PNPM.matcher(line);
 		if (pnpm.find()) {
-			int resolved = Integer.parseInt(pnpm.group(1));
-			int reused = Integer.parseInt(pnpm.group(2));
-			int downloaded = Integer.parseInt(pnpm.group(3));
-			int added = Integer.parseInt(pnpm.group(4));
+			int newResolved = Integer.parseInt(pnpm.group(1));
+			int newReused = Integer.parseInt(pnpm.group(2));
+			int newDownloaded = Integer.parseInt(pnpm.group(3));
+			int newAdded = Integer.parseInt(pnpm.group(4));
+			boolean importing = newAdded > added;
+			boolean fetching = newDownloaded > downloaded;
 
-			show(i18n("dsh.install.progress.pnpm", added, resolved, downloaded, reused));
-			if (resolved > 0) fraction.set(Math.min(1.0, (double) added / resolved));
+			resolved = newResolved;
+			reused = newReused;
+			downloaded = newDownloaded;
+			added = newAdded;
+
+			if (importing) {
+				publish(i18n("dsh.install.progress.pnpm", added, resolved, downloaded, reused),
+				        resolved > 0 ? (double) added / resolved : -1);
+			} else if (fetching) {
+				publish(i18n("dsh.install.progress.fetching", downloaded + reused, resolved),
+				        resolved > 0 ? (double) (downloaded + reused) / resolved : -1);
+			} else {
+				publish(i18n("dsh.install.progress.resolving", resolved), -1);
+			}
 			return;
 		}
 
@@ -76,13 +95,26 @@ public final class DshInstallProgress {
 		} else if (NPM_CACHE.matcher(line).find()) {
 			npmSeen++;
 			npmCached++;
-		} else return;
+		} else {
+			Matcher percent = DOWNLOAD_PERCENT.matcher(line);
+			if (percent.find()) {
+				int percentDownloaded = Integer.parseInt(percent.group(1));
+				publish(i18n("dsh.node.download.progress", percentDownloaded), percentDownloaded / 100.0);
+			}
+			return;
+		}
 
 		// npm never states a total, so there is no fraction to give.
-		show(i18n("dsh.install.progress.npm", npmSeen, npmSeen - npmCached, npmCached));
+		publish(i18n("dsh.install.progress.npm", npmSeen, npmSeen - npmCached, npmCached), -1);
 	}
 
-	private void show(String line) {
-		Platform.runLater(() -> message.set(line));
+	/// Publishes the line, and the fraction when the work knows one, to the interface thread.
+	private void publish(String line, double value) {
+		Platform.runLater(() -> {
+			message.set(line);
+			if (value >= 0) {
+				fraction.set(value);
+			}
+		});
 	}
 }

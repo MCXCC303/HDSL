@@ -35,14 +35,9 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Runs a task that takes time behind the original's progress dialog.
-///
-/// Installing a plugin, changing a boot library and removing a package all run
-/// pnpm, which takes as long as it takes and says why when it fails; packing or
-/// unpacking a set of conversations copies hundreds of megabytes. Doing that
-/// quietly leaves the page that asked for it unchanged, with no way to tell
-/// whether anything happened, so the original's dialog is shown with whatever the
-/// work reports as it goes.
+/**
+ * Runs a task that takes time behind the original's progress dialog.
+ */
 @NotNullByDefault
 public final class ProgressDialog {
 	private ProgressDialog() {
@@ -50,8 +45,6 @@ public final class ProgressDialog {
 
 	/// Runs one installation with a progress dialog, and says so when it fails.
 	///
-	/// @param title  the line the dialog is titled with
-	/// @param work   the work, given a sink for the package manager's output
 	/// @param onDone run on the interface thread when the work ends, whether it
 	///               succeeded or not, or `null`
 	public static void run(String title, Work work, @Nullable Runnable onDone) {
@@ -60,8 +53,6 @@ public final class ProgressDialog {
 
 	/// Runs one installation, letting the caller deal with a particular failure.
 	///
-	/// @param title     the line the dialog is titled with
-	/// @param work      the work, given a sink for the package manager's output
 	/// @param onDone    run on the interface thread when the work ends, whether it
 	///                  succeeded or not, or `null`
 	/// @param onFailure asked about the failure; returning true means it was dealt
@@ -70,11 +61,16 @@ public final class ProgressDialog {
 	                       Work work,
 	                       @Nullable Runnable onDone,
 	                       @Nullable Predicate<Exception> onFailure) {
-		DshInstallProgress progress = new DshInstallProgress();
+		Task<Void> task = new DshProgressTask() {
+			@Override
+			protected void perform() throws Exception {
+				work.run(progress()::accept);
+			}
+		};
+		task.setName(title);
 
-		Task<Void> task = Task.runAsync(title, () -> work.run(progress::accept));
 		TaskExecutorDialogPane pane = new TaskExecutorDialogPane(it -> it.fireEvent(new DialogCloseEvent()));
-		pane.titleProperty().bind(progress.messageProperty());
+		pane.setTitle(title);
 
 		TaskExecutor executor = task.executor();
 		executor.addTaskListener(new TaskListener() {
@@ -105,10 +101,6 @@ public final class ProgressDialog {
 	/// Work that takes time and can fail.
 	@FunctionalInterface
 	public interface Work {
-		/// Runs the installation.
-		///
-		/// @param report receives the package manager's output
-		/// @throws DshException when the work fails
 		void run(Consumer<String> report) throws DshException;
 	}
 }

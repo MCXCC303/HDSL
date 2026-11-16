@@ -58,16 +58,14 @@ import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// Starts instances from the user interface and reports the outcome.
+// Starts instances from the user interface and reports the outcome.
 @NotNullByDefault
 public final class DshLaunchService {
-	/// How long to wait for the browser surface's readiness line before giving up.
 	private static final Duration READINESS_TIMEOUT = Duration.ofSeconds(120);
 	/// How often the readiness state is polled.
 	private static final long POLL_MILLIS = 200;
-	/// Instances whose launch is in flight, so repeat activations are ignored.
+
 	private static final Set<String> LAUNCHING = ConcurrentHashMap.newKeySet();
-	/// Instances whose launch was stopped before it became ready.
 	private static final Set<String> CANCELLED = ConcurrentHashMap.newKeySet();
 
 	private DshLaunchService() {
@@ -309,13 +307,13 @@ public final class DshLaunchService {
 	}
 
 	/**
-	 * Describes a port failure, naming what holds the port when that is known. The occupant is
-	 * shown as it was found; whether it may be stopped is not decided here.
+	 * Describes a port failure. When the port occupant is known, names it.
+	 * Shows the occupant as found. Does not decide whether it can be stopped.
 	 *
-	 * @param instance the instance that could not start
-	 * @param failure  the failure the launch ended with, or `null`
-	 * @param occupant the process holding the port, or `null` when it could not be named
-	 * @return the message to show
+	 * @param instance the instance that failed to start
+	 * @param failure  the launch failure, or {@code null}
+	 * @param occupant the process holding the port, or {@code null} if unknown
+	 * @return the message to display
 	 */
 	private static String failureMessage(DshInstance instance,
 	                                     @Nullable Exception failure,
@@ -354,7 +352,7 @@ public final class DshLaunchService {
 		                                          .resolve("cordis.patch.yml"));
 	}
 
-	/// Must be called on the FX thread, as constructing and showing the window is.
+	// Must be called on the FX thread.
 	static void openLogWindow(DshProcess process) {
 		LogWindow window = new LogWindow(process.managedProcess(),
 		                                 new CircularArrayList<>(),
@@ -394,4 +392,3 @@ public final class DshLaunchService {
 		}
 	}
 }
-
