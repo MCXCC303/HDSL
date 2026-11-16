@@ -29,16 +29,12 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The launcher's command line: reading a command line, printing the commands that can be typed,
- * and running one.
- * <p>
- * A command line is a group, a command and its options, such as `hdsl instance create --id mine
- * --dsh-version 0.2.0-rc.2`. The commands are declared in {@link Commands}.
+ * HDSL CLI
+ * 
+ * @author MCXCC303
  */
 @NotNullByDefault
 public final class Cli {
-
-	/** The words that ask for help. */
 	private static final Set<String> HELP = Set.of("--help", "-h");
 
 	private Cli() {
@@ -60,11 +56,8 @@ public final class Cli {
 			return read(args);
 		}
 		if (asksHelp(args)) {
-			// Help anywhere in the line asks for the commands, even when the first word names no
-			// command.
 			return new Invocation("", Map.of(), true, null);
 		}
-		// An unrecognized argument belongs to the interface: a folder to open or a file to install.
 		return null;
 	}
 
@@ -78,10 +71,8 @@ public final class Cli {
 		String first = args.get(0);
 		String spelling = first;
 		int from = 1;
-		// A second word that is neither help nor an option names the command; a group on its own
-		// names no command.
 		if (Commands.find(first) == null && args.size() > 1 && !HELP.contains(args.get(1)) &&
-		    !args.get(1).startsWith("-")) {
+				!args.get(1).startsWith("-")) {
 			spelling = first + " " + args.get(1);
 			from = 2;
 		}
@@ -89,8 +80,8 @@ public final class Cli {
 		Commands.Command command = Commands.find(spelling);
 		if (command == null) {
 			String message = Commands.isGroup(spelling)
-			                 ? spelling + " needs one of its commands"
-			                 : "there is no command called '" + spelling + "'";
+					? spelling + " needs one of its commands"
+					: "there is no command called '" + spelling + "'";
 			return new Invocation(spelling, Map.of(), false, message);
 		}
 
@@ -135,7 +126,7 @@ public final class Cli {
 
 			List<String> values = options.computeIfAbsent(given, name -> new ArrayList<>());
 			boolean many = parameter.kind() == Commands.Kind.REQUIRED_MANY ||
-			               parameter.kind() == Commands.Kind.OPTIONAL_MANY;
+					parameter.kind() == Commands.Kind.OPTIONAL_MANY;
 			if (!values.isEmpty() && !many) {
 				return error(spelling, "--" + given + " was given more than once");
 			}
@@ -146,12 +137,12 @@ public final class Cli {
 			return new Invocation(spelling, Map.copyOf(options), true, null);
 		}
 		List<String> missing = command.parameters()
-		                              .stream()
-		                              .filter(parameter -> parameter.kind() == Commands.Kind.REQUIRED ||
-		                                                   parameter.kind() == Commands.Kind.REQUIRED_MANY)
-		                              .filter(parameter -> !options.containsKey(parameter.name()))
-		                              .map(parameter -> "--" + parameter.name())
-		                              .toList();
+				.stream()
+				.filter(parameter -> parameter.kind() == Commands.Kind.REQUIRED ||
+						parameter.kind() == Commands.Kind.REQUIRED_MANY)
+				.filter(parameter -> !options.containsKey(parameter.name()))
+				.map(parameter -> "--" + parameter.name())
+				.toList();
 		if (!missing.isEmpty()) {
 			return error(spelling, "needs " + String.join(", ", missing));
 		}
@@ -185,8 +176,6 @@ public final class Cli {
 			if (invocation.error() != null) {
 				err.println("error: " + invocation.error());
 			}
-			// The help covers the level the words reached: the commands of one group when the line
-			// names a group, and every command when the line names nothing.
 			help(invocation.command(), err);
 			return 2;
 		}
@@ -199,13 +188,6 @@ public final class Cli {
 		}
 	}
 
-	/**
-	 * Prints what can be typed: every command, the commands of one group, or the parameters of one
-	 * command.
-	 *
-	 * @param spelling the words that were typed, which decide how much is printed
-	 * @param out      the stream to print to
-	 */
 	private static void help(String spelling, PrintStream out) {
 		Commands.Command command = Commands.find(spelling);
 		if (command != null) {
@@ -265,28 +247,27 @@ public final class Cli {
 		out.println();
 		out.println("parameters:");
 		int width = command.parameters()
-		                   .stream()
-		                   .mapToInt(parameter -> written(parameter).length())
-		                   .max()
-		                   .orElse(0);
+				.stream()
+				.mapToInt(parameter -> written(parameter).length())
+				.max()
+				.orElse(0);
 		for (Commands.Parameter parameter : command.parameters()) {
 			boolean needed = parameter.kind() == Commands.Kind.REQUIRED ||
-			                 parameter.kind() == Commands.Kind.REQUIRED_MANY;
+					parameter.kind() == Commands.Kind.REQUIRED_MANY;
 			out.println("  " + pad(written(parameter), width) + "  " + parameter.description() +
-			            (needed ? " (required)" : ""));
+					(needed ? " (required)" : ""));
 		}
 	}
 
-	/** Returns how a command is typed, with the parameters that may be left out in brackets. */
 	private static String usage(Commands.Command command) {
 		StringBuilder line = new StringBuilder(command.spelling());
 		for (Commands.Parameter parameter : command.parameters()) {
 			boolean needed = parameter.kind() == Commands.Kind.REQUIRED ||
-			                 parameter.kind() == Commands.Kind.REQUIRED_MANY;
+					parameter.kind() == Commands.Kind.REQUIRED_MANY;
 			String written = written(parameter);
 			line.append(' ').append(needed ? written : "[" + written + "]");
 			if (parameter.kind() == Commands.Kind.REQUIRED_MANY ||
-			    parameter.kind() == Commands.Kind.OPTIONAL_MANY) {
+					parameter.kind() == Commands.Kind.OPTIONAL_MANY) {
 				line.append("...");
 			}
 		}
@@ -295,8 +276,8 @@ public final class Cli {
 
 	private static String written(Commands.Parameter parameter) {
 		return parameter.kind() == Commands.Kind.FLAG
-		       ? "--" + parameter.name()
-		       : "--" + parameter.name() + " <" + parameter.placeholder() + ">";
+				? "--" + parameter.name()
+				: "--" + parameter.name() + " <" + parameter.placeholder() + ">";
 	}
 
 	private static String pad(String text, int width) {
@@ -305,22 +286,10 @@ public final class Cli {
 
 	/**
 	 * A parsed command line.
-	 *
-	 * @param command  the words that name the command; the empty string for the launcher's own
-	 *                 help, and a group alone when the line named no command of that group
-	 * @param options  the parameters that were given, by name, with every value each was given
-	 * @param showHelp whether help was asked for
-	 * @param error    what was wrong with the line, or `null` when nothing was
 	 */
 	public record Invocation(String command, Map<String, List<String>> options, boolean showHelp,
-	                         @Nullable String error) {
+			@Nullable String error) {
 
-		/**
-		 * Returns the first value a parameter was given.
-		 *
-		 * @param name the parameter's spelling, without the leading dashes
-		 * @return the value, or `null` when the parameter was not given
-		 */
 		public @Nullable String option(String name) {
 			List<String> values = options.get(name);
 			return values == null || values.isEmpty() ? null : values.get(0);
@@ -328,21 +297,12 @@ public final class Cli {
 
 		/**
 		 * Returns every value a parameter was given.
-		 *
-		 * @param name the parameter's spelling, without the leading dashes
-		 * @return the values, empty when the parameter was not given
 		 */
 		public List<String> values(String name) {
 			List<String> values = options.get(name);
 			return values == null ? List.of() : List.copyOf(values);
 		}
 
-		/**
-		 * Reports whether a flag was given.
-		 *
-		 * @param name the flag's spelling, without the leading dashes
-		 * @return whether it is there
-		 */
 		public boolean flag(String name) {
 			return options.containsKey(name);
 		}
