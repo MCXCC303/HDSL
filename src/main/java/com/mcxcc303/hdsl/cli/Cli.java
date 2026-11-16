@@ -59,12 +59,6 @@ public final class Cli {
 		if (Commands.isGroup(first) || Commands.find(first) != null) {
 			return read(args);
 		}
-		String gone = RemovedCommands.message(args);
-		if (gone != null) {
-			// An unrecognized argument opens the interface window, so a removed command is answered
-			// with its replacement.
-			return new Invocation("", Map.of(), false, gone);
-		}
 		if (asksHelp(args)) {
 			// Help anywhere in the line asks for the commands, even when the first word names no
 			// command.

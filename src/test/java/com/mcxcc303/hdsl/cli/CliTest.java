@@ -123,14 +123,6 @@ class CliTest {
 	}
 
 	@Test
-	void aCommandThatIsGoneSaysWhatToWriteInstead() {
-		Cli.Invocation invocation = Cli.parse(List.of("--install", "0.1.0"));
-		assertNotNull(invocation, "it is answered rather than handed to the interface, which would open a window");
-		assertNotNull(invocation.error());
-		assertTrue(invocation.error().contains("--install is gone"), invocation.error());
-	}
-
-	@Test
 	void theHelpIsWrittenFromTheSameTableTheCommandsAre() {
 		for (Commands.Command command : Commands.all()) {
 			List<String> words = new ArrayList<>(List.of(command.spelling().split(" ")));
