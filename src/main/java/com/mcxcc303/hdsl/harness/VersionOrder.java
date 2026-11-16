@@ -20,6 +20,7 @@ package com.mcxcc303.hdsl.harness;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.Semver;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
@@ -82,10 +83,11 @@ public final class VersionOrder {
 	public static Lockstep lockstepVersionsAndOldest() {
 		try {
 			DshNodeRuntime runtime = HarnessInstaller.requireRuntime();
-			if (!runtime.canInstall()) {
+			DshNpm npm = runtime.npm();
+			if (npm == null || npm.version() == null) {
 				return new Lockstep(Set.of(), null);
 			}
-			Collection<String> versions = ReleaseQueries.queryVersions(runtime.npm(), LOCKSTEP_PACKAGE);
+			Collection<String> versions = ReleaseQueries.queryVersions(npm, LOCKSTEP_PACKAGE);
 			String oldest = null;
 			for (String version : versions) {
 				if (oldest == null || compareVersions(version, oldest) < 0) {

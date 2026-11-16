@@ -23,6 +23,7 @@ import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Assumptions;
@@ -293,8 +294,7 @@ class HarnessInstallerTest {
 		private static DshNodeRuntime absentTools() {
 		return new DshNodeRuntime(Path.of("no-such-node"),
 					 "24.11.1",
-					 Path.of("no-such-npm"),
-					 null);
+					 new DshNpm(Path.of("no-such-npm"), null, null, Path.of("no-such-bin")));
 	}
 
 	/**

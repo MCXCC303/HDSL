@@ -23,10 +23,10 @@ import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.core.Semver;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +34,6 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -106,12 +105,12 @@ public final class PnpmRuntimeManager {
 	 * Installs a pnpm version into an npm prefix.
 	 *
 	 * @param version the version to install, with or without a leading {@code v}
-	 * @param npm     the npm executable installing pnpm
+	 * @param npm     the npm installing pnpm
 	 * @param onStage receives progress lines, or {@code null}
 	 * @return the installed pnpm
 	 * @throws DshException when the install fails
 	 */
-	public static PnpmRuntime install(String version, Path npm, @Nullable Consumer<String> onStage)
+	public static PnpmRuntime install(String version, DshNpm npm, @Nullable Consumer<String> onStage)
 	throws DshException {
 		String normalized = version.trim();
 		if (normalized.startsWith("v") || normalized.startsWith("V")) {
@@ -132,12 +131,12 @@ public final class PnpmRuntimeManager {
 		}
 
 		stage(onStage, "Installing pnpm " + normalized);
-		List<String> command = List.of(npm.toString(), "install", "--global", "--prefix", staging.toString(),
-		                               PACKAGE_NAME + "@" + normalized, "--no-audit", "--no-fund");
+		List<String> command = npm.commandFor(List.of("install", "--global", "--prefix", staging.toString(),
+		                                                   PACKAGE_NAME + "@" + normalized, "--no-audit", "--no-fund"));
 
 		DshCommand.Result result;
 		try {
-			result = DshCommand.run(command, null, null, npmEnvironment(npm), onStage);
+			result = DshCommand.run(command, null, null, npm.pathEnvironment(), onStage);
 		} catch (IOException e) {
 			DshFiles.deleteTreeQuietly(staging);
 			throw new DshException("Failed to install pnpm " + normalized + ": " + e.getMessage(), e);
@@ -187,17 +186,6 @@ public final class PnpmRuntimeManager {
 					e);
 		}
 		LOG.info("Removed pnpm " + version);
-	}
-
-	private static Map<String, String> npmEnvironment(Path npm) {
-		Path directory = npm.getParent();
-		if (directory == null) return Map.of();
-
-		String existing = System.getenv("PATH");
-		String path = existing == null || existing.isBlank()
-		              ? directory.toString()
-		              : directory + File.pathSeparator + existing;
-		return Map.of("PATH", path);
 	}
 
 	private static void stage(@Nullable Consumer<String> onStage, String message) {

@@ -24,7 +24,8 @@ import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.plugin.Catalog.Plugin;
-import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jackhuang.hmcl.setting.LauncherSettings;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
@@ -279,12 +280,11 @@ public final class CatalogClient {
 	/// @return the registry's base address, without a trailing slash
 	public static String npmRegistry() {
 		try {
-			DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
-			if (runtime != null && runtime.npm() != null) {
-				DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(),
-				                                                  "config",
-				                                                  "get",
-				                                                  "registry"));
+			DshNpm npm = DshToolchain.findNpm();
+			if (npm != null) {
+				DshCommand.Result result = DshCommand.run(npm.commandFor(List.of("config",
+				                                                       "get",
+				                                                       "registry")));
 				if (result.isSuccess()) {
 					String configured = result.text().strip();
 					// npm prints a warning on the same stream when it dislikes something, so the

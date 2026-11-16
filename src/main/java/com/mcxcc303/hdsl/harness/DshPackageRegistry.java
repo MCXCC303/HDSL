@@ -23,7 +23,8 @@ import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.plugin.CatalogClient;
-import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -64,14 +65,12 @@ public final class DshPackageRegistry {
 	/// @return the published versions, newest first
 	/// @throws DshException when npm is unavailable or the query fails
 	public static List<String> fetchVersions(String packageName) throws DshException {
-		DshNodeRuntime runtime = DshNodeRuntime.detect()
-		                                       .orElseThrow(() -> new DshException("Node.js was not found on PATH; " +
-		                                                                           DshNodeRuntime.requirement()));
-		if (!runtime.canInstall()) {
-			throw new DshException("npm was not found on PATH; listing plugin versions requires it");
+		DshNpm npm = DshToolchain.findNpm();
+		if (npm == null || npm.version() == null) {
+			throw new DshException("the selected Node.js carries no usable npm; listing plugin versions requires it");
 		}
 
-		List<String> command = List.of(runtime.npm().toString(), "view", packageName, "versions", "--json");
+		List<String> command = npm.commandFor(List.of("view", packageName, "versions", "--json"));
 		DshCommand.Result result;
 		try {
 			result = DshCommand.run(command);
@@ -161,11 +160,11 @@ public final class DshPackageRegistry {
 	/// @return the object, or an empty one when it is absent or cannot be read
 	private static JsonObject viewJson(String spec, String field) {
 		try {
-			DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
-			if (runtime == null || runtime.npm() == null) {
+			DshNpm npm = DshToolchain.findNpm();
+			if (npm == null) {
 				return new JsonObject();
 			}
-			DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(), "view", spec, field, "--json"),
+			DshCommand.Result result = DshCommand.run(npm.commandFor(List.of("view", spec, field, "--json")),
 			                                          null,
 			                                          null);
 			String body = String.join("\n", result.output()).trim();
@@ -270,16 +269,15 @@ public final class DshPackageRegistry {
 	/// @param version     the version
 	/// @return what the registry says
 	public static Availability availability(String packageName, String version) {
-		DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
-		if (runtime == null || runtime.npm() == null) {
+		DshNpm npm = DshToolchain.findNpm();
+		if (npm == null) {
 			return Availability.UNKNOWN;
 		}
 		try {
-			DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(),
-			                                                  "view",
-			                                                  packageName + "@" + version,
-			                                                  "version",
-			                                                  "--json"), null, null);
+			DshCommand.Result result = DshCommand.run(npm.commandFor(List.of("view",
+			                                                          packageName + "@" + version,
+			                                                          "version",
+			                                                          "--json")), null, null);
 			return availabilityOf(result.exitCode(), result.text());
 		} catch (IOException e) {
 			LOG.warning("Could not ask the registry about " + packageName + "@" + version, e);
@@ -329,15 +327,14 @@ public final class DshPackageRegistry {
 
 		JsonObject peers = new JsonObject();
 		try {
-			DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
-			if (runtime == null || runtime.npm() == null) {
+			DshNpm npm = DshToolchain.findNpm();
+			if (npm == null) {
 				return peers;
 			}
-			DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(),
-			                                                  "view",
-			                                                  spec,
-			                                                  "peerDependencies",
-			                                                  "--json"), null, null);
+			DshCommand.Result result = DshCommand.run(npm.commandFor(List.of("view",
+			                                                          spec,
+			                                                          "peerDependencies",
+			                                                          "--json")), null, null);
 			String body = String.join("\n", result.output()).trim();
 			if (result.exitCode() == 0 && body.startsWith("{")) {
 				JsonElement parsed = JsonParser.parseString(body);

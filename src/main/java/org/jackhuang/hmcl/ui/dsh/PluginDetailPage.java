@@ -23,7 +23,8 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.plugin.Catalog;
 import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
-import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
@@ -240,13 +241,13 @@ public final class PluginDetailPage extends DecoratorAnimatedPage implements Dec
 		Path folder = chosen.toPath();
 		String spec = plugin.npm() + "@" + version;
 		ProgressDialog.run(i18n("mods.save_as"), progress -> {
-			DshNodeRuntime runtime = DshNodeRuntime.detect().orElse(null);
-			if (runtime == null || runtime.npm() == null) {
-				throw new DshException("npm was not found on PATH; saving a package requires it");
+			DshNpm npm = DshToolchain.findNpm();
+			if (npm == null) {
+				throw new DshException("the selected Node.js carries no npm; saving a package requires it");
 			}
 			progress.accept("Fetching " + spec);
 			try {
-				DshCommand.run(List.of(runtime.npm().toString(), "pack", spec, "--pack-destination", folder.toString()),
+				DshCommand.run(npm.commandFor(List.of("pack", spec, "--pack-destination", folder.toString())),
 				               null,
 				               progress::accept);
 			} catch (IOException e) {

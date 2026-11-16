@@ -23,6 +23,7 @@ import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -42,8 +43,7 @@ class DshInstanceTerminalTest {
 	private static DshNodeRuntime runtime(Path bin) {
 		return new DshNodeRuntime(bin.resolve(WINDOWS ? "node.exe" : "node"),
 		                          "22.19.0",
-		                          bin.resolve(WINDOWS ? "npm.cmd" : "npm"),
-		                          "10.9.0");
+		                          new DshNpm(bin.resolve(WINDOWS ? "npm.cmd" : "npm"), null, "10.9.0", bin));
 	}
 
 	// How this platform's script assigns a variable.

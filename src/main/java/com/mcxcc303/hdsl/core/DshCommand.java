@@ -33,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
 /// Runs a short-lived external command and captures its output.
 ///
 /// Used for the npm, node and pnpm invocations that back version management.
@@ -187,6 +189,36 @@ public final class DshCommand {
 		} finally {
 			RUNNING.remove(running);
 		}
+	}
+
+	/**
+	 * Asks a program for its version.
+	 * <p>
+	 * A probe that fails is asked once more: a process that could not be started may start on
+	 * the next attempt.
+	 *
+	 * @param command the program and its arguments
+	 * @return the first output line, trimmed, or {@code null} when no probe answered
+	 */
+	public static @Nullable String versionOf(List<String> command) {
+		String failure = null;
+		for (int attempt = 0; attempt < 2; attempt++) {
+			try {
+				Result result = run(command);
+				if (result.isSuccess() && !result.output().isEmpty()) {
+					String first = result.output().get(0).trim();
+					return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
+				}
+				failure = "`" + String.join(" ", command) + "` exited " + result.exitCode();
+			} catch (IOException e) {
+				failure = "`" + String.join(" ", command) + "` could not be started: " + e;
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+		}
+		LOG.warning("Could not read the version of " + String.join(" ", command) + ": " + failure);
+		return null;
 	}
 
 	/**

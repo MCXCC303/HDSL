@@ -21,6 +21,7 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
 import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntime;
 import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntimeManager;
@@ -35,7 +36,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 /**
- * Provides the launcher's Node.js and pnpm.
+ * Provides the launcher's Node.js, npm and pnpm.
  * <p>
  * Each instance runs DeepSeek Harness with its own Node.js, separate from the launcher's selection.
  * The current selections come from the suppliers set by {@link install}.
@@ -121,20 +122,33 @@ public final class DshToolchain {
 	}
 
 	/**
-	 * Resolves the npm bundled with the selected Node.js runtime.
+	 * Resolves the npm of the selected Node.js runtime.
 	 *
-	 * @return the npm executable
-	 * @throws DshException if the selected Node.js bundles no npm
+	 * @return the npm
+	 * @throws DshException if the selected Node.js carries no npm
 	 */
-	public static Path npm() throws DshException {
+	public static DshNpm npm() throws DshException {
 		DshNodeRuntime runtime = node();
-		Path npm = runtime.npm();
+		DshNpm npm = runtime.npm();
 		if (npm == null) {
 			throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
 			                                  "Node.js at " + runtime.node() +
 			                                  " has no npm. Installing pnpm requires npm.");
 		}
 		return npm;
+	}
+
+	/**
+	 * Looks for the npm of the selected Node.js runtime without failing.
+	 *
+	 * @return the npm, or {@code null} when the selected Node.js carries none
+	 */
+	public static @Nullable DshNpm findNpm() {
+		try {
+			return node().npm();
+		} catch (DshException e) {
+			return null;
+		}
 	}
 
 	/**

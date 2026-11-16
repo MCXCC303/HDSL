@@ -22,6 +22,7 @@ import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceListing;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
 import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jackhuang.hmcl.Metadata;
@@ -80,11 +81,13 @@ public final class DshDoctor {
 		boolean runtimeOk;
 		try {
 			DshNodeRuntime runtime = DshToolchain.node();
+			DshNpm npm = runtime.npm();
 			DshPnpm pnpm = DshToolchain.findPnpm(runtime.node());
 			boolean pnpmTooOld = HarnessInstaller.isPnpmTooOld(pnpm == null ? null : pnpm.version());
 			out.println("  node:  " + runtime.nodeVersion() + "  (" + runtime.node() + ")" +
 			            (runtime.isNodeSupported() ? "  [supported]" : "  [UNSUPPORTED]"));
-			out.println("  npm:   " + describe(runtime.npm(), runtime.npmVersion()));
+			out.println("  npm:   " + describe(npm == null ? null : npm.command(),
+			                                   npm == null ? null : npm.version()));
 			out.println("  pnpm:  " + describe(pnpm == null ? null : pnpm.command(),
 			                                   pnpm == null ? null : pnpm.version()) +
 			            (pnpm == null ? "  [plugin management unavailable]" : "") +

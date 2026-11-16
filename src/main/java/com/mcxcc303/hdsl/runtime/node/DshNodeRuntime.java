@@ -19,17 +19,16 @@ package com.mcxcc303.hdsl.runtime.node;
 
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.Semver;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
+import com.mcxcc303.hdsl.runtime.npm.NpmRuntimeManager;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
-import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
-
-import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 /**
  * A Node.js installation together with its npm.
@@ -38,11 +37,10 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
  *
  * @param node        the node executable
  * @param nodeVersion the node version, without a leading {@code v}
- * @param npm         the npm executable, or {@code null} when absent
- * @param npmVersion  the npm version, or {@code null} when absent
+ * @param npm         the npm of this runtime, or {@code null} when it carries none
  */
 @NotNullByDefault
-public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, @Nullable String npmVersion) {
+public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm) {
 	public static final String SYSTEM = "system";
 	public static final String GLOBAL = "global";
 	// Oldest pnpm that can install DeepSeek Harness.
@@ -60,8 +58,7 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 	public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
 		return new DshNodeRuntime(runtime.node(),
 		                          runtime.version(),
-		                          runtime.npm(),
-		                          runtime.npm() == null ? null : versionOf(runtime.npm()));
+		                          NpmRuntimeManager.bundled(runtime.node()));
 	}
 
 	/**
@@ -79,7 +76,9 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 			return Optional.empty();
 		}
 		Path npm = which("npm").orElse(null);
-		return Optional.of(new DshNodeRuntime(node, nodeVersion, npm, npm == null ? null : versionOf(npm)));
+		return Optional.of(new DshNodeRuntime(node,
+		                                      nodeVersion,
+		                                      npm == null ? null : NpmRuntimeManager.onPath(npm)));
 	}
 
 	/**
@@ -113,24 +112,7 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 	 * @return the first output line, trimmed, or {@code null} when no probe answered
 	 */
 	public static @Nullable String versionOf(Path executable) {
-		String failure = null;
-		for (int attempt = 0; attempt < 2; attempt++) {
-			try {
-				DshCommand.Result result = DshCommand.run(List.of(executable.toString(), "--version"));
-				if (result.isSuccess() && !result.output().isEmpty()) {
-					String first = result.output().get(0).trim();
-					return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
-				}
-				failure = "`" + executable + " --version` exited " + result.exitCode();
-			} catch (IOException e) {
-				failure = "`" + executable + " --version` could not be started: " + e;
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				return null;
-			}
-		}
-		LOG.warning("Could not read the version of " + executable + ": " + failure);
-		return null;
+		return DshCommand.versionOf(List.of(executable.toString(), "--version"));
 	}
 
 	/**
@@ -214,7 +196,7 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 	 * @return whether {@code npm} is available
 	 */
 	public boolean canInstall() {
-		return npm != null && npmVersion != null;
+		return npm != null && npm.version() != null;
 	}
 
 	/**
