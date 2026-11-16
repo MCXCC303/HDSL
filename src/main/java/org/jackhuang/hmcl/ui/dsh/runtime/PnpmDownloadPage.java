@@ -217,21 +217,27 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 				if (item instanceof HeadingRow heading) {
 					toggle(heading.major());
 				} else if (item instanceof ReleaseRow(DshPnpmReleases.Release release1)) {
-					confirmInstall(release1.version());
+					confirmInstall(release1);
 				}
 			});
 
 			downloadButton.setOnMouseClicked(event -> {
 				Row item = getItem();
 				if (item instanceof ReleaseRow(DshPnpmReleases.Release release1)) {
-					confirmInstall(release1.version());
+					confirmInstall(release1);
 					event.consume();
 				}
 			});
 		}
 
-		private void confirmInstall(String version) {
-			Controllers.confirm(i18n("dsh.pnpm.download.confirm_version", version),
+		private void confirmInstall(DshPnpmReleases.Release release) {
+			String version = release.version();
+			String message = i18n("dsh.pnpm.download.confirm_version", version);
+			String nodeEngine = release.nodeEngine();
+			if (nodeEngine != null) {
+				message += "\n\n" + i18n("dsh.pnpm.download.node_requirement", version, nodeEngine);
+			}
+			Controllers.confirm(message,
 			                    i18n("dsh.pnpm.download.title"),
 			                    () -> install(version),
 			                    null);
@@ -289,9 +295,6 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 			}
 			if (release.deprecated() != null) {
 				content.addTagWarning(i18n("dsh.pnpm.download.tag_deprecated"));
-			}
-			if (release.nodeEngine() != null) {
-				content.addTag(i18n("dsh.pnpm.download.node_requirement", release.nodeEngine()));
 			}
 
 			HBox line = new HBox(mark, content, downloadButton);
