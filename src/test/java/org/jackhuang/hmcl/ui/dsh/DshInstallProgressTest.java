@@ -74,6 +74,16 @@ class DshInstallProgressTest {
 	}
 
 	@Test
+	void theWritingPhaseSurvivesLaterDownloads() throws InterruptedException {
+		DshInstallProgress progress = new DshInstallProgress();
+		progress.accept("Progress: resolved 100, reused 90, downloaded 10, added 30");
+		progress.accept("Progress: resolved 200, reused 90, downloaded 110, added 30");
+
+		assertEquals(I18n.i18n("dsh.install.progress.pnpm", 30, 200, 110, 90), messageOf(progress));
+		assertEquals(0.15, fractionOf(progress), 1e-9);
+	}
+
+	@Test
 	void anUnrelatedLineKeepsTheMessage() throws InterruptedException {
 		DshInstallProgress progress = new DshInstallProgress();
 		progress.accept("npm notice");

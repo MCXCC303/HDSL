@@ -50,6 +50,7 @@ public final class DshInstallProgress {
 	private int added;
 	private int npmSeen;
 	private int npmCached;
+	private Phase phase = Phase.RESOLVING;
 
 	public ReadOnlyStringProperty messageProperty() {
 		return message;
@@ -60,8 +61,7 @@ public final class DshInstallProgress {
 	}
 
 	/**
-	 * Reads one line of a package manager's output, from the thread running it
-	 * The line reaches the dialog through the interface thread.
+	 * Reads one line of a package manager's output, from the thread running it.
 	 */
 	public void accept(String line) {
 		Matcher pnpm = PNPM.matcher(line);
@@ -70,22 +70,23 @@ public final class DshInstallProgress {
 			int newReused = Integer.parseInt(pnpm.group(2));
 			int newDownloaded = Integer.parseInt(pnpm.group(3));
 			int newAdded = Integer.parseInt(pnpm.group(4));
-			boolean importing = newAdded > added;
-			boolean fetching = newDownloaded > downloaded;
+			if (newAdded > added) {
+				phase = Phase.IMPORTING;
+			} else if (newDownloaded > downloaded && phase == Phase.RESOLVING) {
+				phase = Phase.FETCHING;
+			}
 
 			resolved = newResolved;
 			reused = newReused;
 			downloaded = newDownloaded;
 			added = newAdded;
 
-			if (importing) {
-				publish(i18n("dsh.install.progress.pnpm", added, resolved, downloaded, reused),
-				        resolved > 0 ? (double) added / resolved : -1);
-			} else if (fetching) {
-				publish(i18n("dsh.install.progress.fetching", downloaded + reused, resolved),
-				        resolved > 0 ? (double) (downloaded + reused) / resolved : -1);
-			} else {
-				publish(i18n("dsh.install.progress.resolving", resolved), -1);
+			switch (phase) {
+				case IMPORTING -> publish(i18n("dsh.install.progress.pnpm", added, resolved, downloaded, reused),
+				                           resolved > 0 ? (double) added / resolved : -1);
+				case FETCHING -> publish(i18n("dsh.install.progress.fetching", downloaded + reused, resolved),
+				                          resolved > 0 ? (double) (downloaded + reused) / resolved : -1);
+				case RESOLVING -> publish(i18n("dsh.install.progress.resolving", resolved), -1);
 			}
 			return;
 		}
@@ -108,7 +109,12 @@ public final class DshInstallProgress {
 		publish(i18n("dsh.install.progress.npm", npmSeen, npmSeen - npmCached, npmCached), -1);
 	}
 
-	/// Publishes the line, and the fraction when the work knows one, to the interface thread.
+	private enum Phase {
+		RESOLVING,
+		FETCHING,
+		IMPORTING
+	}
+
 	private void publish(String line, double value) {
 		Platform.runLater(() -> {
 			message.set(line);
