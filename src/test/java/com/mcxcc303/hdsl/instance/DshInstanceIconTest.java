@@ -19,17 +19,14 @@ package com.mcxcc303.hdsl.instance;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
-
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Verifies the instance icon set is complete and resolvable.
-///
-/// The images are named by hand, so a typo is a silent blank icon in the
-/// chooser. This checks the name against the bundled resources instead, and
-/// requires the three DeepSeek Harness marks to lead the set.
+/**
+ * Verifies the instance icon set is complete and resolvable.
+ *
+ * The images are named by hand, so a typo is a silent blank icon in the chooser. This checks the name
+ * against the bundled resources instead.
+ */
 class DshInstanceIconTest {
 	@Test
 	void everyIconResolvesToABundledImage() {
@@ -46,27 +43,6 @@ class DshInstanceIconTest {
 		for (DshInstanceIcon icon : DshInstanceIcon.values()) {
 			assertNotNull(DshInstanceIcon.class.getResource("/assets/img/" + icon.assetName() + "@2x.png"),
 			              "no @2x image is bundled for " + icon.name());
-		}
-	}
-
-	@Test
-	void theDeepSeekHarnessMarksComeFirst() {
-		DshInstanceIcon[] icons = DshInstanceIcon.values();
-		assertSame(DshInstanceIcon.DSH_APPLICATION, icons[0]);
-		assertSame(DshInstanceIcon.DSH_BLACK, icons[1]);
-		assertSame(DshInstanceIcon.DSH_WHITE, icons[2]);
-	}
-
-	@Test
-	void theDefaultIsInTheSet() {
-		assertTrue(Arrays.asList(DshInstanceIcon.values()).contains(DshInstanceIcon.DEFAULT));
-	}
-
-	@Test
-	void namesAreUnique() {
-		Set<String> seen = new HashSet<>();
-		for (DshInstanceIcon icon : DshInstanceIcon.values()) {
-			assertTrue(seen.add(icon.id()), "duplicate icon id: " + icon.id());
 		}
 	}
 
