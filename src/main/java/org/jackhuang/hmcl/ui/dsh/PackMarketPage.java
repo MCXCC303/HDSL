@@ -48,66 +48,40 @@ import java.util.*;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/// The community's modpack market, browsable and installable.
-///
-/// The same page as the plugin market beside it, because they answer the same question and are
-/// reached from the same place: a search form on a card at the top — what to search for, which
-/// category, how to sort — the results beneath it, and the paging under the form rather than under
-/// the list, because the list is the part that scrolls. That is the shape the original's remote
-/// content pages have, and a second page with a different shape for the same job would be a second
-/// thing to learn for no reason.
-///
-/// One difference is worth stating, because it is the whole of the market's design: **this page reads
-/// one document**. The index carries everything a list needs — the name, the description, the author,
-/// the size, and the three values needed to fetch the pack — and deliberately does not carry the
-/// manifests. Those are fetched one at a time, when somebody opens a pack, which is what keeps three
-/// packs and three thousand packs the same amount of work to list.
+/**
+ * The community's modpack market.
+ */
 @NotNullByDefault
 public final class PackMarketPage extends StackPane implements DecoratorPage, Refreshable {
-	/// How many results a page holds.
 	private static final int PAGE_SIZE = 24;
-	/// Every pack the index listed.
 	private final ObservableList<DshPackMarket.Entry> all = FXCollections.observableArrayList();
-	/// The packs on the page being shown.
 	private final ObservableList<DshPackMarket.Entry> shown = FXCollections.observableArrayList();
-	/// The list the results are drawn in.
 	private final JFXListView<DshPackMarket.Entry> listView = new JFXListView<>();
-	/// The pane that reports loading and failure.
+
 	private final SpinnerPane spinner = new SpinnerPane();
 	private final DshLoads loads = DshLoads.registry();
-	/// What to search for.
+
 	private final JFXTextField nameField = new JFXTextField();
-	/// Which category to keep.
 	private final JFXComboBox<String> categoryBox = new JFXComboBox<>();
-	/// How to order the results.
 	private final JFXComboBox<String> sortBox = new JFXComboBox<>();
-	/// Which harness version to keep.
-	///
-	/// The original's second box on the name row, which it calls the game version and fills from its
-	/// version list. Here the thing a pack pins is a **harness** version, so that is what is offered
-	/// and what the row is called: the same question — "will this run on what I have" — asked about
-	/// the only version this launcher has.
 	private final JFXComboBox<String> versionBox = new JFXComboBox<>();
-	/// Where the page number is shown between the paging buttons.
+
+	// Where the page number is shown between the paging buttons.
 	private final Label pageLabel = new Label();
-	/// The paging buttons, kept so their states can follow the page.
 	private final JFXButton firstPage = FXUtils.newBorderButton(i18n("search.first_page"));
 	private final JFXButton previousPage = FXUtils.newBorderButton(i18n("search.previous_page"));
 	private final JFXButton nextPage = FXUtils.newBorderButton(i18n("search.next_page"));
 	private final JFXButton lastPage = FXUtils.newBorderButton(i18n("search.last_page"));
-	/// When the index was assembled, or empty.
+
+	// When the index was assembled, or empty.
 	private final Label updatedLabel = new Label();
-	/// The page's state for the title bar.
+	// The page's state for the title bar.
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(
 			"dsh.download.packs")));
-	/// Which page is being shown, counting from one.
 	private int page = 1;
-	/// How many pages the current filter has.
 	private int pageCount = 1;
-	/// Where the index came from, for the line under the form.
 	private @Nullable String generatedAt;
 
-	/// Creates the page.
 	public PackMarketPage() {
 		getStyleClass().add("pack-market-page");
 
@@ -132,10 +106,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		refresh();
 	}
 
-	/// Builds a placeholder for an empty list.
-	///
-	/// @param text what to say
-	/// @return the node
 	private static Node placeholder(String text) {
 		Label label = new Label(text);
 		label.getStyleClass().add("desc");
@@ -144,10 +114,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		return pane;
 	}
 
-	/// Writes a size the way a person reads one.
-	///
-	/// @param bytes the size
-	/// @return the text
 	static String sizeOf(long bytes) {
 		if (bytes < 1024) {
 			return bytes + " B";
@@ -158,25 +124,12 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		return String.format("%.1f MB", bytes / (1024.0 * 1024));
 	}
 
-	/// Builds the search form.
-	///
-	/// The original's own search panel, from the tab it keeps its mods in: the thing being searched
-	/// takes the top line, then two rows of name-and-box, and the paging sits with the button at the
-	/// end.
-	///
-	///   `[ 名称 ............ ] [ 类别 ......... ▾ ]`
-	///   `[ 排序 ........... ▾ ]`
-	///   `[ 分页 … ]                                   [ 刷新 ]`
-	///
-	/// @return the form, on the surface the original puts it on
 	private Node buildSearchPane() {
 		GridPane pane = new GridPane();
 		pane.getStyleClass().add("card");
 		pane.setHgap(16);
 		pane.setVgap(10);
 		pane.setPadding(new Insets(10));
-		// Four columns, as the original has: a name, a box that takes what is left, another name,
-		// another such box. Two rows of them, then the paging with the buttons at the end.
 
 		ColumnConstraints nameColumn = new ColumnConstraints();
 		nameColumn.setMinWidth(Region.USE_PREF_SIZE);
@@ -187,12 +140,7 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		pane.getColumnConstraints().setAll(nameColumn, fieldColumn, nameColumn, secondFieldColumn);
 
 		nameField.setPromptText(i18n("search.hint.chinese"));
-		// A grid cell gives a child what it asks for, and a field asks for the width of its prompt;
-		// without this the box stops short of the column it is in.
 		nameField.setMaxWidth(Double.MAX_VALUE);
-		// The form searches when it is told to, and not while somebody is typing: a button
-		// that is not what searches is a button with nothing to do. Enter is the form's own
-		// way of submitting, so it does the same thing.
 		nameField.setOnAction(event -> refresh());
 
 		versionBox.setMaxWidth(Double.MAX_VALUE);
@@ -207,11 +155,9 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 
 		sortBox.setMaxWidth(Double.MAX_VALUE);
 		sortBox.getItems()
-		       .setAll(i18n("addon.sort.date_created"), i18n("addon.sort.popularity"), i18n("dsh.market.sort.name"));
+				.setAll(i18n("addon.sort.date_created"), i18n("addon.sort.popularity"), i18n("dsh.market.sort.name"));
 		sortBox.setValue(i18n("addon.sort.date_created"));
 
-		// The original's own two rows, in its own order: what to look for and which version, then
-		// which category and how to order the answers.
 		pane.add(new Label(i18n("mods.name")), 0, 0);
 		pane.add(nameField, 1, 0);
 		pane.add(new Label(i18n("dsh.pack.instance_version")), 2, 0);
@@ -224,11 +170,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 
 		pane.add(buildPaging(), 0, 2, 2, 1);
 
-		// The ends of the row, as the original has them: when the index was assembled, beside the
-		// button that searches the form, and the button that installs a pack somebody already has.
-		// The search reads the index on its way, because here the two are one action: an index is a
-		// document rather than a query, so the button changes which part of it is shown — and a
-		// person pressing it after an index that failed to load gets it read again.
 		JFXButton search = new JFXButton(i18n("search"));
 		search.getStyleClass().add("dialog-accept");
 		search.setOnAction(event -> refresh());
@@ -236,10 +177,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		JFXButton installLocal = FXUtils.newRaisedButton(i18n("install.modpack"));
 		installLocal.setOnAction(event -> Controllers.navigate(new PackInstallPage()));
 
-		// The buttons keep the width their own labels ask for, and the line about the index gives up
-		// its own instead. Left to the grid, the opposite happened: the timestamp is long and took
-		// what it wanted, and the button was drawn as "安…" — a button nobody can read is a button
-		// nobody presses.
 		for (JFXButton button : List.of(search, installLocal)) {
 			button.setMinWidth(Region.USE_PREF_SIZE);
 		}
@@ -254,12 +191,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		return pane;
 	}
 
-	/// Builds the paging row.
-	///
-	/// Under the form rather than under the list, which is the original's arrangement and not an
-	/// arbitrary one: the list is what scrolls, so anything below it would move as it scrolls.
-	///
-	/// @return the row
 	private Node buildPaging() {
 		firstPage.setOnAction(event -> goTo(1));
 		previousPage.setOnAction(event -> goTo(page - 1));
@@ -271,7 +202,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		return row;
 	}
 
-	/// Reads the index again.
 	@Override
 	public void refresh() {
 		loads.run(spinner, DshPackMarket::fetch, this::onLoaded, this::onFailed);
@@ -285,8 +215,8 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		all.setAll(index.entries());
 		generatedAt = index.generatedAt();
 		String shown = generatedAt == null
-		               ? null
-		               : generatedAt.length() >= 10 ? generatedAt.substring(0, 10) : generatedAt;
+				? null
+				: generatedAt.length() >= 10 ? generatedAt.substring(0, 10) : generatedAt;
 		updatedLabel.setText(shown == null ? "" : i18n("dsh.market.updated", shown));
 		FXUtils.installFastTooltip(updatedLabel, generatedAt == null ? "" : generatedAt);
 
@@ -305,12 +235,12 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		List<String> versions = new ArrayList<>();
 		versions.add(i18n("download.type.all"));
 		index.entries()
-		     .stream()
-		     .map(DshPackMarket.Entry::dshVersion)
-		     .filter(value -> value != null && !value.isBlank())
-		     .distinct()
-		     .sorted(Comparator.reverseOrder())
-		     .forEach(versions::add);
+				.stream()
+				.map(DshPackMarket.Entry::dshVersion)
+				.filter(value -> value != null && !value.isBlank())
+				.distinct()
+				.sorted(Comparator.reverseOrder())
+				.forEach(versions::add);
 		versionBox.getItems().setAll(versions);
 		versionBox.setValue(versions.contains(chosenVersion) ? chosenVersion : versions.get(0));
 		search();
@@ -323,11 +253,7 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		spinner.setFailedReason(loads.message(i18n("dsh.pack.load_failed"), failure));
 	}
 
-	/// Filters, sorts, and pages what is in hand.
-	///
-	/// Nothing is fetched here: the index is one document and is already in memory, so the filter is
-	/// a filter. Fetching per keystroke would be a request per keystroke for an answer this launcher
-	/// already has.
+	/** Filters, sorts and pages the entries that are in memory. */
 	private void search() {
 		String needle = nameField.getText() == null ? "" : nameField.getText().trim().toLowerCase(Locale.ROOT);
 		String category = categoryBox.getValue();
@@ -336,18 +262,18 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		boolean allVersions = version == null || version.equals(i18n("download.type.all"));
 
 		List<DshPackMarket.Entry> matching = all.stream()
-		                                        .filter(entry -> needle.isEmpty() || entry.title()
-		                                                                                  .toLowerCase(Locale.ROOT)
-		                                                                                  .contains(needle) ||
-		                                                         entry.id().toLowerCase(Locale.ROOT).contains(needle) ||
-		                                                         (entry.description() != null && entry.description()
-		                                                                                              .toLowerCase(
-				                                                                                              Locale.ROOT)
-		                                                                                              .contains(needle)))
-		                                        .filter(entry -> allCategories || category.equals(entry.category()))
-		                                        .filter(entry -> allVersions || version.equals(entry.dshVersion()))
-		                                        .sorted(comparator())
-		                                        .toList();
+				.filter(entry -> needle.isEmpty() || entry.title()
+						.toLowerCase(Locale.ROOT)
+						.contains(needle) ||
+						entry.id().toLowerCase(Locale.ROOT).contains(needle) ||
+						(entry.description() != null && entry.description()
+								.toLowerCase(
+										Locale.ROOT)
+								.contains(needle)))
+				.filter(entry -> allCategories || category.equals(entry.category()))
+				.filter(entry -> allVersions || version.equals(entry.dshVersion()))
+				.sorted(comparator())
+				.toList();
 
 		pageCount = Math.max(1, (matching.size() + PAGE_SIZE - 1) / PAGE_SIZE);
 		page = Math.min(Math.max(1, page), pageCount);
@@ -361,60 +287,39 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		lastPage.setDisable(page >= pageCount);
 	}
 
-	/// Returns how the results are ordered.
-	///
-	/// @return the comparator
 	private Comparator<DshPackMarket.Entry> comparator() {
 		String sort = sortBox.getValue();
 		if (sort != null && sort.equals(i18n("dsh.market.sort.name"))) {
 			return Comparator.comparing(DshPackMarket.Entry::title, String.CASE_INSENSITIVE_ORDER);
 		}
 		if (sort != null && sort.equals(i18n("addon.sort.popularity"))) {
-			// "Popularity" for this market is how much a pack brings: there are no download counts
-			// anywhere in an index that is assembled from GitHub releases, and inventing a number
-			// would be worse than ordering by a real one.
+			// the index have no download count, use dependencies as popularity instead..
 			return Comparator.comparingInt((DshPackMarket.Entry entry) -> entry.depCount() == null
-			                                                              ? 0
-			                                                              : entry.depCount()).reversed();
+					? 0
+					: entry.depCount()).reversed();
 		}
 		return Comparator.comparing((DshPackMarket.Entry entry) -> entry.updatedAt() == null ? "" : entry.updatedAt())
-		                 .reversed();
+				.reversed();
 	}
 
-	/// Shows a page.
-	///
-	/// @param number the page, clamped to what there is
 	private void goTo(int number) {
 		page = Math.min(Math.max(1, number), pageCount);
 		search();
 	}
 
-	/// Returns the page's state for the title bar.
-	///
-	/// @return the state
 	@Override
 	public ReadOnlyObjectWrapper<State> stateProperty() {
 		return state;
 	}
 
-	/// One row of the results.
-	///
-	/// The original's row shape, which is the plugin market's too: a picture at the left, then the
-	/// name, the description on a second line, and the facts as tags. The picture is the author's
-	/// avatar — see [`Entry#iconUrl`] — because the index has no icon field and a made-up one would
-	/// be a picture of nothing. It is fetched once per author and kept, and a cell that cannot get
-	/// one keeps the space and shows nothing rather than shifting the row.
+	/** 
+	 * One row of the results, with the author's avatar as its picture. 
+	 */
 	@NotNullByDefault
 	private final class PackCell extends MDListCell<DshPackMarket.Entry> {
-		/// The pack's name, description and tags.
 		private final TwoLineListItem content = new TwoLineListItem();
-
-		/// The author's avatar, or an empty box of the same size.
 		private final ImageContainer icon = new ImageContainer(32);
 
-		/// Creates the cell.
-		///
-		/// @param listView the list it belongs to
 		PackCell(JFXListView<DshPackMarket.Entry> listView) {
 			super(listView);
 			onClicked(() -> {
@@ -432,7 +337,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 			}
 			content.setTitle(entry.title());
 			content.setSubtitle(entry.description() == null ? entry.id() : entry.description());
-			// A cell is reused for whatever scrolls into it, so what it said before has to go.
 			content.getTags().clear();
 			content.addTags(List.of(entry.subtitle()));
 			content.addTag(sizeOf(entry.size()));
@@ -440,8 +344,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 				content.addTag(entry.updatedAt());
 			}
 
-			// Cleared first: a cell that has scrolled from one pack to another must not wear the
-			// previous author's face while the new one is being fetched.
 			icon.setImage(null);
 			String url = entry.iconUrl();
 			if (url != null) {
@@ -450,8 +352,8 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 					icon.setImage(cached);
 				} else {
 					RemoteIconLoader.load(url, loaded -> {
-						// The cell may have been reused while the fetch was in flight, and a picture
-						// of the wrong pack is worse than none.
+						// The cell may have been reused while the fetch was in flight, and the picture
+						// would then be of another pack.
 						if (getItem() == entry) {
 							icon.setImage(loaded);
 						}
