@@ -28,80 +28,64 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/// The command surface: what can be typed, what was typed, and running it.
-///
-/// This exists so that the launcher's core can be driven, scripted and verified without a display:
-/// the interface is a second consumer of exactly the same [com.mcxcc303.hdsl.harness.HarnessInstaller]
-/// and [com.mcxcc303.hdsl.instance.DshInstanceManager] calls.
-///
-/// A command line is a group, a command and parameters — `hdsl instance create --id mine
-/// --dsh-version 0.2.0-rc.2`. [Commands] says what exists; this class reads a line into one of
-/// those, prints what there is to type, and runs what was asked for. Nothing here names a command of
-/// its own, which is what keeps the three in step: a command that is added to the table is one that
-/// can be typed, explained and run in the same commit.
-///
-/// The flag-style spelling — `hdsl --create-instance mine --dsh-version 0.2.0-rc.2` — still runs and
-/// still runs the same thing: [FlagStyleCommands] reads it into the command line it names, and the
-/// command says what it is called now.
+/**
+ * The launcher's command line: reading a command line, printing the commands that can be typed,
+ * and running one.
+ * <p>
+ * A command line is a group, a command and its options, such as `hdsl instance create --id mine
+ * --dsh-version 0.2.0-rc.2`. The commands are declared in {@link Commands}.
+ */
 @NotNullByDefault
 public final class Cli {
 
-	/// The words that ask for help rather than name something.
+	/** The words that ask for help. */
 	private static final Set<String> HELP = Set.of("--help", "-h");
 
 	private Cli() {
 	}
 
-	/// Parses launcher arguments into an invocation.
-	///
-	/// @param args the raw command-line arguments
-	/// @return the parsed invocation, or `null` when the arguments request the interface
+	/**
+	 * Parses the launcher's arguments into an invocation.
+	 *
+	 * @param args the raw command-line arguments
+	 * @return the invocation, or `null` when the arguments belong to the interface
+	 */
 	public static @Nullable Invocation parse(List<String> args) {
-		// A flag-style command line names its command as surely as the current spelling does, so it is
-		// read as that command: the line it means is worked out first and everything below reads it,
-		// which is what keeps the two spellings from having one behaviour each. The line is carried on
-		// the invocation, because the warning prints what was just run.
-		List<String> deprecated = FlagStyleCommands.commandLine(args);
-		if (deprecated != null) {
-			return read(deprecated, deprecated);
-		}
-
 		if (args.isEmpty()) {
 			return null;
 		}
 
 		String first = args.get(0);
 		if (Commands.isGroup(first) || Commands.find(first) != null) {
-			return read(args, null);
+			return read(args);
 		}
-		String gone = FlagStyleCommands.removed(args);
+		String gone = RemovedCommands.message(args);
 		if (gone != null) {
-			// A flag whose command was removed outright. It is answered rather than left to the
-			// interface, which would open a window over a word it does not know either.
-			return new Invocation("", Map.of(), false, null, gone);
+			// An unrecognized argument opens the interface window, so a removed command is answered
+			// with its replacement.
+			return new Invocation("", Map.of(), false, gone);
 		}
 		if (asksHelp(args)) {
-			// Help anywhere in the line is help, which is what it was when every command was a flag.
-			// A reader who typed a word this launcher does not know and asked for help wants the list
-			// of what it does know.
-			return new Invocation("", Map.of(), true, null, null);
+			// Help anywhere in the line asks for the commands, even when the first word names no
+			// command.
+			return new Invocation("", Map.of(), true, null);
 		}
-		// A word this launcher does not answer to, and nothing asking for help. What is left is the
-		// interface's, whose own arguments — a folder to open, a file to install — are read there.
+		// An unrecognized argument belongs to the interface: a folder to open or a file to install.
 		return null;
 	}
 
-	/// Reads a command line into the command it names and the parameters it was given.
-	///
-	/// @param args       the words of the command line
-	/// @param deprecated the flag-style line they came from, or `null` when they are the line
-	/// @return the invocation, which carries what was wrong with the line when something was
-	private static Invocation read(List<String> args, @Nullable List<String> deprecated) {
+	/**
+	 * Reads a command line into the command it names and the options it was given.
+	 *
+	 * @param args the words of the command line
+	 * @return the invocation, carrying the error when the line cannot be read
+	 */
+	private static Invocation read(List<String> args) {
 		String first = args.get(0);
 		String spelling = first;
 		int from = 1;
-		// A second word that is neither help nor an option is the command's name; a group on its own
-		// is a line that was not finished, and says so below.
+		// A second word that is neither help nor an option names the command; a group on its own
+		// names no command.
 		if (Commands.find(first) == null && args.size() > 1 && !HELP.contains(args.get(1)) &&
 		    !args.get(1).startsWith("-")) {
 			spelling = first + " " + args.get(1);
@@ -113,7 +97,7 @@ public final class Cli {
 			String message = Commands.isGroup(spelling)
 			                 ? spelling + " needs one of its commands"
 			                 : "there is no command called '" + spelling + "'";
-			return new Invocation(spelling, Map.of(), false, deprecated, message);
+			return new Invocation(spelling, Map.of(), false, message);
 		}
 
 		Map<String, List<String>> options = new LinkedHashMap<>();
@@ -126,7 +110,7 @@ public final class Cli {
 				continue;
 			}
 			if (!token.startsWith("--")) {
-				return error(spelling, "takes options only, and '" + token + "' is not one", deprecated);
+				return error(spelling, "takes options only, and '" + token + "' is not one");
 			}
 
 			String given = token.substring(2);
@@ -139,18 +123,18 @@ public final class Cli {
 
 			Commands.Parameter parameter = command.parameter(given);
 			if (parameter == null) {
-				return error(spelling, "does not take --" + given, deprecated);
+				return error(spelling, "does not take --" + given);
 			}
 			if (parameter.kind() == Commands.Kind.FLAG) {
 				if (value != null) {
-					return error(spelling, "--" + given + " is a flag and takes no value", deprecated);
+					return error(spelling, "--" + given + " is a flag and takes no value");
 				}
 				options.computeIfAbsent(given, name -> new ArrayList<>()).add("true");
 				continue;
 			}
 			if (value == null) {
 				if (i + 1 >= args.size()) {
-					return error(spelling, "--" + given + " needs a value", deprecated);
+					return error(spelling, "--" + given + " needs a value");
 				}
 				value = args.get(++i);
 			}
@@ -159,13 +143,13 @@ public final class Cli {
 			boolean many = parameter.kind() == Commands.Kind.REQUIRED_MANY ||
 			               parameter.kind() == Commands.Kind.OPTIONAL_MANY;
 			if (!values.isEmpty() && !many) {
-				return error(spelling, "--" + given + " was given more than once", deprecated);
+				return error(spelling, "--" + given + " was given more than once");
 			}
 			values.add(value);
 		}
 
 		if (help) {
-			return new Invocation(spelling, Map.copyOf(options), true, deprecated, null);
+			return new Invocation(spelling, Map.copyOf(options), true, null);
 		}
 		List<String> missing = command.parameters()
 		                              .stream()
@@ -175,44 +159,28 @@ public final class Cli {
 		                              .map(parameter -> "--" + parameter.name())
 		                              .toList();
 		if (!missing.isEmpty()) {
-			return error(spelling, "needs " + String.join(", ", missing), deprecated);
+			return error(spelling, "needs " + String.join(", ", missing));
 		}
-		return new Invocation(spelling, Map.copyOf(options), false, deprecated, null);
+		return new Invocation(spelling, Map.copyOf(options), false, null);
 	}
 
-	/// Returns an invocation that says what was wrong with the line.
-	private static Invocation error(String spelling, String message, @Nullable List<String> deprecated) {
-		return new Invocation(spelling, Map.of(), false, deprecated, spelling + " " + message);
+	private static Invocation error(String spelling, String message) {
+		return new Invocation(spelling, Map.of(), false, spelling + " " + message);
 	}
 
-	/// Reports whether any word of the line asks for help.
 	private static boolean asksHelp(List<String> args) {
 		return args.stream().anyMatch(HELP::contains);
 	}
 
-	/// Runs a parsed command.
-	///
-	/// @param invocation the command to run
-	/// @param out        the stream for normal output
-	/// @param err        the stream for error output
-	/// @return the process exit code
+	/**
+	 * Runs a parsed command.
+	 *
+	 * @param invocation the command to run
+	 * @param out        the stream for normal output
+	 * @param err        the stream for error output
+	 * @return the process exit code
+	 */
 	public static int run(Invocation invocation, PrintStream out, PrintStream err) {
-		int code = runCommand(invocation, out, err);
-		// Last, so that what a command said is what a reader sees first: the warning is about how the
-		// command was written rather than about what it did.
-		if (invocation.deprecated() != null) {
-			FlagStyleCommands.warn(out, invocation.deprecated());
-		}
-		return code;
-	}
-
-	/// Runs the command an invocation names.
-	///
-	/// @param invocation the command to run
-	/// @param out        the stream for normal output
-	/// @param err        the stream for error output
-	/// @return the process exit code
-	private static int runCommand(Invocation invocation, PrintStream out, PrintStream err) {
 		if (invocation.showHelp()) {
 			help(invocation.command(), out);
 			return 0;
@@ -223,9 +191,8 @@ public final class Cli {
 			if (invocation.error() != null) {
 				err.println("error: " + invocation.error());
 			}
-			// What there is to type at the level the words reached: for a group that was not told
-			// which of its commands to run that is the group, and for a word that named nothing it is
-			// everything. A line that could not be read is not a success.
+			// The help covers the level the words reached: the commands of one group when the line
+			// names a group, and every command when the line names nothing.
 			help(invocation.command(), err);
 			return 2;
 		}
@@ -238,11 +205,13 @@ public final class Cli {
 		}
 	}
 
-	/// Prints what there is to type: every command, the commands of one group, or one command's
-	/// parameters.
-	///
-	/// @param spelling the words that were typed, which decide how much is printed
-	/// @param out      the stream to print to
+	/**
+	 * Prints what can be typed: every command, the commands of one group, or the parameters of one
+	 * command.
+	 *
+	 * @param spelling the words that were typed, which decide how much is printed
+	 * @param out      the stream to print to
+	 */
 	private static void help(String spelling, PrintStream out) {
 		Commands.Command command = Commands.find(spelling);
 		if (command != null) {
@@ -268,7 +237,6 @@ public final class Cli {
 		out.println("`hdsl <group> <command> --help` says what one command takes.");
 	}
 
-	/// Prints one group of commands.
 	private static void printGroup(List<Commands.Command> commands, PrintStream out) {
 		if (commands.isEmpty()) {
 			return;
@@ -281,7 +249,6 @@ public final class Cli {
 		}
 	}
 
-	/// Prints the commands that stand alone, which are typed without a group.
 	private static void printStandalone(PrintStream out) {
 		List<Commands.Command> standalone = Commands.standalone();
 		if (standalone.isEmpty()) {
@@ -294,7 +261,6 @@ public final class Cli {
 		}
 	}
 
-	/// Prints one command: how it is typed, what it does, and what each parameter is.
 	private static void printCommand(Commands.Command command, PrintStream out) {
 		out.println("usage: hdsl " + usage(command));
 		out.println();
@@ -317,7 +283,7 @@ public final class Cli {
 		}
 	}
 
-	/// Returns how a command is typed, with every parameter and the ones that can be left out.
+	/** Returns how a command is typed, with the parameters that may be left out in brackets. */
 	private static String usage(Commands.Command command) {
 		StringBuilder line = new StringBuilder(command.spelling());
 		for (Commands.Parameter parameter : command.parameters()) {
@@ -333,51 +299,56 @@ public final class Cli {
 		return line.toString();
 	}
 
-	/// Returns one parameter as it is typed.
 	private static String written(Commands.Parameter parameter) {
 		return parameter.kind() == Commands.Kind.FLAG
 		       ? "--" + parameter.name()
 		       : "--" + parameter.name() + " <" + parameter.placeholder() + ">";
 	}
 
-	/// Returns one column of text padded to the width the column needs.
 	private static String pad(String text, int width) {
 		return text.length() >= width ? text : text + " ".repeat(width - text.length());
 	}
 
-	/// A parsed command line.
-	///
-	/// @param command    the words that name the command; the empty string for the launcher's own
-	///                   help, and a group alone when the line did not say which of its commands to run
-	/// @param options    the parameters that were given, by name, with every value each was given
-	/// @param showHelp   whether help was asked for
-	/// @param deprecated the flag-style line these words came from, or `null` when they are the line
-	/// @param error      what was wrong with the line, or `null` when nothing was
+	/**
+	 * A parsed command line.
+	 *
+	 * @param command  the words that name the command; the empty string for the launcher's own
+	 *                 help, and a group alone when the line named no command of that group
+	 * @param options  the parameters that were given, by name, with every value each was given
+	 * @param showHelp whether help was asked for
+	 * @param error    what was wrong with the line, or `null` when nothing was
+	 */
 	public record Invocation(String command, Map<String, List<String>> options, boolean showHelp,
-	                         @Nullable List<String> deprecated, @Nullable String error) {
+	                         @Nullable String error) {
 
-		/// Returns the first value a parameter was given.
-		///
-		/// @param name the parameter's spelling, without the leading dashes
-		/// @return the value, or `null` when the parameter was not given
+		/**
+		 * Returns the first value a parameter was given.
+		 *
+		 * @param name the parameter's spelling, without the leading dashes
+		 * @return the value, or `null` when the parameter was not given
+		 */
 		public @Nullable String option(String name) {
 			List<String> values = options.get(name);
 			return values == null || values.isEmpty() ? null : values.get(0);
 		}
 
-		/// Returns every value a parameter was given.
-		///
-		/// @param name the parameter's spelling, without the leading dashes
-		/// @return the values, empty when the parameter was not given
+		/**
+		 * Returns every value a parameter was given.
+		 *
+		 * @param name the parameter's spelling, without the leading dashes
+		 * @return the values, empty when the parameter was not given
+		 */
 		public List<String> values(String name) {
 			List<String> values = options.get(name);
 			return values == null ? List.of() : List.copyOf(values);
 		}
 
-		/// Reports whether a flag was given.
-		///
-		/// @param name the flag's spelling, without the leading dashes
-		/// @return whether it is there
+		/**
+		 * Reports whether a flag was given.
+		 *
+		 * @param name the flag's spelling, without the leading dashes
+		 * @return whether it is there
+		 */
 		public boolean flag(String name) {
 			return options.containsKey(name);
 		}

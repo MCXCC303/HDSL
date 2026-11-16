@@ -32,19 +32,12 @@ import static org.junit.jupiter.api.Assertions.*;
 /*
  * What a command line turns into, and what it says when it cannot be read.
  *
- * The parser is the one part of the launcher that runs before anything else exists — no settings,
- * no toolkit, no instance — so it is worth pinning on its own. What is pinned here is what the
- * table decides: which words name a command, what a command takes, what a line that leaves a
- * parameter out is told, and that the flag-style spelling of a command is read as that command
- * rather than as a second implementation of it.
- *
- * Nothing here runs a command that touches an instance, with one exception that is deliberately
- * read-only: a flag-style line has to be run to see the warning printed after it, and it names an
- * instance that does not exist.
+ * The parser runs before the settings, the toolkit and the instances exist. Nothing here runs a
+ * command that touches an instance.
  */
 class CliTest {
 
-	// What a command line that cannot be read returns.
+	// The exit code of a command line that cannot be read.
 	private static final int USAGE_ERROR = 2;
 
 	@Test
@@ -130,28 +123,7 @@ class CliTest {
 	}
 
 	@Test
-	void aFlagStyleCommandLineIsTheCommandItNames() {
-		Cli.Invocation deprecated = Cli.parse(List.of("--create-instance", "mine", "--dsh-version", "0.2.0"));
-		Cli.Invocation written = Cli.parse(List.of("instance", "create", "--id", "mine", "--dsh-version", "0.2.0"));
-		assertNotNull(deprecated);
-		assertNotNull(written);
-		assertEquals(written.command(), deprecated.command(), "the two spellings name one command");
-		assertEquals(written.options(), deprecated.options(), "and one set of parameters");
-		assertNotNull(deprecated.deprecated(), "the flag-style line is carried, because the warning prints it");
-		assertNull(written.deprecated());
-	}
-
-	@Test
-	void aFlagStyleCommandSaysWhatItIsCalledNowAfterItHasRun() {
-		Cli.Invocation invocation = Cli.parse(List.of("--get-key", "no-such-instance-for-a-test"));
-		assertNotNull(invocation);
-		Run run = run(invocation);
-		assertEquals("  hdsl instance launch --id no-such-instance-for-a-test --key", lastLine(run.out()),
-		           "the warning is the last thing printed, and it prints the line that just ran");
-	}
-
-	@Test
-	void aFlagWhoseCommandIsGoneSaysWhatToWriteInstead() {
+	void aCommandThatIsGoneSaysWhatToWriteInstead() {
 		Cli.Invocation invocation = Cli.parse(List.of("--install", "0.1.0"));
 		assertNotNull(invocation, "it is answered rather than handed to the interface, which would open a window");
 		assertNotNull(invocation.error());
@@ -191,17 +163,6 @@ class CliTest {
 		           "one source of each kind is in use, and the answer says which:\n" + run.out());
 	}
 
-	@Test
-	void theTwoListSourceFlagsAreOneCommand() {
-		Cli.Invocation plugins = Cli.parse(List.of("--list-plugin-sources"));
-		Cli.Invocation skills = Cli.parse(List.of("--list-skill-sources"));
-		assertNotNull(plugins);
-		assertNotNull(skills);
-		assertEquals(plugins.command(), skills.command());
-		assertEquals("source list", skills.command());
-		assertEquals(plugins.options(), skills.options());
-	}
-
 	// Runs an invocation and keeps what it printed.
 	private static Run run(Cli.Invocation invocation) {
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -210,12 +171,6 @@ class CliTest {
 		                   new PrintStream(out, true, StandardCharsets.UTF_8),
 		                   new PrintStream(err, true, StandardCharsets.UTF_8));
 		return new Run(code, out.toString(StandardCharsets.UTF_8), err.toString(StandardCharsets.UTF_8));
-	}
-
-	// Returns the last line that is not blank.
-	private static String lastLine(String text) {
-		List<String> lines = text.lines().filter(line -> !line.isBlank()).toList();
-		return lines.isEmpty() ? "" : lines.get(lines.size() - 1);
 	}
 
 	// What a command line printed, and what it returned.
