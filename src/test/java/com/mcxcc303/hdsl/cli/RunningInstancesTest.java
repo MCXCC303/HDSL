@@ -22,7 +22,7 @@ import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcon;
 import com.mcxcc303.hdsl.instance.DshPortMode;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 

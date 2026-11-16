@@ -15,13 +15,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.jackhuang.hmcl.ui.dsh;
+package org.jackhuang.hmcl.ui.dsh.runtime;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.harness.DshPnpmReleases;
 import com.mcxcc303.hdsl.runtime.DshToolchain;
-import com.mcxcc303.hdsl.runtime.PnpmRuntimeManager;
+import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntimeManager;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
@@ -34,15 +35,18 @@ import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
+import org.jackhuang.hmcl.ui.SVGContainer;
 import org.jackhuang.hmcl.ui.construct.ComponentList;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
+import org.jackhuang.hmcl.ui.dsh.DshToolchainPrompt;
+import org.jackhuang.hmcl.ui.dsh.ProgressDialog;
+import org.jackhuang.hmcl.util.i18n.I18n;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
@@ -63,6 +67,7 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 
 	private List<Group> groups = List.of();
 	private boolean busy;
+	private boolean loaded;
 
 	public PnpmDownloadPage(Runnable onInstalled) {
 		this.onInstalled = onInstalled;
@@ -95,13 +100,15 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 
 	private void load() {
 		spinner.setLoading(true);
+		boolean again = loaded;
+		loaded = true;
 		CompletableFuture.supplyAsync(() -> {
 			try {
-				return PnpmRuntimeManager.fetchVersions(DshToolchain.npm());
+				return DshPnpmReleases.read(again);
 			} catch (DshException e) {
 				throw new CompletionException(e);
 			}
-		}, Schedulers.io()).whenComplete((versions, throwable) -> runInFX(() -> {
+		}, Schedulers.io()).whenComplete((releases, throwable) -> runInFX(() -> {
 			spinner.setLoading(false);
 			if (throwable != null) {
 				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
@@ -115,7 +122,7 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 				return;
 			}
 			spinner.setFailedReason(null);
-			groups = group(versions);
+			groups = group(releases);
 			if (!groups.isEmpty()) {
 				openedGroups.add(groups.getFirst().major());
 			}
@@ -123,14 +130,14 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		}));
 	}
 
-	private static List<Group> group(List<String> versions) {
-		Map<Integer, List<String>> byMajor = new LinkedHashMap<>();
-		for (String version : versions) {
-			byMajor.computeIfAbsent(majorOf(version), major -> new ArrayList<>()).add(version);
+	private static List<Group> group(List<DshPnpmReleases.Release> releases) {
+		Map<Integer, List<DshPnpmReleases.Release>> byMajor = new LinkedHashMap<>();
+		for (DshPnpmReleases.Release release : releases) {
+			byMajor.computeIfAbsent(majorOf(release.version()), major -> new ArrayList<>()).add(release);
 		}
 
 		List<Group> groups = new ArrayList<>();
-		for (Map.Entry<Integer, List<String>> entry : byMajor.entrySet()) {
+		for (Map.Entry<Integer, List<DshPnpmReleases.Release>> entry : byMajor.entrySet()) {
 			groups.add(new Group(entry.getKey(), List.copyOf(entry.getValue())));
 		}
 		return groups;
@@ -149,11 +156,11 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		List<Row> drawn = new ArrayList<>();
 		for (Group group : groups) {
 			boolean open = openedGroups.contains(group.major());
-			drawn.add(new HeadingRow(group.major(), group.versions().size(), open));
+			drawn.add(new HeadingRow(group.major(), group.releases().size(), open));
 			if (!open) continue;
 
-			for (String version : group.versions()) {
-				drawn.add(new ReleaseRow(version));
+			for (DshPnpmReleases.Release release : group.releases()) {
+				drawn.add(new ReleaseRow(release));
 			}
 		}
 		rows.setAll(drawn);
@@ -186,17 +193,17 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		                   },
 		                   failure -> {
 			                   failed.set(true);
-			                   return false;
+			                   return DshToolchainPrompt.offer(failure);
 		                   });
 	}
 
-	private record Group(int major, List<String> versions) {}
+	private record Group(int major, List<DshPnpmReleases.Release> releases) {}
 
 	private sealed interface Row permits HeadingRow, ReleaseRow {}
 
 	private record HeadingRow(int major, int versionCount, boolean opened) implements Row {}
 
-	private record ReleaseRow(String version) implements Row {}
+	private record ReleaseRow(DshPnpmReleases.Release release) implements Row {}
 
 	private final class RowCell extends MDListCell<Row> {
 		private final TwoLineListItem content = new TwoLineListItem();
@@ -209,22 +216,28 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 				Row item = getItem();
 				if (item instanceof HeadingRow heading) {
 					toggle(heading.major());
-				} else if (item instanceof ReleaseRow release) {
-					confirmInstall(release.version());
+				} else if (item instanceof ReleaseRow(DshPnpmReleases.Release release1)) {
+					confirmInstall(release1);
 				}
 			});
 
 			downloadButton.setOnMouseClicked(event -> {
 				Row item = getItem();
-				if (item instanceof ReleaseRow release) {
-					confirmInstall(release.version());
+				if (item instanceof ReleaseRow(DshPnpmReleases.Release release1)) {
+					confirmInstall(release1);
 					event.consume();
 				}
 			});
 		}
 
-		private void confirmInstall(String version) {
-			Controllers.confirm(i18n("dsh.pnpm.download.confirm_version", version),
+		private void confirmInstall(DshPnpmReleases.Release release) {
+			String version = release.version();
+			String message = i18n("dsh.pnpm.download.confirm_version", version);
+			String nodeEngine = release.nodeEngine();
+			if (nodeEngine != null) {
+				message += "\n\n" + i18n("dsh.pnpm.download.node_requirement", version, nodeEngine);
+			}
+			Controllers.confirm(message,
 			                    i18n("dsh.pnpm.download.title"),
 			                    () -> install(version),
 			                    null);
@@ -259,14 +272,30 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		}
 
 		private void updateRelease(ReleaseRow row) {
+			DshPnpmReleases.Release release = row.release();
+
 			content.getTags().clear();
 			mark.getChildren().clear();
 
-			mark.getChildren().setAll(SVG.PACKAGE2.createIcon(24));
+			String deprecated = release.deprecated();
+			SVGContainer icon = ReleaseChannelMarks.icon(release.channel(), deprecated != null);
+			if (deprecated != null) {
+				FXUtils.installFastTooltip(icon, deprecated);
+			}
+			mark.getChildren().setAll(icon);
 			mark.setPadding(new Insets(0, 8, 0, 0));
 			mark.setMinWidth(24);
 
-			content.setTitle(row.version());
+			content.setTitle(release.version());
+			content.setSubtitle(release.published() == null
+			                   ? null
+			                   : i18n("dsh.pnpm.download.publish_date", I18n.formatDateTime(release.published())));
+			for (String tag : release.tags()) {
+				content.addTag(tag);
+			}
+			if (release.deprecated() != null) {
+				content.addTagWarning(i18n("dsh.pnpm.download.tag_deprecated"));
+			}
 
 			HBox line = new HBox(mark, content, downloadButton);
 			line.setAlignment(Pos.CENTER_LEFT);

@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.mcxcc303.hdsl.runtime;
+package com.mcxcc303.hdsl.runtime.node;
 
 import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.Semver;
@@ -112,7 +112,7 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable Path npm, 
 	 * @param executable the program to run with {@code --version}
 	 * @return the first output line, trimmed, or {@code null} when no probe answered
 	 */
-	static @Nullable String versionOf(Path executable) {
+	public static @Nullable String versionOf(Path executable) {
 		String failure = null;
 		for (int attempt = 0; attempt < 2; attempt++) {
 			try {

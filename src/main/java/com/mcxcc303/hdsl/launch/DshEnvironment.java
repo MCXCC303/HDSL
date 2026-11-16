@@ -19,7 +19,7 @@ package com.mcxcc303.hdsl.launch;
 
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.logging.Logger;
 import org.jetbrains.annotations.NotNullByDefault;

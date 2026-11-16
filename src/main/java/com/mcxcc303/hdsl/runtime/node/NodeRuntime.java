@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.mcxcc303.hdsl.runtime;
+package com.mcxcc303.hdsl.runtime.node;
 
 import com.mcxcc303.hdsl.core.DshPaths;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;

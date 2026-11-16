@@ -22,7 +22,7 @@ import com.mcxcc303.hdsl.launch.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.CatalogClient;
 import com.mcxcc303.hdsl.plugin.CatalogSources;
 import com.mcxcc303.hdsl.plugin.MarketSource;
-import com.mcxcc303.hdsl.runtime.NodeSource;
+import com.mcxcc303.hdsl.runtime.node.NodeSource;
 import com.mcxcc303.hdsl.skill.DshSkillSource;
 import com.mcxcc303.hdsl.skill.DshSkillSources;
 import javafx.beans.binding.Bindings;

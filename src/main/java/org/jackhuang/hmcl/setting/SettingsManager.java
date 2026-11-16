@@ -27,7 +27,7 @@ import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
 import com.mcxcc303.hdsl.launch.DshProxyMode;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
-import com.mcxcc303.hdsl.runtime.NodeSource;
+import com.mcxcc303.hdsl.runtime.node.NodeSource;
 import com.mcxcc303.hdsl.skin.DshSkinChoice;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.Paint;
