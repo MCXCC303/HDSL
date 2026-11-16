@@ -1,14 +1,7 @@
-# The provider catalogue dsh ships, as `id|baseUrl|api|apiKeyEnv`.
-#
-# Read from the installed harness's own catalogue and kept here rather than inside a Java
-# class, so that re-reading it is a diff of one file. An empty baseUrl means the provider has
-# no fixed address (it is per account or per region), and an empty api means the harness cannot
-# route it at all: it speaks a protocol `DshVendor.APIS` does not list.
-#
-# Generated from @earendil-works/pi-ai/dist/providers on 2026-09-23 (dsh 0.1.6-alpha.2).
+# Generated from @earendil-works/pi-ai 1.5.2 on 2026-11-16.
 ant-ling|https://api.ant-ling.com/v1|openai-completions|ANT_LING_API_KEY
 anthropic|https://api.anthropic.com|anthropic-messages|ANTHROPIC_API_KEY
-azure-openai-responses|||AZURE_OPENAI_API_KEY
+azure|||AZURE_OPENAI_API_KEY
 baseten|https://inference.baseten.co/v1|openai-completions|BASETEN_API_KEY
 cerebras|https://api.cerebras.ai/v1|openai-completions|CEREBRAS_API_KEY
 cloudflare-ai-gateway|||CLOUDFLARE_API_KEY
@@ -19,7 +12,8 @@ github-copilot|https://api.individual.githubcopilot.com||GITHUB_COPILOT_API_KEY
 google|https://generativelanguage.googleapis.com/v1beta||GEMINI_API_KEY
 groq|https://api.groq.com/openai/v1|openai-completions|GROQ_API_KEY
 huggingface|https://router.huggingface.co/v1|openai-completions|HF_TOKEN
-kimi-coding|https://api.kimi.com/coding|anthropic-messages|KIMI_API_KEY
+kimi-coding|https://api.kimi.com/coding/v1|openai-completions|KIMI_API_KEY
+meta|https://api.meta.ai/v1|openai-responses|META_API_KEY
 minimax|https://api.minimax.io/anthropic|anthropic-messages|MINIMAX_API_KEY
 minimax-cn|https://api.minimaxi.com/anthropic|anthropic-messages|MINIMAX_CN_API_KEY
 mistral|https://api.mistral.ai||MISTRAL_API_KEY
@@ -34,6 +28,7 @@ openrouter|https://openrouter.ai/api/v1||OPENROUTER_API_KEY
 qwen-token-plan|https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1|openai-completions|QWEN_TOKEN_PLAN_API_KEY
 qwen-token-plan-cn|https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1|openai-completions|QWEN_TOKEN_PLAN_CN_API_KEY
 qwen-token-plan-individual|https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1|openai-completions|QWEN_TOKEN_PLAN_API_KEY
+qwen-token-plan-individual-cn|https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1|openai-completions|QWEN_TOKEN_PLAN_CN_API_KEY
 together|https://api.together.ai/v1|openai-completions|TOGETHER_API_KEY
 vercel-ai-gateway|https://ai-gateway.vercel.sh|anthropic-messages|AI_GATEWAY_API_KEY
 xai|https://api.x.ai/v1|openai-responses|XAI_API_KEY
