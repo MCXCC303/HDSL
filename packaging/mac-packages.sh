@@ -1,129 +1,107 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
-
-version="${1:?usage: mac-packages.sh <version> <sh-artifact> <icon.png> <output-dir> [arch]}"
-sh_artifact="${2:?}"
-icon="${3:?}"
-out_dir="${4:?}"
-arch_arg="${5:-}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_dir="$(cd "${script_dir}/.." && pwd)"
+source "${script_dir}/lib/common.sh"
+source "${script_dir}/lib/macos-formats.sh"
 
-name="hdsl-${version}"
-bundle_id="run.hdsl.HDSL"
-launcher_class="org.jackhuang.hmcl.Main"
+usage() {
+    cat <<'EOF'
+Usage: mac-packages.sh [options] <version> <sh-artifact> <icon.png> <output-dir> [arch]
 
-for file in "${sh_artifact}" "${icon}"; do
-    [ -f "${file}" ] || { echo "error: ${file} does not exist" >&2; exit 1; }
+Builds HDSL.app and the macOS packages. The launcher needs a Java 21+ runtime.
+
+Formats:
+  dmg        HDSL-<version>-<arch>.dmg
+  zip        HDSL-<version>-<arch>.zip
+  all        both (default)
+
+Options:
+  --formats LIST   Comma-separated dmg,zip, or all.
+  --no-sums        Do not write .sha256 files; existing ones are left alone.
+  -h, --help       Print this help.
+
+Options must come before the positional arguments. arch defaults to uname -m;
+aarch64/arm64 and x64/x86_64/amd64 are accepted. The .app bundle is always
+built and is not published separately.
+EOF
+}
+
+formats=all
+with_sums=1
+stage=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --formats)
+            [ $# -ge 2 ] || usage_error "--formats needs a value"
+            formats="$2"
+            shift 2
+            ;;
+        --formats=*) formats="${1#*=}"; shift ;;
+        --no-sums) with_sums=0; shift ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) usage_error "unknown option: $1" ;;
+        *) break ;;
+    esac
 done
 
-if [ -n "${arch_arg}" ]; then
-    case "${arch_arg}" in
+[ $# -eq 4 ] || [ $# -eq 5 ] || usage_error "expected 4 or 5 positional arguments, got $#; put options before them"
+
+version="$1"
+sh_artifact="$2"
+icon="$3"
+out_dir="$4"
+arch_arg="${5:-}"
+
+formats="${formats//[[:space:]]/}"
+[ -n "$formats" ] || usage_error "--formats needs a value"
+if [ "$formats" = all ]; then
+    formats="dmg,zip"
+fi
+case ",$formats," in
+    *,all,*) usage_error "'all' cannot be combined with other formats" ;;
+esac
+validate_formats "$formats" dmg zip
+
+if [ -n "$arch_arg" ]; then
+    case "$arch_arg" in
         aarch64|arm64) arch="aarch64" ;;
         x64|x86_64|amd64) arch="x64" ;;
-        *) echo "error: unknown arch ${arch_arg} (want aarch64 or x64)" >&2; exit 1 ;;
+        *) usage_error "unknown arch '$arch_arg' (want aarch64 or x64)" ;;
     esac
 else
     case "$(uname -m)" in
         arm64|aarch64) arch="aarch64" ;;
         x86_64|amd64) arch="x64" ;;
-        *) echo "error: unknown host arch $(uname -m)" >&2; exit 1 ;;
+        *) die "unknown host arch $(uname -m)" ;;
     esac
 fi
 
-mkdir -p "${out_dir}"
-out_dir="$(cd "${out_dir}" && pwd)"
-stage="$(mktemp -d)"
-trap 'rm -rf "${stage}"' EXIT
+require_file "$sh_artifact"
+require_file "$icon"
+mkdir -p "$out_dir"
+out_dir="$(cd "$out_dir" && pwd)"
 
-appdir="${stage}/HDSL.app/Contents"
-mkdir -p "${appdir}/MacOS" "${appdir}/Java" "${appdir}/Resources"
-cp "${sh_artifact}" "${appdir}/Java/${name}.sh"
-chmod 0755 "${appdir}/Java/${name}.sh"
-for file in LICENSE NOTICE; do
-    [ -f "${repo_dir}/${file}" ] && cp "${repo_dir}/${file}" "${stage}/" && chmod 0644 "${stage}/${file}"
-done
-
-icon_file=""
-if command -v sips >/dev/null 2>&1 && sips -s format icns "${icon}" --out "${appdir}/Resources/hdsl.icns" >/dev/null 2>&1; then
-    icon_file="hdsl.icns"
-else
-    echo "warning: sips is unavailable, bundle carries hdsl.png instead of hdsl.icns" >&2
-fi
-
-cp "${icon}" "${appdir}/Resources/hdsl.png"
-chmod 0644 "${appdir}/Resources/hdsl.png"
-
-if [ -n "${icon_file}" ]; then
-    icon_key="	<key>CFBundleIconFile</key>
-	<string>${icon_file}</string>"
-else
-    icon_key=""
-fi
-
-cat > "${appdir}/Info.plist" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-	<key>CFBundleName</key>
-	<string>HDSL</string>
-	<key>CFBundleDisplayName</key>
-	<string>Hello DeepSeek Launcher</string>
-	<key>CFBundleIdentifier</key>
-	<string>${bundle_id}</string>
-	<key>CFBundleVersion</key>
-	<string>${version}</string>
-	<key>CFBundleShortVersionString</key>
-	<string>${version}</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleExecutable</key>
-	<string>HDSL</string>
-${icon_key}
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>LSMinimumSystemVersion</key>
-	<string>12.0</string>
-</dict>
-</plist>
-EOF
-chmod 0644 "${appdir}/Info.plist"
-
-cat > "${appdir}/MacOS/HDSL" <<EOF
-#!/usr/bin/env bash
-# Refuse to start anywhere but the user's home, for the reason above.
-cd "\${HOME}"
-APP_ROOT="\$(cd "\$(dirname "\$0")/.." && pwd)"
-# The launcher stub names the dock tile from this image at JVM startup; see it
-# for why the name and icon cannot wait for a window.
-export HDSL_DOCK_ICON="\${APP_ROOT}/Resources/hdsl.png"
-exec "\${APP_ROOT}/Java/${name}.sh" "\$@"
-EOF
-chmod 0755 "${appdir}/MacOS/HDSL"
-
-printf 'APPL????' > "${appdir}/PkgInfo"
-chmod 0644 "${appdir}/PkgInfo"
-
-echo "== dmg =="
-dmg="${out_dir}/HDSL-${version}-${arch}.dmg"
-rm -f "${dmg}"
-hdiutil create -volname "HDSL" -srcfolder "${stage}" -ov -format UDZO "${dmg}"
-hdiutil verify "${dmg}"
-
-echo "== zip =="
+name="hdsl-${version}"
+bundle_id="run.hdsl.HDSL"
+dmg_artifact="${out_dir}/HDSL-${version}-${arch}.dmg"
 zip_artifact="${out_dir}/HDSL-${version}-${arch}.zip"
-rm -f "${zip_artifact}"
-(cd "${stage}" && ditto -c -k --sequesterRsrc --keepParent HDSL.app "${zip_artifact}")
 
-for artifact in "${dmg}" "${zip_artifact}"; do
-    if command -v sha256sum >/dev/null 2>&1; then
-        ( cd "${out_dir}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
-    else
-        ( cd "${out_dir}" && shasum -a 256 "$(basename "${artifact}")" > "$(basename "${artifact}").sha256" )
-    fi
-done
+stage_init
 
-ls -l "${dmg}" "${zip_artifact}"
+if [ "$with_sums" -eq 0 ]; then
+    echo "warning: --no-sums leaves existing .sha256 files alone; they may be stale after a rebuild." >&2
+fi
+
+build_bundle
+if want dmg; then build_dmg; fi
+if want zip; then build_zip; fi
+
+if want dmg; then finish_artifact "$with_sums" "$dmg_artifact"; fi
+if want zip; then finish_artifact "$with_sums" "$zip_artifact"; fi
+
+if want dmg && [ -f "$dmg_artifact" ]; then ls -l "$dmg_artifact"; fi
+if want zip && [ -f "$zip_artifact" ]; then ls -l "$zip_artifact"; fi
