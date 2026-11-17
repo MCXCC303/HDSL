@@ -8,7 +8,7 @@ source "${script_dir}/lib/macos-formats.sh"
 
 usage() {
     cat <<'EOF'
-Usage: mac-packages.sh [options] <version> <sh-artifact> <icon.png> <output-dir> [arch]
+Usage: mac-packages.sh [options] <version>
 
 Builds HDSL.app and the macOS packages. The launcher needs a Java 21+ runtime.
 
@@ -18,43 +18,95 @@ Formats:
   all        both (default)
 
 Options:
-  --formats LIST   Comma-separated dmg,zip, or all.
-  --no-sums        Do not write .sha256 files; existing ones are left alone.
-  -h, --help       Print this help.
-
-Options must come before the positional arguments. arch defaults to uname -m;
-aarch64/arm64 and x64/x86_64/amd64 are accepted. The .app bundle is always
-built and is not published separately.
+  --sh-artifact PATH   Self-executing launcher; default build/libs/hdsl-<version>.sh.
+  --icon PATH          Bundle icon; default src/main/resources/assets/img/icon@8x.png.
+  --output-dir DIR     Artifact directory; default dist.
+  --formats LIST       Comma-separated dmg,zip, or all.
+  --arch ARCH          aarch64 or x64; default host (uname -m).
+  --no-sums            Do not write .sha256 files; existing ones are left alone.
+  -h, --help           Print this help.
 EOF
 }
 
 formats=all
 with_sums=1
+sh_artifact=""
+icon=""
+out_dir=""
+arch=""
 stage=""
+positional=""
+positional_count=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --formats)
-            [ $# -ge 2 ] || usage_error "--formats needs a value"
+            require_value --formats "$#"
             formats="$2"
             shift 2
             ;;
         --formats=*) formats="${1#*=}"; shift ;;
+        --sh-artifact)
+            require_value --sh-artifact "$#"
+            sh_artifact="$2"
+            shift 2
+            ;;
+        --sh-artifact=*) sh_artifact="${1#*=}"; shift ;;
+        --icon)
+            require_value --icon "$#"
+            icon="$2"
+            shift 2
+            ;;
+        --icon=*) icon="${1#*=}"; shift ;;
+        --output-dir)
+            require_value --output-dir "$#"
+            out_dir="$2"
+            shift 2
+            ;;
+        --output-dir=*) out_dir="${1#*=}"; shift ;;
+        --arch)
+            require_value --arch "$#"
+            arch="$2"
+            shift 2
+            ;;
+        --arch=*) arch="${1#*=}"; shift ;;
         --no-sums) with_sums=0; shift ;;
         -h|--help) usage; exit 0 ;;
-        --) shift; break ;;
+        --)
+            shift
+            while [ $# -gt 0 ]; do
+                positional="$1"
+                positional_count=$((positional_count + 1))
+                shift
+            done
+            break
+            ;;
         -*) usage_error "unknown option: $1" ;;
-        *) break ;;
+        *)
+            positional="$1"
+            positional_count=$((positional_count + 1))
+            shift
+            ;;
     esac
 done
 
-[ $# -eq 4 ] || [ $# -eq 5 ] || usage_error "expected 4 or 5 positional arguments, got $#; put options before them"
+[ "$positional_count" -eq 1 ] || usage_error "expected exactly one <version>; use --sh-artifact, --icon and --output-dir for the rest"
 
-version="$1"
-sh_artifact="$2"
-icon="$3"
-out_dir="$4"
-arch_arg="${5:-}"
+version="$positional"
+[ -n "$version" ] || usage_error "version must not be empty"
+
+[ -n "$sh_artifact" ] || sh_artifact="${repo_dir}/build/libs/hdsl-${version}.sh"
+[ -n "$icon" ] || icon="${repo_dir}/src/main/resources/assets/img/icon@8x.png"
+[ -n "$out_dir" ] || out_dir="${repo_dir}/dist"
+
+if [ -z "$arch" ]; then
+    arch="$(uname -m)"
+fi
+case "$arch" in
+    aarch64|arm64) arch="aarch64" ;;
+    x64|x86_64|amd64) arch="x64" ;;
+    *) usage_error "unsupported arch '$arch' (want aarch64 or x64)" ;;
+esac
 
 formats="${formats//[[:space:]]/}"
 [ -n "$formats" ] || usage_error "--formats needs a value"
@@ -65,20 +117,6 @@ case ",$formats," in
     *,all,*) usage_error "'all' cannot be combined with other formats" ;;
 esac
 validate_formats "$formats" dmg zip
-
-if [ -n "$arch_arg" ]; then
-    case "$arch_arg" in
-        aarch64|arm64) arch="aarch64" ;;
-        x64|x86_64|amd64) arch="x64" ;;
-        *) usage_error "unknown arch '$arch_arg' (want aarch64 or x64)" ;;
-    esac
-else
-    case "$(uname -m)" in
-        arm64|aarch64) arch="aarch64" ;;
-        x86_64|amd64) arch="x64" ;;
-        *) die "unknown host arch $(uname -m)" ;;
-    esac
-fi
 
 require_file "$sh_artifact"
 require_file "$icon"

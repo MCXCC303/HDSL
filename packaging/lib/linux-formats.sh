@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Expects the caller to set: version, name, desktop_id, launcher_class,
 # sh_artifact, icon, out_dir, stage, repo_dir, appimagetool, arch_version,
-# tar_artifact, arch_artifact, appimage_artifact.
+# pkg_arch, appimage_arch, tar_artifact, arch_artifact, appimage_artifact.
 
 write_desktop_entry() {
     local target="$1" launcher="$2"
@@ -70,7 +70,7 @@ url = https://github.com/
 builddate = $(date +%s)
 packager = HDSL contributors
 size = ${installed_size}
-arch = x86_64
+arch = ${pkg_arch}
 license = GPL-3.0-or-later
 depend = java-runtime>=21
 replaces = ${previous_name}
@@ -103,7 +103,7 @@ EOF
     chmod 0755 "${appdir}/AppRun"
 
     echo "== AppImage =="
-    ARCH=x86_64 APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" \
+    ARCH=${appimage_arch} APPIMAGE_EXTRACT_AND_RUN=1 "$appimagetool" \
         --no-appstream \
         "$appdir" "$appimage_artifact"
 }

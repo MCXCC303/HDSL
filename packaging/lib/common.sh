@@ -15,6 +15,10 @@ require_file() {
     [ -f "$1" ] || die "$1 does not exist"
 }
 
+require_value() { # option count
+    [ "$2" -ge 2 ] || usage_error "$1 needs a value"
+}
+
 # Reads the caller's global `formats`.
 want() {
     case ",${formats}," in
