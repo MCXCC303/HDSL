@@ -26,6 +26,7 @@ import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.core.Semver;
 import kala.compress.archivers.ArchiveEntry;
+import org.jackhuang.hmcl.task.FetchTask;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
 import org.jackhuang.hmcl.util.platform.Architecture;
@@ -442,6 +443,7 @@ public final class NodeRuntimeManager {
 				while ((read = in.read(buffer)) >= 0) {
 					out.write(buffer, 0, read);
 					copied += read;
+					FetchTask.recordDownloaded(read);
 					if (onStage != null && total > 0) {
 						int percent = (int) (copied * 100 / total);
 						if (percent / 10 != lastReported / 10) {

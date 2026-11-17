@@ -894,6 +894,7 @@ public abstract class Task<T> {
 
         public StagesHintTask(List<StagesHint> hints) {
             this.hints = hints;
+            setSignificance(TaskSignificance.MODERATE);
         }
 
         @Override

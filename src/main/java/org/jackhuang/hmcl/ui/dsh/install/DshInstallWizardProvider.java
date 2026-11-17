@@ -30,11 +30,12 @@ import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import javafx.scene.Node;
 import org.jackhuang.hmcl.setting.LauncherSettings;
 import org.jackhuang.hmcl.setting.SettingsManager;
+import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.task.Task;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.MessageDialogPane.MessageType;
-import org.jackhuang.hmcl.ui.dsh.DshInstallProgress;
+import org.jackhuang.hmcl.ui.dsh.DshStageTask;
 import org.jackhuang.hmcl.ui.dsh.DshToolchainPrompt;
 import org.jackhuang.hmcl.ui.wizard.WizardController;
 import org.jackhuang.hmcl.ui.wizard.WizardProvider;
@@ -47,7 +48,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -110,9 +110,9 @@ public final class DshInstallWizardProvider implements WizardProvider {
 
 	@Override
 	public Object finish(SettingsMap settings) {
-		InstallTask task = new InstallTask(settings);
-		settings.put("title", task.progress.messageProperty());
-		return task;
+		Installation installation = new Installation(settings);
+		settings.put("title", installation.title());
+		return installation.steps();
 	}
 
 	@Override
@@ -122,15 +122,112 @@ public final class DshInstallWizardProvider implements WizardProvider {
 		return true;
 	}
 
-	static final class InstallTask extends Task<Void> {
+	static final class Installation {
 		private final SettingsMap settings;
-		private final DshInstallProgress progress = new DshInstallProgress();
-		private @Nullable String version;
-		private boolean versionWasPresent;
+		private @Nullable DshInstance instance;
 
-		private InstallTask(SettingsMap settings) {
+		private Installation(SettingsMap settings) {
 			this.settings = settings;
-			setName(i18n("dsh.install.working"));
+		}
+
+		String title() {
+			String name = instanceName();
+			String subject = name.isEmpty() ? version() : name;
+			return subject.isEmpty() ? i18n("dsh.install.start") : i18n("dsh.install.installation", subject);
+		}
+
+		String instanceName() {
+			String name = settings.get(NAME);
+			return name == null ? "" : name.trim();
+		}
+
+		String version() {
+			String version = settings.get(VERSION);
+			return version == null ? "" : version;
+		}
+
+		Task<Void> steps() {
+			DshStageTask creating = new DshStageTask("dsh.install.stage.instance",
+			                                          i18n("dsh.install.task.instance", instanceName()),
+			                                          null,
+			                                          progress -> instance = createInstance());
+			DshStageTask runtime = new DshStageTask("dsh.install.stage.runtime",
+			                                        i18n("dsh.install.task.runtime", version()),
+			                                        creating,
+			                                        progress -> {
+				                                                DshInstance created = requireInstance();
+				                                                HarnessInstaller.install(created, progress::accept);
+				                                                applyAppBoot(created);
+			                                        });
+
+			List<Task.StagesHint> hints = new ArrayList<>();
+			hints.add(new Task.StagesHint("dsh.install.stage.instance"));
+			hints.add(new Task.StagesHint("dsh.install.stage.runtime"));
+
+			List<String> specs = specsOf(settings.getOrDefault(PRESET_CHOICES, Map.of()));
+			Task<Void> last = runtime;
+			for (String spec : specs) {
+				last = new DshStageTask("dsh.install.stage.plugins",
+				                        i18n("dsh.install.task.plugins", spec),
+				                        last,
+				                        progress -> {
+				                                                DshInstance created = requireInstance();
+				                                                DshPluginInstaller.installSpecs(created, List.of(spec), line -> {
+				                                                    LOG.info("[install] " + line);
+				                                                    progress.accept(line);
+				                                                });
+				                                        });
+			}
+			if (!specs.isEmpty()) {
+				hints.add(new Task.StagesHint("dsh.install.stage.plugins"));
+			}
+
+			Task<Void> chain = last.whenComplete(Schedulers.io(), exception -> {
+				if (exception != null) {
+					discard();
+					return;
+				}
+				DshInstance created = instance;
+				if (created != null) {
+					FXUtils.runInFX(() -> Controllers.showToast(i18n("dsh.instance.created", created.id())));
+				}
+			});
+			return chain.withStagesHints(hints);
+		}
+
+		private void applyAppBoot(DshInstance created) throws DshException {
+			String appBoot = settings.get(APP_BOOT);
+			if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(created.version())) {
+				LOG.info("Instance " + created.id() + " was asked for boot library " + appBoot +
+				         " instead of the launcher's own " + created.version());
+				AppBootPin.overrideAppBoot(created, appBoot);
+			}
+		}
+
+		private void discard() {
+			DshInstance created = instance;
+			if (created == null) {
+				return;
+			}
+			// A cancellation is an interrupt on this thread.
+			if (Thread.currentThread().isInterrupted()) {
+				LOG.info("Install of " + created.id() + " was cancelled");
+				DshCommand.stopRunning();
+			}
+			HarnessInstaller.discardPartial(created);
+			try {
+				DshInstanceManager.delete(created.id());
+			} catch (RuntimeException | DshException cleanupFailure) {
+				LOG.warning("Could not remove the half-made instance " + created.id(), cleanupFailure);
+			}
+		}
+
+		private DshInstance requireInstance() throws DshException {
+			DshInstance created = instance;
+			if (created == null) {
+				throw new DshException("The install wizard finished without an instance");
+			}
+			return created;
 		}
 
 		DshInstance createInstance() throws DshException {
@@ -161,54 +258,6 @@ public final class DshInstallWizardProvider implements WizardProvider {
 			                                                 Map.of());
 			LOG.info("Wizard created instance " + instance.id() + " (dsh " + version + ")");
 			return instance;
-		}
-
-		@Override
-		public void execute() throws Exception {
-			List<String> specs = specsOf(settings.getOrDefault(PRESET_CHOICES, Map.of()));
-			Consumer<String> report = line -> {
-				LOG.info("[install] " + line);
-				progress.accept(line);
-				double fraction = progress.fractionProperty().get();
-				if (fraction >= 0) updateProgress(fraction);
-
-			};
-			DshInstance instance = createInstance();
-			String version = instance.version();
-
-			try {
-				report.accept(i18n("dsh.install.progress.fetching", version));
-				HarnessInstaller.install(instance, report);
-				updateProgress(1.0);
-
-				String appBoot = settings.get(APP_BOOT);
-				if (appBoot != null && !appBoot.isBlank() && !appBoot.equals(version)) {
-					LOG.info("Instance " + instance.id() + " was asked for boot library " + appBoot +
-					         " instead of the launcher's own " + version);
-					AppBootPin.overrideAppBoot(instance, appBoot);
-				}
-
-				if (!specs.isEmpty()) {
-					DshPluginInstaller.installSpecs(instance, specs, report);
-				}
-				updateProgress(1.0);
-
-				FXUtils.runInFX(() -> Controllers.showToast(i18n("dsh.instance.created", instance.id())));
-			} catch (RuntimeException | DshException stopped) {
-				// A cancellation is read from the thread.
-				if (Thread.currentThread().isInterrupted()) {
-					LOG.info("Install of " + instance.id() + " was cancelled");
-					DshCommand.stopRunning();
-				}
-				// An instance with no runtime would appear in the list and fail to start.
-				HarnessInstaller.discardPartial(instance);
-				try {
-					DshInstanceManager.delete(instance.id());
-				} catch (RuntimeException | DshException cleanupFailure) {
-					LOG.warning("Could not remove the half-made instance " + instance.id(), cleanupFailure);
-				}
-				throw stopped;
-			}
 		}
 	}
 }
