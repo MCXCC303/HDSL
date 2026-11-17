@@ -319,8 +319,8 @@ class HarnessInstallerTest {
 			return List.of(
 					"set target=",
 					":parse",
-					"if \"%1\"==\"\" goto run",
-					"if \"%1\"==\"--dir\" (set target=%2 & shift)",
+					"if \"%~1\"==\"\" goto run",
+					"if \"%~1\"==\"--dir\" set target=%~2",
 					"shift",
 					"goto parse",
 					":run",
