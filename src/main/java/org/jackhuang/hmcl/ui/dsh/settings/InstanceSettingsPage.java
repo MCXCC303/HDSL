@@ -26,6 +26,7 @@ import com.mcxcc303.hdsl.launch.DshLaunchArguments;
 import com.mcxcc303.hdsl.launch.DshLauncherVisibility;
 import com.mcxcc303.hdsl.launch.DshProcessManager.LaunchState;
 import com.mcxcc303.hdsl.plugin.DshBuildScriptPolicy;
+import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
@@ -47,6 +48,7 @@ import org.jetbrains.annotations.Nullable;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -56,9 +58,6 @@ import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
-/**
- * The settings tab of an instance's management page.
- */
 @NotNullByDefault
 public final class InstanceSettingsPage extends ScrollPane {
 	private final ImagePickerItem iconRow = new ImagePickerItem();
@@ -68,11 +67,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 	private final Runnable onChanged;
 	private DshInstance instance;
 
-	/**
-	 * Creates the settings tab.
-	 *
-	 * @param onChanged run after the tab writes a setting
-	 */
 	public InstanceSettingsPage(DshInstance instance, Runnable onChanged) {
 		this.instance = instance;
 		this.onChanged = onChanged;
@@ -113,12 +107,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		FXUtils.smoothScrolling(this);
 	}
 
-	/**
-	 * Records whether an instance has an environment of its own.
-	 *
-	 * @param instance the instance
-	 * @param own      whether it has one
-	 */
 	private static void rememberEnvironment(DshInstance instance, boolean own) {
 		try {
 			DshInstanceSettings.setEnvironmentIsOwn(instance, own);
@@ -134,11 +122,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return list;
 	}
 
-	/**
-	 * Builds the pre-launch or post-exit command row.
-	 *
-	 * @param before whether this is the pre-launch command
-	 */
 	private LineInheritableTextField commandRow(String title, boolean before) {
 		String own = before
 		             ? DshInstanceSettings.preLaunchCommand(instance)
@@ -248,7 +231,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 	private ComponentList buildEnvironmentVariablesList() {
 		LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.env_vars"));
 
-		// the constructor turns an absent member into an empty map, so both cases look empty in memory.
 		boolean own = DshInstanceSettings.environmentIsOwn(instance);
 		row.setOverridden(own);
 		row.setText(DshEnvironment.format(own ? instance.environment() : settings().globalEnvironment()));
@@ -307,17 +289,21 @@ public final class InstanceSettingsPage extends ScrollPane {
 
 	private LineInheritableSelectButton<String> buildNodeRuntimeRow() {
 		List<String> choices = new ArrayList<>();
-		choices.add(DshNodeRuntime.SYSTEM);
+		Map<String, String> labels = new LinkedHashMap<>();
+		labels.put(DshRuntimeLocation.SYSTEM, i18n("dsh.install.node.system"));
+		if (DshNodeRuntime.which("node").isPresent()) {
+			choices.add(DshRuntimeLocation.SYSTEM);
+		}
 		for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
-			choices.add(runtime.version());
+			String selection = DshRuntimeLocation.selectionOf(runtime.directory());
+			choices.add(selection);
+			labels.put(selection, runtime.version());
 		}
 
 		LineInheritableSelectButton<String> row = new LineInheritableSelectButton<>();
 		row.setTitle(i18n("dsh.node.title"));
 		row.setItems(choices);
-		row.setNullSafeConverter(selection -> DshNodeRuntime.SYSTEM.equals(selection)
-		                                      ? i18n("dsh.install.node.system")
-		                                      : selection);
+		row.setNullSafeConverter(selection -> labels.getOrDefault(selection, selection));
 
 		String own = instance.nodeRuntime();
 		boolean overridden = own != null && !DshNodeRuntime.GLOBAL.equals(own);
@@ -336,12 +322,7 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/**
-	 * Builds the row for this instance's extra launch arguments.
-	 *
-	 * <p>Arguments are passed to the harness as typed, except {@code --port} and {@code DSH_HOME}.
-	 * Quoting rules are in {@link DshLaunchArguments#tokenize}.
-	 */
+	/** Arguments are passed to the harness except {@code --port} and {@code DSH_HOME}. */
 	private LineInheritableTextField buildLaunchArgumentsRow() {
 		LineInheritableTextField row = new LineInheritableTextField(i18n("dsh.settings.launch_args"));
 
@@ -408,9 +389,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return iconRow;
 	}
 
-	/**
-	 * Re-reads the instance after an outside change; the icon chooser writes to storage itself.
-	 */
 	private void reloadFromStorage() {
 		DshInstance stored = InstanceStore.find(instance.id());
 		if (stored != null) instance = stored;
@@ -419,7 +397,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		onChanged.run();
 	}
 
-	// Restores the default icon.
 	private void resetIcon() {
 		write(instance.withIcon(DshInstanceIcon.DEFAULT).withNoIconFile());
 	}
@@ -428,11 +405,8 @@ public final class InstanceSettingsPage extends ScrollPane {
 		LineSelectButton<DshPortMode> row = new LineSelectButton<>();
 		row.setTitle(i18n("dsh.instance.port.mode"));
 		row.setItems(DshPortMode.AUTO, DshPortMode.FIXED);
-		// no launcher-wide port policy for an instance to follow.
 		row.setValue(instance.portModeOrDefault());
 
-		// The converter runs as soon as it is installed
-		// This has to be the null-safe one.
 		row.setNullSafeConverter(mode -> i18n("dsh.instance.port.mode." + mode.id()));
 		row.valueProperty().addListener((observable, was, mode) -> {
 			if (mode != was) write(withPortMode(mode));
@@ -440,15 +414,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return row;
 	}
 
-	/**
-	 * Returns the instance under a new port policy.
-	 *
-	 * <p>{@link DshPorts} tracks the port in effect and the auto-assigned one separately; naming
-	 * a port must not lose the latter.
-	 *
-	 * @param mode the policy to record
-	 * @return the instance to store
-	 */
 	private DshInstance withPortMode(DshPortMode mode) {
 		try {
 			return DshPorts.withMode(instance, mode);
@@ -458,9 +423,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	/**
-	 * Builds the auto/fixed port mode row.
-	 */
 	private LineTextPane buildPortRow() {
 		portRow.setTitle(i18n("dsh.instance.port.fixed"));
 
@@ -484,7 +446,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		return portRow;
 	}
 
-	// Draws the port row from the stored instance.
 	private void syncPortRow() {
 		boolean fixed = instance.hasOwnPortMode() && instance.portMode() == DshPortMode.FIXED;
 
@@ -496,11 +457,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		portRow.setManaged(true);
 	}
 
-	/**
-	 * Writes a typed port back.
-	 *
-	 * @param text the field text
-	 */
 	private void applyPort(@Nullable String text) {
 		if (text == null || text.isBlank()) return;
 
@@ -519,9 +475,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		write(instance.withPortPolicy(DshPortMode.FIXED, port));
 	}
 
-	/**
-	 * Persists a modified instance and reloads the tab.
-	 */
 	private void write(DshInstance updated) {
 		try {
 			DshInstanceManager.update(updated);
@@ -532,7 +485,6 @@ public final class InstanceSettingsPage extends ScrollPane {
 		}
 	}
 
-	// Reads the stored instance back and shows what it says.
 	private void reload() {
 		DshInstance stored = InstanceStore.find(instance.id());
 		if (stored != null) instance = stored;

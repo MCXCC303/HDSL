@@ -40,7 +40,7 @@ import java.util.function.Supplier;
  */
 @NotNullByDefault
 public final class DshToolchain {
-	public static final String SYSTEM = "system";
+	public static final String SYSTEM = DshRuntimeLocation.SYSTEM;
 	private static volatile Supplier<String> nodeSelection = () -> SYSTEM;
 	private static volatile Supplier<String> pnpmSelection = () -> SYSTEM;
 
@@ -59,13 +59,36 @@ public final class DshToolchain {
 		return pnpmSelection.get();
 	}
 
+	public static List<DshRuntimeEntry> nodeEntries() {
+		List<DshRuntimeEntry> entries = new ArrayList<>();
+		for (NodeRuntime runtime : NodeRuntimeManager.listInstalled()) {
+			entries.add(new DshRuntimeEntry(DshRuntimeOrigin.MANAGED, runtime.directory(), runtime.node(),
+			                                runtime.version()));
+		}
+		DshNodeRuntime system = DshNodeRuntime.detect().orElse(null);
+		if (system != null) {
+			entries.add(new DshRuntimeEntry(DshRuntimeOrigin.SYSTEM, null, system.node(), system.nodeVersion()));
+		}
+		return entries;
+	}
+
+	public static List<DshRuntimeEntry> pnpmEntries() {
+		List<DshRuntimeEntry> entries = new ArrayList<>();
+		for (PnpmRuntime runtime : PnpmRuntimeManager.listInstalled()) {
+			entries.add(new DshRuntimeEntry(DshRuntimeOrigin.MANAGED, runtime.directory(), runtime.cli(),
+			                                runtime.version()));
+		}
+		DshPnpm system = PnpmRuntimeManager.detect();
+		if (system != null) {
+			entries.add(new DshRuntimeEntry(DshRuntimeOrigin.SYSTEM, null, system.command(), system.version()));
+		}
+		return entries;
+	}
+
 	public static DshNodeRuntime resolve(String selection) throws DshException {
-		if (SYSTEM.equalsIgnoreCase(selection)) {
-			DshNodeRuntime runtime = DshNodeRuntime.detect()
-			                                       .orElseThrow(() -> new DshMissingToolException(
-					                                       DshMissingToolException.Tool.NODE,
-					                                       "Node.js not found on PATH. " +
-					                                       DshNodeRuntime.requirement()));
+		Path directory = DshRuntimeLocation.pathOf(selection);
+		if (directory == null) {
+			DshNodeRuntime runtime = DshNodeRuntime.detect().orElseThrow(DshToolchain::noSystemNode);
 			if (!runtime.isNodeSupported()) {
 				throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
 				                                  "System Node.js " + runtime.nodeVersion() +
@@ -74,13 +97,24 @@ public final class DshToolchain {
 			}
 			return runtime;
 		}
-		NodeRuntime managed = NodeRuntimeManager.findInstalled(selection);
-		if (managed == null) {
+
+		NodeRuntime runtime = NodeRuntimeManager.find(directory);
+		if (runtime == null) {
 			throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
-			                                  "Node.js " + selection +
-			                                  " is not installed. Install it on the Node page, or select the system Node.js.");
+			                                  "No usable Node.js at " + directory +
+			                                  ". Install one on the Node page, or select another runtime.");
 		}
-		return DshNodeRuntime.fromManaged(managed);
+		return DshNodeRuntime.from(runtime);
+	}
+
+	private static DshMissingToolException noSystemNode() {
+		Path node = DshNodeRuntime.which("node").orElse(null);
+		if (node == null) {
+			return new DshMissingToolException(DshMissingToolException.Tool.NODE,
+			                                   "Node.js was not found on PATH; Requires: " + DshNodeRuntime.requirement());
+		}
+		return new DshMissingToolException(DshMissingToolException.Tool.NODE,
+		                                   "Unrecognized Node.js Runtime: " + node);
 	}
 
 	public static DshNodeRuntime node() throws DshException {
@@ -117,11 +151,16 @@ public final class DshToolchain {
 	}
 
 	public static @Nullable DshPnpm findPnpm(@Nullable Path node) {
-		String selection = pnpmSelection();
-		if (SYSTEM.equalsIgnoreCase(selection)) {
+		Path directory;
+		try {
+			directory = DshRuntimeLocation.pnpmPathOf(pnpmSelection());
+		} catch (DshException e) {
+			return null;
+		}
+		if (directory == null) {
 			return PnpmRuntimeManager.detect();
 		}
-		PnpmRuntime managed = PnpmRuntimeManager.findInstalled(selection);
+		PnpmRuntime managed = PnpmRuntimeManager.find(directory);
 		if (managed == null) return null;
 		return new DshPnpm(managed.cli(), node, managed.version(), managed.shimDirectory());
 	}

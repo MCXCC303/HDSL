@@ -22,8 +22,11 @@ import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXRadioButton;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFileManager;
+import com.mcxcc303.hdsl.runtime.DshRuntimeEntry;
+import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
+import com.mcxcc303.hdsl.runtime.DshRuntimeOrigin;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
-import com.mcxcc303.hdsl.runtime.node.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
@@ -62,8 +65,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRow> implements Refreshable {
 	private boolean busy;
-	private DshNodeRuntime system = DshNodeRuntime.detect().orElse(null);
-	private List<NodeRuntime> installed = List.of();
+	private List<DshRuntimeEntry> entries = List.of();
 
 	public NodeRuntimesPage() {
 		refresh();
@@ -80,33 +82,45 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 		busy = true;
 		setLoading(true);
-		CompletableFuture.supplyAsync(() -> {
-			system = DshNodeRuntime.detect().orElse(null);
-			return NodeRuntimeManager.listInstalled();
-		}, Schedulers.io()).whenComplete((found, throwable) -> runInFX(() -> {
-			busy = false;
-			setLoading(false);
-			if (throwable != null) {
-				LOG.warning("Failed to load Node runtimes", throwable);
-				setFailedReason(i18n("dsh.versions.load_failed"));
-				return;
-			}
-			installed = found;
-			rebuildRows();
-		}));
+		CompletableFuture.supplyAsync(DshToolchain::nodeEntries, Schedulers.io())
+		                 .whenComplete((found, throwable) -> runInFX(() -> {
+			                 busy = false;
+			                 setLoading(false);
+			                 if (throwable != null) {
+				                 LOG.warning("Failed to load Node runtimes", throwable);
+				                 setFailedReason(i18n("dsh.versions.load_failed"));
+				                 return;
+			                 }
+			                 entries = found;
+			                 rebuildRows();
+		                 }));
 	}
 
 	private void rebuildRows() {
 		String chosen = settings().defaultNodeRuntimeProperty().get();
+		Path chosenDirectory = directoryOf(chosen);
+		boolean systemChosen = DshRuntimeLocation.isSystem(chosen);
+
 		List<NodeRow> rows = new ArrayList<>();
-		for (NodeRuntime runtime : installed) {
-			rows.add(NodeRow.installed(runtime, runtime.version().equals(chosen)));
+		boolean anySystem = false;
+		for (DshRuntimeEntry entry : entries) {
+			Path directory = entry.directory();
+			boolean selected = directory == null ? systemChosen : directory.equals(chosenDirectory);
+			anySystem |= directory == null;
+			rows.add(NodeRow.of(entry, selected));
 		}
-		DshNodeRuntime detected = system;
-		rows.add(detected == null
-		         ? NodeRow.systemMissing()
-		         : NodeRow.system(detected, DshNodeRuntime.SYSTEM.equals(chosen)));
+		if (!anySystem) {
+			rows.add(NodeRow.missing());
+		}
 		getItems().setAll(rows);
+	}
+
+	private static @Nullable Path directoryOf(@Nullable String selection) {
+		try {
+			return DshRuntimeLocation.pathOf(selection);
+		} catch (DshException e) {
+			return null;
+		}
 	}
 
 	private void select(String value) {
@@ -148,8 +162,8 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}));
 	}
 
-	private void uninstall(String version) {
-		if (version.equals(settings().defaultNodeRuntimeProperty().get())) {
+	private void uninstall(Path directory, String version) {
+		if (directory.equals(directoryOf(settings().defaultNodeRuntimeProperty().get()))) {
 			Controllers.dialog(i18n("dsh.node.uninstall.in_use", version), i18n("dsh.node.uninstall"),
 			                   MessageType.INFO);
 			return;
@@ -162,7 +176,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			setLoading(true);
 			CompletableFuture.runAsync(() -> {
 				try {
-					NodeRuntimeManager.uninstall(version);
+					NodeRuntimeManager.uninstall(directory);
 				} catch (DshException e) {
 					throw new CompletionException(e);
 				}
@@ -180,45 +194,42 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		}, null);
 	}
 
-	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags, @Nullable Path node,
-	               @Nullable String removable, @Nullable String selection, boolean selected) {
+	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
+	               @Nullable Path command, String version, @Nullable Path removable, @Nullable String selection,
+	               boolean selected) {
 
-		static NodeRow installed(NodeRuntime runtime, boolean selected) {
-			String major = runtime.version().split("\\.")[0];
-			return new NodeRow("Node.js " + runtime.version(),
-			                   runtime.node().toString(),
-			                   major,
-			                   List.of(i18n("dsh.node.tag.managed")),
-			                   runtime.node(),
-			                   runtime.version(),
-			                   runtime.version(),
-			                   selected);
-		}
-
-		static NodeRow system(DshNodeRuntime runtime, boolean selected) {
-			String version = runtime.nodeVersion();
-			return new NodeRow("Node.js " + version,
-			                   runtime.node().toString(),
-			                   version.split("\\.")[0],
-			                   List.of(i18n("dsh.node.tag.system"),
-			                           runtime.isNodeSupported()
-			                           ? i18n("dsh.node.tag.supported")
-			                           : i18n("dsh.node.tag.unsupported")),
-			                   runtime.node(),
-			                   null,
-			                   DshNodeRuntime.SYSTEM,
-			                   selected);
-		}
-
-		static NodeRow systemMissing() {
+		static NodeRow missing() {
 			return new NodeRow(i18n("dsh.node.system.missing.title"),
 			                   DshNodeRuntime.requirement(),
 			                   "-",
 			                   List.of(i18n("dsh.node.tag.missing")),
 			                   null,
+			                   "-",
 			                   null,
 			                   null,
 			                   false);
+		}
+
+		static NodeRow of(DshRuntimeEntry entry, boolean selected) {
+			String version = entry.version() == null ? "-" : entry.version();
+			List<String> tags = new ArrayList<>();
+			if (entry.origin() == DshRuntimeOrigin.MANAGED) {
+				tags.add(i18n("dsh.node.tag.managed"));
+			} else {
+				tags.add(i18n("dsh.node.tag.system"));
+				tags.add(DshNodeRuntime.isSupportedNodeVersion(version)
+				         ? i18n("dsh.node.tag.supported")
+				         : i18n("dsh.node.tag.unsupported"));
+			}
+			return new NodeRow("Node.js " + version,
+			                   entry.command() == null ? "" : entry.command().toString(),
+			                   version.split("\\.")[0],
+			                   List.copyOf(tags),
+			                   entry.command(),
+			                   version,
+			                   entry.removable() ? entry.directory() : null,
+			                   entry.selection(),
+			                   selected);
 		}
 	}
 
@@ -293,8 +304,8 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			FXUtils.installFastTooltip(reveal, i18n("reveal.in_file_manager"));
 			reveal.setOnAction(event -> {
 				NodeRow row = getItem();
-				if (row != null && row.node() != null) {
-					DshFileManager.reveal(row.node());
+				if (row != null && row.command() != null) {
+					DshFileManager.reveal(row.command());
 				}
 			});
 			right.getChildren().setAll(reveal, action);
@@ -328,9 +339,9 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 			boolean removable = row.removable() != null;
 
-			reveal.setDisable(row.node() == null);
-			reveal.setVisible(row.node() != null);
-			reveal.setManaged(row.node() != null);
+			reveal.setDisable(row.command() == null);
+			reveal.setVisible(row.command() != null);
+			reveal.setManaged(row.command() != null);
 
 			action.setVisible(removable);
 			action.setManaged(removable);
@@ -343,7 +354,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			FXUtils.installFastTooltip(action, i18n("dsh.node.uninstall"));
 
 			action.setOnAction(event -> {
-				if (removable) page.uninstall(row.removable());
+				if (removable) page.uninstall(row.removable(), row.version());
 			});
 		}
 	}
