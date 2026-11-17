@@ -73,6 +73,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 	public SessionListPage(DshInstance instance, DshWorkspace workspace) {
 		this.instance = instance;
 		this.workspace = workspace;
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -119,7 +120,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 				                  ? throwable.getCause()
 				                  : throwable;
 				LOG.warning("Failed to list sessions", cause);
-				setFailedReason(cause.getMessage());
+				setFailedReason(DshLoads.registry().message(cause));
 				return;
 			}
 			getItems().setAll(sessions);

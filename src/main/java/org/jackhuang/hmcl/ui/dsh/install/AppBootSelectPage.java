@@ -16,6 +16,7 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.ui.Controllers;
+import org.jackhuang.hmcl.ui.dsh.DshLoads;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.SVG;
 import org.jackhuang.hmcl.ui.construct.*;
@@ -59,6 +60,8 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
 	/// Spins while the versions are being fetched.
 	private final SpinnerPane spinner = new SpinnerPane();
 
+	private final DshLoads loads = DshLoads.registry();
+
 	/// Holds the version rows.
 	///
 	/// A plain box rather than a [ComponentList]: these rows carry their own
@@ -101,6 +104,7 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
 		// A spinner while the versions are being fetched, as the original shows,
 		// rather than a line of text where the list will be.
 		spinner.setContent(scroll);
+		spinner.setOnFailedAction(event -> load());
 		VBox.setVgrow(spinner, Priority.ALWAYS);
 
 		getChildren().setAll(filterBar, spinner);
@@ -123,32 +127,20 @@ public final class AppBootSelectPage extends VBox implements WizardPage {
 
 	/// Loads the published boot library versions.
 	private void load() {
-		list.getChildren().clear();
-		spinner.setLoading(true);
+		loads.run(spinner,
+				() -> ReleaseQueries.fetchPackageVersions(AppBootPin.APP_BOOT_PACKAGE),
+				this::onLoaded,
+				this::onFailed);
+	}
 
-		CompletableFuture.supplyAsync(() -> {
-			try {
-				return ReleaseQueries.fetchPackageVersions(AppBootPin.APP_BOOT_PACKAGE);
-			} catch (DshException e) {
-				throw new CompletionException(e);
-			}
-		}).whenComplete((loaded, throwable) -> FXUtils.runInFX(() -> {
-			if (throwable != null) {
-				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-				                  ? throwable.getCause()
-				                  : throwable;
-				LOG.warning("Failed to list boot library versions", cause);
-				list.getChildren().clear();
-				LineTextPane failure = new LineTextPane();
-				failure.setText(i18n("dsh.install.app_boot.unavailable") + ": " + cause.getMessage());
-				list.getChildren().add(failure);
-				spinner.setLoading(false);
-				return;
-			}
-			versions = loaded;
-			render();
-			spinner.setLoading(false);
-		}));
+	private void onLoaded(List<String> loaded) {
+		versions = loaded;
+		render();
+	}
+
+	private void onFailed(Throwable failure) {
+		LOG.warning("Failed to list boot library versions", failure);
+		spinner.setFailedReason(loads.message(i18n("dsh.versions.load_failed"), failure));
 	}
 
 	/// Rebuilds the list from the loaded versions and the name box.

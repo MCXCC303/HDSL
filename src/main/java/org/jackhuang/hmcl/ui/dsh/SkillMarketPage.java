@@ -34,7 +34,6 @@ import javafx.scene.control.Label;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import org.jackhuang.hmcl.setting.GameDirectoryManager;
-import org.jackhuang.hmcl.task.Schedulers;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.FXUtils;
 import org.jackhuang.hmcl.ui.construct.MDListCell;
@@ -50,10 +49,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 
-import static org.jackhuang.hmcl.ui.FXUtils.runInFX;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
@@ -68,6 +64,7 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
 
 	private final JFXListView<DshSkillSource.Offering> resultListView = new JFXListView<>();
 	private final SpinnerPane spinner = new SpinnerPane();
+	private final DshLoads loads = DshLoads.registry();
 	private final JFXTextField nameField = new JFXTextField();
 	private final JFXComboBox<DshInstance> instanceBox = new JFXComboBox<>();
 	private final JFXComboBox<Sort> sortBox = new JFXComboBox<>();
@@ -89,21 +86,10 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
 		resultListView.setCellFactory(view -> new OfferingCell((JFXListView<DshSkillSource.Offering>) view));
 		resultListView.setPlaceholder(placeholder(i18n("dsh.skills.market.prompt")));
 		spinner.setContent(resultListView);
+		spinner.setOnFailedAction(event -> refresh());
 		root.getChildren().add(spinner);
 
 		getChildren().add(root);
-	}
-
-	/**
-	 * Returns the failure a future completed with.
-	 *
-	 * @param throwable what the future reported
-	 * @return the cause, when the wrapper has one
-	 */
-	private static Throwable causeOf(Throwable throwable) {
-		return throwable instanceof CompletionException && throwable.getCause() != null
-		       ? throwable.getCause()
-		       : throwable;
 	}
 
 	/**
@@ -187,31 +173,33 @@ public final class SkillMarketPage extends StackPane implements Refreshable {
 		}
 
 		busy = true;
-		spinner.setLoading(true);
 
 		// A catalogue that fails is reported with the answer
-		CompletableFuture
-				.supplyAsync(() -> DshSkillSource.find(query, LIMIT), Schedulers.io())
-				.whenComplete((result, throwable) -> runInFX(() -> {
-					busy = false;
-					spinner.setLoading(false);
-					if (throwable != null) {
-						LOG.warning("Failed to search the skill catalogues", causeOf(throwable));
-						found.clear();
-						shown.clear();
-						resultListView.setPlaceholder(placeholder(causeOf(throwable).getMessage()));
-						return;
-					}
-					found.setAll(result.skills());
-					sort();
-					if (!result.failures().isEmpty()) {
-						LOG.warning("These catalogues did not answer: " + result.failures());
-					}
-					resultListView.setPlaceholder(placeholder(
-							result.failures().isEmpty()
-							? i18n("dsh.skills.market.empty")
-							: i18n("dsh.skills.market.partial", String.join(", ", result.failures()))));
-				}));
+		loads.run(spinner,
+				() -> DshSkillSource.find(query, LIMIT),
+				this::onLoaded,
+				this::onFailed);
+	}
+
+	private void onLoaded(DshSkillSource.Found result) {
+		busy = false;
+		found.setAll(result.skills());
+		sort();
+		if (!result.failures().isEmpty()) {
+			LOG.warning("These catalogues did not answer: " + result.failures());
+		}
+		resultListView.setPlaceholder(placeholder(
+				result.failures().isEmpty()
+				? i18n("dsh.skills.market.empty")
+				: i18n("dsh.skills.market.partial", String.join(", ", result.failures()))));
+	}
+
+	private void onFailed(Throwable failure) {
+		busy = false;
+		LOG.warning("Failed to search the skill catalogues", failure);
+		found.clear();
+		shown.clear();
+		spinner.setFailedReason(loads.message(i18n("dsh.skills.market.load_failed"), failure));
 	}
 
 	// Puts the results in the chosen order.

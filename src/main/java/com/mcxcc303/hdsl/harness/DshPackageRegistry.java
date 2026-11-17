@@ -21,6 +21,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mcxcc303.hdsl.core.DshCommand;
+import com.mcxcc303.hdsl.core.DshDeadlines;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.plugin.CatalogClient;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
@@ -74,7 +75,7 @@ public final class DshPackageRegistry {
 		List<String> command = List.of(runtime.npm().toString(), "view", packageName, "versions", "--json");
 		DshCommand.Result result;
 		try {
-			result = DshCommand.run(command);
+			result = DshCommand.run(command, DshDeadlines.REGISTRY, null, Map.of(), null);
 		} catch (IOException e) {
 			throw new DshException("Failed to run npm", e);
 		} catch (InterruptedException e) {
@@ -82,6 +83,10 @@ public final class DshPackageRegistry {
 			throw new DshException("npm view was interrupted", e);
 		}
 
+		if (result.timedOut()) {
+			throw new DshException("npm view did not answer within "
+			                       + DshDeadlines.REGISTRY.toSeconds() + " seconds");
+		}
 		if (!result.isSuccess()) {
 			throw new DshException(
 					"`npm view " + packageName + " versions` exited with code " + result.exitCode() + ": " +
@@ -166,10 +171,12 @@ public final class DshPackageRegistry {
 				return new JsonObject();
 			}
 			DshCommand.Result result = DshCommand.run(List.of(runtime.npm().toString(), "view", spec, field, "--json"),
+			                                          DshDeadlines.REGISTRY,
 			                                          null,
+			                                          Map.of(),
 			                                          null);
 			String body = String.join("\n", result.output()).trim();
-			if (result.exitCode() == 0 && body.startsWith("{")) {
+			if (!result.timedOut() && result.exitCode() == 0 && body.startsWith("{")) {
 				JsonElement parsed = JsonParser.parseString(body);
 				if (parsed.isJsonObject()) {
 					return parsed.getAsJsonObject();
@@ -279,7 +286,15 @@ public final class DshPackageRegistry {
 			                                                  "view",
 			                                                  packageName + "@" + version,
 			                                                  "version",
-			                                                  "--json"), null, null);
+			                                                  "--json"),
+			                                          DshDeadlines.REGISTRY,
+			                                          null,
+			                                          Map.of(),
+			                                          null);
+			if (result.timedOut()) {
+				// A query that ran out of time has not said anything about the version.
+				return Availability.UNKNOWN;
+			}
 			return availabilityOf(result.exitCode(), result.text());
 		} catch (IOException e) {
 			LOG.warning("Could not ask the registry about " + packageName + "@" + version, e);

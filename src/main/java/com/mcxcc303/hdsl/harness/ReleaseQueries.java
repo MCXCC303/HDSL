@@ -20,6 +20,7 @@ package com.mcxcc303.hdsl.harness;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.mcxcc303.hdsl.core.DshCommand;
+import com.mcxcc303.hdsl.core.DshDeadlines;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshJson;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
@@ -240,7 +241,11 @@ public final class ReleaseQueries {
 	static DshCommand.Result runNpmView(Path npm, String pkg, String field) throws DshException {
 		List<String> command = List.of(npm.toString(), "view", pkg, field, "--json");
 		try {
-			DshCommand.Result result = DshCommand.run(command);
+			DshCommand.Result result = DshCommand.run(command, DshDeadlines.REGISTRY, null, Map.of(), null);
+			if (result.timedOut()) {
+				throw new DshException("npm view " + field + " did not answer within "
+				                       + DshDeadlines.REGISTRY.toSeconds() + " seconds");
+			}
 			if (!result.isSuccess()) {
 				throw new DshException(
 						"npm view " + field + " exited with code " + result.exitCode() + ": " + result.text());

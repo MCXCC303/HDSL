@@ -92,6 +92,7 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 	/// @param instance the instance whose workspaces are listed
 	public WorkspaceListPage(DshInstance instance) {
 		this.instance = instance;
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -139,7 +140,7 @@ public final class WorkspaceListPage extends ListPageBase<DshWorkspace> implemen
 				                  ? throwable.getCause()
 				                  : throwable;
 				LOG.warning("Failed to list workspaces", cause);
-				setFailedReason(cause.getMessage());
+				setFailedReason(DshLoads.registry().message(cause));
 				return;
 			}
 			getItems().setAll(workspaces);

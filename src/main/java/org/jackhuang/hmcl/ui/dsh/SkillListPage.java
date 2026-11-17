@@ -80,6 +80,7 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 	public SkillListPage(DshInstance instance) {
 		this.instance = instance;
 		FXUtils.applyDragListener(this, SKILL_PACKS, this::addFiles);
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -111,7 +112,7 @@ public final class SkillListPage extends ListPageBase<DshSkill> implements Refre
 			setLoading(false);
 			if (throwable != null) {
 				LOG.warning("Failed to read the skill packs", causeOf(throwable));
-				setFailedReason(causeOf(throwable).getMessage());
+				setFailedReason(DshLoads.registry().message(causeOf(throwable)));
 				return;
 			}
 

@@ -71,6 +71,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 
 	public PluginListPage(DshInstance instance) {
 		this.instance = instance;
+		setOnFailedAction(event -> refresh());
 		refresh();
 	}
 
@@ -115,7 +116,7 @@ public final class PluginListPage extends ListPageBase<PluginListPage.PluginRow>
 				                  ? throwable.getCause()
 				                  : throwable;
 				LOG.warning("Failed to read the profile", cause);
-				setFailedReason(cause.getMessage());
+				setFailedReason(DshLoads.registry().message(i18n("dsh.market.load_failed"), cause));
 				return;
 			}
 
