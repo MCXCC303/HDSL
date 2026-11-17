@@ -259,14 +259,14 @@ public abstract class FetchTask<T> extends Task<T> {
                     updateProgress(counter.downloaded, contentLength);
                 }
 
-                updateDownloadSpeed(counter.downloaded - lastDownloaded);
+                recordDownloaded(counter.downloaded - lastDownloaded);
                 lastDownloaded = counter.downloaded;
             }
 
             if (isCancelled())
                 throw new InterruptedException();
 
-            updateDownloadSpeed(counter.downloaded - lastDownloaded);
+            recordDownloaded(counter.downloaded - lastDownloaded);
 
             if (contentLength >= 0 && counter.downloaded != contentLength)
                 throw new IOException("Unexpected file size: " + counter.downloaded + ", expected: " + contentLength);
@@ -577,8 +577,8 @@ public abstract class FetchTask<T> extends Task<T> {
         }, 0, 1000);
     }
 
-    private static void updateDownloadSpeed(long speed) {
-        downloadSpeed.addAndGet(speed);
+    public static void recordDownloaded(long bytes) {
+        downloadSpeed.addAndGet(bytes);
     }
 
     private static final class CounterInputStream extends FilterInputStream {
