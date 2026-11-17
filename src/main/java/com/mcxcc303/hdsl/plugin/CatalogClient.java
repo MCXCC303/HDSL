@@ -25,7 +25,7 @@ import com.mcxcc303.hdsl.core.DshDeadlines;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.plugin.Catalog.Plugin;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.setting.LauncherSettings;
 import org.jackhuang.hmcl.setting.SettingsManager;
 import org.jackhuang.hmcl.util.io.NetworkUtils;

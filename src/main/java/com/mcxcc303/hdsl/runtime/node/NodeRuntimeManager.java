@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.mcxcc303.hdsl.runtime;
+package com.mcxcc303.hdsl.runtime.node;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -25,7 +25,6 @@ import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.core.Semver;
-import com.mcxcc303.hdsl.harness.VersionOrder;
 import kala.compress.archivers.ArchiveEntry;
 import org.jackhuang.hmcl.util.io.CompressingUtils;
 import org.jackhuang.hmcl.util.io.NetworkUtils;
@@ -38,7 +37,6 @@ import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 import org.tukaani.xz.XZInputStream;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -134,7 +132,7 @@ public final class NodeRuntimeManager {
 		} catch (IOException e) {
 			LOG.warning("Failed to enumerate installed Node runtimes in " + root, e);
 		}
-		runtimes.sort(Comparator.comparing(NodeRuntime::version, VersionOrder::compareVersions).reversed());
+		runtimes.sort(Comparator.comparing(NodeRuntime::version, Semver::compare).reversed());
 		return runtimes;
 	}
 
@@ -270,7 +268,7 @@ public final class NodeRuntimeManager {
 			                             scheduleMap.get(familyVer)));
 		}
 
-		releases.sort(Comparator.comparing(NodeRelease::version, VersionOrder::compareVersions).reversed());
+		releases.sort(Comparator.comparing(NodeRelease::version, Semver::compare).reversed());
 		return releases;
 	}
 

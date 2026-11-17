@@ -14,6 +14,7 @@ bin/
 # Unnecessary notes
 docs/*
 !docs/plugin-guide/
+!docs/account-life-cycle/
 
 # Build outputs, but keep the vendored JFoenix patch base
 *.jar
@@ -35,3 +36,13 @@ patches/
 .settings/
 .classpath
 .project
+*.bak
+*.editorconfig
+
+# OS and JVM crash noise
+.DS_Store
+Thumbs.db
+*~
+hs_err_pid*.log
+replay_pid*.log
+*.hprof

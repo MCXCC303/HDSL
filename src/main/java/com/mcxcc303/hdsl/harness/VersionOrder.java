@@ -19,7 +19,7 @@ package com.mcxcc303.hdsl.harness;
 
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.Semver;
-import com.mcxcc303.hdsl.runtime.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 

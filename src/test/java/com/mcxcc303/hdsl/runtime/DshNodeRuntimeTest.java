@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.runtime;
 
+import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

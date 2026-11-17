@@ -15,13 +15,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package org.jackhuang.hmcl.ui.dsh;
+package org.jackhuang.hmcl.ui.dsh.runtime;
 
 import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXListView;
 import com.mcxcc303.hdsl.core.DshException;
-import com.mcxcc303.hdsl.runtime.DshToolchain;
-import com.mcxcc303.hdsl.runtime.PnpmRuntimeManager;
+import com.mcxcc303.hdsl.core.Semver;
+import com.mcxcc303.hdsl.runtime.DshReleaseChannel;
+import com.mcxcc303.hdsl.runtime.node.NodeRelease;
+import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
+import com.mcxcc303.hdsl.runtime.node.NodeSchedule;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.collections.FXCollections;
@@ -38,21 +41,23 @@ import org.jackhuang.hmcl.ui.construct.MDListCell;
 import org.jackhuang.hmcl.ui.construct.SpinnerPane;
 import org.jackhuang.hmcl.ui.construct.TwoLineListItem;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
+import org.jackhuang.hmcl.ui.dsh.DshLoads;
+import org.jackhuang.hmcl.ui.dsh.ProgressDialog;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
-import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.*;
-import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.jackhuang.hmcl.setting.SettingsManager.settings;
 import static org.jackhuang.hmcl.util.i18n.I18n.i18n;
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 
 @NotNullByDefault
-public final class PnpmDownloadPage extends VBox implements DecoratorPage {
+public final class NodejsDownloadPage extends VBox implements DecoratorPage {
 	private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle(i18n(
-			"dsh.pnpm.download.title")));
+			"dsh.node.download.title")));
 	private final ObservableList<Row> rows = FXCollections.observableArrayList();
 	private final SpinnerPane spinner = new SpinnerPane();
 	private final DshLoads loads = DshLoads.registry();
@@ -62,7 +67,7 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 	private List<Group> groups = List.of();
 	private boolean busy;
 
-	public PnpmDownloadPage(Runnable onInstalled) {
+	public NodejsDownloadPage(Runnable onInstalled) {
 		this.onInstalled = onInstalled;
 
 		JFXListView<Row> listView = new JFXListView<>();
@@ -93,13 +98,13 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 
 	private void load() {
 		loads.run(spinner,
-				() -> PnpmRuntimeManager.fetchVersions(DshToolchain.npm()),
+				() -> NodeRuntimeManager.fetchReleases(settings().nodeSourceProperty().get()),
 				this::onLoaded,
 				this::onFailed);
 	}
 
-	private void onLoaded(List<String> versions) {
-		groups = group(versions);
+	private void onLoaded(List<NodeRelease> releases) {
+		groups = group(releases);
 		if (!groups.isEmpty()) {
 			openedGroups.add(groups.getFirst().major());
 		}
@@ -107,21 +112,18 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 	}
 
 	private void onFailed(Throwable failure) {
-		LOG.warning("Failed to fetch the pnpm versions", failure);
+		LOG.warning("Failed to fetch Node releases", failure);
 		spinner.setFailedReason(loads.message(i18n("dsh.versions.load_failed"), failure));
-		if (failure instanceof Exception exception) {
-			DshToolchainPrompt.offer(exception);
-		}
 	}
 
-	private static List<Group> group(List<String> versions) {
-		Map<Integer, List<String>> byMajor = new LinkedHashMap<>();
-		for (String version : versions) {
-			byMajor.computeIfAbsent(majorOf(version), major -> new ArrayList<>()).add(version);
+	private static List<Group> group(List<NodeRelease> releases) {
+		Map<Integer, List<NodeRelease>> byMajor = new LinkedHashMap<>();
+		for (NodeRelease release : releases) {
+			byMajor.computeIfAbsent(majorOf(release.version()), major -> new ArrayList<>()).add(release);
 		}
 
 		List<Group> groups = new ArrayList<>();
-		for (Map.Entry<Integer, List<String>> entry : byMajor.entrySet()) {
+		for (Map.Entry<Integer, List<NodeRelease>> entry : byMajor.entrySet()) {
 			groups.add(new Group(entry.getKey(), List.copyOf(entry.getValue())));
 		}
 		return groups;
@@ -140,11 +142,11 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		List<Row> drawn = new ArrayList<>();
 		for (Group group : groups) {
 			boolean open = openedGroups.contains(group.major());
-			drawn.add(new HeadingRow(group.major(), group.versions().size(), open));
+			drawn.add(new HeadingRow(group.major(), group.releases().size(), open));
 			if (!open) continue;
 
-			for (String version : group.versions()) {
-				drawn.add(new ReleaseRow(version));
+			for (NodeRelease release : group.releases()) {
+				drawn.add(new ReleaseRow(release));
 			}
 		}
 		rows.setAll(drawn);
@@ -155,25 +157,21 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		render();
 	}
 
-	private void install(String version) {
+	private void install(NodeRelease release) {
 		if (busy) return;
 		busy = true;
 
 		AtomicBoolean failed = new AtomicBoolean();
-		ProgressDialog.run(i18n("dsh.pnpm.download.title"),
-		                   report -> {
-			                   try {
-				                   PnpmRuntimeManager.install(version, DshToolchain.npm(), report);
-		                   } catch (DshException e) {
-				                   throw new CompletionException(e);
-		                   }
-		                   },
+		ProgressDialog.run(i18n("dsh.node.download.title"),
+		                   report -> NodeRuntimeManager.install(release.version(),
+		                                                        settings().nodeSourceProperty().get(),
+		                                                        report),
 		                   () -> {
 			                   busy = false;
 			                   if (!failed.get()) {
 				                   Controllers.showToast(i18n("download.install.success"));
 				                   onInstalled.run();
-		                   }
+			                   }
 		                   },
 		                   failure -> {
 			                   failed.set(true);
@@ -181,13 +179,27 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		                   });
 	}
 
-	private record Group(int major, List<String> versions) {}
+	/**
+	 * A group of Node.js Versions.
+	 *
+	 * @param major    major version, 26.12.1 => major = 26
+	 * @param releases versions of this major version has
+	 */
+	private record Group(int major, List<NodeRelease> releases) {}
 
 	private sealed interface Row permits HeadingRow, ReleaseRow {}
 
-	private record HeadingRow(int major, int versionCount, boolean opened) implements Row {}
+	/**
+	 * A heading part of a group.
+	 *
+	 * @param opened fold or unfold of this group card
+	 */
+	private record HeadingRow(int major, int releaseCount, boolean opened) implements Row {}
 
-	private record ReleaseRow(String version) implements Row {}
+	/**
+	 * Each version in a group.
+	 */
+	private record ReleaseRow(NodeRelease release) implements Row {}
 
 	private final class RowCell extends MDListCell<Row> {
 		private final TwoLineListItem content = new TwoLineListItem();
@@ -200,25 +212,24 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 				Row item = getItem();
 				if (item instanceof HeadingRow heading) {
 					toggle(heading.major());
-				} else if (item instanceof ReleaseRow release) {
-					confirmInstall(release.version());
+				} else if (item instanceof ReleaseRow(NodeRelease release)) {
+					Controllers.confirm(i18n("dsh.node.download.confirm_version", release.version()),
+					                    i18n("dsh.node.download.title"),
+					                    () -> install(release),
+					                    null);
 				}
 			});
 
 			downloadButton.setOnMouseClicked(event -> {
 				Row item = getItem();
-				if (item instanceof ReleaseRow release) {
-					confirmInstall(release.version());
+				if (item instanceof ReleaseRow(NodeRelease release)) {
+					Controllers.confirm(i18n("dsh.node.download.confirm_version", release.version()),
+					                    i18n("dsh.node.download.title"),
+					                    () -> install(release),
+					                    null);
 					event.consume();
 				}
 			});
-		}
-
-		private void confirmInstall(String version) {
-			Controllers.confirm(i18n("dsh.pnpm.download.confirm_version", version),
-			                    i18n("dsh.pnpm.download.title"),
-			                    () -> install(version),
-			                    null);
 		}
 
 		@Override
@@ -233,9 +244,9 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 		}
 
 		private void updateHeading(HeadingRow heading) {
-			Label title = new Label("pnpm " + heading.major());
+			Label title = new Label("Node.js " + heading.major());
 
-			Label count = new Label(i18n("dsh.node.download.version_count", Integer.toString(heading.versionCount())));
+			Label count = new Label(i18n("dsh.node.download.version_count", Integer.toString(heading.releaseCount())));
 			count.getStyleClass().add("subtitle-label");
 
 			Region spacer = new Region();
@@ -253,11 +264,27 @@ public final class PnpmDownloadPage extends VBox implements DecoratorPage {
 			content.getTags().clear();
 			mark.getChildren().clear();
 
-			mark.getChildren().setAll(SVG.PACKAGE2.createIcon(24));
+			NodeRelease release = row.release();
+			Semver semver = Semver.parse(release.version());
+			NodeSchedule schedule = release.schedule();
+			LocalDate now = LocalDate.now();
+
+			boolean unsupported = schedule != null && schedule.end().isBefore(now);
+			boolean isLts = release.isLts();
+			boolean isAlpha = semver != null && semver.prerelease() != null &&
+			                  "alpha".equalsIgnoreCase(semver.prerelease().getFirst());
+			DshReleaseChannel channel = isLts ? DshReleaseChannel.STABLE
+			                       : isAlpha ? DshReleaseChannel.ALPHA : DshReleaseChannel.BETA;
+
+			mark.getChildren().setAll(ReleaseChannelMarks.icon(channel, unsupported));
 			mark.setPadding(new Insets(0, 8, 0, 0));
 			mark.setMinWidth(24);
 
-			content.setTitle(row.version());
+			content.setTitle(release.version());
+			content.setSubtitle(i18n("dsh.node.download.publish_date", release.date()));
+			if (release.isSupported()) content.addTag(i18n("dsh.node.download.compatible"));
+			if (release.isLts()) content.addTag(i18n("dsh.node.download.tag_lts", release.lts()));
+			if (unsupported) content.addTagWarning(i18n("dsh.node.download.tag_eol"));
 
 			HBox line = new HBox(mark, content, downloadButton);
 			line.setAlignment(Pos.CENTER_LEFT);

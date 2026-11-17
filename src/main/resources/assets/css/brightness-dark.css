@@ -34,6 +34,6 @@
     -fx-fill: #1bd96a;
 }
 
-.addon-channel-icon.eol .svg {
+.addon-channel-icon.unsupported .svg {
     -fx-fill: #848484;
 }
