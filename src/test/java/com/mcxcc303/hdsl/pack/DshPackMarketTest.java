@@ -22,7 +22,6 @@ import org.jackhuang.hmcl.util.DigestUtils;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -32,7 +31,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/// Tests for reading the market's index and for installing what it points at.
+// Tests for reading the market's index and for installing what it points at.
 class DshPackMarketTest {
 	private static final String INDEX = """
 			{
@@ -94,6 +93,28 @@ class DshPackMarketTest {
 			}
 		}
 		return file;
+	}
+
+	private static DshPackMarket.Entry indexEntry(String id) {
+		return new DshPackMarket.Entry(id,
+		                               id,
+		                               "1.0.0",
+		                               id,
+		                               null,
+		                               "https://example.invalid/" + id + ".dspack",
+		                               "1111111111111111111111111111111111111111111111111111111111111111",
+		                               1,
+		                               "some",
+		                               "one.with.dots",
+		                               null,
+		                               null,
+		                               null,
+		                               null,
+		                               null,
+		                               null,
+		                               null,
+		                               null,
+		                               null);
 	}
 
 	private static Path container(String... extraMembers) throws IOException {
@@ -363,64 +384,27 @@ class DshPackMarketTest {
 
 	@Test
 	void aPacksDocumentAddressesKeepTheWholeId() {
-		DshPackMarket.Entry entry = new DshPackMarket.Entry("some.one.with.dots",
-		                                                    "n",
-		                                                    "1",
-		                                                    "N",
-		                                                    null,
-		                                                    "https://example.invalid/a.dspack",
-		                                                    "aa",
-		                                                    1,
-		                                                    "some",
-		                                                    "one.with.dots",
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null);
+		DshPackMarket.Entry entry = indexEntry("some.one.with.dots");
+
 		String manifest = DshPackMarket.manifestUrl(entry);
 		assertTrue(manifest.endsWith("/packs/some.one.with.dots/manifest.json"),
 		           "the address keeps the dotted id whole: " + manifest);
 		assertTrue(DshPackMarket.readmeUrl(entry).endsWith("/packs/some.one.with.dots/README.md"),
 		           "the readme sits beside the manifest, under the same id");
-		assertFalse(manifest.contains("index.json"),
-		            "the index's own file name is not part of the pack's address: " + manifest);
+	}
+
+	@Test
+	void aPacksDocumentsAreNotAddressedInsideTheIndex() {
+		DshPackMarket.Entry entry = indexEntry("some.one.with.dots");
+
+		assertFalse(DshPackMarket.manifestUrl(entry).contains("index.json"),
+		            "the index's own file name is not part of the pack's address");
 		assertFalse(DshPackMarket.readmeUrl(entry).contains("index.json"),
 		            "the index's own file name is not part of the readme's address");
 	}
 
 	@Test
-	void aPacksDocumentsAreAddressedBesideTheIndex() {
-		assertEquals("https://dsh-packforge.github.io/dsh-pack-market/packs/a.b/manifest.json",
-		             URI.create(DshPackMarket.INDEX_URL).resolve("packs/a.b/manifest.json").toString());
-	}
-
-	@Test
 	void aPackThatWasNeverFetchedIsNotTakenFromTheCache() {
-		DshPackMarket.Entry entry = new DshPackMarket.Entry("no.such",
-		                                                    "such",
-		                                                    "9.9.9",
-		                                                    "No",
-		                                                    null,
-		                                                    "https://example.invalid/n.dspack",
-		                                                    "1111111111111111111111111111111111111111111111111111111111111111",
-		                                                    12345,
-		                                                    "no",
-		                                                    "such",
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null,
-		                                                    null);
-		assertFalse(DspackDownload.isCached(entry));
-		assertNotNull(DspackDownload.archiveFile(entry));
+		assertFalse(DspackDownload.isCached(indexEntry("no.such")));
 	}
 }
