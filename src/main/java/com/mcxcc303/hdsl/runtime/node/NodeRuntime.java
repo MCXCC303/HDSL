@@ -45,18 +45,6 @@ public record NodeRuntime(String version, Path directory) {
 	}
 
 	/**
-	 * Returns the {@code npm} entry point in a distribution directory.
-	 *
-	 * @param directory the unpacked distribution
-	 * @return {@code bin/npm}, or {@code npm.cmd} in the distribution root on Windows
-	 */
-	public static Path npmIn(Path directory) {
-		return OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS
-		       ? directory.resolve("npm.cmd")
-		       : directory.resolve("bin").resolve("npm");
-	}
-
-	/**
 	 * Returns the {@code npx} entry point in a distribution directory.
 	 *
 	 * @param directory the unpacked distribution
@@ -70,10 +58,6 @@ public record NodeRuntime(String version, Path directory) {
 
 	public Path node() {
 		return nodeIn(directory);
-	}
-
-	public Path npm() {
-		return npmIn(directory);
 	}
 
 	public Path npx() {

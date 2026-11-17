@@ -23,6 +23,7 @@ import com.mcxcc303.hdsl.core.WindowsAclAssertions;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -112,7 +113,8 @@ class DshInstanceTerminalWindowsAclTest {
 
 	private DshNodeRuntime runtime() {
 		Path bin = folder.resolve("node").resolve("bin");
-		return new DshNodeRuntime(bin.resolve("node"), "22.19.0", bin.resolve("npm"), "10.9.0");
+		return new DshNodeRuntime(bin.resolve("node"), "22.19.0",
+		                              new DshNpm(bin.resolve("npm"), null, "10.9.0", bin));
 	}
 
 	private Path session() {

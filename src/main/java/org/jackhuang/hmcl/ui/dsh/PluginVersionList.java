@@ -29,6 +29,7 @@ import com.mcxcc303.hdsl.plugin.DshPluginInstaller;
 import com.mcxcc303.hdsl.plugin.DshPluginRequirements;
 import com.mcxcc303.hdsl.plugin.DshPluginVersions;
 import com.mcxcc303.hdsl.runtime.DshNpmDocument;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -151,7 +152,7 @@ public final class PluginVersionList extends VBox {
 				if (published.isEmpty()) {
 					try {
 						DshNodeRuntime runtime = instance == null
-						                         ? DshNodeRuntime.detect().orElse(null)
+						                         ? DshToolchain.node()
 						                         : DshLauncher.resolveRuntime(instance);
 						for (String version : ReleaseQueries.fetchPackageVersions(runtime, packageName)) {
 							published.add(new DshPluginVersions.Published(version,

@@ -28,6 +28,7 @@ import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceLocks;
 import com.mcxcc303.hdsl.plugin.DshDependencyPolicy;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
 import com.mcxcc303.hdsl.runtime.DshToolchain;
 import org.jackhuang.hmcl.setting.SettingsManager;
@@ -164,9 +165,13 @@ public final class HarnessInstaller {
 		if (policy == DshDependencyPolicy.LATEST || runtime == null) {
 			return held;
 		}
+		DshNpm npm = runtime.npm();
+		if (npm == null) {
+			return held;
+		}
 		for (String asked : List.of(PACKAGE_NAME + "@" + version, AppBootPin.APP_BOOT_PACKAGE + "@" + appBoot)) {
 			try {
-				JsonObject declared = declaredDependencies(ReleaseQueries.runNpmView(runtime.npm(),
+				JsonObject declared = declaredDependencies(ReleaseQueries.runNpmView(npm,
 				                                                                     asked,
 				                                                                     "dependencies").text());
 				if (declared == null) {
@@ -510,7 +515,7 @@ public final class HarnessInstaller {
 		int exitCode;
 		DshCommand.Result commandResult;
 		try {
-			commandResult = DshCommand.run(command, null, onLine);
+			commandResult = DshCommand.run(command, null, DshToolchain.pathEnvironment(runtime.node(), pnpm), onLine);
 			exitCode = commandResult.exitCode();
 		} catch (IOException e) {
 			throw new DshException("Failed to run pnpm", e);
@@ -591,7 +596,7 @@ public final class HarnessInstaller {
 			int exitCode;
 			DshCommand.Result commandResult;
 			try {
-				commandResult = DshCommand.run(command, null, onLine);
+				commandResult = DshCommand.run(command, null, DshToolchain.pathEnvironment(runtime.node(), pnpm), onLine);
 				exitCode = commandResult.exitCode();
 			} catch (IOException e) {
 				throw new DshException("Failed to run pnpm", e);

@@ -70,13 +70,17 @@ public final class AppBootPin {
 	 */
 	public static void overrideAppBoot(DshInstance instance, String appBoot, @Nullable Consumer<String> onLine)
 	throws DshException {
-		Path target = instance.dshDirectory();
-		if (!Files.isDirectory(target)) {
+		if (!Files.isDirectory(instance.dshDirectory())) {
 			throw new DshException("Instance " + instance.id() + " has no DeepSeek Harness to change");
 		}
 
 		DshNodeRuntime runtime = HarnessInstaller.requireRuntime();
-		DshPnpm pnpm = DshToolchain.pnpm(runtime.node());
+		overrideAppBoot(instance, appBoot, onLine, runtime, DshToolchain.pnpm(runtime.node()));
+	}
+
+	static void overrideAppBoot(DshInstance instance, String appBoot, @Nullable Consumer<String> onLine,
+	                            DshNodeRuntime runtime, DshPnpm pnpm) throws DshException {
+		Path target = instance.dshDirectory();
 
 		HarnessInstaller.writeManifest(target,
 		                               instance.version(),
@@ -90,7 +94,7 @@ public final class AppBootPin {
 		int exitCode;
 		DshCommand.Result commandResult;
 		try {
-			commandResult = DshCommand.run(command, null, onLine);
+			commandResult = DshCommand.run(command, null, DshToolchain.pathEnvironment(runtime.node(), pnpm), onLine);
 			exitCode = commandResult.exitCode();
 		} catch (IOException e) {
 			throw new DshException("Failed to run pnpm", e);

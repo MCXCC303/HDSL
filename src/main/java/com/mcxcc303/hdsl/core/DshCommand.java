@@ -33,64 +33,29 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
-/// Runs a short-lived external command and captures its output.
-///
-/// Used for the npm, node and pnpm invocations that back version management.
-/// Long-running processes — booting a profile — use
-/// [com.mcxcc303.hdsl.launch.DshProcess] instead.
+import static org.jackhuang.hmcl.util.logging.Logger.LOG;
+
+/**
+ * Runs a short-lived external command and captures its output.
+ */
 @NotNullByDefault
 public final class DshCommand {
-	/// The programs this launcher has started and is waiting on.
 	private static final Set<Process> RUNNING = ConcurrentHashMap.newKeySet();
 
-	/// How long the readers of a command's output are given to finish once the process has ended.
-	///
-	/// What the process wrote is already in the pipe by then, so this bounds scheduling rather than
-	/// work: the readers of a finished process finish in microseconds. The bound is only ever reached
-	/// when a descendant inherited the pipe and holds it open, where waiting longer would not help.
 	private static final Duration DRAIN_TIMEOUT = Duration.ofSeconds(2);
 
 	private DshCommand() {
 	}
 
-	/// Runs a command, waiting for it to finish.
-	///
-	/// @param command the program and its arguments
-	/// @return the command result
-	/// @throws IOException          when the process cannot be started
-	/// @throws InterruptedException when the calling thread is interrupted while waiting
 	public static Result run(List<String> command) throws IOException, InterruptedException {
 		return run(command, null, Map.of(), null);
 	}
 
-	/// Runs a command in a directory, waiting for it to finish.
-	///
-	/// @param command   the program and its arguments
-	/// @param directory the working directory, or `null` for the current one
-	/// @param onLine    a consumer notified of every output line, or `null`
-	/// @return the command result
-	/// @throws IOException          when the process cannot be started
-	/// @throws InterruptedException when the calling thread is interrupted while waiting
 	public static Result run(List<String> command, @Nullable Path directory, @Nullable Consumer<String> onLine)
 	throws IOException, InterruptedException {
 		return run(command, directory, Map.of(), onLine);
 	}
 
-	/// Runs a command with extra environment variables, waiting for it to finish.
-	///
-	/// The variables are added to the inherited environment. Passing them here
-	/// rather than relying on the caller's own `ProcessBuilder` matters for
-	/// anything that must be scoped to a directory of ours: `dsh` reads
-	/// `DSH_HOME` from its environment, and without it the command would quietly
-	/// operate on the user's real `~/.dsh`.
-	///
-	/// @param command     the program and its arguments
-	/// @param directory   the working directory, or `null` for the current one
-	/// @param environment extra environment variables
-	/// @param onLine      a consumer notified of every output line, or `null`
-	/// @return the command result
-	/// @throws IOException          when the process cannot be started
-	/// @throws InterruptedException when the calling thread is interrupted while waiting
 	public static Result run(List<String> command,
 	                         @Nullable Path directory,
 	                         Map<String, String> environment,
@@ -98,29 +63,12 @@ public final class DshCommand {
 		return run(command, null, directory, environment, onLine);
 	}
 
-	/**
-	 * Runs a command that has to answer within a bound, waiting for it to finish.
-	 *
-	 * A command stopped for running out of time is killed rather than asked to stop, so its
-	 * [#exitCode()] is not a code the program reported.
-	 *
-	 * @param command     the program and its arguments
-	 * @param timeout     how long the command is given, or `null` to wait for it however long it takes
-	 * @param directory   the working directory, or `null` for the current one
-	 * @param environment extra environment variables
-	 * @param onLine      a consumer notified of every output line, or `null`
-	 * @return the command result
-	 * @throws IOException          when the process cannot be started
-	 * @throws InterruptedException when the calling thread is interrupted while waiting
-	 */
 	public static Result run(List<String> command,
 	                         @Nullable Duration timeout,
 	                         @Nullable Path directory,
 	                         Map<String, String> environment,
 	                         @Nullable Consumer<String> onLine) throws IOException, InterruptedException {
 		ProcessBuilder builder = new ProcessBuilder(command);
-		// What the launcher is configured to download through travels with every child, so a
-		// proxy covers the version lists and the plugin installs alike.
 		builder.environment().putAll(DshNetworkSettings.environment());
 		if (directory != null) {
 			builder.directory(directory.toFile());
@@ -129,10 +77,6 @@ public final class DshCommand {
 		builder.redirectErrorStream(true);
 
 		ManagedProcess process = new ManagedProcess(builder);
-		// Registered while it runs, so an install the user cancels can stop the
-		// program it started. Interrupting the thread waiting on a process does
-		// not stop the process: npm keeps writing to a directory nothing is
-		// watching any more.
 		Process running = process.getProcess();
 		RUNNING.add(running);
 		List<String> output = Collections.synchronizedList(new ArrayList<>());
@@ -162,25 +106,10 @@ public final class DshCommand {
 				process.destroyRelatedThreads();
 				return new Result(0, List.of(), true);
 			}
-			// The process has ended, but its output has not necessarily been read: the line it
-			// wrote last is still in the pipe, and the thread reading it is a scheduling delay
-			// away from handing it over. Interrupting that thread instead of waiting for it
-			// discards the line — and for a `node --version` the line is the whole answer, which
-			// is how a machine with Node.js installed comes to be reported as having none.
-			//
-			// So the readers are waited for first. This is not the same as waiting for the
-			// process: what it left in the pipe is already written, and the wait is bounded
-			// because a descendant that inherited the pipe would otherwise hold it open.
 			process.awaitRelatedThreads(DRAIN_TIMEOUT);
 			process.destroyRelatedThreads();
 			return new Result(exitCode, List.copyOf(output));
 		} catch (InterruptedException e) {
-			// The wait was cut short, which is what cancelling an install does.
-			// Stopping the wait does not stop the program: it carries on writing
-			// into a directory whose owner has gone. It is stopped here, where it
-			// was started — the caller cannot do it, because by the time it sees
-			// the interrupt this block has already removed the process from the
-			// registry.
 			stopTree(running);
 			Thread.currentThread().interrupt();
 			throw e;
@@ -189,11 +118,27 @@ public final class DshCommand {
 		}
 	}
 
-	/**
-	 * Kills a program and everything it started, without asking it to stop.
-	 *
-	 * @param process the program to kill
-	 */
+	public static @Nullable String versionOf(List<String> command) {
+		String failure = null;
+		for (int attempt = 0; attempt < 2; attempt++) {
+			try {
+				Result result = run(command);
+				if (result.isSuccess() && !result.output().isEmpty()) {
+					String first = result.output().get(0).trim();
+					return first.startsWith("v") || first.startsWith("V") ? first.substring(1) : first;
+				}
+				failure = "`" + String.join(" ", command) + "` exited " + result.exitCode();
+			} catch (IOException e) {
+				failure = "`" + String.join(" ", command) + "` could not be started: " + e;
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				return null;
+			}
+		}
+		LOG.warning("Could not read the version of " + String.join(" ", command) + ": " + failure);
+		return null;
+	}
+
 	private static void killTree(Process process) {
 		process.descendants().forEach(ProcessHandle::destroyForcibly);
 		process.destroyForcibly();
@@ -204,12 +149,6 @@ public final class DshCommand {
 		}
 	}
 
-	/// Stops a program and everything it started.
-	///
-	/// npm is a launcher that runs node, so stopping the launcher leaves the
-	/// work running. What is being stopped is the work.
-	///
-	/// @param process the program to stop
 	private static void stopTree(Process process) {
 		process.descendants().forEach(ProcessHandle::destroy);
 		process.destroy();
@@ -225,11 +164,6 @@ public final class DshCommand {
 		}
 	}
 
-	/// Stops every command this launcher is running, and waits for them to stop.
-	///
-	/// Called when an install is cancelled. It waits, because the caller deletes
-	/// what the command was writing: a program that has been asked to stop is
-	/// still writing until it has.
 	public static void stopRunning() {
 		for (Process process : RUNNING) {
 			stopTree(process);
@@ -237,35 +171,15 @@ public final class DshCommand {
 		RUNNING.clear();
 	}
 
-	/**
-	 * The result of a finished command.
-	 *
-	 * @param exitCode the process exit code
-	 * @param output   every stdout and stderr line, in arrival order
-	 * @param timedOut whether the command was stopped for running out of time, in which case
-	 *                  its exit code is not one the process ever reported
-	 */
 	public record Result(int exitCode, @Unmodifiable List<String> output, boolean timedOut) {
-		/**
-		 * Creates a result of a command that finished on its own.
-		 *
-		 * @param exitCode the process exit code
-		 * @param output   every stdout and stderr line, in arrival order
-		 */
 		public Result(int exitCode, @Unmodifiable List<String> output) {
 			this(exitCode, output, false);
 		}
 
-		/// Returns whether the command exited successfully.
-		///
-		/// @return whether the exit code is zero
 		public boolean isSuccess() {
 			return exitCode == 0 && !timedOut;
 		}
 
-		/// Returns the captured output joined by newlines.
-		///
-		/// @return the trimmed output text
 		public String text() {
 			return String.join("\n", output).trim();
 		}

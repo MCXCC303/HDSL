@@ -23,11 +23,11 @@ import com.mcxcc303.hdsl.core.DshCommand;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshJson;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.*;
 
 import static org.jackhuang.hmcl.util.logging.Logger.LOG;
@@ -53,13 +53,14 @@ public final class ReleaseQueries {
 	 */
 	public static List<DshRelease> fetchReleases() throws DshException {
 		DshNodeRuntime runtime = HarnessInstaller.requireRuntime();
-		if (!runtime.canInstall()) {
-			throw new DshException("npm was not found on PATH; reading the version list requires it");
+		DshNpm npm = runtime.npm();
+		if (npm == null || npm.version() == null) {
+			throw new DshException("the selected Node.js carries no usable npm; reading the version list requires it");
 		}
 
-		Set<String> versions = queryVersions(runtime.npm());
-		JsonObject distTags = queryDistTags(runtime.npm());
-		JsonObject times = queryTimes(runtime.npm());
+		Set<String> versions = queryVersions(npm);
+		JsonObject distTags = queryDistTags(npm);
+		JsonObject times = queryTimes(npm);
 
 		List<DshRelease> releases = new ArrayList<>(versions.size());
 		for (String version : versions) {
@@ -85,11 +86,11 @@ public final class ReleaseQueries {
 	/**
 	 * Reads the harness version list with a given npm.
 	 *
-	 * @param npm the npm executable
+	 * @param npm the npm to ask
 	 * @return the published version strings
 	 * @throws DshException when the query fails or returns unexpected data
 	 */
-	static Set<String> queryVersions(Path npm) throws DshException {
+	static Set<String> queryVersions(DshNpm npm) throws DshException {
 		return queryVersions(npm, HarnessInstaller.PACKAGE_NAME);
 	}
 
@@ -113,11 +114,12 @@ public final class ReleaseQueries {
 	 * @throws DshException when npm is missing or the registry cannot be reached
 	 */
 	public static List<String> fetchPackageVersions(DshNodeRuntime runtime, String pkg) throws DshException {
-		if (!runtime.canInstall()) {
+		DshNpm npm = runtime.npm();
+		if (npm == null || npm.version() == null) {
 			throw new DshException(
-					"npm was not found for this instance's Node runtime;" + " reading the registry requires it");
+					"the Node.js runtime of this instance carries no usable npm;" + " reading the registry requires it");
 		}
-		List<String> versions = new ArrayList<>(queryVersions(runtime.npm(), pkg));
+		List<String> versions = new ArrayList<>(queryVersions(npm, pkg));
 		versions.sort((left, right) -> VersionOrder.compareVersions(right, left));
 		return List.copyOf(versions);
 	}
@@ -136,12 +138,12 @@ public final class ReleaseQueries {
 	/**
 	 * Reads a package's version list with a given npm.
 	 *
-	 * @param npm the npm executable
+	 * @param npm the npm to ask
 	 * @param pkg the package to read
 	 * @return the published version strings
 	 * @throws DshException when the query fails or returns unexpected data
 	 */
-	static Set<String> queryVersions(Path npm, String pkg) throws DshException {
+	static Set<String> queryVersions(DshNpm npm, String pkg) throws DshException {
 		DshCommand.Result result = runNpmView(npm, pkg, "versions");
 		JsonElement parsed = parseJson(result.text());
 		if (parsed == null) {
@@ -166,10 +168,10 @@ public final class ReleaseQueries {
 	 * <p>
 	 * A failure is not fatal: a version is listed without its date.
 	 *
-	 * @param npm the npm executable
+	 * @param npm the npm to ask
 	 * @return the version to publication-time map, empty when unavailable
 	 */
-	static JsonObject queryTimes(Path npm) {
+	static JsonObject queryTimes(DshNpm npm) {
 		try {
 			return asObject(parseJson(runNpmView(npm, "time").text()));
 		} catch (DshException e) {
@@ -204,10 +206,10 @@ public final class ReleaseQueries {
 	/**
 	 * Reads the dist-tag table from the registry.
 	 *
-	 * @param npm the npm executable
+	 * @param npm the npm to ask
 	 * @return the tag-to-version mapping, empty when the query fails
 	 */
-	static JsonObject queryDistTags(Path npm) {
+	static JsonObject queryDistTags(DshNpm npm) {
 		try {
 			return asObject(parseJson(runNpmView(npm, "dist-tags").text()));
 		} catch (DshException e) {
@@ -219,26 +221,26 @@ public final class ReleaseQueries {
 	/**
 	 * Runs {@code npm view <package> <field> --json}.
 	 *
-	 * @param npm   the npm executable
+	 * @param npm   the npm to ask
 	 * @param field the registry field to read
 	 * @return the command result
 	 * @throws DshException when npm cannot be run
 	 */
-	static DshCommand.Result runNpmView(Path npm, String field) throws DshException {
+	static DshCommand.Result runNpmView(DshNpm npm, String field) throws DshException {
 		return runNpmView(npm, HarnessInstaller.PACKAGE_NAME, field);
 	}
 
 	/**
 	 * Runs {@code npm view <package> <field> --json}.
 	 *
-	 * @param npm   the npm executable
+	 * @param npm   the npm to ask
 	 * @param pkg   the package to read
 	 * @param field the field to read
 	 * @return the command result
 	 * @throws DshException when the command cannot be run
 	 */
-	static DshCommand.Result runNpmView(Path npm, String pkg, String field) throws DshException {
-		List<String> command = List.of(npm.toString(), "view", pkg, field, "--json");
+	static DshCommand.Result runNpmView(DshNpm npm, String pkg, String field) throws DshException {
+		List<String> command = npm.commandFor(List.of("view", pkg, field, "--json"));
 		try {
 			DshCommand.Result result = DshCommand.run(command);
 			if (!result.isSuccess()) {
@@ -247,7 +249,7 @@ public final class ReleaseQueries {
 			}
 			return result;
 		} catch (IOException e) {
-			throw new DshException("Failed to run pnpm", e);
+			throw new DshException("Failed to run npm", e);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new DshException("npm view was interrupted", e);
