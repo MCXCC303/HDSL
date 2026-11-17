@@ -102,15 +102,10 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 		boolean systemChosen = DshRuntimeLocation.isSystem(chosen);
 
 		List<NodeRow> rows = new ArrayList<>();
-		boolean anySystem = false;
 		for (DshRuntimeEntry entry : entries) {
 			Path directory = entry.directory();
 			boolean selected = directory == null ? systemChosen : directory.equals(chosenDirectory);
-			anySystem |= directory == null;
 			rows.add(NodeRow.of(entry, selected));
-		}
-		if (!anySystem) {
-			rows.add(NodeRow.missing());
 		}
 		getItems().setAll(rows);
 	}
@@ -195,20 +190,8 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	}
 
 	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
-	               @Nullable Path command, String version, @Nullable Path removable, @Nullable String selection,
+	               @Nullable Path command, String version, @Nullable Path removable, String selection,
 	               boolean selected) {
-
-		static NodeRow missing() {
-			return new NodeRow(i18n("dsh.node.system.missing.title"),
-			                   DshNodeRuntime.requirement(),
-			                   "-",
-			                   List.of(i18n("dsh.node.tag.missing")),
-			                   null,
-			                   "-",
-			                   null,
-			                   null,
-			                   false);
-		}
 
 		static NodeRow of(DshRuntimeEntry entry, boolean selected) {
 			String version = entry.version() == null ? "-" : entry.version();
@@ -236,6 +219,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	private static final class NodeRuntimesPageSkin extends ToolbarListPageSkin<NodeRow, NodeRuntimesPage> {
 		NodeRuntimesPageSkin(NodeRuntimesPage control) {
 			super(control);
+			setPlaceholder(i18n("dsh.node.system.missing.title"));
 		}
 
 		@Override
@@ -260,7 +244,7 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			@Override
 			public void fire() {
 				NodeRow row = getItem();
-				if (!isDisable() && !isSelected() && row != null && row.selection() != null) {
+				if (!isDisable() && !isSelected() && row != null) {
 					fireEvent(new ActionEvent());
 					page.select(row.selection());
 				}
@@ -333,9 +317,6 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 			content.addTags(row.tags());
 
 			selector.setSelected(row.selected());
-			selector.setDisable(row.selection() == null);
-			selector.setVisible(row.selection() != null);
-			selector.setManaged(row.selection() != null);
 
 			boolean removable = row.removable() != null;
 
