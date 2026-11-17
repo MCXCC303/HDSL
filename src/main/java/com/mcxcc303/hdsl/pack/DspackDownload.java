@@ -19,6 +19,7 @@ package com.mcxcc303.hdsl.pack;
 
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.plugin.CatalogClient;
+import org.jackhuang.hmcl.task.FetchTask;
 import org.jackhuang.hmcl.util.DigestUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -123,6 +124,7 @@ public final class DspackDownload {
 						out.write(buffer, 0, read);
 						digest.update(buffer, 0, read);
 						written += read;
+						FetchTask.recordDownloaded(read);
 						if (report != null && entry.size() > 0 && written % (1024 * 1024) < buffer.length) {
 							report.accept("Downloaded " + (written / 1024) + " KB of " + (entry.size() / 1024) + " KB");
 						}
