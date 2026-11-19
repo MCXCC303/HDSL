@@ -85,6 +85,15 @@ public final class DshToolchain {
 		return entries;
 	}
 
+	public static boolean isLastRuntime(List<DshRuntimeEntry> entries, Path directory) {
+		for (DshRuntimeEntry entry : entries) {
+			if (entry.directory() == null || !entry.directory().equals(directory)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
 	public static DshNodeRuntime resolve(String selection) throws DshException {
 		Path directory = DshRuntimeLocation.pathOf(selection);
 		if (directory == null) {

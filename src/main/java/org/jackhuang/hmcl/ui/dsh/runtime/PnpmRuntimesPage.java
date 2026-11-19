@@ -125,35 +125,52 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 	}
 
 	private void uninstall(Path directory, String version) {
-		if (directory.equals(directoryOf(settings().defaultPnpmProperty().get()))) {
-			Controllers.dialog(i18n("dsh.pnpm.uninstall.in_use", version), i18n("dsh.pnpm.uninstall"),
-			                   MessageType.INFO);
-			return;
-		}
-
 		Controllers.confirm(i18n("dsh.pnpm.uninstall.confirm", version), i18n("dsh.pnpm.uninstall"), () -> {
 			if (busy) return;
 
-			busy = true;
-			setLoading(true);
-			CompletableFuture.runAsync(() -> {
-				try {
-					PnpmRuntimeManager.uninstall(directory);
-				} catch (DshException e) {
-					throw new CompletionException(e);
-				}
-			}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-				busy = false;
-				setLoading(false);
-				if (throwable != null) {
-					Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-					                  ? throwable.getCause()
-					                  : throwable;
-					Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
-				}
-				refresh();
-			}));
+			if (DshToolchain.isLastRuntime(entries, directory)) {
+				Controllers.confirm(i18n("dsh.pnpm.uninstall.last.message"),
+				                    i18n("dsh.pnpm.uninstall.last.title", version),
+				                    () -> remove(directory),
+				                    null);
+				return;
+			}
+			remove(directory);
 		}, null);
+	}
+
+	private void remove(Path directory) {
+		busy = true;
+		setLoading(true);
+		CompletableFuture.runAsync(() -> {
+			try {
+				PnpmRuntimeManager.uninstall(directory);
+			} catch (DshException e) {
+				throw new CompletionException(e);
+			}
+		}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+			busy = false;
+			setLoading(false);
+			if (throwable != null) {
+				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+				                  ? throwable.getCause()
+				                  : throwable;
+				Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
+			} else {
+				forget(directory);
+			}
+			refresh();
+		}));
+	}
+
+	private void forget(Path directory) {
+		String selection = settings().defaultPnpmProperty().get();
+		String after = DshRuntimeLocation.afterRemoval(selection, directoryOf(selection), directory);
+		if (after.equals(selection)) {
+			return;
+		}
+		settings().defaultPnpmProperty().set(after);
+		SettingsManager.save();
 	}
 
 	record PnpmRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,

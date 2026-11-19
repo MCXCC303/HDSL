@@ -63,4 +63,9 @@ public final class DshRuntimeLocation {
 	public static String selectionOf(Path directory) {
 		return directory.toAbsolutePath().normalize().toString();
 	}
+
+	public static String afterRemoval(String selection, @Nullable Path selected, Path removed) {
+		Path current = selected == null ? null : selected.toAbsolutePath().normalize();
+		return removed.toAbsolutePath().normalize().equals(current) ? SYSTEM : selection;
+	}
 }

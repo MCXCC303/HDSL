@@ -158,35 +158,52 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 	}
 
 	private void uninstall(Path directory, String version) {
-		if (directory.equals(directoryOf(settings().defaultNodeRuntimeProperty().get()))) {
-			Controllers.dialog(i18n("dsh.node.uninstall.in_use", version), i18n("dsh.node.uninstall"),
-			                   MessageType.INFO);
-			return;
-		}
-
 		Controllers.confirm(i18n("dsh.node.uninstall.confirm", version), i18n("dsh.node.uninstall"), () -> {
 			if (busy) return;
 
-			busy = true;
-			setLoading(true);
-			CompletableFuture.runAsync(() -> {
-				try {
-					NodeRuntimeManager.uninstall(directory);
-				} catch (DshException e) {
-					throw new CompletionException(e);
-				}
-			}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-				busy = false;
-				setLoading(false);
-				if (throwable != null) {
-					Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-					                  ? throwable.getCause()
-					                  : throwable;
-					Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
-				}
-				refresh();
-			}));
+			if (DshToolchain.isLastRuntime(entries, directory)) {
+				Controllers.confirm(i18n("dsh.node.uninstall.last.message"),
+				                    i18n("dsh.node.uninstall.last.title", version),
+				                    () -> remove(directory),
+				                    null);
+				return;
+			}
+			remove(directory);
 		}, null);
+	}
+
+	private void remove(Path directory) {
+		busy = true;
+		setLoading(true);
+		CompletableFuture.runAsync(() -> {
+			try {
+				NodeRuntimeManager.uninstall(directory);
+			} catch (DshException e) {
+				throw new CompletionException(e);
+			}
+		}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+			busy = false;
+			setLoading(false);
+			if (throwable != null) {
+				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+				                  ? throwable.getCause()
+				                  : throwable;
+				Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
+			} else {
+				forget(directory);
+			}
+			refresh();
+		}));
+	}
+
+	private void forget(Path directory) {
+		String selection = settings().defaultNodeRuntimeProperty().get();
+		String after = DshRuntimeLocation.afterRemoval(selection, directoryOf(selection), directory);
+		if (after.equals(selection)) {
+			return;
+		}
+		settings().defaultNodeRuntimeProperty().set(after);
+		SettingsManager.save();
 	}
 
 	record NodeRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,

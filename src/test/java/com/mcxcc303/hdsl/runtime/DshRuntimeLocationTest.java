@@ -72,6 +72,33 @@ public final class DshRuntimeLocationTest {
         assertNull(DshRuntimeLocation.pathOf(DshNodeRuntime.SYSTEM));
     }
 
+    @Test
+    public void fallsBackToTheNodeOnPathWhenTheSelectedRuntimeIsRemoved() throws Exception {
+        Path directory = installNode("24.1.0");
+        try {
+            String selection = DshRuntimeLocation.selectionOf(directory);
+
+            assertEquals(DshRuntimeLocation.SYSTEM,
+                         DshRuntimeLocation.afterRemoval(selection, directory, directory));
+        } finally {
+            DshFiles.deleteTreeQuietly(directory);
+        }
+    }
+
+    @Test
+    public void keepsTheSelectionWhenAnotherRuntimeIsRemoved() throws Exception {
+        Path selected = installNode("24.1.0");
+        Path removed = installNode("22.19.0");
+        try {
+            String selection = DshRuntimeLocation.selectionOf(selected);
+
+            assertEquals(selection, DshRuntimeLocation.afterRemoval(selection, selected, removed));
+        } finally {
+            DshFiles.deleteTreeQuietly(selected);
+            DshFiles.deleteTreeQuietly(removed);
+        }
+    }
+
     private static Path installNode(String version) throws Exception {
         Path directory = DshPaths.runtimeDirectory(version);
         Path node = NodeRuntime.nodeIn(directory);
