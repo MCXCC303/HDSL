@@ -72,6 +72,33 @@ public final class DshDiskUsage {
 		return total[0];
 	}
 
+	public static long sizeBytes(Path path) {
+		if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+			return sizeOf(path);
+		}
+
+		long[] total = {0L};
+		try {
+			Files.walkFileTree(path, new SimpleFileVisitor<>() {
+				@Override
+				public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
+					if (!attributes.isSymbolicLink()) {
+						total[0] += attributes.size();
+					}
+					return FileVisitResult.CONTINUE;
+				}
+
+				@Override
+				public FileVisitResult visitFileFailed(Path file, IOException e) {
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		} catch (IOException e) {
+			LOG.warning("Failed to size " + path, e);
+		}
+		return total[0];
+	}
+
 	public static String formatBytes(long bytes) {
 		if (bytes < 1024) {
 			return bytes + " B";
