@@ -125,6 +125,13 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 	}
 
 	private void uninstall(Path directory, String version) {
+		String selection = settings().defaultPnpmProperty().get();
+		if (directory.equals(directoryOf(selection)) && !DshToolchain.isLastRuntime(entries, directory)) {
+			Controllers.dialog(i18n("dsh.pnpm.uninstall.in_use", version), i18n("dsh.pnpm.uninstall"),
+			                   MessageType.INFO);
+			return;
+		}
+
 		Controllers.confirm(i18n("dsh.pnpm.uninstall.confirm", version), i18n("dsh.pnpm.uninstall"), () -> {
 			if (busy) return;
 
