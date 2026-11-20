@@ -251,11 +251,11 @@ jobs:
           set -o pipefail
           
           log="$RUNNER_TEMP/linux-packages.log"
-          ./packaging/linux-packages.sh \
-            "${{ env.VERSION }}" \
-            "build/libs/hdsl-${{ env.VERSION }}.sh" \
-            "src/main/resources/assets/img/icon@8x.png" \
-            dist | tee "${log}"
+          ./packaging/linux-packages.sh "${{ env.VERSION }}" \
+            --sh-artifact "build/libs/hdsl-${{ env.VERSION }}.sh" \
+            --icon "src/main/resources/assets/img/icon@8x.png" \
+            --output-dir dist \
+            --arch x86_64 | tee "${log}"
           
           arch_path="$(sed -n 's/^arch package: //p' "${log}")"
           [ -n "${arch_path}" ] || { echo "error: the packaging script named no Arch package" >&2; exit 1; }
@@ -327,7 +327,11 @@ jobs:
 
     strategy:
       matrix:
-        os: [ macos-latest, macos-26-intel ]
+        include:
+          - os: macos-latest
+            arch: aarch64
+          - os: macos-26-intel
+            arch: x64
 
     runs-on: ${{ matrix.os }}
 
@@ -392,11 +396,11 @@ jobs:
       - name: Build the macOS packages
         run: |
           # `dist/` holds every artifact; the note reads the sums from there.
-          ./packaging/mac-packages.sh \
-            "${{ env.VERSION }}" \
-            "build/libs/hdsl-${{ env.VERSION }}.sh" \
-            "src/main/resources/assets/img/icon@8x.png" \
-            dist
+          ./packaging/mac-packages.sh "${{ env.VERSION }}" \
+            --sh-artifact "build/libs/hdsl-${{ env.VERSION }}.sh" \
+            --icon "src/main/resources/assets/img/icon@8x.png" \
+            --output-dir dist \
+            --arch "${{ matrix.arch }}"
 
       - name: Verify the macOS packages (dry run)
         if: github.event_name == 'workflow_dispatch'

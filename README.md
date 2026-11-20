@@ -81,17 +81,47 @@ gradlew.bat build
 gradlew.bat run
 ```
 
-打包为 `.deb` 与自解压脚本（Linux）：
+### 打包
+
+自执行脚本、`.deb` 和 Windows `.exe` 由 Gradle 直接生成：
 
 ```bash
-./gradlew makeDeb
+./gradlew makeExecutable   # build/libs/hdsl-<VERSION>.sh
+./gradlew makeDeb          # build/libs/hdsl-<VERSION>.sh and build/libs/hdsl-<VERSION>.deb
 ```
 
-打包为 `.app`、`.dmg` 与 `.zip`（macOS）：
+只打包指定格式或指定架构：
 
 ```bash
+# .pkg.tar.zst
+./packaging/linux-packages.sh <VERSION> \
+    --formats arch
+
+# .tar.zst and .pkg.tar.zst
+./packaging/linux-packages.sh <VERSION> \
+    --formats=tar,arch \
+    --arch=aarch64
+
+# all supported type
+./packaging/linux-packages.sh <VERSION> \
+    --sh-artifact build/libs/hdsl-<VERSION>.sh \
+    --icon src/main/resources/assets/img/icon@8x.png \
+    --output-dir dist
+```
+
+macOS：
+
+```bash
+# .sh
 ./gradlew makeExecutable
-./packaging/mac-packages.sh <版本> build/libs/hdsl-<版本>.sh src/main/resources/assets/img/icon@8x.png dist
+
+# .dmg
+./packaging/mac-packages.sh <VERSION> \
+    --formats dmg \
+    --arch aarch64
+
+# .dmg and .zip
+./packaging/mac-packages.sh <VERSION>
 ```
 
 ## 命令行工具
