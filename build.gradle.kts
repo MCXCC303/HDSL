@@ -208,6 +208,9 @@ val addExports = listOf(
     "javafx.controls/javafx.scene.control.skin",
 )
 
+// CVE-2026-114938
+val base64IntrinsicArgs = listOf("-XX:-UseBASE64Intrinsics")
+
 tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
     options.compilerArgs.addAll(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
@@ -217,6 +220,7 @@ tasks.withType<JavaCompile> {
 
 tasks.named<JavaExec>("run") {
     jvmArgs(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
+    jvmArgs(base64IntrinsicArgs)
     systemProperty("hdsl.version.override", project.version.toString())
 }
 
@@ -227,6 +231,7 @@ tasks.register<JavaExec>("debug-run") {
     mainClass.set("org.jackhuang.hmcl.Main")
     classpath = sourceSets["main"].runtimeClasspath
     jvmArgs(addExports.map { "--add-exports=$it=ALL-UNNAMED" })
+    jvmArgs(base64IntrinsicArgs)
     systemProperty("hdsl.version.override", project.version.toString())
     systemProperty(
         "hdsl.home",
@@ -273,6 +278,7 @@ launch4j {
     jreMinVersion = "21.0.0"
     requires64Bit = true
     requiresJdk = false
+    jvmOptions.set(base64IntrinsicArgs)
     chdir = ""
     errTitle = "Hello DeepSeek! Launcher"
     downloadUrl = "https://adoptium.net/temurin/releases/?os=windows"

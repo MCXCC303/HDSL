@@ -18,6 +18,7 @@
 package com.mcxcc303.hdsl.harness;
 
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshJdk;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceListing;
@@ -47,6 +48,10 @@ public final class DshDoctor {
 		out.println("HDSL " + Metadata.VERSION + " diagnostics");
 		out.println("Java:      " + System.getProperty("java.vm.name") + " " + System.getProperty("java.version"));
 		out.println("OS:        " + System.getProperty("os.name") + " / " + System.getProperty("os.arch"));
+		out.println();
+
+		out.println("Security");
+		out.println("  base64 intrinsic: " + describeBase64Intrinsic());
 		out.println();
 
 		out.println("Language");
@@ -145,6 +150,24 @@ public final class DshDoctor {
 		            ? "Result: ready to install DeepSeek Harness versions."
 		            : "Result: the JavaScript toolchain is incomplete.");
 		return runtimeOk ? 0 : 1;
+	}
+
+	private static String describeBase64Intrinsic() {
+		if (!DshJdk.isBase64IntrinsicSupported()) {
+			return "not present on this platform";
+		}
+		if (DshJdk.isBase64IntrinsicDisabled()) {
+			return "disabled";
+		}
+
+		String version = DshJdk.version();
+		if (!DshJdk.hasVulnerableBase64Intrinsic(version)) {
+			return "enabled  [CVE-2026-114938 does not affect " + version + "]";
+		}
+
+		String fixed = DshJdk.base64IntrinsicFixedVersion(version);
+		return "enabled  [CVE-2026-114938 affects " + version +
+		       (fixed == null ? ", this release line has no fix" : ", update to " + fixed) + "]";
 	}
 
 	private static String describe(@Nullable Path path, @Nullable String version) {
