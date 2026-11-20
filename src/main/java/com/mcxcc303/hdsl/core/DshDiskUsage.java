@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.core;
 
+import org.jackhuang.hmcl.util.io.FileUtils;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.IOException;
@@ -41,7 +42,7 @@ public final class DshDiskUsage {
 
 	public static long usageBytes(Path path) {
 		if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-			return clusters(sizeOf(path));
+			return clusters(FileUtils.size(path));
 		}
 
 		long[] total = {0L};
@@ -74,7 +75,7 @@ public final class DshDiskUsage {
 
 	public static long sizeBytes(Path path) {
 		if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-			return sizeOf(path);
+			return FileUtils.size(path);
 		}
 
 		long[] total = {0L};
@@ -113,14 +114,6 @@ public final class DshDiskUsage {
 			return String.format(Locale.ROOT, "%.1f GiB", bytes / (1024.0 * 1024.0 * 1024.0));
 		}
 		return String.format(Locale.ROOT, "%.1f TiB", bytes / (1024.0 * 1024.0 * 1024.0 * 1024.0));
-	}
-
-	private static long sizeOf(Path file) {
-		try {
-			return Files.size(file);
-		} catch (IOException e) {
-			return 0L;
-		}
 	}
 
 	private static long clusters(long size) {

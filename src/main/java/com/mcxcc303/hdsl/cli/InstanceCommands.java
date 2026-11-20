@@ -274,7 +274,7 @@ public final class InstanceCommands {
 			                                           instance.nodeRuntimeOrDefault(),
 			                                           instance.homeMode().name()));
 			if (withSize) {
-				row.add(sizeOf(instance));
+				row.add(DshDiskUsage.formatBytes(DshDiskUsage.usageBytes(instance.instanceDirectory())));
 			}
 			row.add(instance.homeDirectory().toString());
 			row.add(instance.workspacePath().toString());
@@ -282,14 +282,6 @@ public final class InstanceCommands {
 		}
 		table.print(out);
 		return 0;
-	}
-
-	private static String sizeOf(DshInstance instance) {
-		try {
-			return DshDiskUsage.formatBytes(DshDiskUsage.usageBytes(instance.instanceDirectory()));
-		} catch (DshException e) {
-			return "-";
-		}
 	}
 
 	static int deleteInstance(Invocation invocation, PrintStream out, PrintStream err) throws DshException {

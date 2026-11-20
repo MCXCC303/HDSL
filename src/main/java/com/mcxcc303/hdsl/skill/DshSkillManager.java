@@ -185,7 +185,7 @@ public final class DshSkillManager {
 			String description = DshSkillFrontmatter.collapse(frontmatter.getOrDefault("description", ""));
 			boolean disabled = "true".equalsIgnoreCase(frontmatter.getOrDefault(DISABLE, "").trim());
 
-			long size = bundle ? DshDiskUsage.sizeBytes(entry) : Files.size(instructions);
+			long size = DshDiskUsage.sizeBytes(bundle ? entry : instructions);
 			long modified = Files.getLastModifiedTime(instructions).toMillis();
 			return new DshSkill(entry, instructions, name, description, bundle, !disabled, size, modified);
 		} catch (IOException e) {

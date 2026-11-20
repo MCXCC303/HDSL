@@ -20,8 +20,8 @@ package com.mcxcc303.hdsl.pack;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshCommand;
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.launch.DshSession;
@@ -523,7 +523,7 @@ public final class DshSessionPacks {
 			input.transferTo(zip);
 		}
 		zip.closeEntry();
-		return Files.size(file);
+		return DshDiskUsage.sizeBytes(file);
 	}
 
 	private static void write(ZipInputStream zip, Path target) throws IOException {
