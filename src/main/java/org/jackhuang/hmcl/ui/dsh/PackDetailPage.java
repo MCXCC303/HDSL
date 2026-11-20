@@ -19,6 +19,7 @@ package org.jackhuang.hmcl.ui.dsh;
 
 import com.google.gson.JsonObject;
 import com.jfoenix.controls.JFXButton;
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.pack.DshPackMarket;
@@ -152,7 +153,7 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
 		TwoLineListItem content = new TwoLineListItem();
 		content.setTitle(entry.title());
 		content.setSubtitle(entry.subtitle());
-		content.addTags(List.of(entry.id(), PackMarketPage.sizeOf(entry.size())));
+		content.addTags(List.of(entry.id(), DshDiskUsage.formatBytes(entry.size())));
 		if (entry.type() != null) {
 			content.addTag(entry.type());
 		}
@@ -207,7 +208,7 @@ public final class PackDetailPage extends DecoratorAnimatedPage implements Decor
 		if (entry.updatedAt() != null) {
 			row = fact(facts, row, i18n("dsh.pack.field.updated"), entry.updatedAt());
 		}
-		row = fact(facts, row, i18n("dsh.pack.field.size"), PackMarketPage.sizeOf(entry.size()));
+		row = fact(facts, row, i18n("dsh.pack.field.size"), DshDiskUsage.formatBytes(entry.size()));
 		// The digest is shown in full rather than shortened: it is what the download is checked
 		// against, and the one place a person can compare it with what the author published.
 		Label digest = new Label(entry.sha256());

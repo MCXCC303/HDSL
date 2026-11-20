@@ -480,27 +480,5 @@ public final class DshPluginBundle {
 			String safe = DshLocalPlugins.safeName(name) + "-" + DshLocalPlugins.safeName(version);
 			return archive != null ? ENTRY_PREFIX + safe + ".tgz" : ENTRY_PREFIX + safe + "/";
 		}
-
-		/// Reports how big the payload is.
-		///
-		/// @return the size in bytes, or zero when it cannot be measured
-		public long size() {
-			try {
-				if (archive != null) {
-					return Files.size(archive);
-				}
-				try (var walk = Files.walk(directory)) {
-					return walk.filter(Files::isRegularFile).mapToLong(path -> {
-						try {
-							return Files.size(path);
-						} catch (IOException e) {
-							return 0L;
-						}
-					}).sum();
-				}
-			} catch (IOException e) {
-				return 0L;
-			}
-		}
 	}
 }

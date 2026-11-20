@@ -1,14 +1,5 @@
 #!/usr/bin/env bash
 # HDSL self-executing launcher.
-#
-# This script is prepended to the application jar, so `"$0"` is the executable
-# itself. A zip reader finds the central directory at the end of the file, so
-# the jar stays loadable with this preamble in front of it.
-#
-# This is the Linux artifact; the Windows one is the executable the build wraps
-# the same jar into, and the macOS one is the `.dmg` built by
-# `packaging/mac-packages.sh`. Unlike HMCL's launcher this one has no BSD or
-# Windows branches: it looks for a JDK 21+ and runs the jar.
 
 set -e
 
@@ -44,8 +35,6 @@ if [ -z "$JAVA_EXE" ]; then
     exit 1
 fi
 
-# Warn rather than refuse when the version is only just too old: the JVM will
-# produce a clearer message than this script can.
 JAVA_INFO="$("$JAVA_EXE" -XshowSettings:properties -XX:+PrintFlagsFinal -version 2>&1 | cat)"
 JAVA_MAJOR="$(printf '%s\n' "$JAVA_INFO" \
     | sed -n 's/^ *java\.specification\.version *= *//p' | head -1 | cut -d. -f1)"
@@ -64,11 +53,6 @@ case "$JAVA_MAJOR" in
         ;;
 esac
 
-# On macOS a stub-launched JVM takes the generic Java dock tile: the JavaFX
-# stage icons arrive too late to replace it reliably. Naming the application
-# and its icon up front is what keeps the tile, so both are passed here rather
-# than anywhere a window exists yet. The icon comes from HDSL_DOCK_ICON, which
-# the .app stub points at the bundled icon; a plain .sh run simply has none.
 DOCK_ARGS=()
 if [ "$(uname -s)" = "Darwin" ]; then
     DOCK_ARGS+=("-Xdock:name=HDSL")

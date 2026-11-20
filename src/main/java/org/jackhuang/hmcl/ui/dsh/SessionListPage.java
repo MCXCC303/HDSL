@@ -22,6 +22,7 @@ import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXPopup;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFileManager;
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.DshInstanceIcons;
 import com.mcxcc303.hdsl.instance.DshWorkspace;
@@ -81,7 +82,7 @@ public final class SessionListPage extends ListPageBase<DshSession> implements R
 		builder.append(session.modifiedAt() > 0
 		               ? TIMESTAMP.format(Instant.ofEpochMilli(session.modifiedAt()))
 		               : i18n("dsh.session.unknown_time"));
-		builder.append(" · ").append(DshSessions.formatSize(session.sizeBytes()));
+		builder.append(" · ").append(DshDiskUsage.formatBytes(session.sizeBytes()));
 		if (session.workingDirectory() != null) {
 			builder.append(" · ").append(session.workingDirectory());
 		}

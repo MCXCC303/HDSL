@@ -18,6 +18,7 @@
 package com.mcxcc303.hdsl.cli;
 
 import com.mcxcc303.hdsl.cli.Cli.Invocation;
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.harness.HarnessInstaller;
 import com.mcxcc303.hdsl.instance.*;
@@ -39,14 +40,6 @@ public final class InstanceCommands {
 	private InstanceCommands() {
 	}
 
-	/**
-	 * Prints a running instance's address
-	 *
-	 * @param invocation the parsed invocation
-	 * @param out        the stream for normal output
-	 * @param err        the stream for error output
-	 * @return the process exit code
-	 */
 	static int getUrl(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -64,16 +57,6 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	/**
-	 * Prints a running instance's key
-	 * <p>
-	 * The key is the address's `token`, alone
-	 *
-	 * @param invocation the parsed invocation
-	 * @param out        the stream for normal output
-	 * @param err        the stream for error output
-	 * @return the process exit code
-	 */
 	static int getKey(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -91,26 +74,10 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	/**
-	 * Returns the address the harness printed, or empty when it has printed none
-	 *
-	 * @param instance the instance
-	 * @return the address
-	 */
 	private static Optional<URI> servedAddress(DshInstance instance) {
 		return DshProcessManager.findRunning(instance).flatMap(DshProcessManager.Running::webUrl);
 	}
 
-	/**
-	 * Runs the `instance create` command
-	 * <p>
-	 * A DSH version is required
-	 *
-	 * @param invocation the parsed invocation
-	 * @param out        the stream for normal output
-	 * @param err        the stream for error output
-	 * @return the process exit code
-	 */
 	static int createInstance(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		String version = invocation.option("dsh-version");
@@ -155,19 +122,6 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	/**
-	 * Runs the `instance launch` command: starts an instance and blocks until it exits
-	 * <p>
-	 * Except: `--url` and `--key` print the address or the key the running harness reported
-	 * <p>
-	 * The launcher keeps child processes in its own process group, and the JVM shutdown hook stops them<br>
-	 * Reattaching or interrupting this command therefore never leaves an orphaned `dsh` behind
-	 *
-	 * @param invocation the parsed invocation
-	 * @param out        the stream for normal output
-	 * @param err        the stream for error output
-	 * @return the process exit code
-	 */
 	static int launchInstance(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		if (invocation.flag("url") && invocation.flag("key")) {
 			err.println("error: instance launch prints the address or the key, and was asked for both");
@@ -189,7 +143,6 @@ public final class InstanceCommands {
 			return 1;
 		}
 
-		// The plan cannot be read from the process table once the child exits
 		DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
 		out.println("command: " + plan.commandLine());
 
@@ -226,14 +179,6 @@ public final class InstanceCommands {
 		return process.exitCode().orElse(0);
 	}
 
-	/**
-	 * Runs the `instance print-launch-args` command: the pieces a typed argument string splits into
-	 *
-	 * @param invocation the parsed invocation
-	 * @param out        the stream for normal output
-	 * @param err        the stream for error output
-	 * @return the exit code
-	 */
 	static int printLaunchArguments(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -257,10 +202,6 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	/**
-	 * Runs the `instance test-launch` command<br>
-	 * An instance already up will be refused
-	 */
 	static int testLaunch(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -272,7 +213,6 @@ public final class InstanceCommands {
 			return 1;
 		}
 		try {
-			// Building the plan is what writes the account's overlay, so a second one leaves the first behind
 			DshLauncher.LaunchPlan plan = DshLauncher.plan(instance);
 			out.println("command: " + plan.commandLine());
 
@@ -299,48 +239,51 @@ public final class InstanceCommands {
 		}
 	}
 
-	/**
-	 * Runs the `instance list` command: the instances, or the running ones under `--running`
-	 * This command now also provide running status.
-	 */
 	static int listInstances(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		if (invocation.flag("running")) {
 			return listRunning(out);
 		}
 		List<DshInstance> instances = InstanceListing.list();
+		boolean withSize = invocation.flag("size");
 		if (instances.isEmpty()) {
 			out.println("(no instances)");
 		}
-		List<DshProcessManager.Running> running = DshProcessManager.running();
-		DshTable table = new DshTable("INSTANCE",
-		                              "STATUS",
-		                              "DSH VERSION",
-		                              "PROFILE",
-		                              "NODE",
-		                              "HOME MODE",
-		                              "HOME",
-		                              "WORKSPACE");
+		DshTable table = withSize
+		                ? new DshTable("INSTANCE",
+		                               "STATUS",
+		                               "DSH VERSION",
+		                               "PROFILE",
+		                               "NODE",
+		                               "HOME MODE",
+		                               "SIZE",
+		                               "HOME",
+		                               "WORKSPACE")
+		                : new DshTable("INSTANCE",
+		                               "STATUS",
+		                               "DSH VERSION",
+		                               "PROFILE",
+		                               "NODE",
+		                               "HOME MODE",
+		                               "HOME",
+		                               "WORKSPACE");
 		for (DshInstance instance : instances) {
-			// This prints resolved values instead of stored values
-			table.row(instance.id(),
-			          DshProcessManager.stateOf(instance.id()).name(),
-			          instance.version(),
-			          instance.profile(),
-			          instance.nodeRuntimeOrDefault(),
-			          instance.homeMode().name(),
-			          instance.homeDirectory().toString(),
-			          instance.workspacePath().toString());
+			List<String> row = new ArrayList<>(List.of(instance.id(),
+			                                           DshProcessManager.stateOf(instance.id()).name(),
+			                                           instance.version(),
+			                                           instance.profile(),
+			                                           instance.nodeRuntimeOrDefault(),
+			                                           instance.homeMode().name()));
+			if (withSize) {
+				row.add(DshDiskUsage.formatBytes(DshDiskUsage.usageBytes(instance.instanceDirectory())));
+			}
+			row.add(instance.homeDirectory().toString());
+			row.add(instance.workspacePath().toString());
+			table.row(row.toArray(new String[0]));
 		}
 		table.print(out);
 		return 0;
 	}
 
-	/**
-	 * Runs the `instance delete` command
-	 * <p>
-	 * An instance that is up is not removed: the harness is still writing to the home that would be deleted<br>
-	 * Stopping it first is one command, whose name is part of the refusal
-	 */
 	static int deleteInstance(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -356,9 +299,6 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	/**
-	 * Runs the `instance list --running` command: the instances that are up, whichever launcher started them
-	 */
 	private static int listRunning(PrintStream out) {
 		List<DshProcessManager.Running> running = DshProcessManager.running();
 		if (running.isEmpty()) {
@@ -372,7 +312,6 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	// Runs the `instance upgrade` command
 	static int upgradeInstance(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -385,7 +324,6 @@ public final class InstanceCommands {
 		}
 		String version = invocation.option("dsh-version");
 
-		// What the profile holds, read before the install rewrites the manifest it is read from
 		Map<String, String> dependencies = DshPluginInstaller.readDependencies(instance.homeDirectory(),
 		                                                                       instance.profile());
 		List<String> specs = new ArrayList<>();
@@ -410,7 +348,6 @@ public final class InstanceCommands {
 		return 0;
 	}
 
-	// Runs the `instance stop` command
 	static int stop(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		out.println(DshProcessManager.stop(id) ? "Stopped " + id : "Instance " + id + " is not running");

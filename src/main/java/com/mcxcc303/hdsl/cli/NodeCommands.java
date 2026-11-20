@@ -19,6 +19,7 @@ package com.mcxcc303.hdsl.cli;
 
 import com.mcxcc303.hdsl.cli.Cli.Invocation;
 
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.runtime.node.NodeRelease;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntime;
@@ -39,9 +40,17 @@ public final class NodeCommands {
 		List<NodeRuntime> runtimes = NodeRuntimeManager.listInstalled();
 		if (runtimes.isEmpty()) out.println("(no managed Node runtimes)");
 
-		DshTable table = new DshTable("VERSION", "DIRECTORY");
+		boolean withSize = invocation.flag("size");
+		DshTable table = withSize
+		                ? new DshTable("VERSION", "SIZE", "DIRECTORY")
+		                : new DshTable("VERSION", "DIRECTORY");
 		for (NodeRuntime runtime : runtimes) {
-			table.row(runtime.version(), runtime.directory().toString());
+			List<String> row = new ArrayList<>(List.of(runtime.version()));
+			if (withSize) {
+				row.add(DshDiskUsage.formatBytes(DshDiskUsage.usageBytes(runtime.directory())));
+			}
+			row.add(runtime.directory().toString());
+			table.row(row.toArray(new String[0]));
 		}
 		table.print(out);
 		return 0;

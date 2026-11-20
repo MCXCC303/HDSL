@@ -34,12 +34,8 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/*
- * The filesystem work the skill code does: reading a file as lines, replacing one without a reader seeing half of it, and the shapes a pack travels in -- a directory tree and a zip
- */
 @NotNullByDefault
 final class DshSkillFiles {
-	// The suffix a rewrite is staged under before it replaces the file
 	private static final String STAGING = ".hdsl-skills";
 
 	private DshSkillFiles() {}
@@ -48,9 +44,6 @@ final class DshSkillFiles {
 		return new ArrayList<>(Files.readAllLines(file, StandardCharsets.UTF_8));
 	}
 
-	/**
-	 * Replaces a file with the given lines, staged beside it and moved onto it
-	 */
 	static void writeLines(Path file, List<String> lines) throws IOException {
 		Path staging = file.resolveSibling(file.getFileName() + STAGING);
 		Files.writeString(staging, String.join("\n", lines) + "\n", StandardCharsets.UTF_8);
@@ -59,16 +52,6 @@ final class DshSkillFiles {
 		} catch (AtomicMoveNotSupportedException e) {
 			Files.move(staging, file, StandardCopyOption.REPLACE_EXISTING);
 		}
-	}
-
-	static long sizeOf(Path directory) throws IOException {
-		long total = 0L;
-		try (Stream<Path> walk = Files.walk(directory)) {
-			for (Path path : walk.toList()) {
-				if (Files.isRegularFile(path)) total += Files.size(path);
-			}
-		}
-		return total;
 	}
 
 	static void copyTree(Path source, Path target) throws IOException {
@@ -108,14 +91,6 @@ final class DshSkillFiles {
 		}
 	}
 
-	/**
-	 * Returns the shallowest directory holding a file of this name
-	 *
-	 * @param directory the unpacked tree
-	 * @param name      the file to look for
-	 * @return the directory holding it, or `null` when there is none
-	 * @throws IOException when the tree cannot be walked
-	 */
 	static @Nullable Path shallowest(Path directory, String name) throws IOException {
 		Path found = null;
 		int depth = Integer.MAX_VALUE;
