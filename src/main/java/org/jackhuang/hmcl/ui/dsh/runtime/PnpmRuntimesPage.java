@@ -22,9 +22,10 @@ import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXRadioButton;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshFileManager;
-import com.mcxcc303.hdsl.runtime.pnpm.DshPnpm;
+import com.mcxcc303.hdsl.runtime.DshRuntimeEntry;
+import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
+import com.mcxcc303.hdsl.runtime.DshRuntimeOrigin;
 import com.mcxcc303.hdsl.runtime.DshToolchain;
-import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntime;
 import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntimeManager;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
@@ -62,8 +63,7 @@ import static org.jackhuang.hmcl.util.logging.Logger.LOG;
 @NotNullByDefault
 public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRow> implements Refreshable {
 	private boolean busy;
-	private DshPnpm system = PnpmRuntimeManager.detect();
-	private List<PnpmRuntime> installed = List.of();
+	private List<DshRuntimeEntry> entries = List.of();
 
 	public PnpmRuntimesPage() {
 		refresh();
@@ -80,33 +80,40 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 
 		busy = true;
 		setLoading(true);
-		CompletableFuture.supplyAsync(() -> {
-			system = PnpmRuntimeManager.detect();
-			return PnpmRuntimeManager.listInstalled();
-		}, Schedulers.io()).whenComplete((found, throwable) -> runInFX(() -> {
-			busy = false;
-			setLoading(false);
-			if (throwable != null) {
-				LOG.warning("Failed to load the pnpm versions", throwable);
-				setFailedReason(i18n("dsh.versions.load_failed"));
-				return;
-			}
-			installed = found;
-			rebuildRows();
-		}));
+		CompletableFuture.supplyAsync(DshToolchain::pnpmEntries, Schedulers.io())
+		                 .whenComplete((found, throwable) -> runInFX(() -> {
+			                 busy = false;
+			                 setLoading(false);
+			                 if (throwable != null) {
+				                 LOG.warning("Failed to load the pnpm versions", throwable);
+				                 setFailedReason(i18n("dsh.versions.load_failed"));
+				                 return;
+			                 }
+			                 entries = found;
+			                 rebuildRows();
+		                 }));
 	}
 
 	private void rebuildRows() {
 		String chosen = settings().defaultPnpmProperty().get();
+		Path chosenDirectory = directoryOf(chosen);
+		boolean systemChosen = DshRuntimeLocation.isSystem(chosen);
+
 		List<PnpmRow> rows = new ArrayList<>();
-		for (PnpmRuntime runtime : installed) {
-			rows.add(PnpmRow.installed(runtime, runtime.version().equals(chosen)));
+		for (DshRuntimeEntry entry : entries) {
+			Path directory = entry.directory();
+			boolean selected = directory == null ? systemChosen : directory.equals(chosenDirectory);
+			rows.add(PnpmRow.of(entry, selected));
 		}
-		DshPnpm detected = system;
-		rows.add(detected == null
-		         ? PnpmRow.systemMissing()
-		         : PnpmRow.system(detected, DshToolchain.SYSTEM.equals(chosen)));
 		getItems().setAll(rows);
+	}
+
+	private static @Nullable Path directoryOf(@Nullable String selection) {
+		try {
+			return DshRuntimeLocation.pnpmPathOf(selection);
+		} catch (DshException e) {
+			return null;
+		}
 	}
 
 	private void select(String value) {
@@ -117,8 +124,9 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 		rebuildRows();
 	}
 
-	private void uninstall(String version) {
-		if (version.equals(settings().defaultPnpmProperty().get())) {
+	private void uninstall(Path directory, String version) {
+		String selection = settings().defaultPnpmProperty().get();
+		if (directory.equals(directoryOf(selection)) && !DshToolchain.isLastRuntime(entries, directory)) {
 			Controllers.dialog(i18n("dsh.pnpm.uninstall.in_use", version), i18n("dsh.pnpm.uninstall"),
 			                   MessageType.INFO);
 			return;
@@ -127,70 +135,75 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 		Controllers.confirm(i18n("dsh.pnpm.uninstall.confirm", version), i18n("dsh.pnpm.uninstall"), () -> {
 			if (busy) return;
 
-			busy = true;
-			setLoading(true);
-			CompletableFuture.runAsync(() -> {
-				try {
-					PnpmRuntimeManager.uninstall(version);
-				} catch (DshException e) {
-					throw new CompletionException(e);
-				}
-			}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
-				busy = false;
-				setLoading(false);
-				if (throwable != null) {
-					Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
-					                  ? throwable.getCause()
-					                  : throwable;
-					Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
-				}
-				refresh();
-			}));
+			if (DshToolchain.isLastRuntime(entries, directory)) {
+				Controllers.confirm(i18n("dsh.pnpm.uninstall.last.message"),
+				                    i18n("dsh.pnpm.uninstall.last.title", version),
+				                    () -> remove(directory),
+				                    null);
+				return;
+			}
+			remove(directory);
 		}, null);
 	}
 
+	private void remove(Path directory) {
+		busy = true;
+		setLoading(true);
+		CompletableFuture.runAsync(() -> {
+			try {
+				PnpmRuntimeManager.uninstall(directory);
+			} catch (DshException e) {
+				throw new CompletionException(e);
+			}
+		}, Schedulers.io()).whenComplete((ignored, throwable) -> runInFX(() -> {
+			busy = false;
+			setLoading(false);
+			if (throwable != null) {
+				Throwable cause = throwable instanceof CompletionException && throwable.getCause() != null
+				                  ? throwable.getCause()
+				                  : throwable;
+				Controllers.dialog(cause.getMessage(), i18n("message.error"), MessageType.ERROR);
+			} else {
+				forget(directory);
+			}
+			refresh();
+		}));
+	}
+
+	private void forget(Path directory) {
+		String selection = settings().defaultPnpmProperty().get();
+		String after = DshRuntimeLocation.afterRemoval(selection, directoryOf(selection), directory);
+		if (after.equals(selection)) {
+			return;
+		}
+		settings().defaultPnpmProperty().set(after);
+		SettingsManager.save();
+	}
+
 	record PnpmRow(String title, String subtitle, String badge, @Unmodifiable List<String> tags,
-	               @Nullable Path node, @Nullable String removable, @Nullable String selection, boolean selected) {
+	               @Nullable Path command, String version, @Nullable Path removable, String selection,
+	               boolean selected) {
 
-		static PnpmRow installed(PnpmRuntime runtime, boolean selected) {
-			String major = runtime.version().split("\\.")[0];
-			return new PnpmRow("pnpm " + runtime.version(),
-			                   runtime.cli().toString(),
-			                   major,
-			                   List.of(i18n("dsh.pnpm.tag.managed")),
-			                   runtime.cli(),
-			                   runtime.version(),
-			                   runtime.version(),
-			                   selected);
-		}
-
-		static PnpmRow system(DshPnpm pnpm, boolean selected) {
-			String version = pnpm.version() == null ? "-" : pnpm.version();
+		static PnpmRow of(DshRuntimeEntry entry, boolean selected) {
+			String version = entry.version() == null ? "-" : entry.version();
 			return new PnpmRow("pnpm " + version,
-			                   pnpm.command().toString(),
+			                   entry.command() == null ? "" : entry.command().toString(),
 			                   version.split("\\.")[0],
-			                   List.of(i18n("dsh.pnpm.tag.system")),
-			                   pnpm.command(),
-			                   null,
-			                   DshToolchain.SYSTEM,
+			                   List.of(entry.origin() == DshRuntimeOrigin.MANAGED
+			                           ? i18n("dsh.pnpm.tag.managed")
+			                           : i18n("dsh.pnpm.tag.system")),
+			                   entry.command(),
+			                   version,
+			                   entry.removable() ? entry.directory() : null,
+			                   entry.selection(),
 			                   selected);
-		}
-
-		static PnpmRow systemMissing() {
-			return new PnpmRow(i18n("dsh.pnpm.system.missing.title"),
-			                   "",
-			                   "-",
-			                   List.of(i18n("dsh.pnpm.tag.missing")),
-			                   null,
-			                   null,
-			                   null,
-			                   false);
 		}
 	}
 
 	private static final class PnpmRuntimesPageSkin extends ToolbarListPageSkin<PnpmRow, PnpmRuntimesPage> {
 		PnpmRuntimesPageSkin(PnpmRuntimesPage control) {
 			super(control);
+			setPlaceholder(i18n("dsh.pnpm.system.missing.title"));
 		}
 
 		@Override
@@ -214,7 +227,7 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 			@Override
 			public void fire() {
 				PnpmRow row = getItem();
-				if (!isDisable() && !isSelected() && row != null && row.selection() != null) {
+				if (!isDisable() && !isSelected() && row != null) {
 					fireEvent(new ActionEvent());
 					page.select(row.selection());
 				}
@@ -258,8 +271,8 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 			FXUtils.installFastTooltip(reveal, i18n("reveal.in_file_manager"));
 			reveal.setOnAction(event -> {
 				PnpmRow row = getItem();
-				if (row != null && row.node() != null) {
-					DshFileManager.reveal(row.node());
+				if (row != null && row.command() != null) {
+					DshFileManager.reveal(row.command());
 				}
 			});
 			right.getChildren().setAll(reveal, action);
@@ -287,15 +300,12 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 			content.addTags(row.tags());
 
 			selector.setSelected(row.selected());
-			selector.setDisable(row.selection() == null);
-			selector.setVisible(row.selection() != null);
-			selector.setManaged(row.selection() != null);
 
 			boolean removable = row.removable() != null;
 
-			reveal.setDisable(row.node() == null);
-			reveal.setVisible(row.node() != null);
-			reveal.setManaged(row.node() != null);
+			reveal.setDisable(row.command() == null);
+			reveal.setVisible(row.command() != null);
+			reveal.setManaged(row.command() != null);
 
 			action.setVisible(removable);
 			action.setManaged(removable);
@@ -308,7 +318,7 @@ public final class PnpmRuntimesPage extends ListPageBase<PnpmRuntimesPage.PnpmRo
 			FXUtils.installFastTooltip(action, i18n("dsh.pnpm.uninstall"));
 
 			action.setOnAction(event -> {
-				if (removable) page.uninstall(row.removable());
+				if (removable) page.uninstall(row.removable(), row.version());
 			});
 		}
 	}

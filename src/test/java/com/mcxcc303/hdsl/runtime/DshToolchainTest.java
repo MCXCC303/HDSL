@@ -22,18 +22,18 @@ import org.junit.jupiter.api.Test;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Pins the environment a child process gets from the launcher.
- */
 class DshToolchainTest {
 
 	@Test
-	void theSelectionsAreReadThroughTheSuppliers() {
+	void readsTheSelectionsThroughTheSuppliers() {
 		String node = DshToolchain.nodeSelection();
 		String pnpm = DshToolchain.pnpmSelection();
 		try {
@@ -46,13 +46,24 @@ class DshToolchainTest {
 	}
 
 	@Test
-	void thePathPutsTheNodeAndThePnpmFirst() {
-		// The Node.js directory comes first, and the shim finds Node.js on PATH.
+	void putsTheNodeAndThePnpmFirstOnThePath() {
 		DshPnpm pnpm = new DshPnpm(Path.of("prefix", "pnpm.cjs"), Path.of("bin", "node"), "11.28.11",
 		                           Path.of("prefix", "bin"));
 		Map<String, String> environment = DshToolchain.pathEnvironment(Path.of("bin", "node"), pnpm);
 		String[] entries = environment.get("PATH").split(Pattern.quote(File.pathSeparator));
 		assertEquals("bin", entries[0]);
 		assertEquals("prefix" + File.separator + "bin", entries[1]);
+	}
+
+	@Test
+	void ensuresExtraNotificationWhenOnlyOneRuntimeIsLeft() {
+		Path directory = Path.of("/runtimes/24.1.0");
+		DshRuntimeEntry managed = new DshRuntimeEntry(DshRuntimeOrigin.MANAGED, directory,
+		                                              directory.resolve("bin").resolve("node"), "24.1.0");
+		DshRuntimeEntry system = new DshRuntimeEntry(DshRuntimeOrigin.SYSTEM, null,
+		                                             Path.of("/usr/bin/node"), "24.1.0");
+
+		assertTrue(DshToolchain.isLastRuntime(List.of(managed), directory));
+		assertFalse(DshToolchain.isLastRuntime(List.of(managed, system), directory));
 	}
 }

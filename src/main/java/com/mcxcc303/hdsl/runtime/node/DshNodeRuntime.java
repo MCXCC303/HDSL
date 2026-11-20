@@ -37,13 +37,12 @@ import java.util.*;
 public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm) {
 	public static final String SYSTEM = "system";
 	public static final String GLOBAL = "global";
-	// Oldest pnpm that can install DeepSeek Harness.
 	public static final String MINIMUM_PNPM = "10.9";
 	private static final int NODE_22_MAJOR = 22;
 	private static final int MINIMUM_NODE_22_MINOR = 19;
 	private static final int MINIMUM_NODE_MODERN_MAJOR = 24;
 
-	public static DshNodeRuntime fromManaged(NodeRuntime runtime) {
+	public static DshNodeRuntime from(NodeRuntime runtime) {
 		return new DshNodeRuntime(runtime.node(),
 		                          runtime.version(),
 		                          NpmRuntimeManager.bundled(runtime.node()));
@@ -73,8 +72,7 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 	}
 
 	public static String requirement() {
-		return "Node.js ^22.19.0 || >=24.0.0, plus pnpm " + MINIMUM_PNPM +
-		       " or newer for installing DeepSeek Harness; pnpm is also needed for plugin management";
+		return "Node.js ^22.19.0 || >=24.0.0 and pnpm >=" + MINIMUM_PNPM;
 	}
 
 	public static @Nullable String versionOf(Path executable) {

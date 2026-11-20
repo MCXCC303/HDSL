@@ -20,6 +20,7 @@ package com.mcxcc303.hdsl.cli;
 import com.mcxcc303.hdsl.cli.Cli.Invocation;
 
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
 import com.mcxcc303.hdsl.runtime.node.NodeRelease;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
@@ -27,6 +28,7 @@ import com.mcxcc303.hdsl.runtime.node.NodeSource;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -90,9 +92,13 @@ public final class NodeCommands {
 	}
 
 	static int uninstallNode(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
-		String version = invocation.option("version");
-		NodeRuntimeManager.uninstall(version);
-		out.println("Removed Node.js " + version);
+		Path directory = DshRuntimeLocation.pathOf(invocation.option("version"));
+		if (directory == null) {
+			err.println("Failed to uninstall Node.js: Not managed by HDSL.");
+			return 2;
+		}
+		NodeRuntimeManager.uninstall(directory);
+		out.println("Removed the Node.js runtime at " + directory);
 		return 0;
 	}
 }

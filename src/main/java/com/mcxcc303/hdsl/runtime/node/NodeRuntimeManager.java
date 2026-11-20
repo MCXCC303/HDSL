@@ -63,35 +63,23 @@ public final class NodeRuntimeManager {
 	private NodeRuntimeManager() {
 	}
 
-	/**
-	 * Returns the platform tag used in Node distribution file names.
-	 *
-	 * @return `linux-x64`, `linux-arm64`, `win-x64`, `win-arm64`, `darwin-x64` or `darwin-arm64`
-	 * @throws DshException when the current system has no Node build
-	 */
 	public static String platformTag() throws DshException {
 		if (OperatingSystem.CURRENT_OS == OperatingSystem.MACOS) {
 			return switch (Architecture.SYSTEM_ARCH) {
 				case X86_64 -> "darwin-x64";
 				case ARM64 -> "darwin-arm64";
 				default -> throw new DshException(
-						"Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on macOS");
+						"No Node.js for " + Architecture.SYSTEM_ARCH + " on macOS");
 			};
 		}
 		return switch (Architecture.SYSTEM_ARCH) {
 			case X86_64 -> OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? "win-x64" : "linux-x64";
 			case ARM64 -> OperatingSystem.CURRENT_OS == OperatingSystem.WINDOWS ? "win-arm64" : "linux-arm64";
-			default -> throw new DshException("Node.js publishes no build for " + Architecture.SYSTEM_ARCH + " on " +
+			default -> throw new DshException("No Node.js for " + Architecture.SYSTEM_ARCH + " on " +
 			                                  OperatingSystem.SYSTEM_NAME);
 		};
 	}
 
-	/**
-	 * Returns the entry the release index lists for a platform tag.
-	 *
-	 * @param platform the tag from [NodeRuntimeManager#platformTag]
-	 * @return the name to look for in the index `files` array
-	 */
 	static String indexTag(String platform) {
 		return switch (platform) {
 			case "darwin-x64" -> "osx-x64-tar";
@@ -115,7 +103,7 @@ public final class NodeRuntimeManager {
 	}
 
 	/**
-	 * Lists the Node runtimes installed under [DshPaths#RUNTIMES], newest first.
+	 * Lists the Node runtimes installed under {@link DshPaths#RUNTIMES}, newest first.
 	 */
 	public static List<NodeRuntime> listInstalled() {
 		List<NodeRuntime> runtimes = new ArrayList<>();
@@ -137,13 +125,22 @@ public final class NodeRuntimeManager {
 		return runtimes;
 	}
 
-	public static @Nullable NodeRuntime findInstalled(String version) {
-		for (NodeRuntime runtime : listInstalled()) {
-			if (runtime.version().equals(version)) {
-				return runtime;
-			}
+	public static @Nullable NodeRuntime find(Path directory) {
+		Path normalized = directory.toAbsolutePath().normalize();
+		String version = versionOf(normalized);
+		if (version == null) {
+			return null;
 		}
-		return null;
+		NodeRuntime runtime = new NodeRuntime(version, normalized);
+		return runtime.isUsable() ? runtime : null;
+	}
+
+	private static @Nullable String versionOf(Path directory) {
+		Path name = directory.getFileName();
+		if (name != null && DshPaths.isManagedRuntime(directory)) {
+			return name.toString();
+		}
+		return versionOfDirectory(directory);
 	}
 
 	private static @Nullable LocalDate asDate(JsonObject obj, String key) {
@@ -202,13 +199,6 @@ public final class NodeRuntimeManager {
 		return schedules;
 	}
 
-	/**
-	 * Fetches the published Node releases that have a build for this platform.
-	 *
-	 * @param source where to read the index from
-	 * @return the available releases, newest first
-	 * @throws DshException when the index cannot be read
-	 */
 	public static List<NodeRelease> fetchReleases(NodeSource source) throws DshException {
 		String platform = platformTag();
 		String indexFile = indexTag(platform);
@@ -273,27 +263,18 @@ public final class NodeRuntimeManager {
 		return releases;
 	}
 
-	/**
-	 * Installs a Node release
-	 *
-	 * @param version the version to install, with or without a leading `v`
-	 * @param source  where to fetch the archive from
-	 * @param onStage receives a short progress description, or `null`
-	 * @return the installed runtime
-	 * @throws DshException when the download or extraction fails
-	 */
 	public static NodeRuntime install(String version, NodeSource source, @Nullable Consumer<String> onStage)
 	throws DshException {
 		String normalized = version.trim();
 		if (normalized.startsWith("v") || normalized.startsWith("V")) {
 			normalized = normalized.substring(1);
 		}
-		if (findInstalled(normalized) != null) {
+		Path target = DshPaths.runtimeDirectory(normalized);
+		if (Files.exists(target)) {
 			throw new DshException(i18n("dsh.node.download.already_installed", normalized));
 		}
 
 		String platform = platformTag();
-		Path target = DshPaths.runtimeDirectory(normalized);
 		Path staging = target.resolveSibling(target.getFileName() + ".installing");
 		String fileName = archiveFileName(normalized, platform);
 		Path archive = DshPaths.RUNTIMES.resolve(fileName);
@@ -367,11 +348,10 @@ public final class NodeRuntimeManager {
 	}
 
 	public static NodeRuntime adopt(Path source, String version) throws DshException {
-		if (findInstalled(version) != null) {
+		Path target = DshPaths.runtimeDirectory(version);
+		if (Files.exists(target)) {
 			throw new DshException("Node.js " + version + " is already managed");
 		}
-
-		Path target = DshPaths.runtimeDirectory(version);
 		Path staging = target.resolveSibling(target.getFileName() + ".adopting");
 		try {
 			deleteQuietly(staging);
@@ -399,7 +379,6 @@ public final class NodeRuntimeManager {
 				if (Files.isDirectory(path)) {
 					Files.createDirectories(target);
 				} else if (Files.isSymbolicLink(path)) {
-					// Preserve symlinks to npm/npx; where the filesystem refuses one, copy its target.
 					try {
 						Files.createSymbolicLink(target, Files.readSymbolicLink(path));
 					} catch (IOException | UnsupportedOperationException e) {
@@ -412,18 +391,22 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	public static void uninstall(String version) throws DshException {
-		NodeRuntime runtime = findInstalled(version);
-		if (runtime == null) throw new DshException("Node.js " + version + " is not installed");
+	public static void uninstall(Path directory) throws DshException {
+		Path target = directory.toAbsolutePath().normalize();
+		if (!DshPaths.isManagedRuntime(target)) {
+			throw new DshException("Cannot remove Node.js runtime " + target + ": Not managed by HDSL.");
+		}
+		if (!Files.isDirectory(target)) {
+			throw new DshException("No Node.js runtime at " + target);
+		}
 
 		try {
-			DshFiles.deleteTree(runtime.directory());
+			DshFiles.deleteTree(target);
 		} catch (IOException e) {
-			throw new DshException(
-					"Failed to remove " + runtime.directory() + (e.getMessage() == null ? "" : ": " + e.getMessage()),
+			throw new DshException("Failed to remove " + target + (e.getMessage() == null ? "" : ": " + e.getMessage()),
 					e);
 		}
-		LOG.info("Removed Node.js " + version);
+		LOG.info("Removed the Node.js runtime at " + target);
 	}
 
 	private static void download(String url, Path target, @Nullable Consumer<String> onStage) throws IOException {
@@ -458,9 +441,6 @@ public final class NodeRuntimeManager {
 		}
 	}
 
-	/**
-	 * Unpacks a Node distribution archive into a directory, preserving symlinks.
-	 */
 	private static void extractArchive(Path archive, Path target) throws IOException {
 		String name = archive.getFileName().toString().toLowerCase(Locale.ROOT);
 		if (name.endsWith(".zip")) {
@@ -516,7 +496,7 @@ public final class NodeRuntimeManager {
 					}
 				} else {
 					LOG.warning(
-							"Not unpacking the link " + destination + " -> " + link + ": it points outside " + root);
+							"Not unpacking the link " + destination + " -> " + link + ": link refering outside " + root);
 				}
 				tree.extractTo(archiveEntry, destination);
 				continue;

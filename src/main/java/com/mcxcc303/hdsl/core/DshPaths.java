@@ -99,6 +99,14 @@ public final class DshPaths {
 		return PNPM.resolve(segment(version, "pnpm version"));
 	}
 
+	public static boolean isManagedRuntime(Path directory) {
+		return directory.startsWith(RUNTIMES);
+	}
+
+	public static boolean isManagedPnpm(Path directory) {
+		return directory.startsWith(PNPM);
+	}
+
 	/**
 	 * Returns the directory for a launcher instance.
 	 *

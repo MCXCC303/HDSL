@@ -244,7 +244,7 @@ final class Commands {
 			                    optional("source", "source", "where to read the release from")),
 			            NodeCommands::installNode),
 			new Command("node", "uninstall", "remove an installed Node runtime",
-			            List.of(required("version", "version", "the Node version to remove")),
+			            List.of(required("version", "version", "the Node version or runtime directory to remove")),
 			            NodeCommands::uninstallNode),
 
 			// The harness the instances run.
