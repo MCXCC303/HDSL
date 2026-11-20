@@ -93,11 +93,11 @@ gradlew.bat run
 只打包指定格式或指定架构：
 
 ```bash
-# .pkg.tar.gz
+# .pkg.tar.zst
 ./packaging/linux-packages.sh <VERSION> \
     --formats arch
 
-# .tar.gz and .pkg.tar.gz
+# .tar.zst and .pkg.tar.zst
 ./packaging/linux-packages.sh <VERSION> \
     --formats=tar,arch \
     --arch=aarch64
@@ -112,15 +112,15 @@ gradlew.bat run
 macOS：
 
 ```bash
-# .app
+# .sh
 ./gradlew makeExecutable
 
-# .zip
+# .dmg
 ./packaging/mac-packages.sh <VERSION> \
     --formats dmg \
     --arch aarch64
 
-# .dmg
+# .dmg and .zip
 ./packaging/mac-packages.sh <VERSION>
 ```
 

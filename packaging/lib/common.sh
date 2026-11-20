@@ -19,6 +19,16 @@ require_value() { # option count
     [ "$2" -ge 2 ] || usage_error "$1 needs a value"
 }
 
+validate_artifact_name() { # name formats
+    [ -n "$1" ] || usage_error "--artifact-name needs a value"
+    case "$1" in
+        */*) usage_error "--artifact-name must not contain '/': $1" ;;
+    esac
+    case "$2" in
+        *,*) usage_error "--artifact-name can name only one artifact, but --formats contain multiple artifact type" ;;
+    esac
+}
+
 # Reads the caller's global `formats`.
 want() {
     case ",${formats}," in

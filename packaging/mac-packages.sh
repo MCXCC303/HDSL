@@ -18,6 +18,7 @@ Formats:
   all        both (default)
 
 Options:
+  --artifact-name STEM  File stem of the artifact; one format only.
   --sh-artifact PATH   Self-executing launcher; default build/libs/hdsl-<version>.sh.
   --icon PATH          Bundle icon; default src/main/resources/assets/img/icon@8x.png.
   --output-dir DIR     Artifact directory; default dist.
@@ -34,12 +35,21 @@ sh_artifact=""
 icon=""
 out_dir=""
 arch=""
+artifact_name=""
+artifact_name_set=0
 stage=""
 positional=""
 positional_count=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --artifact-name)
+            require_value --artifact-name "$#"
+            artifact_name="$2"
+            artifact_name_set=1
+            shift 2
+            ;;
+        --artifact-name=*) artifact_name="${1#*=}"; artifact_name_set=1; shift ;;
         --formats)
             require_value --formats "$#"
             formats="$2"
@@ -118,6 +128,10 @@ case ",$formats," in
 esac
 validate_formats "$formats" dmg zip
 
+if [ "$artifact_name_set" -eq 1 ]; then
+    validate_artifact_name "$artifact_name" "$formats"
+fi
+
 require_file "$sh_artifact"
 require_file "$icon"
 mkdir -p "$out_dir"
@@ -127,6 +141,13 @@ name="hdsl-${version}"
 bundle_id="run.hdsl.HDSL"
 dmg_artifact="${out_dir}/HDSL-${version}-${arch}.dmg"
 zip_artifact="${out_dir}/HDSL-${version}-${arch}.zip"
+
+if [ "$artifact_name_set" -eq 1 ]; then
+    case "$formats" in
+        dmg) dmg_artifact="${out_dir}/${artifact_name}.dmg" ;;
+        zip) zip_artifact="${out_dir}/${artifact_name}.zip" ;;
+    esac
+fi
 
 stage_init
 

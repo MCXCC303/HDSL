@@ -20,15 +20,16 @@ Formats:
   all        every format above (default)
 
 Options:
-  --sh-artifact PATH   Self-executing launcher; default build/libs/hdsl-<version>.sh.
-  --icon PATH          Desktop icon; default src/main/resources/assets/img/icon@8x.png.
-  --output-dir DIR     Artifact directory; default dist.
-  --formats LIST       Comma-separated tar,arch,appimage,deb, or all.
-  --arch ARCH          x86_64 (default host) or aarch64; the .sh and appimagetool
-                       must match it.
-  --appimagetool PATH  Tool to use; defaults to $APPIMAGETOOL or PATH.
-  --no-sums            Do not write .sha256 files; existing ones are left alone.
-  -h, --help           Print this help.
+  --artifact-name STEM  File stem of the artifact; one format only.
+  --sh-artifact PATH    Self-executing launcher; default build/libs/hdsl-<version>.sh.
+  --icon PATH           Desktop icon; default src/main/resources/assets/img/icon@8x.png.
+  --output-dir DIR      Artifact directory; default dist.
+  --formats LIST        Comma-separated tar,arch,appimage,deb, or all.
+  --arch ARCH           x86_64 (default host) or aarch64; the .sh and appimagetool
+                        must match it.
+  --appimagetool PATH   Tool to use; defaults to $APPIMAGETOOL or PATH.
+  --no-sums             Do not write .sha256 files; existing ones are left alone.
+  -h, --help            Print this help.
 EOF
 }
 
@@ -38,6 +39,8 @@ sh_artifact=""
 icon=""
 out_dir=""
 arch=""
+artifact_name=""
+artifact_name_set=0
 appimagetool="${APPIMAGETOOL:-}"
 stage=""
 positional=""
@@ -45,6 +48,13 @@ positional_count=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
+        --artifact-name)
+            require_value --artifact-name "$#"
+            artifact_name="$2"
+            artifact_name_set=1
+            shift 2
+            ;;
+        --artifact-name=*) artifact_name="${1#*=}"; artifact_name_set=1; shift ;;
         --formats)
             require_value --formats "$#"
             formats="$2"
@@ -145,6 +155,13 @@ case ",$formats," in
 esac
 validate_formats "$formats" tar arch appimage deb
 
+if [ "$artifact_name_set" -eq 1 ]; then
+    validate_artifact_name "$artifact_name" "$formats"
+    if [ "$formats" = deb ]; then
+        echo "warning: --artifact-name is ignored for the deb format" >&2
+    fi
+fi
+
 if want tar || want arch || want appimage; then
     require_file "$sh_artifact"
     require_file "$icon"
@@ -160,6 +177,14 @@ tar_artifact="${out_dir}/${name}-linux-${linux_arch}.tar.zst"
 arch_artifact="${out_dir}/${desktop_id}-${arch_version}-1-${pkg_arch}.pkg.tar.zst"
 appimage_artifact="${out_dir}/HDSL-${version}-${appimage_arch}.AppImage"
 deb_artifact="${out_dir}/${name}.deb"
+
+if [ "$artifact_name_set" -eq 1 ] && [ "$formats" != deb ]; then
+    case "$formats" in
+        tar) tar_artifact="${out_dir}/${artifact_name}.tar.zst" ;;
+        arch) arch_artifact="${out_dir}/${artifact_name}.pkg.tar.zst" ;;
+        appimage) appimage_artifact="${out_dir}/${artifact_name}.AppImage" ;;
+    esac
+fi
 
 if want appimage; then
     if [ -z "$appimagetool" ]; then
