@@ -19,6 +19,7 @@ package com.mcxcc303.hdsl.cli;
 
 import com.mcxcc303.hdsl.cli.Cli.Invocation;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.instance.DshInstance;
 import com.mcxcc303.hdsl.instance.InstanceStore;
 import com.mcxcc303.hdsl.launch.DshAcpClient;
@@ -32,23 +33,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
-/// The commands that move or read sessions: importing an exported pack of them, listing them, and
-/// migrating a session from one version's layout to another.  The ACP prompt lives here because it,
-/// too, is one conversation with one instance.
 @NotNullByDefault
 public final class SessionCommands {
 	private SessionCommands() {
 	}
 
-	/// Runs the `session import` command: another home's sessions, copied into an instance.
-	///
-	/// The source is read and never written: the point of importing is to take
-	/// what an existing installation has without becoming its manager.
-	///
-	/// @param invocation the parsed invocation
-	/// @param out        the stream for normal output
-	/// @param err        the stream for error output
-	/// @return the process exit code
 	static int importSessions(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance target = InstanceStore.find(id);
@@ -97,14 +86,6 @@ public final class SessionCommands {
 		}
 	}
 
-	/**
-	 * Runs the `session list` command
-	 *
-	 * @param invocation the parsed invocation
-	 * @param out        the stream for normal output
-	 * @param err        the stream for error output
-	 * @return the process exit code
-	 */
 	static int listSessions(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -116,12 +97,9 @@ public final class SessionCommands {
 		try {
 			List<DshSession> sessions = DshSessions.list(instance.homeDirectory());
 			for (DshSession session : sessions) {
-//				out.println("  " + session.id() + "  v" + session.formatVersion() + "  " +
-//				            DshSessions.formatSize(session.sizeBytes()) + (session.locked() ? "  [locked]" : "") +
-//				            "  " + session.label());
 				table.row(session.id(),
 				          "v" + session.formatVersion(),
-				          DshSessions.formatSize(session.sizeBytes()),
+				          DshDiskUsage.formatBytes(session.sizeBytes()),
 				          session.locked() ? "locked" : "-",
 				          session.label());
 			}
@@ -134,12 +112,6 @@ public final class SessionCommands {
 		}
 	}
 
-	/// Runs the `session migrate` command: one session, moved to another instance.
-	///
-	/// @param invocation the parsed invocation
-	/// @param out        the stream for normal output
-	/// @param err        the stream for error output
-	/// @return the process exit code
 	static int migrateSession(Invocation invocation, PrintStream out, PrintStream err) {
 		DshInstance source = InstanceStore.find(invocation.option("id"));
 		DshInstance target = InstanceStore.find(invocation.option("to"));
@@ -147,8 +119,6 @@ public final class SessionCommands {
 			err.println("error: the source or target instance does not exist");
 			return 1;
 		}
-		// Both ends: the session is read out of the source's home and written into the target's, and
-		// either of them running is a home being changed under a live harness.
 		if (RunningInstances.isUp(source, err) || RunningInstances.isUp(target, err)) {
 			return 1;
 		}
@@ -174,16 +144,6 @@ public final class SessionCommands {
 		}
 	}
 
-	/// Runs the `session acp-prompt` command: one prompt over the Agent Client Protocol, and the
-	/// reply it produces.
-	///
-	/// The protocol reserves stdout for JSON-RPC frames, so this is the only way
-	/// to exercise the session path without a display.
-	///
-	/// @param invocation the parsed invocation
-	/// @param out        the stream for normal output
-	/// @param err        the stream for error output
-	/// @return the process exit code
 	static int acpPrompt(Invocation invocation, PrintStream out, PrintStream err) {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);
@@ -192,8 +152,6 @@ public final class SessionCommands {
 			return 1;
 		}
 
-		// The prompt is answered by a harness of its own, started on this instance's home — which is
-		// the second process the launcher keeps an instance from having.
 		if (RunningInstances.isUp(instance, err)) {
 			return 1;
 		}
@@ -234,7 +192,6 @@ public final class SessionCommands {
 		}
 	}
 
-	/// Runs the `session export` command.
 	static int exportSessions(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
 		String id = invocation.option("id");
 		DshInstance instance = InstanceStore.find(id);

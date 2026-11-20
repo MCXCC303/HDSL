@@ -17,6 +17,7 @@
  */
 package com.mcxcc303.hdsl.skill;
 
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshException;
 import org.jetbrains.annotations.NotNullByDefault;
 import org.jetbrains.annotations.Nullable;
@@ -39,39 +40,19 @@ import java.util.zip.ZipOutputStream;
  */
 @NotNullByDefault
 public final class DshSkillManager {
-	// Directory and Instruction preset
 	private static final String DIRECTORY = "skills";
 	public static final String PREFIX = DIRECTORY + "/";
 	static final String INSTRUCTION = "SKILL.md";
-
-	// The frontmatter key that hides a skill from the agent.
 	private static final String DISABLE = "disable-model-invocation";
-
-	// The directory the harness keeps its own shipped skills in
-	// It is a container one level above the packs rather than a pack
 	private static final String SYSTEM = ".system";
 
 	private DshSkillManager() {
 	}
 
-	/**
-	 * Returns the directory an instance's skills live in.
-	 *
-	 * @param home the instance's DSH_HOME
-	 * @return the directory, which may not exist
-	 */
 	public static Path directory(Path home) {
 		return home.resolve(DIRECTORY);
 	}
 
-	/**
-	 * Returns the skill packs a pack should carry.
-	 *
-	 * @param home   the instance's DSH_HOME
-	 * @param wanted the names to carry, matched against the pack's own name and its on-disk name
-	 * @return the packs, in the order [#list] returns them
-	 * @throws DshException when the skills cannot be read
-	 */
 	public static @Unmodifiable List<DshSkill> packable(Path home, Set<String> wanted) throws DshException {
 		if (wanted.isEmpty()) return List.of();
 
@@ -83,13 +64,6 @@ public final class DshSkillManager {
 		return List.copyOf(chosen);
 	}
 
-	/**
-	 * Returns the on-disk name of every skill a pack could carry.
-	 *
-	 * @param home the instance's DSH_HOME
-	 * @return the names, ordered as [#list] orders them
-	 * @throws DshException when the skills cannot be read
-	 */
 	public static @Unmodifiable List<String> packableNames(Path home) throws DshException {
 		List<String> names = new ArrayList<>();
 		for (DshSkill skill : list(home)) {
@@ -98,16 +72,6 @@ public final class DshSkillManager {
 		return List.copyOf(names);
 	}
 
-	/**
-	 * Writes skill packs into an archive that is already open.
-	 *
-	 * @param zip     the archive
-	 * @param skills  the packs to write
-	 * @param onStage receives progress lines, or `null`
-	 * @return how many files were written
-	 * @throws DshException when a pack cannot be read
-	 * @throws IOException  when the archive cannot be written
-	 */
 	public static int writeInto(ZipOutputStream zip, List<DshSkill> skills, @Nullable Consumer<String> onStage)
 	throws DshException, IOException {
 		int files = 0;
@@ -137,15 +101,6 @@ public final class DshSkillManager {
 		return files;
 	}
 
-	/**
-	 * Copies a pack's skill entries into a home.
-	 *
-	 * @param archive the archive
-	 * @param home    the DSH_HOME to read into
-	 * @param onStage receives progress lines, or `null`
-	 * @return how many files were written
-	 * @throws DshException when the archive cannot be read
-	 */
 	public static int restoreInto(Path archive, Path home, @Nullable Consumer<String> onStage) throws DshException {
 		Path directory = directory(home);
 		int files = 0;
@@ -161,7 +116,6 @@ public final class DshSkillManager {
 				String relative = name.substring(PREFIX.length());
 				if (relative.isEmpty() || relative.equals(SYSTEM) || relative.startsWith(SYSTEM + "/")) continue;
 
-				// Entries that would land outside the skills directory are skipped rather than sanitized.
 				if (relative.startsWith("/") || relative.contains("..")) continue;
 
 				Path target = directory.resolve(relative);
@@ -180,37 +134,16 @@ public final class DshSkillManager {
 		return files;
 	}
 
-	/**
-	 * Writes one file into an open archive under a member name.
-	 *
-	 * @param zip  the archive
-	 * @param file the file
-	 * @param name the member name
-	 * @throws IOException when the archive cannot be written
-	 */
 	private static void copyInto(ZipOutputStream zip, Path file, String name) throws IOException {
 		zip.putNextEntry(new ZipEntry(name));
 		Files.copy(file, zip);
 		zip.closeEntry();
 	}
 
-	/**
-	 * Reports a line of progress to whoever is watching.
-	 *
-	 * @param onStage the sink, or `null`
-	 * @param line    the line
-	 */
 	private static void report(@Nullable Consumer<String> onStage, String line) {
 		if (onStage != null) onStage.accept(line);
 	}
 
-	/**
-	 * Lists the skill packs in a home, ordered by name.
-	 *
-	 * @param home the instance's DSH_HOME
-	 * @return the packs, each carrying its own frontmatter
-	 * @throws DshException when the directory or one of the packs cannot be read
-	 */
 	public static @Unmodifiable List<DshSkill> list(Path home) throws DshException {
 		Path directory = directory(home);
 		if (!Files.isDirectory(directory)) return List.of();
@@ -229,17 +162,8 @@ public final class DshSkillManager {
 		return List.copyOf(skills);
 	}
 
-	/**
-	 * Reads one entry as a skill, or reports that it is not one.
-	 *
-	 * @param entry the entry directly under the skills directory
-	 * @return the skill, or {@code null} when the entry is not a skill pack
-	 * @throws DshException when the entry is a pack but cannot be read
-	 */
 	private static @Nullable DshSkill read(Path entry) throws DshException {
 		String fileName = entry.getFileName().toString();
-		// The harness skips the user root's `.system` child; anything else hidden is not a skill
-		// either, and offering it would offer a row the harness ignores.
 		if (fileName.startsWith(".")) return null;
 
 		boolean bundle = Files.isDirectory(entry);
@@ -261,7 +185,7 @@ public final class DshSkillManager {
 			String description = DshSkillFrontmatter.collapse(frontmatter.getOrDefault("description", ""));
 			boolean disabled = "true".equalsIgnoreCase(frontmatter.getOrDefault(DISABLE, "").trim());
 
-			long size = bundle ? DshSkillFiles.sizeOf(entry) : Files.size(instructions);
+			long size = DshDiskUsage.sizeBytes(bundle ? entry : instructions);
 			long modified = Files.getLastModifiedTime(instructions).toMillis();
 			return new DshSkill(entry, instructions, name, description, bundle, !disabled, size, modified);
 		} catch (IOException e) {
@@ -269,13 +193,6 @@ public final class DshSkillManager {
 		}
 	}
 
-	/**
-	 * Switches a skill status for the agent
-	 *
-	 * @param skill   the skill to switch
-	 * @param enabled whether the agent should be able to invoke it
-	 * @throws DshException when the file cannot be read or written, or has no frontmatter
-	 */
 	public static void setEnabled(DshSkill skill, boolean enabled) throws DshException {
 		Path file = skill.instructions();
 		try {
@@ -293,12 +210,6 @@ public final class DshSkillManager {
 		}
 	}
 
-	/**
-	 * Removes a skill pack from the home.
-	 *
-	 * @param skill the skill to remove
-	 * @throws DshException when the entry cannot be deleted
-	 */
 	public static void remove(DshSkill skill) throws DshException {
 		try {
 			if (skill.bundle()) {
@@ -311,15 +222,6 @@ public final class DshSkillManager {
 		}
 	}
 
-	/**
-	 * Copies a skill pack the user picked into the home.
-	 *
-	 * @param home   the instance's DSH_HOME
-	 * @param source the directory bundle or {@code .md} file to copy
-	 * @return the installed skill
-	 * @throws DshException when the source is not a pack, has no name or description, or
-	 *                      cannot be copied
-	 */
 	public static DshSkill install(Path home, Path source) throws DshException {
 		if (Files.isRegularFile(source) && source.getFileName().toString().endsWith(".zip")) {
 			return installArchive(home, source);
@@ -380,14 +282,6 @@ public final class DshSkillManager {
 		return installed;
 	}
 
-	/**
-	 * Unpacks an archive and installs the pack inside.
-	 *
-	 * @param home   the instance's DSH_HOME
-	 * @param source the archive
-	 * @return the installed skill
-	 * @throws DshException when the archive cannot be read or holds no pack
-	 */
 	private static DshSkill installArchive(Path home, Path source) throws DshException {
 		Path staging;
 		try {
@@ -409,7 +303,6 @@ public final class DshSkillManager {
 			try {
 				DshSkillFiles.deleteTree(staging);
 			} catch (IOException ignored) {
-				// A temporary directory that cannot be removed is seen as untidy
 			}
 		}
 	}

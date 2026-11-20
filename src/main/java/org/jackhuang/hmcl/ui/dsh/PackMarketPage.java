@@ -21,6 +21,7 @@ import com.jfoenix.controls.JFXButton;
 import com.jfoenix.controls.JFXComboBox;
 import com.jfoenix.controls.JFXListView;
 import com.jfoenix.controls.JFXTextField;
+import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.pack.DshPackMarket;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
@@ -144,20 +145,6 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 		StackPane pane = new StackPane(label);
 		pane.setPadding(new Insets(20));
 		return pane;
-	}
-
-	/// Writes a size the way a person reads one.
-	///
-	/// @param bytes the size
-	/// @return the text
-	static String sizeOf(long bytes) {
-		if (bytes < 1024) {
-			return bytes + " B";
-		}
-		if (bytes < 1024 * 1024) {
-			return String.format("%.1f KB", bytes / 1024.0);
-		}
-		return String.format("%.1f MB", bytes / (1024.0 * 1024));
 	}
 
 	/// Builds the search form.
@@ -456,7 +443,7 @@ public final class PackMarketPage extends StackPane implements DecoratorPage, Re
 			// A cell is reused for whatever scrolls into it, so what it said before has to go.
 			content.getTags().clear();
 			content.addTags(List.of(entry.subtitle()));
-			content.addTag(sizeOf(entry.size()));
+			content.addTag(DshDiskUsage.formatBytes(entry.size()));
 			if (entry.updatedAt() != null && !entry.updatedAt().isBlank()) {
 				content.addTag(entry.updatedAt());
 			}
