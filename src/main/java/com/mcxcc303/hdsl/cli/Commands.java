@@ -183,7 +183,8 @@ final class Commands {
 			            (invocation, out, err) -> PluginSourceCommands.listSources(out)),
 
 			new Command("node", "list", "list the Node runtimes the launcher installed",
-			            List.of(), NodeCommands::listRuntimes),
+			            List.of(flag("size", "show the disk space each runtime occupies")),
+			            NodeCommands::listRuntimes),
 			new Command("node", "versions", "list the Node releases this platform can install",
 			            List.of(optional("source", "source", "where to read the releases from"),
 			                    flag("show-lifetime", "show each version's lifetime schedule")),
