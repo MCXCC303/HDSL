@@ -46,7 +46,8 @@ fi
 
 # Warn rather than refuse when the version is only just too old: the JVM will
 # produce a clearer message than this script can.
-JAVA_MAJOR="$("$JAVA_EXE" -XshowSettings:properties -version 2>&1 \
+JAVA_INFO="$("$JAVA_EXE" -XshowSettings:properties -XX:+PrintFlagsFinal -version 2>&1 | cat)"
+JAVA_MAJOR="$(printf '%s\n' "$JAVA_INFO" \
     | sed -n 's/^ *java\.specification\.version *= *//p' | head -1 | cut -d. -f1)"
 
 case "$JAVA_MAJOR" in
@@ -76,4 +77,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
     fi
 fi
 
-exec "$JAVA_EXE" "${DOCK_ARGS[@]}" -jar "$0" "$@"
+# CVE-2026-114938
+BASE64_ARGS=()
+if printf '%s\n' "$JAVA_INFO" | grep -q 'UseBASE64Intrinsics'; then
+    BASE64_ARGS+=("-XX:-UseBASE64Intrinsics")
+fi
+
+exec "$JAVA_EXE" "${DOCK_ARGS[@]}" "${BASE64_ARGS[@]}" -jar "$0" "$@"
