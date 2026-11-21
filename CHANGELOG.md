@@ -1,5 +1,35 @@
 # CHANGELOG
 
+## v0.2.2-beta.1 - 2026.11.20
+
+### 新增
+
+- 新增 pnpm 运行时管理（#51、#54）
+- 新增 `instance list` 与 `node list` 的 `--size` 选项（#64）
+- 任务对话框改用具体操作的标题并按阶段显示进度（#61）
+- 显示运行时、整合包与技能的下载速度（#61）
+- `hdsl doctor` 新增 CVE-2026-114938 影响检测（#65）
+
+### 变更
+
+- 虚拟环境选择逻辑变更为在设置中选择全局环境（#51、#59）
+- Node.js 或 pnpm 缺失时可跳转到对应的设置页面（#51）
+- pnpm 下载列表显示优化（#54）
+- 按 `@earendil-works/pi-ai` 1.5.2 更新供应商列表（#58）
+
+### 移除
+
+- 移除已弃用的 `--flag` 风格 CLI 写法（#55）
+
+### 修复
+
+- 修复在文件管理器中打开文件夹或文件时的定位问题（#50）
+- 修复在安装实例或重新安装时无法调用正确的 npm 的问题（#59）
+
+### 安全
+
+- 启动时禁用 JDK 的 Base64 解码 intrinsic（#65）
+
 ## v0.2.2-alpha.3 - 2026.11.11
 
 ### 新增
@@ -118,6 +148,7 @@
 
 - 解压时拒绝写入目标目录之外的条目、密钥、凭据文件、嵌套压缩包、插件包的成员以及符号链接
 
+[v0.2.2-beta.1]: https://github.com/MCXCC303/HDSL/compare/v0.2.2-alpha.3...v0.2.2-beta.1
 [v0.2.2-alpha.3]: https://github.com/MCXCC303/HDSL/compare/v0.2.2-alpha.2...v0.2.2-alpha.3
 [v0.2.2-alpha.2]: https://github.com/MCXCC303/HDSL/compare/v0.2.2-alpha.1...v0.2.2-alpha.2
 [v0.2.2-alpha.1]: https://github.com/MCXCC303/HDSL/compare/v0.2.1...v0.2.2-alpha.1
