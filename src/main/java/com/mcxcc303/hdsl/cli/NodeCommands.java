@@ -50,7 +50,7 @@ public final class NodeCommands {
 	}
 
 	static int listNodeVersions(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
-		List<String> header = new ArrayList<>(List.of("VERSION", "LABLE", "STATUS"));
+		List<String> header = new ArrayList<>(List.of("VERSION", "LABLE"));
 		if (invocation.flag("show-lifetime")) {
 			header.addAll(List.of("LIFE_ALPHA", "LIFE_START", "LIFE_LTS", "LIFE_MAINTENANCE", "LIFE_END"));
 		}
@@ -58,8 +58,7 @@ public final class NodeCommands {
 
 		for (NodeRelease release : NodeRuntimeManager.fetchReleases(NodeSource.of(invocation.option("source")))) {
 			List<String> cells = new ArrayList<>(List.of(release.version(),
-			                                             release.isLts() ? release.label() : "-",
-			                                             release.isSupported() ? "supported" : "unsupported"));
+			                                             release.isLts() ? release.label() : "-"));
 			if (invocation.flag("show-lifetime")) {
 				if (release.schedule() == null) {
 					cells.addAll(List.of("-", "-", "-", "-", "-"));

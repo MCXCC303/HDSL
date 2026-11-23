@@ -97,14 +97,7 @@ public final class DshToolchain {
 	public static DshNodeRuntime resolve(String selection) throws DshException {
 		Path directory = DshRuntimeLocation.pathOf(selection);
 		if (directory == null) {
-			DshNodeRuntime runtime = DshNodeRuntime.detect().orElseThrow(DshToolchain::noSystemNode);
-			if (!runtime.isNodeSupported()) {
-				throw new DshMissingToolException(DshMissingToolException.Tool.NODE,
-				                                  "System Node.js " + runtime.nodeVersion() +
-				                                  " is outside the supported range (" + DshNodeRuntime.requirement() +
-				                                  "). Install a supported runtime on the Node page, or select one for this instance.");
-			}
-			return runtime;
+			return DshNodeRuntime.detect().orElseThrow(DshToolchain::noSystemNode);
 		}
 
 		NodeRuntime runtime = NodeRuntimeManager.find(directory);

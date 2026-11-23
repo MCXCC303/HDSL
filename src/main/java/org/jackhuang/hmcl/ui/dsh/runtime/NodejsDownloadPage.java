@@ -291,7 +291,6 @@ public final class NodejsDownloadPage extends VBox implements DecoratorPage {
 
 			content.setTitle(release.version());
 			content.setSubtitle(i18n("dsh.node.download.publish_date", release.date()));
-			if (release.isSupported()) content.addTag(i18n("dsh.node.download.compatible"));
 			if (release.isLts()) content.addTag(i18n("dsh.node.download.tag_lts", release.lts()));
 			if (unsupported) content.addTagWarning(i18n("dsh.node.download.tag_eol"));
 

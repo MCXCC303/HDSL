@@ -26,7 +26,6 @@ import com.mcxcc303.hdsl.runtime.DshRuntimeEntry;
 import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
 import com.mcxcc303.hdsl.runtime.DshRuntimeOrigin;
 import com.mcxcc303.hdsl.runtime.DshToolchain;
-import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;
@@ -219,19 +218,13 @@ public final class NodeRuntimesPage extends ListPageBase<NodeRuntimesPage.NodeRo
 
 		static NodeRow of(DshRuntimeEntry entry, boolean selected) {
 			String version = entry.version() == null ? "-" : entry.version();
-			List<String> tags = new ArrayList<>();
-			if (entry.origin() == DshRuntimeOrigin.MANAGED) {
-				tags.add(i18n("dsh.node.tag.managed"));
-			} else {
-				tags.add(i18n("dsh.node.tag.system"));
-				tags.add(DshNodeRuntime.isSupportedNodeVersion(version)
-				         ? i18n("dsh.node.tag.supported")
-				         : i18n("dsh.node.tag.unsupported"));
-			}
+			List<String> tags = List.of(entry.origin() == DshRuntimeOrigin.MANAGED
+			                           ? i18n("dsh.node.tag.managed")
+			                           : i18n("dsh.node.tag.system"));
 			return new NodeRow("Node.js " + version,
 			                   entry.command() == null ? "" : entry.command().toString(),
 			                   version.split("\\.")[0],
-			                   List.copyOf(tags),
+			                   tags,
 			                   entry.command(),
 			                   version,
 			                   entry.removable() ? entry.directory() : null,

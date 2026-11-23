@@ -84,8 +84,7 @@ public final class DshDoctor {
 			DshNpm npm = runtime.npm();
 			DshPnpm pnpm = DshToolchain.findPnpm(runtime.node());
 			boolean pnpmTooOld = HarnessInstaller.isPnpmTooOld(pnpm == null ? null : pnpm.version());
-			out.println("  node:  " + runtime.nodeVersion() + "  (" + runtime.node() + ")" +
-			            (runtime.isNodeSupported() ? "  [supported]" : "  [UNSUPPORTED]"));
+			out.println("  node:  " + runtime.nodeVersion() + "  (" + runtime.node() + ")");
 			out.println("  npm:   " + describe(npm == null ? null : npm.command(),
 			                                   npm == null ? null : npm.version()));
 			out.println("  pnpm:  " + describe(pnpm == null ? null : pnpm.command(),
@@ -93,7 +92,7 @@ public final class DshDoctor {
 			            (pnpm == null ? "  [plugin management unavailable]" : "") +
 			            (pnpmTooOld ? "  [too old for installation]" : ""));
 			out.println("  required: " + DshNodeRuntime.requirement());
-			runtimeOk = runtime.isNodeSupported() && runtime.canInstall() && pnpm != null && !pnpmTooOld;
+			runtimeOk = runtime.canInstall() && pnpm != null && !pnpmTooOld;
 		} catch (DshException e) {
 			String reason = e.getMessage() == null ? e.toString() : e.getMessage();
 			out.println("  node:  " + reason);

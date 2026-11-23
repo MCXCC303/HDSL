@@ -25,9 +25,6 @@ public record NodeRelease(String version, @Nullable String lts, String date, @Nu
 	public boolean isLts() {
 		return lts != null && !lts.isBlank();
 	}
-	public boolean isSupported() {
-		return DshNodeRuntime.isSupportedNodeVersion(version);
-	}
 	public String label() {
 		return isLts() ? lts : "";
 	}

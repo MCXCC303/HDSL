@@ -72,8 +72,8 @@ class DshLaunchArgumentsWindowsTest {
 	/// The version range is part of the gate: a machine may hold a Node the launcher itself would
 	/// refuse, and refusing it is the launcher's own tested behaviour.
 	private static void requireNode() {
-		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
-		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
+		Assumptions.assumeTrue(DshNodeRuntime.detect().isPresent(),
+		                       "Node.js is not on PATH; nothing can be started without it");
 	}
 
 	/// Writes the stub that stands in for DeepSeek Harness.
