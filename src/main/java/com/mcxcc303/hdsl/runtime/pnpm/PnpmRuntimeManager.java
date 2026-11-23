@@ -48,11 +48,6 @@ public final class PnpmRuntimeManager {
 	private PnpmRuntimeManager() {
 	}
 
-	/**
-	 * Lists the pnpm versions installed under {@link DshPaths#PNPM}.
-	 *
-	 * @return the installed versions, newest first
-	 */
 	public static List<PnpmRuntime> listInstalled() {
 		List<PnpmRuntime> runtimes = new ArrayList<>();
 		Path root = DshPaths.PNPM;
@@ -73,19 +68,14 @@ public final class PnpmRuntimeManager {
 		return runtimes;
 	}
 
-	/**
-	 * Finds an installed pnpm by version.
-	 *
-	 * @param version the version string
-	 * @return the installed pnpm, or {@code null} when no such version is installed
-	 */
-	public static @Nullable PnpmRuntime findInstalled(String version) {
-		for (PnpmRuntime runtime : listInstalled()) {
-			if (runtime.version().equals(version)) {
-				return runtime;
-			}
+	public static @Nullable PnpmRuntime find(Path directory) {
+		Path normalized = directory.toAbsolutePath().normalize();
+		Path name = normalized.getFileName();
+		if (name == null || !DshPaths.isManagedPnpm(normalized)) {
+			return null;
 		}
-		return null;
+		PnpmRuntime runtime = new PnpmRuntime(name.toString(), normalized);
+		return runtime.isUsable() ? runtime : null;
 	}
 
 	/**
@@ -101,26 +91,16 @@ public final class PnpmRuntimeManager {
 		                   parent == null ? Path.of(".") : parent);
 	}
 
-	/**
-	 * Installs a pnpm version into an npm prefix.
-	 *
-	 * @param version the version to install, with or without a leading {@code v}
-	 * @param npm     the npm installing pnpm
-	 * @param onStage receives progress lines, or {@code null}
-	 * @return the installed pnpm
-	 * @throws DshException when the install fails
-	 */
 	public static PnpmRuntime install(String version, DshNpm npm, @Nullable Consumer<String> onStage)
 	throws DshException {
 		String normalized = version.trim();
 		if (normalized.startsWith("v") || normalized.startsWith("V")) {
 			normalized = normalized.substring(1);
 		}
-		if (findInstalled(normalized) != null) {
+		Path target = DshPaths.pnpmDirectory(normalized);
+		if (Files.exists(target)) {
 			throw new DshException("pnpm " + normalized + " is already installed");
 		}
-
-		Path target = DshPaths.pnpmDirectory(normalized);
 		Path staging = target.resolveSibling(target.getFileName() + ".installing");
 		try {
 			Files.createDirectories(DshPaths.PNPM);
@@ -167,25 +147,22 @@ public final class PnpmRuntimeManager {
 		return runtime;
 	}
 
-	/**
-	 * Removes an installed pnpm.
-	 *
-	 * @param version the version to remove
-	 * @throws DshException when the version is not installed or cannot be removed
-	 */
-	public static void uninstall(String version) throws DshException {
-		PnpmRuntime runtime = findInstalled(version);
-		if (runtime == null) {
-			throw new DshException("pnpm " + version + " is not installed");
+	public static void uninstall(Path directory) throws DshException {
+		Path target = directory.toAbsolutePath().normalize();
+		if (!DshPaths.isManagedPnpm(target)) {
+			throw new DshException("Cannot remove pnpm " + target + ": Not managed by HDSL.");
 		}
+		if (!Files.isDirectory(target)) {
+			throw new DshException("No pnpm at " + target);
+		}
+
 		try {
-			DshFiles.deleteTree(runtime.directory());
+			DshFiles.deleteTree(target);
 		} catch (IOException e) {
-			throw new DshException(
-					"Failed to remove " + runtime.directory() + (e.getMessage() == null ? "" : ": " + e.getMessage()),
+			throw new DshException("Failed to remove " + target + (e.getMessage() == null ? "" : ": " + e.getMessage()),
 					e);
 		}
-		LOG.info("Removed pnpm " + version);
+		LOG.info("Removed the pnpm at " + target);
 	}
 
 	private static void stage(@Nullable Consumer<String> onStage, String message) {

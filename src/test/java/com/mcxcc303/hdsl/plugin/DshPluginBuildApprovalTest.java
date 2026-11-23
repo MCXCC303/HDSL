@@ -443,8 +443,8 @@ class DshPluginBuildApprovalTest {
 	/// @param directory the workspace the instance runs in
 	/// @return the instance
 	private DshInstance makeInstance(String id, String workspace, String policy, Path directory) throws Exception {
-		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
-		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
+		Assumptions.assumeTrue(DshNodeRuntime.detect().isPresent(),
+		                       "Node.js is not on PATH; nothing can be started without it");
 		// The installer refuses to install anything without pnpm, because pnpm is what `dsh plugin`
 		// forwards to — a machine without it cannot install a plugin at all. Where that is the case
 		// these tests are skipped rather than failed: what they cover is the answering of the

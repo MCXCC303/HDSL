@@ -125,13 +125,9 @@ class DshProcessLifecycleTest {
 
 	/// Skips a test when the launcher has no Node.js it may run the stub with.
 	///
-	/// The version range is part of the gate, not just the presence: a machine
-	/// may well hold a Node the launcher itself would refuse — an old
-	/// distribution, a CI image — and refusing it is the launcher's own tested
-	/// behaviour, not something these tests need to fail on.
 	private static void requireNode() {
-		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
-		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; the launcher cannot start anything without it");
+		Assumptions.assumeTrue(DshNodeRuntime.detect().isPresent(),
+		                       "Node.js is not on PATH; the launcher cannot start anything without it");
 	}
 
 	/// Stops whatever is left running, so one failure does not affect the next test.

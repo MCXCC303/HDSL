@@ -95,8 +95,8 @@ class DshBrowserWindowWindowsTest {
 	/// @param helpMentions whether the stub's help mentions `--no-open`
 	/// @return the instance
 	private DshInstance makeInstance(String id, String bundle, String typed, boolean helpMentions) throws Exception {
-		Assumptions.assumeTrue(DshNodeRuntime.detect().map(DshNodeRuntime::isNodeSupported).orElse(false),
-		                       "Node.js ^22.19.0 || >=24.0.0 is not on PATH; nothing can be started without it");
+		Assumptions.assumeTrue(DshNodeRuntime.detect().isPresent(),
+		                       "Node.js is not on PATH; nothing can be started without it");
 		DshInstance instance = DshInstanceManager.create(id,
 		                                                 "1.2.3",
 		                                                 id,

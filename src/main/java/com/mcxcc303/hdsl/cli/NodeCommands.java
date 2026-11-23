@@ -21,6 +21,7 @@ import com.mcxcc303.hdsl.cli.Cli.Invocation;
 
 import com.mcxcc303.hdsl.core.DshDiskUsage;
 import com.mcxcc303.hdsl.core.DshException;
+import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
 import com.mcxcc303.hdsl.runtime.node.NodeRelease;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntime;
 import com.mcxcc303.hdsl.runtime.node.NodeRuntimeManager;
@@ -28,6 +29,7 @@ import com.mcxcc303.hdsl.runtime.node.NodeSource;
 import org.jetbrains.annotations.NotNullByDefault;
 
 import java.io.PrintStream;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -57,7 +59,7 @@ public final class NodeCommands {
 	}
 
 	static int listNodeVersions(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
-		List<String> header = new ArrayList<>(List.of("VERSION", "LABLE", "STATUS"));
+		List<String> header = new ArrayList<>(List.of("VERSION", "LABLE"));
 		if (invocation.flag("show-lifetime")) {
 			header.addAll(List.of("LIFE_ALPHA", "LIFE_START", "LIFE_LTS", "LIFE_MAINTENANCE", "LIFE_END"));
 		}
@@ -65,8 +67,7 @@ public final class NodeCommands {
 
 		for (NodeRelease release : NodeRuntimeManager.fetchReleases(NodeSource.of(invocation.option("source")))) {
 			List<String> cells = new ArrayList<>(List.of(release.version(),
-			                                             release.isLts() ? release.label() : "-",
-			                                             release.isSupported() ? "supported" : "unsupported"));
+			                                             release.isLts() ? release.label() : "-"));
 			if (invocation.flag("show-lifetime")) {
 				if (release.schedule() == null) {
 					cells.addAll(List.of("-", "-", "-", "-", "-"));
@@ -99,9 +100,13 @@ public final class NodeCommands {
 	}
 
 	static int uninstallNode(Invocation invocation, PrintStream out, PrintStream err) throws DshException {
-		String version = invocation.option("version");
-		NodeRuntimeManager.uninstall(version);
-		out.println("Removed Node.js " + version);
+		Path directory = DshRuntimeLocation.pathOf(invocation.option("version"));
+		if (directory == null) {
+			err.println("Failed to uninstall Node.js: Not managed by HDSL.");
+			return 2;
+		}
+		NodeRuntimeManager.uninstall(directory);
+		out.println("Removed the Node.js runtime at " + directory);
 		return 0;
 	}
 }

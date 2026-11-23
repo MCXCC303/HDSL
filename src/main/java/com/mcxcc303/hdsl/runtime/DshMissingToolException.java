@@ -20,37 +20,20 @@ package com.mcxcc303.hdsl.runtime;
 import com.mcxcc303.hdsl.core.DshException;
 import org.jetbrains.annotations.NotNullByDefault;
 
-/**
- * A tool the launcher needs and the machine does not have.
- */
 @NotNullByDefault
 public final class DshMissingToolException extends DshException {
-	/// What is missing.
 	public enum Tool {
-		/// The Node.js the launcher works with.
 		NODE,
-		/// The pnpm the launcher works with.
 		PNPM
 	}
 
 	private final Tool tool;
 
-	/**
-	 * Creates the failure.
-	 *
-	 * @param tool    what is missing
-	 * @param message what to say about it
-	 */
 	public DshMissingToolException(Tool tool, String message) {
 		super(message);
 		this.tool = tool;
 	}
 
-	/**
-	 * Returns what is missing.
-	 *
-	 * @return the tool
-	 */
 	public Tool tool() {
 		return tool;
 	}
