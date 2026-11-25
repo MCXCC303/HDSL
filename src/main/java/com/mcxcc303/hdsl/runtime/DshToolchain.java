@@ -153,6 +153,12 @@ public final class DshToolchain {
 	}
 
 	public static @Nullable DshPnpm findPnpm(@Nullable Path node) {
+		DshPnpm installed = installedPnpm(node);
+		if (installed != null) return installed;
+		return DshRuntimeLocation.isSystem(pnpmSelection()) ? PnpmRuntimeManager.detect() : null;
+	}
+
+	public static @Nullable DshPnpm installedPnpm(@Nullable Path node) {
 		Path directory;
 		try {
 			directory = DshRuntimeLocation.pnpmPathOf(pnpmSelection());
@@ -160,14 +166,21 @@ public final class DshToolchain {
 			return null;
 		}
 		if (directory == null) {
-			return PnpmRuntimeManager.detect();
+			return null;
 		}
 		PnpmRuntime managed = PnpmRuntimeManager.find(directory);
-		if (managed == null) return null;
+		if (managed == null) {
+			return null;
+		}
 		return new DshPnpm(managed.cli(), node, managed.version(), managed.shimDirectory());
 	}
 
-	public static Map<String, String> pathEnvironment(@Nullable Path node, DshPnpm pnpm) {
+	public static Map<String, String> pathEnvironment(@Nullable Path node, @Nullable DshPnpm pnpm) {
+		return pathEnvironment(node, pnpm, System.getenv("PATH"));
+	}
+
+	public static Map<String, String> pathEnvironment(@Nullable Path node, @Nullable DshPnpm pnpm,
+	                                                  @Nullable String inherited) {
 		List<String> entries = new ArrayList<>();
 		if (node != null) {
 			Path parent = node.getParent();
@@ -175,10 +188,11 @@ public final class DshToolchain {
 				entries.add(parent.toString());
 			}
 		}
-		entries.add(pnpm.shimDirectory().toString());
-		String existing = System.getenv("PATH");
-		if (existing != null && !existing.isBlank()) {
-			entries.add(existing);
+		if (pnpm != null) {
+			entries.add(pnpm.shimDirectory().toString());
+		}
+		if (inherited != null && !inherited.isBlank()) {
+			entries.add(inherited);
 		}
 		return Map.of("PATH", String.join(File.pathSeparator, entries));
 	}

@@ -252,7 +252,8 @@ public final class DshLauncher {
                 environment.put(DshAccountRoute.WEB_SEARCH_ENVIRONMENT_VARIABLE, key);
             }
         }
-        environment.putAll(runtime.pathEnvironment());
+        environment.putAll(DshToolchain.pathEnvironment(runtime.node(),
+                           DshToolchain.installedPnpm(runtime.node())));
         environment.putAll(DshEnvironment.of(instance));
         environment.put(DshEnvironment.HOMEDIRECTORY_VARIABLE, home.toString());
         environment.putAll(DshAccountContract.values(instance, account));
