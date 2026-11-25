@@ -22,6 +22,7 @@ import com.mcxcc303.hdsl.account.DshAccountRoute;
 import com.mcxcc303.hdsl.core.DshException;
 import com.mcxcc303.hdsl.core.DshPermissions;
 import com.mcxcc303.hdsl.instance.DshInstance;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
@@ -362,9 +363,9 @@ public final class DshInstanceTerminal {
 			environment.put(DshAccountRoute.environmentVariable(account.displayName()), account.apiKey().trim());
 		}
 		String inherited = environment.getOrDefault("PATH", Objects.toString(System.getenv("PATH")));
-		environment.put("PATH",
-		                runtime.binDirectory() +
-		                (inherited.isBlank() ? "" : File.pathSeparator + inherited));
+		environment.putAll(DshToolchain.pathEnvironment(runtime.node(),
+		                   DshToolchain.installedPnpm(runtime.node()),
+		                   inherited));
 		return environment;
 	}
 

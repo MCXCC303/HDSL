@@ -118,15 +118,4 @@ public record DshNodeRuntime(Path node, String nodeVersion, @Nullable DshNpm npm
 	public boolean canInstall() {
 		return npm != null && npm.version() != null;
 	}
-
-	public Map<String, String> pathEnvironment() {
-		String existing = System.getenv("PATH");
-		String bin = binDirectory().toString();
-		return Map.of("PATH", existing == null || existing.isBlank() ? bin : bin + File.pathSeparator + existing);
-	}
-
-	public Path binDirectory() {
-		Path parent = node.getParent();
-		return parent == null ? node : parent;
-	}
 }

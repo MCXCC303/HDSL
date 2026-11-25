@@ -19,10 +19,14 @@ package com.mcxcc303.hdsl.launch;
 
 import com.mcxcc303.hdsl.account.DshAccount;
 import com.mcxcc303.hdsl.account.DshAccountRoute;
+import com.mcxcc303.hdsl.core.DshFiles;
 import com.mcxcc303.hdsl.core.DshPaths;
 import com.mcxcc303.hdsl.instance.DshHomeMode;
 import com.mcxcc303.hdsl.instance.DshInstance;
+import com.mcxcc303.hdsl.runtime.DshRuntimeLocation;
+import com.mcxcc303.hdsl.runtime.DshToolchain;
 import com.mcxcc303.hdsl.runtime.node.DshNodeRuntime;
+import com.mcxcc303.hdsl.runtime.pnpm.PnpmRuntime;
 import com.mcxcc303.hdsl.runtime.npm.DshNpm;
 import org.jackhuang.hmcl.util.platform.OperatingSystem;
 import org.junit.jupiter.api.Test;
@@ -46,9 +50,20 @@ class DshInstanceTerminalTest {
 		                          new DshNpm(bin.resolve(WINDOWS ? "npm.cmd" : "npm"), null, "10.9.0", bin));
 	}
 
-	// How this platform's script assigns a variable.
 	private static String assignment(String name, String value) {
 		return WINDOWS ? "set \"" + name + "=" + value + "\"" : "export " + name + "='" + value + "'";
+	}
+
+	private static String pathLine(String script) {
+		String pathAssignment = WINDOWS ? "set \"PATH=" : "export PATH='";
+		return script.lines().filter(line -> line.startsWith(pathAssignment)).findFirst().orElse("");
+	}
+
+	private static List<String> sessionPath(String script) {
+		String line = pathLine(script);
+		assertFalse(line.isEmpty(), script);
+		String pathAssignment = WINDOWS ? "set \"PATH=" : "export PATH='";
+		return List.of(line.substring(pathAssignment.length(), line.length() - 1).split(WINDOWS ? ";" : ":"));
 	}
 
 	private DshInstance instance(Map<String, String> environment) {
@@ -98,7 +113,6 @@ class DshInstanceTerminalTest {
 		            "the session stands in the instance's own folder, not the launcher's folder of " +
 		            "the same name:\n" + script);
 
-		// The shim handed to the user runs this instance's harness.
 		String shim = DshInstanceTerminal.shimText(moved, runtime(bin));
 		assertTrue(shim.contains(moved.dshEntryPoint().toString()), shim);
 	}
@@ -112,17 +126,37 @@ class DshInstanceTerminalTest {
 		                           : "cd '" + DshPaths.instanceDirectory("test") + "'"), script);
 		assertTrue(script.contains(assignment("DSH_HOME", home.resolve("dsh-home").toString())), script);
 
-		String pathAssignment = WINDOWS ? "set \"PATH=" : "export PATH='";
-		String pathLine = script.lines().filter(line -> line.startsWith(pathAssignment)).findFirst().orElse("");
-		assertFalse(pathLine.isEmpty(), script);
-
-		List<String> path = List.of(pathLine.substring(pathAssignment.length(), pathLine.length() - 1)
-		                                    .split(WINDOWS ? ";" : ":"));
+		String line = pathLine(script);
+		List<String> path = sessionPath(script);
 		String shim = DshInstanceTerminal.getTermSessionsDir().resolve("test").resolve("bin").toString();
-		assertEquals(shim, path.get(0), pathLine);
-		assertEquals(bin.toString(), path.get(1), pathLine);
-		// A session with no account carries no key.
+
+		assertEquals(shim, path.get(0), line);
+		assertEquals(bin.toString(), path.get(1), line);
+
 		assertFalse(script.contains(DshAccountRoute.KEY_ENVIRONMENT_VARIABLE), script);
+	}
+
+	@Test
+	void theSessionFindsThePnpmTheLauncherSelected() throws Exception {
+		Path bin = Files.createDirectories(home.resolve("node").resolve("bin"));
+		Path prefix = Files.createDirectories(DshPaths.pnpmDirectory("11.29.0"));
+		Path cli = PnpmRuntime.cliIn(prefix);
+		Files.createDirectories(cli.getParent());
+		Files.createFile(cli);
+
+		String node = DshToolchain.nodeSelection();
+		String selected = DshToolchain.pnpmSelection();
+		try {
+			DshToolchain.install(() -> node, () -> DshRuntimeLocation.selectionOf(prefix));
+
+			String script = DshInstanceTerminal.scriptText(instance(Map.of()), null, runtime(bin));
+
+			List<String> path = sessionPath(script);
+			assertEquals(PnpmRuntime.shimDirectoryIn(prefix).toString(), path.get(2), pathLine(script));
+		} finally {
+			DshToolchain.install(() -> node, () -> selected);
+			DshFiles.deleteTreeQuietly(prefix);
+		}
 	}
 
 	@Test
@@ -165,7 +199,6 @@ class DshInstanceTerminalTest {
 	void aCommandLineReachesTheSystemShell() {
 		List<String> command = DshCustomCommands.shellCommand("echo hello");
 		if (WINDOWS) {
-			// The interpreter is named by ComSpec, so only its shape is fixed.
 			assertTrue(command.size() >= 4, command.toString());
 			assertTrue(command.get(command.size() - 4).equalsIgnoreCase("/d"), command.toString());
 			assertTrue(command.get(command.size() - 3).equalsIgnoreCase("/s"), command.toString());
